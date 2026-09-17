@@ -38,24 +38,24 @@ from app.models import (
     ActionLog,
     AppSetting,
     Attachment,
+    CamBlank,
+    CamBlankOrder,
     Client,
+    ClientMerge,
     ClientNameAlias,
     ClientSenderMemory,
     Comment,
     EmailMessage,
     Feedback,
     FeedbackImage,
+    FolderMerge,
     Furnace,
     FurnaceReading,
-    CamBlank,
-    CamBlankOrder,
+    Machine,
     MachineLinkEvent,
     MachineReading,
-    Machine,
     MailFilterCategory,
     MailFilterRule,
-    ClientMerge,
-    FolderMerge,
     Material,
     MaterialAlias,
     MaterialShortcut,
@@ -76,6 +76,7 @@ from app.models import (
     VyrobitokCell,
     VyrobitokDay,
     VyrobitokMonth,
+    WhatsWrongMute,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,10 @@ _TABLE_MODELS: list[Any] = [
     ClientMerge,
     # Рішення власника по дублях ТЕК в export (та сама причина).
     FolderMerge,
+    # Глушники «Що не так» (відома причина, як несправна мережева карта).
+    # Дані людини: без них після переїзду значок тривоги знову засвітиться
+    # тим, що вже розібрали.
+    WhatsWrongMute,
     Material,
     MaterialAlias,
     # Скорочення матеріалів для ручного вводу (`мл → mono`). Дані власника, не
@@ -226,7 +231,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 4  # folder_merges (16.09.26)
+_NEW_SINCE_FLAG = 5  # whats_wrong_mutes (17.09.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:

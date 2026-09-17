@@ -363,3 +363,114 @@ def test_sync_silence_falls_back_to_the_journal_after_a_restart(monkeypatch):
         sync_heartbeat.SyncHeartbeat(),
     )
     assert _find(whats_wrong.collect(db), "мовчить") is not None
+
+
+# ── Глушник відомої причини ────────────────────────────────────────────────
+#
+# Навіщо взагалі: у 350i Loader несправна мережева карта (власник, 17.09.26),
+# вона рве звʼязок щодня — і значок «Що не так» світиться постійно з причини,
+# яку вже розібрали. Значок, що горить завжди, за тиждень перестають читати, і
+# справжня аварія тоне в ньому. Той самий аргумент, що в `_sync_silence`:
+# хибна тривога на екрані тривог гірша за відсутню.
+
+
+def _two_sync_problems(db: Session):
+    """Дві РІЗНІ проблеми, щоб було видно: глушиться саме одна."""
+    _sync(db, "sheet_to_db", "skipped", TABS_MESSAGE)
+    _sync(db, "mail_to_db", "error", "Не вдалося синхронізувати пошту.")
+    problems = whats_wrong.collect(db)
+    assert len(problems) >= 2
+    return problems
+
+
+def test_muted_problem_leaves_the_list_and_the_badge():
+    db = _db()
+    problems = _two_sync_problems(db)
+    target = problems[0]
+    before = whats_wrong.count(db)
+
+    whats_wrong.mute(db, key=target.key, title=target.title, days=7)
+    db.commit()
+
+    keys = [p.key for p in whats_wrong.collect(db)]
+    assert target.key not in keys, "заглушена причина лишилась у переліку"
+    assert len(keys) == len(problems) - 1, "заглушили більше, ніж просили"
+    assert whats_wrong.count(db) < before, "значок у рейці не помітив глушника"
+
+
+def test_muted_problem_is_still_visible_in_its_own_strip():
+    """Ховати зовсім не можна: людина мусить бачити, ЩО мовчить і до якого числа."""
+    db = _db()
+    target = _two_sync_problems(db)[0]
+    whats_wrong.mute(db, key=target.key, title=target.title, days=3, note="міняємо карту")
+    db.commit()
+
+    muted = whats_wrong.muted_problems(db)
+
+    assert [p.key for p in muted] == [target.key]
+    row = whats_wrong.active_mutes(db)[target.key]
+    assert row.note == "міняємо карту"
+    assert row.title == target.title, "заголовок мусить лишитись, коли подія випаде з вікна"
+
+
+def test_a_mute_expires_by_itself():
+    """Вічний глушник — той самий сліпий екран, тільки тихий."""
+    db = _db()
+    target = _two_sync_problems(db)[0]
+    past = datetime.now() - timedelta(days=1)
+    whats_wrong.mute(db, key=target.key, title=target.title, days=1, now=past - timedelta(days=1))
+    db.commit()
+
+    assert target.key in [p.key for p in whats_wrong.collect(db)], "протухлий глушник ще тримає"
+    assert whats_wrong.active_mutes(db) == {}
+
+
+def test_a_mute_cannot_outlive_the_ceiling():
+    db = _db()
+    target = _two_sync_problems(db)[0]
+    now = datetime.now()
+
+    row = whats_wrong.mute(db, key=target.key, title=target.title, days=365, now=now)
+    db.commit()
+
+    assert row.until <= now + timedelta(days=whats_wrong.MUTE_MAX_DAYS)
+
+
+def test_unmute_brings_the_problem_back():
+    db = _db()
+    target = _two_sync_problems(db)[0]
+    whats_wrong.mute(db, key=target.key, title=target.title, days=7)
+    db.commit()
+
+    assert whats_wrong.unmute(db, key=target.key) is True
+    db.commit()
+
+    assert target.key in [p.key for p in whats_wrong.collect(db)]
+
+
+def test_muting_one_cause_leaves_the_other_causes_of_the_same_machine():
+    """Глушиться пара «пристрій + причина», не пристрій: інша поломка того
+    самого верстата мусить пройти й засвітитись."""
+    db = _db()
+    host = "192.168.1.85"
+    for cause, error in (
+        ("silent", "ПК 192.168.1.85 мовчить на порту 8765"),
+        ("no_answer", "агент 192.168.1.85:8765 не віддав кадр за 8 с"),
+    ):
+        db.add(
+            MachineLinkEvent(
+                host=host, name="350i Loader", cause=cause, error=error,
+                detected_at=datetime.now() - timedelta(minutes=10),
+                ended_at=datetime.now() - timedelta(minutes=5),
+                failed_polls=3,
+            )
+        )
+    db.commit()
+    problems = [p for p in whats_wrong.collect(db) if p.key.startswith("machine_")]
+    assert len(problems) == 2, "дві різні причини мають дати дві картки"
+
+    whats_wrong.mute(db, key=problems[0].key, title=problems[0].title, days=7)
+    db.commit()
+
+    left = [p.key for p in whats_wrong.collect(db) if p.key.startswith("machine_")]
+    assert left == [problems[1].key]

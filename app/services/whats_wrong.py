@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.business_day import utc_now, utc_to_business
-from app.models import MachineLinkEvent, SyncLog
+from app.models import MachineLinkEvent, SyncLog, WhatsWrongMute
 from app import sync_heartbeat
 from app.services import machine_link
 
@@ -41,6 +41,11 @@ from app.services import machine_link
 # Скільки годин назад дивимось за замовчуванням. Доба — це «що сталось, поки
 # мене не було»: зміна, ніч і ранок наступного дня.
 DEFAULT_WINDOW_HOURS = 24
+
+# Стеля глушника. Два тижні — це «поки замовимо й поміняємо мережеву карту»,
+# і водночас не «назавжди»: вічний глушник робить екран тривог сліпим, просто
+# тихо. Строк мине — причина повернеться в перелік сама.
+MUTE_MAX_DAYS = 14
 
 # Наскільки давно мусив пройти успішний синк, щоб це саме по собі стало
 # проблемою. Фоновий тік — раз на хвилину; півгодини мовчання означає, що
@@ -448,7 +453,56 @@ def _collapse(problems: list[Problem]) -> list[Problem]:
     return list(merged.values())
 
 
-def collect(db: Session, *, hours: int = DEFAULT_WINDOW_HOURS) -> list[Problem]:
+def active_mutes(db: Session, *, now: Optional[datetime] = None) -> dict[str, WhatsWrongMute]:
+    """Чинні глушники за ключем проблеми.
+
+    Протухлі НЕ видаляємо: рядок у переліку каже, що причину колись уже
+    розбирали, і коли вона повернеться — видно, що це не вперше. Чинність
+    вирішує строк, а не наявність рядка.
+    """
+    now = now or datetime.now()
+    rows = db.scalars(select(WhatsWrongMute)).all()
+    return {row.key: row for row in rows if row.until > now}
+
+
+def mute(
+    db: Session,
+    *,
+    key: str,
+    title: str,
+    days: int,
+    note: str = "",
+    user_id: Optional[int] = None,
+    now: Optional[datetime] = None,
+) -> WhatsWrongMute:
+    """Заглушити ВІДОМУ причину на строк. Повторний виклик подовжує наявний."""
+    now = now or datetime.now()
+    days = max(1, min(int(days or 0), MUTE_MAX_DAYS))
+    row = db.scalars(select(WhatsWrongMute).where(WhatsWrongMute.key == key)).first()
+    if row is None:
+        row = WhatsWrongMute(key=key, created_at=now, created_by=user_id)
+        db.add(row)
+    row.title = (title or row.title or "")[:300]
+    row.note = (note or "")[:300]
+    row.until = now + timedelta(days=days)
+    return row
+
+
+def unmute(db: Session, *, key: str) -> bool:
+    """Зняти глушник. True — рядок був і його прибрано."""
+    row = db.scalars(select(WhatsWrongMute).where(WhatsWrongMute.key == key)).first()
+    if row is None:
+        return False
+    db.delete(row)
+    return True
+
+
+def collect(
+    db: Session,
+    *,
+    hours: int = DEFAULT_WINDOW_HOURS,
+    include_muted: bool = False,
+) -> list[Problem]:
     """Усі проблеми за вікно, найтерміновіші зверху.
 
     Порядок саме за рівнем, а не за часом: екран відкривають з питанням «що
@@ -507,6 +561,12 @@ def collect(db: Session, *, hours: int = DEFAULT_WINDOW_HOURS) -> list[Problem]:
             -(p.last_at or p.at or datetime.min).timestamp(),
         )
     )
+    # Заглушені прибираємо ПІСЛЯ згортання: ключ, за яким людина глушила, — це
+    # ключ уже згорнутої проблеми, і фільтрувати сирі події означало б глушити
+    # не те, що стоїть на екрані.
+    if not include_muted:
+        muted = active_mutes(db, now=now)
+        collapsed = [p for p in collapsed if p.key not in muted]
     return collapsed
 
 
@@ -517,3 +577,15 @@ def count(db: Session, *, hours: int = DEFAULT_WINDOW_HOURS) -> int:
     return sum(
         1 for p in collect(db, hours=hours) if p.level in (LEVEL_STOP, LEVEL_PROBLEM)
     )
+
+
+def muted_problems(db: Session, *, hours: int = DEFAULT_WINDOW_HOURS) -> list[Problem]:
+    """Проблеми, які зараз заглушені, — для окремої смуги на екрані.
+
+    Ховати їх зовсім не можна: людина мусить бачити, ЩО саме мовчить і до
+    якого числа, інакше глушник перетворюється на діру в діагностиці.
+    """
+    muted = active_mutes(db)
+    if not muted:
+        return []
+    return [p for p in collect(db, hours=hours, include_muted=True) if p.key in muted]

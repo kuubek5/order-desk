@@ -481,6 +481,38 @@ class ClientMerge(Base):
     __table_args__ = (UniqueConstraint("a_key", "b_key", name="uq_client_merge_pair"),)
 
 
+class WhatsWrongMute(Base):
+    """Глушник на ВІДОМУ причину в розділі «Що не так».
+
+    Навіщо. Значок тривоги, що горить постійно з причини, яку вже знають
+    (у 350i Loader несправна мережева карта — власник, 17.09.26), за тиждень
+    перестають читати, і справжня аварія тоне серед щоденного шуму. Той самий
+    аргумент, що в докстрінгу `_sync_silence`: хибна тривога на екрані тривог
+    гірша за відсутню.
+
+    Глушиться саме ПАРА «пристрій + причина» (`Problem.key`), а не пристрій:
+    інша причина на тому ж верстаті пройде й засвітиться. Строк обовʼязковий:
+    вічний глушник — це той самий сліпий екран, тільки тихий.
+    """
+
+    __tablename__ = "whats_wrong_mutes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # `Problem.key` — «machine_192.168.1.85_silent», «sync_…».
+    key: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    # Заголовок на момент глушіння — щоб у переліку було видно, що саме стихло,
+    # навіть коли подія давно випала з вікна й тексту вже нема звідки взяти.
+    title: Mapped[str] = mapped_column(String(300), default="")
+    # Чому заглушено, словами людини: «міняємо мережеву карту».
+    note: Mapped[str] = mapped_column(String(300), default="")
+    # Локальний час, не UTC (CLAUDE.md §14: SQLite із server_default пише UTC).
+    until: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    created_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
 class FolderMerge(Base):
     """Рішення власника по парі схожих ТЕК в export: одна це папка одного клієнта
     («Ніколаєв» і «Іван Ніколаєв») чи «не дублі». На відміну від ClientMerge (то

@@ -243,3 +243,5 @@ POST /vyrobitok/day-sync
 POST /vyrobitok/lock
 POST /vyrobitok/pin
 POST /vyrobitok/settings
+POST /wrong/mute
+POST /wrong/unmute

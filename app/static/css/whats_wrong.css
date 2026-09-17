@@ -72,4 +72,28 @@
 .wrongv .wrong-raw p{margin:8px 0 0;word-break:break-word;line-height:1.45;max-width:90ch}
 .wrongv .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 
+/* Глушник відомої причини. Свідомо тихий і схований у `<details>`: це дія
+   «я вже знаю», а не команда екрана. Заливки не має — заливка тут належить
+   рівню тривоги. */
+.wrongv .wrong-mute{font-size:var(--fs-1);color:var(--ink-3)}
+.wrongv .wrong-mute summary{cursor:pointer;color:var(--ink-3)}
+.wrongv .wrong-mute summary:hover{color:var(--ink-2)}
+.wrongv .wrong-mute form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 0}
+.wrongv .wrong-mute input[type=text]{flex:1 1 280px;min-width:0}
+.wrongv .wrong-mute input[type=number]{width:64px}
+.wrongv .wrong-mute label{display:inline-flex;align-items:center;gap:6px;color:var(--ink-3)}
+.wrongv .wrong-mute-why{margin:8px 0 0;line-height:1.45;max-width:78ch}
+
+/* Приглушене — окремою смугою внизу, приглушеним тоном, але ВИДИМЕ: екран
+   діагностики, з якого щось тихо зникло, гірший за галасливий. */
+.wrongv .wrong-muted{margin:22px 0 0;padding:14px 16px;border:1px dashed var(--line-2);border-radius:var(--r-card)}
+.wrongv .wrong-muted h2{margin:0 0 10px;font-size:var(--fs-2);color:var(--ink-3);
+  letter-spacing:.1em;text-transform:uppercase}
+.wrongv .wrong-muted-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.wrongv .wrong-muted-row:first-of-type{border-top:0}
+.wrongv .wrong-muted-row b{color:var(--ink-2);font-weight:600}
+.wrongv .wrong-muted-note{margin-left:8px;color:var(--ink-3)}
+.wrongv .wrong-muted-till{margin-left:8px;color:var(--ink-3)}
+
 .wrongv .wrong-hint{margin:20px 0 0;font-size:var(--fs-1);color:var(--ink-3);line-height:1.5;max-width:78ch}

@@ -34,7 +34,17 @@
         </div>
     </div>
 
-    {% if not problems %}
+    {% if not problems and muted %}
+    <div class="wrong-clear">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <div>
+            <strong>Нових проблем немає</strong>
+            <p>Те, що знайшлось за цей час, приглушено — перелік нижче.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not problems and not muted %}
     <div class="wrong-clear">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
         <div>
@@ -80,9 +90,57 @@
                 <p class="mono">{{ p.raw }}</p>
             </details>
             {% endif %}
+            {# Глушник на ВІДОМУ причину. Потрібен рівно тоді, коли причину вже
+               знають і чекають на ремонт: значок тривоги, що горить постійно,
+               за тиждень перестають читати — і справжню аварію в ньому не
+               помітять. Глушиться пара «пристрій + причина», тож інша причина
+               на тому ж верстаті пройде. Строк обовʼязковий. #}
+            {% if p.key %}
+            <details class="wrong-mute">
+                <summary>Це відомо — приглушити</summary>
+                <form method="post" action="/wrong/mute">
+                    <input type="hidden" name="key" value="{{ p.key }}">
+                    <input type="hidden" name="title" value="{{ p.title }}">
+                    <input type="hidden" name="hours" value="{{ hours }}">
+                    <input type="text" name="note" maxlength="300"
+                           placeholder="Чому відомо — напр. «міняємо мережеву карту»">
+                    <label>на
+                        <input type="number" name="days" value="7" min="1" max="{{ mute_max_days }}">
+                        дн.
+                    </label>
+                    <button type="submit">Приглушити</button>
+                </form>
+                <p class="wrong-mute-why">Зникне з переліку й зі значка в меню, поки не мине строк.
+                   Інша причина на тому самому пристрої пройде як завжди.</p>
+            </details>
+            {% endif %}
         </div>
     </article>
     {% endfor %}
+
+    {% if muted %}
+    {# Заглушене показуємо ОКРЕМО, а не ховаємо: діагностика, у якій щось тихо
+       зникло, гірша за галасливу. Видно, що саме мовчить і до якого числа. #}
+    <section class="wrong-muted">
+        <h2>Приглушено</h2>
+        {% for p in muted %}
+        {% set m = mutes.get(p.key) %}
+        <div class="wrong-muted-row">
+            <div>
+                <b>{{ p.title }}</b>
+                {% if m and m.note %}<span class="wrong-muted-note">{{ m.note }}</span>{% endif %}
+                <span class="wrong-muted-till mono">до {{ m.until.strftime('%d.%m %H:%M') if m else '—' }}</span>
+                {% if p.times > 1 %}<span class="wrong-times mono">за цей час ще {{ p.times }} р.</span>{% endif %}
+            </div>
+            <form method="post" action="/wrong/unmute">
+                <input type="hidden" name="key" value="{{ p.key }}">
+                <input type="hidden" name="hours" value="{{ hours }}">
+                <button type="submit">Повернути</button>
+            </form>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
 
     {% if problems %}
     <p class="wrong-hint">
