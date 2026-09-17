@@ -609,3 +609,41 @@ def test_deliberately_awake_polls_still_exist():
     assert not stale, (
         "POLLS_ALWAYS_AWAKE розійшовся з розміткою:" + chr(10) + chr(10).join(stale)
     )
+
+
+def test_the_hidden_attribute_actually_hides():
+    """`[hidden]` мусить бити `display` класів — інакше сховане ловить кліки.
+
+    UA-стиль `[hidden] { display: none }` програє БУДЬ-ЯКОМУ авторському
+    правилу з `display`, а наші панелі майже всі мають `display: flex|grid` на
+    своєму класі. Тому `el.hidden = true` лишав елемент у розкладці: невидимий
+    (прозорість окремою властивістю) і цілком клікабельний.
+
+    Бойовий випадок 17.09.26, «Ранкова видача»: закрите прев'ю STL висіло над
+    списком і з'їдало кліки, курсор показував «руку», рятувало лише
+    перезавантаження. Перевірено в браузері на справжніх файлах: без цього
+    правила `.stl-panel[hidden]` має `display:flex`, і `elementFromPoint`
+    віддає панель замість рядка під нею.
+
+    Сторож тримає дві половини: саме правило (щоб його не прибрали) і те, що
+    жодне інше правило не робить `[hidden]` елемент видимим (інакше
+    `!important` мовчки переміг би чийсь задум).
+    """
+    base = (CSS_DIR / "base.css").read_text(encoding="utf-8")
+    assert re.search(
+        r"\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important", base
+    ), "у base.css немає глобального [hidden] { display: none !important }"
+
+    offenders = []
+    for path in sorted(CSS_DIR.glob("*.css")):
+        text = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", text, re.S):
+            if "[hidden]" not in selector:
+                continue
+            found = re.search(r"display\s*:\s*([a-z-]+)", body)
+            if found and found.group(1) != "none":
+                offenders.append(f"{path.name}: {selector.strip()} → display:{found.group(1)}")
+    assert not offenders, (
+        "правило робить [hidden] елемент видимим — глобальний [hidden] його "
+        "переб'є:" + chr(10) + chr(10).join(offenders)
+    )
