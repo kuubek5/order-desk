@@ -16,6 +16,7 @@ worse than silently finding nothing this time.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 import logging
 import os
@@ -110,6 +111,37 @@ def reset_install_state_for_tests() -> None:
     set_install_state(stage="idle")
 
 
+def _is_rate_limited(response) -> bool:
+    """Чи саме квота, а не відмова в правах.
+
+    GitHub віддає 403 і тоді, коли репозиторій недоступний, — тексти мусять
+    бути різні, інакше «немає зв'язку» ховатиме справжню проблему з доступом.
+    Ознака квоти: лічильник, що дійшов до нуля, або слова у відповіді.
+    """
+    if response is None:
+        return False
+    if response.headers.get("X-RateLimit-Remaining") == "0":
+        return True
+    try:
+        return "rate limit" in (response.text or "").lower()
+    except Exception:  # noqa: BLE001 — текст відповіді не мусить нічого валити
+        return False
+
+
+def _rate_limit_suffix(response) -> str:
+    """«, відпустить о 10:05» — якщо GitHub сказав, коли саме."""
+    if response is None:
+        return ""
+    raw = response.headers.get("X-RateLimit-Reset")
+    if not raw:
+        return ""
+    try:
+        moment = datetime.fromtimestamp(int(raw))
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+    return f", відпустить о {moment.strftime('%H:%M')}"
+
+
 def human_update_error(exc: BaseException) -> str:
     """Причина збою оновлення словами оператора, без стеку requests."""
     if isinstance(exc, UpdateVerificationError):
@@ -121,7 +153,21 @@ def human_update_error(exc: BaseException) -> str:
     if isinstance(exc, requests.exceptions.ConnectionError):
         return "з'єднання з GitHub розірвано — спробуй ще раз"
     if isinstance(exc, requests.exceptions.HTTPError):
-        return f"GitHub відповів помилкою ({exc.response.status_code if exc.response is not None else '?'})"
+        response = exc.response
+        status = response.status_code if response is not None else None
+        # 403 від GitHub — це майже завжди НЕ права й не обрив, а вичерпана
+        # квота: без токена API дає 60 запитів на годину з однієї адреси, і
+        # кожен старт програми та кожне натискання «Перевірити» їдять по
+        # одному. 17.09.26 після кількох перезапусків поспіль оператор бачив
+        # «немає зв'язку з GitHub» при цілком живому інтернеті й пішов шукати
+        # мережу. Квота відновлюється сама, тому головне в тексті — КОЛИ.
+        if status in (403, 429) and _is_rate_limited(response):
+            return (
+                "вичерпано ліміт запитів до GitHub (60 на годину)"
+                f"{_rate_limit_suffix(response)} — оновлення встановиться саме, "
+                "інтернет тут ні до чого"
+            )
+        return f"GitHub відповів помилкою ({status if status is not None else '?'})"
     return "внутрішня помилка встановлення — деталі в logs\\kuubmill.log"
 
 

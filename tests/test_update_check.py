@@ -5,6 +5,7 @@ network in tests" convention). launch_silent_install is only exercised in
 its dev (non-frozen) no-op branch; the real Windows subprocess/PowerShell
 path needs a packaged build and a live installer to test meaningfully."""
 
+from datetime import datetime
 import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -668,3 +669,43 @@ def test_rollback_waits_for_the_forked_installer_like_the_install_path_does():
         "відкат покладається на -Wait, а він чекає лише батьківський процес"
     )
     assert "rollbackStem" in code
+
+
+def test_a_rate_limited_403_is_not_reported_as_a_broken_connection():
+    """403 «rate limit» — це вичерпана квота, а не обрив зв'язку.
+
+    GitHub без токена дає 60 запитів на годину з адреси, і кожен старт
+    програми та кожне «Перевірити» з'їдають по одному. 17.09.26 після кількох
+    перезапусків поспіль оператор побачив «немає зв'язку з GitHub» при цілком
+    живому інтернеті — і пішов шукати мережу замість того, щоб просто
+    зачекати. Текст мусить називати причину й ЧАС, коли відпустить.
+    """
+    import requests
+
+    from app.update_check import human_update_error
+
+    response = requests.Response()
+    response.status_code = 403
+    response.headers["X-RateLimit-Remaining"] = "0"
+    response.headers["X-RateLimit-Reset"] = str(int(datetime(2030, 5, 4, 10, 5).timestamp()))
+    response._content = b'{"message": "API rate limit exceeded"}'
+    message = human_update_error(requests.exceptions.HTTPError(response=response))
+
+    assert "ліміт запитів" in message
+    assert "10:05" in message
+    assert "інтернет" in message  # прямо каже, що мережа ні до чого
+
+
+def test_a_403_without_rate_limit_headers_stays_a_plain_http_error():
+    """Не кожен 403 — квота: приватний репозиторій віддає такий самий код.
+    Підмінити його текстом про ліміт означало б сховати проблему з доступом."""
+    import requests
+
+    from app.update_check import human_update_error
+
+    response = requests.Response()
+    response.status_code = 403
+    response._content = b'{"message": "Must have admin rights"}'
+    message = human_update_error(requests.exceptions.HTTPError(response=response))
+
+    assert "403" in message and "ліміт" not in message
