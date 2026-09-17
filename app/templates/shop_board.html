@@ -105,6 +105,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .mc-last{margin-top:1vh;font:600 clamp(9px,.72vw,14px) var(--font-mono);
   letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
 .mc-last+.mc-cl{margin-top:.2vh}
+/* «ЗАВЕРШЕНО» над клієнтом — тим самим кольором, що й слово стану в кутку:
+   око має злапати обидва як один сигнал, а не як підпис і напис. */
+.mc-last.is-act{color:var(--accent-c)}
 .mc-cl{margin-top:1vh;font:600 clamp(14px,1.4vw,28px)/1.18 var(--font-body);color:#cbbfae;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mc-mat{margin-top:.3vh;font-size:clamp(12px,1.2vw,24px);line-height:1.2;color:#8d8272;
@@ -136,6 +139,10 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .pc{font:600 clamp(22px,2.9vw,58px)/.95 var(--font-mono);font-variant-numeric:tabular-nums;
   color:var(--accent-c);letter-spacing:-.03em}
 .pc small{font-size:.46em;color:rgba(var(--accent-rgb),.6);margin-left:.14em}
+/* Слово замість смуги у завершеного. Розмір як у відсотка — воно займає те
+   саме місце й мусить читатись із тієї самої відстані. */
+.take{font:700 clamp(20px,2.6vw,52px)/.95 var(--font-display);letter-spacing:.04em;
+  text-transform:uppercase;color:var(--accent-c)}
 /* Пояснення переноситься, а не обрізається: «програма пішла · відсотка ще…»
    уривається саме на тому слові, заради якого його й читають. */
 .nd{font-family:var(--font-mono);font-size:clamp(10px,.85vw,17px);color:var(--ink-3);

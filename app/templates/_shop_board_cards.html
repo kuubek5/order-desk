@@ -38,7 +38,8 @@
         <div class="mc-work">
           {# Щойно знята робота мусить бути ПІДПИСАНА: без цього рядка вона
              читається як та, що фрезерується просто зараз. #}
-          {% if m.works_are_last %}<div class="mc-last">остання робота</div>{% endif %}
+          {% if m.action %}<div class="mc-last is-act">{{ m.action }}</div>
+          {% elif m.works_are_last %}<div class="mc-last">остання робота</div>{% endif %}
           {% for wk in m.works %}
             {# Імʼя другої роботи НЕ повторюємо, коли клієнт той самий: два
                однакові рядки з'їдали б місце, заради якого другу назву й
@@ -58,7 +59,12 @@
         </div>
 
         <div class="mc-bot">
-          {% if m.percent is not none %}
+          {# Завершений верстат НЕ показує смугу: на 100 % вона читається як
+             «майже готово, ще крутиться» — рівно та неправда, заради якої
+             на табло й дивляться. Замість неї слово, яке видно з проходу. #}
+          {% if m.state == 'done' %}
+            <span class="take">зняти</span>
+          {% elif m.percent is not none %}
             <div class="bar"><i style="width:{{ m.percent }}%"></i></div>
             <span class="pc">{{ m.percent }}<small>%</small></span>
           {% elif has_work and m.note %}
