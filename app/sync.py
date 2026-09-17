@@ -498,7 +498,9 @@ def _looks_like_another_work(row: OrderRow, order: Order) -> bool:
 
 
 def _relink_moved_rows(
-    existing_by_row: dict[int, Order], rows: list[OrderRow]
+    existing_by_row: dict[int, Order],
+    rows: list[OrderRow],
+    all_orders: list[Order] | None = None,
 ) -> tuple[int, set[int]]:
     """Repoint orders whose row shifted, rewriting `existing_by_row` in place.
 
@@ -518,6 +520,15 @@ def _relink_moved_rows(
     archived by the reconciliation; extra sheet rows (a new duplicate) are
     created there.
 
+    ``all_orders`` — повний знімок робіт вкладки. Кандидати на зчеплення БЕРЕМО
+    З НЬОГО, а не з позиційної мапи: мапа тримає одну роботу на рядок, і жива
+    робота, витіснена з неї двійником, ставала невидимою для identity. Її рядок
+    у таблиці виглядав нічийним — синк заводив під нього ДУБЛЬ, той займав
+    рядок, витісняв наступну, і так по колу (бойовий випадок 16.09.26: 42 дублі
+    за день у вкладці на 121 роботу). Архівні витіснені сюди НЕ йдуть: у них
+    своя гілка воскресіння (`evicted_archived` у `sync_tab`), і дві гілки на
+    одну роботу віддали б її двічі.
+
     Повертає (скільки робіт переставлено, id тих, кого identity ЗВЕЛА з рядком).
     Другий елемент потрібен викликачеві: після зсуву рядків позиційний збіг уже
     не доказ, і пару без identity-підтвердження треба перевіряти окремо.
@@ -528,15 +539,18 @@ def _relink_moved_rows(
         if key is not None:
             rows_by_key.setdefault(key, []).append(row)
 
+    in_map = {id(o) for o in existing_by_row.values()}
+    candidates = all_orders if all_orders is not None else list(existing_by_row.values())
     orders_by_key: dict[tuple, list[Order]] = {}
-    for order in existing_by_row.values():
+    for order in candidates:
+        if id(order) not in in_map and order.archived_at is not None:
+            continue
         key = _order_identity(order)
         if key is not None:
             orders_by_key.setdefault(key, []).append(order)
 
-    # Pair within each identity group by relative order; collect the orders that
-    # actually need to move to a different row.
-    movers: list[tuple[Order, int]] = []
+    # Pair within each identity group by relative order.
+    pairs: list[tuple[Order, int]] = []
     # Кого паруванню за identity вдалося прив'язати до рядка — байдуже,
     # зрушився він чи ні. Викликач за цим відрізняє «підтверджену пару» від
     # «просто збіглася позиція» (див. гейт зсуву в sync_tab).
@@ -546,12 +560,17 @@ def _relink_moved_rows(
         if not korders:
             continue
         krows_sorted = sorted(krows, key=lambda r: r.row_number)
+        # Порядок усередині групи — за позицією, а при однаковій позиції
+        # (двійники на одному рядку) лишається порядок `all_orders`, тобто за
+        # id. Тому рядок дістається СТАРШІЙ роботі: на ній історія статусів,
+        # Sum3D і коментарі оператора, а зайвий молодший дубль іде в Архів.
         korders_sorted = sorted(korders, key=lambda o: o.row_number)
         for order, row in zip(korders_sorted, krows_sorted):
             if order.id is not None:
                 paired_ids.add(order.id)
-            if order.row_number != row.row_number:
-                movers.append((order, row.row_number))
+            pairs.append((order, row.row_number))
+
+    movers = [(order, new_row) for order, new_row in pairs if order.row_number != new_row]
 
     # Two phases so movers that swap slots don't clobber each other: free every
     # mover's old slot first, then place each at its paired row. A non-mover
@@ -561,7 +580,11 @@ def _relink_moved_rows(
     for order, _ in movers:
         if existing_by_row.get(order.row_number) is order:
             existing_by_row.pop(order.row_number, None)
-    for order, new_row in movers:
+    # Ставимо в мапу КОЖНУ зведену роботу, не лише ту, що переїхала. Робота,
+    # витіснена двійником, стоїть на ПРАВИЛЬНОМУ номері рядка — переїзду немає,
+    # а в мапі її немає теж, і без цього рядка вона так і лишилась би невидимою,
+    # а дубль — живим.
+    for order, new_row in pairs:
         order.row_number = new_row
         existing_by_row[new_row] = order
     return len(movers), paired_ids
@@ -681,7 +704,7 @@ def sync_tab(
     tab_orders = all_tab_orders
     matched_ids: set[int] = set()
 
-    moved, identity_paired = _relink_moved_rows(existing_by_row, rows)
+    moved, identity_paired = _relink_moved_rows(existing_by_row, rows, all_tab_orders)
     result.moved += moved
 
     # Архівні роботи, ВИТІСНЕНІ з позиційної мапи: на їхньому старому рядку
@@ -1186,6 +1209,24 @@ def sync_tab(
             o for o in active
             if not (o.id is not None and o.id in matched_ids)
         ]
+        # ДУБЛЬ — ЦЕ НЕ «ЗНИКНЕННЯ». Якщо в цього ж тіка зведений з рядком
+        # живий двійник із тим самим identity-ключем, то рядок у таблиці на
+        # місці — роботу просто завели двічі. Рахувати такі за зниклі означає
+        # замкнене коло: запобіжник тримає архівацію, дублі лишаються живими,
+        # частка не падає, і вкладка застрягає НАЗАВЖДИ. Бойовий випадок
+        # 16.09.26: 46 із 167 (27,5 % проти порогу 25 %), попередження в лог
+        # кожні 17 с добу поспіль, прибрати можна було лише руками.
+        # Зведений двійник заразом доводить, що читання не обірване: рядки з
+        # цим ключем у відповіді були.
+        matched_keys: set[tuple] = set()
+        for o in active:
+            if o.id is None or o.id not in matched_ids:
+                continue
+            twin_key = _order_identity(o)
+            if twin_key is not None:
+                matched_keys.add(twin_key)
+        if matched_keys:
+            vanished = [o for o in vanished if _order_identity(o) not in matched_keys]
         mass_vanish = len(vanished) > 5 and active and len(vanished) > 0.25 * len(active)
         if mass_vanish and not force_reconcile:
             result.held_mass_vanish = len(vanished)

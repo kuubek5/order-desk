@@ -2265,3 +2265,175 @@ def test_weekend_without_its_own_tab_is_not_an_alarm():
     assert _weekend_on_friday_tab(_date(2026, 9, 13), tabs)        # нд
     assert not _weekend_on_friday_tab(_date(2026, 9, 12), {"10.09.26"}), "п'ятниці нема — це вже проблема"
     assert not _weekend_on_friday_tab(_date(2026, 9, 14), tabs), "у понеділок вкладка потрібна своя"
+
+
+def test_a_live_duplicate_sharing_a_row_is_archived_not_kept_forever():
+    """Дві ЖИВІ роботи на одному рядку зводяться до однієї, без третьої.
+
+    Стан із бойового випадку 16.09.26: позиційна мапа тримає одну роботу на
+    рядок, тож двійник із меншим id був для зчеплення невидимий. Його рядок у
+    таблиці виглядав нічийним — синк заводив під нього ДУБЛЬ, той займав рядок,
+    і так по колу: 42 дублі за день у вкладці на 121 роботу.
+
+    Рядок дістається СТАРШІЙ роботі (на ній історія й Sum3D оператора),
+    молодший дубль іде в Архів.
+    """
+    session = make_session()
+    for _ in range(2):
+        session.add(Order(
+            source="sheet_client", sheet_tab="16.09.26", row_number=93,
+            client_name="Неда", material_color="mono a2", quantity="10",
+            status="нове",
+        ))
+    session.commit()
+    age_orders(session)
+    older, newer = session.scalars(select(Order).order_by(Order.id)).all()
+    older_id, newer_id = older.id, newer.id
+
+    result = sync_tab(session, "16.09.26", [
+        make_client_row(row_number=93, kind="Неда", material_color="mono a2",
+                        quantity="10"),
+    ], deletion_grace_seconds=0)
+    session.commit()
+
+    assert session.query(Order).count() == 2, "третьої роботи створитись не мало"
+    assert session.get(Order, older_id).archived_at is None, "старша лишається в черзі"
+    assert session.get(Order, older_id).row_number == 93
+    assert session.get(Order, newer_id).archived_at is not None, "молодший дубль — в Архів"
+    assert result.deleted == 1
+
+
+def test_the_mass_vanish_guard_does_not_count_duplicates():
+    """Дублі не тримають запобіжник — інакше вкладка застрягає назавжди.
+
+    Бойовий випадок 16.09.26: 46 «зниклих» із 167 активних (27,5 % проти порогу
+    25 %) були дублями тих самих робіт. Запобіжник тримав архівацію, дублі
+    лишались живими, частка не падала — замкнене коло, у якому вкладка висіла
+    добу й писала попередження в лог кожні 17 с.
+
+    Зведений із рядком двійник заразом доводить, що читання не обірване.
+    """
+    session = make_session()
+    rows = []
+    for i in range(6):
+        for _ in range(2):  # робота і її дубль на тому самому рядку
+            session.add(Order(
+                source="sheet_client", sheet_tab="16.09.26", row_number=70 + i,
+                client_name=f"Клієнт {i}", material_color="mono a3",
+                quantity=str(i + 1), status="нове",
+            ))
+        rows.append(make_client_row(
+            row_number=70 + i, kind=f"Клієнт {i}", material_color="mono a3",
+            quantity=str(i + 1), sum3d_id=f"S-{i}",
+        ))
+    session.commit()
+    age_orders(session)
+
+    result = sync_tab(session, "16.09.26", rows, deletion_grace_seconds=0)
+    session.commit()
+
+    assert result.held_mass_vanish == 0, "6 із 12 — але це дублі, не зникнення"
+    assert result.deleted == 6
+    live = session.scalars(select(Order).where(Order.archived_at.is_(None))).all()
+    assert len(live) == 6
+    assert sorted(o.row_number for o in live) == [70, 71, 72, 73, 74, 75]
+
+
+def test_a_real_mass_vanish_is_still_held_when_rows_look_alike():
+    """Виняток для дублів не має відкривати двері справжньому обірваному
+    читанню: коли рядок із таким ключем у відповіді НЕ прийшов, робота
+    рахується зниклою, як і раніше."""
+    session = make_session()
+    for i in range(12):
+        session.add(Order(
+            source="sheet_client", sheet_tab="16.09.26", row_number=70 + i,
+            client_name=f"Клієнт {i}", material_color="mono a3",
+            quantity=str(i + 1), status="нове",
+        ))
+    session.commit()
+    age_orders(session)
+
+    # Прийшли лише 3 рядки з 12 — решта ключів у відповіді відсутня.
+    result = sync_tab(session, "16.09.26", [
+        make_client_row(row_number=70 + i, kind=f"Клієнт {i}",
+                        material_color="mono a3", quantity=str(i + 1))
+        for i in range(3)
+    ], deletion_grace_seconds=0)
+    session.commit()
+
+    assert result.held_mass_vanish == 9 and result.deleted == 0
+
+
+def test_inserting_rows_mid_tab_never_duplicates_works():
+    """Сценарій, якого бракувало: вкладка на 100 робіт, три рядки вставлено
+    посередині, синк прогнано двічі — жодної нової роботи, жодної
+    заархівованої, лічильники ті самі."""
+    session = make_session()
+
+    def tab_rows(shift_from: int = 0, shift_by: int = 0):
+        out = []
+        for i in range(100):
+            row_no = 10 + i + (shift_by if i >= shift_from else 0)
+            out.append(make_client_row(
+                row_number=row_no, kind=f"Клієнт {i}", material_color="mono a3",
+                quantity=str(i % 7 + 1), sum3d_id=f"S-{i}",
+            ))
+        return out
+
+    sync_tab(session, "16.09.26", tab_rows())
+    session.commit()
+    age_orders(session)
+    assert session.query(Order).count() == 100
+
+    shifted = tab_rows(shift_from=50, shift_by=3)
+    for pass_no in (1, 2):
+        result = sync_tab(session, "16.09.26", shifted, deletion_grace_seconds=0)
+        session.commit()
+        assert session.query(Order).count() == 100, f"прохід {pass_no}: зайва робота"
+        assert result.deleted == 0, f"прохід {pass_no}: зайва архівація"
+        assert result.held_mass_vanish == 0, f"прохід {pass_no}: запобіжник спрацював даремно"
+
+    live = session.scalars(select(Order).where(Order.archived_at.is_(None))).all()
+    assert len(live) == 100
+    # Кожна робота лишилась зі СВОЇМ Sum3D на своєму новому рядку.
+    by_row = {o.row_number: o.sum3d_id for o in live}
+    assert by_row[10] == "S-0"
+    assert by_row[10 + 49] == "S-49"
+    assert by_row[10 + 50 + 3] == "S-50"
+    assert by_row[10 + 99 + 3] == "S-99"
+
+
+def test_two_real_rows_do_not_breed_a_third_work_when_orders_collide():
+    """Каскад, яким 16.09.26 наросли 42 дублі.
+
+    У таблиці ДВА законні рядки з однаковим ключем (той самий клієнт, матеріал і
+    кількість — звичайне діло за день). У базі дві роботи, але обидві стоять на
+    одному номері рядка після давнішого зсуву. Позиційна мапа тримає одну роботу
+    на рядок, тож зчеплення за ключем бачило ЛИШЕ одну: перший рядок діставався
+    їй, а другий лишався нічийним — і синк заводив під нього ТРЕТЮ роботу. Та
+    займала рядок, витісняла наступну, і за день так наросли десятки.
+    """
+    session = make_session()
+    for _ in range(2):
+        session.add(Order(
+            source="sheet_client", sheet_tab="16.09.26", row_number=93,
+            client_name="Неда", material_color="mono a2", quantity="10",
+            status="нове",
+        ))
+    session.commit()
+    age_orders(session)
+
+    result = sync_tab(session, "16.09.26", [
+        make_client_row(row_number=93, kind="Неда", material_color="mono a2",
+                        quantity="10", sum3d_id="16-18-38"),
+        make_client_row(row_number=97, kind="Неда", material_color="mono a2",
+                        quantity="10", sum3d_id="17-02-11"),
+    ], deletion_grace_seconds=0)
+    session.commit()
+
+    assert result.created == 0, "третьої роботи створитись не мало"
+    assert session.query(Order).count() == 2
+    live = session.scalars(select(Order).where(Order.archived_at.is_(None))).all()
+    assert len(live) == 2, "обидва рядки справжні — архівувати нічого"
+    assert sorted(o.row_number for o in live) == [93, 97]
+    assert sorted(o.sum3d_id for o in live) == ["16-18-38", "17-02-11"]
