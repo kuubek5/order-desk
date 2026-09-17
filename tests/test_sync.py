@@ -1864,6 +1864,50 @@ def test_non_queue_rows_are_counted_separately_not_silently_dropped():
     assert second.skipped_non_queue == 1
 
 
+def test_a_reused_row_cannot_create_a_non_queue_work():
+    """Бойовий випадок 17.09.26: «CADCAM Команда» на ранковій видачі.
+
+    Мʼяка ознака «не наша робота» (клієнтський рядок без матеріалу АБО без
+    кількості) свідомо не діє на рядок, за яким уже стоїть відома робота —
+    інакше технік, що на секунду стер матеріал, гасив би живу роботу. Але той
+    самий пропуск працював і на СТВОРЕННЯ: рядок 147 у вкладці 16.09
+    переписали під «CADCAM Команда» з матеріалом «9» і порожньою кількістю
+    (число, вписане в чужу колонку), стара робота пішла в архів, а на її місці
+    зʼявився новий «клієнт» — і поїхав у видачу.
+
+    Жива робота від цього не страждає: правка поля — це ОНОВЛЕННЯ, і воно
+    йде іншою гілкою (перевіряється нижче в цьому ж тесті).
+    """
+    session = make_session()
+    real = make_row(row_number=147, work_order_no=None, technician_name=None,
+                    kind="Неда", material_color="mono a3", quantity="3",
+                    job_code=None, sum3d_id="10-58-02")
+    first = sync_tab(session, "16.09.26", [real])
+    assert first.created == 1
+    age_orders(session)
+
+    reused = make_row(row_number=147, work_order_no=None, technician_name=None,
+                      kind="CADCAM Команда", material_color="9", quantity=None,
+                      job_code=None, sum3d_id=None, calculated="", milled="",
+                      last_milled_date="", mill_count="", due_time="")
+    second = sync_tab(session, "16.09.26", [reused])
+    assert second.created == 0, "рядок без кількості не має ставати роботою"
+    assert second.skipped_non_queue == 1, "пропуск мусить бути в лічильнику, не мовчазний"
+    names = [o.client_name for o in session.scalars(select(Order)).all()]
+    assert "CADCAM Команда" not in names
+
+    # А правка поля живої роботи її НЕ вбиває: та сама позиція, той самий
+    # клієнт, тимчасово стертий матеріал.
+    session2 = make_session()
+    sync_tab(session2, "16.09.26", [real])
+    edited = make_row(row_number=147, work_order_no=None, technician_name=None,
+                      kind="Неда", material_color=None, quantity="3",
+                      job_code=None, sum3d_id="10-58-02")
+    sync_tab(session2, "16.09.26", [edited])
+    alive = session2.scalars(select(Order)).all()
+    assert len(alive) == 1 and alive[0].archived_at is None
+
+
 def test_verdict_is_withheld_while_rows_are_moving():
     """Зсув рядків робить пари менш надійними — вердикт відкладається.
 
