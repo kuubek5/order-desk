@@ -1145,3 +1145,37 @@ def test_a_reading_of_the_wrong_shape_is_never_shown():
     from app.furnace_ocr import accept_reading
 
     assert accept_reading("35.0", r"^\d{1,4}$", unknown=0, clipped=False) is False
+
+
+def test_command_zone_does_not_swallow_the_field_frame():
+    """Зона «Команда» мусить стояти ВСЕРЕДИНІ рамки поля, а не на ній.
+
+    Рамка поля «Текущая команда» — суцільна світла лінія (виміряно на кадрі
+    печі 17.09.26: стовпці 281–282 зліва, 404–405 справа). Ліва межа зони
+    стояла рівно на ній, сегментатор рахував лінію за символ, той не
+    впізнавався — і все читання відкидалось: сире «?C0» замість «C0». Піч
+    мовчала так 5924 кадри поспіль, із 12.09.26.
+
+    Перевіряємо на СПРАВЖНІХ кадрах, не на мальованих: у двох із них
+    відтворюється сама вада, а `run.png` тримає протилежний бік — довга
+    команда «T008.A990» не має обрізатись звуженою зоною.
+    """
+    from pathlib import Path
+
+    from PIL import Image
+
+    from app.furnace_ocr import read_zone
+
+    folder = Path(__file__).parent / "fixtures" / "furnace"
+    expected = {
+        "live_138.png": "C0",
+        "live_glued_44.png": "C0",
+        "wait.png": "C0",
+        "run.png": "T008.A990",
+    }
+    for name, text in expected.items():
+        frame = Image.open(folder / name).convert("RGB")
+        field = read_zone(frame, "command")
+        assert field.clipped is False, f"{name}: зона зачепила рамку поля"
+        assert field.unknown == 0, f"{name}: {field.unknown} символів не впізнано ({field.raw!r})"
+        assert field.text == text, f"{name}: прочитано {field.text!r}, очікували {text!r}"
