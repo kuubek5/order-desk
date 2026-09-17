@@ -34,8 +34,15 @@
      Login and other rail-less auth pages share this <body>, so an
      unconditional padding-left shoved their centered card to the right.
      :has(.topbar-user) ties the offset to the rail's real presence. */
+  /* Ширина рейки живе в одній змінній: її читає і відступ тіла, і фон екрана
+     печей (`furnaces.css .fu-bg`). Три стани — розгорнута, згорнута руками,
+     згорнута автоматично на вузькому вікні (`rail-auto`, див. app.js). */
+  body { --rail-gutter: 228px; }
+  body.rail-collapsed,
+  body.rail-auto { --rail-gutter: 64px; }
+
   body:has(.topbar-user) {
-    padding-left: 228px;
+    padding-left: var(--rail-gutter, 228px);
   }
 
   .topbar-user {
@@ -444,8 +451,16 @@
   body.rail-collapsed .rail-settings-back { align-self: center; }
 
   /* ---- Collapsed rail (icons only) ---- */
-  body.rail-collapsed:has(.topbar-user) {
-    padding-left: 64px;
+  /* Відступ тіла бере `--rail-gutter` вище; тут лишається тільки сама рейка. */
+
+  /* Вузьке вікно: жолоб під рейку заморожений на 64px навіть коли оператор
+     розгорнув меню руками. Розгорнута рейка тоді НАКЛАДАЄТЬСЯ на вміст, як
+     шухляда, і не звужує таблицю черги — інакше на півекрана за краєм знову
+     опинявся шлях-ID. z-index потрібен лише в цьому стані: коли ширина рейки
+     дорівнює жолобу, накладатись нема на що. */
+  body.rail-auto:not(.rail-collapsed) .topbar-user {
+    z-index: var(--z-rail, 300);
+    box-shadow: 0 0 48px -8px rgba(0, 0, 0, 0.65);
   }
 
   body.rail-collapsed .topbar-user {

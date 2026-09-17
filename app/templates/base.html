@@ -91,7 +91,7 @@
    малювання»; тепер значення вже в розмітці, тому мигтіти нема чому,
    і набір їде за оператором, а не за браузером. #}
 <body data-perf-id="{{ perf_id() }}"{% if _up.queue_density %} data-density="{{ _up.queue_density }}"{% endif %}{% if _up.queue_mat_style %} data-matstyle="{{ _up.queue_mat_style }}"{% endif %}>
-    <script>try{var S=window.KMStore;if(S){if(S.get('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(S.get('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(S.get('widgetEditMode')==='1')document.body.classList.add('widget-edit');if(S.get('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');if(S.get('machineSideOpen')==='1')document.body.classList.add('machine-side-open');if(S.get('qsideCollapsed')==='1')document.body.classList.add('qside-collapsed');}}catch(e){}</script>
+    <script>try{var S=window.KMStore;if(S){if(S.get('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(window.innerWidth<=1200){document.body.classList.add('rail-collapsed','rail-auto');}if(S.get('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(S.get('widgetEditMode')==='1')document.body.classList.add('widget-edit');if(S.get('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');if(S.get('machineSideOpen')==='1')document.body.classList.add('machine-side-open');if(S.get('qsideCollapsed')==='1')document.body.classList.add('qside-collapsed');}}catch(e){}</script>
     {% include "_backdrop.html" %}
     {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
        base.css). Визначається раз на сторінку, бо тогл є і в /settings, і в

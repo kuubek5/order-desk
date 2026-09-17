@@ -647,3 +647,31 @@ def test_the_hidden_attribute_actually_hides():
         "правило робить [hidden] елемент видимим — глобальний [hidden] його "
         "переб'є:" + chr(10) + chr(10).join(offenders)
     )
+
+
+def test_narrow_rail_threshold_matches_in_both_places():
+    """Поріг автозгортання рейки живе у ДВОХ файлах — і мусить збігатись.
+
+    `app.js` слухає `resize` і згортає рейку на вузькому вікні, а інлайновий
+    анти-мигтючий скрипт у `base.html` робить те саме ДО першого кадру. Різні
+    числа означали б, що між завантаженням і першим `resize` рейка стрибає:
+    сторінка малюється розгорнутою, а за мить згортається сама — і навпаки.
+
+    Обидва місця тримають одне число (1200 на 17.09.26, підняте з 1100: на
+    1150 рейка ще не згорталась, а таблиця черги вже їхала вбік).
+    """
+    app_js = (STATIC_JS / "app.js").read_text(encoding="utf-8")
+    base = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+
+    in_js = re.search(r"const NARROW = (\d+);", app_js)
+    assert in_js, "у app.js немає `const NARROW = <число>` автозгортання рейки"
+
+    in_html = re.search(r"window\.innerWidth<=(\d+)\)\{[^}]*rail-auto", base)
+    assert in_html, "анти-мигтючий скрипт у base.html більше не ставить rail-auto"
+
+    assert in_js.group(1) == in_html.group(1), (
+        "поріг рейки розійшовся: app.js "
+        + in_js.group(1)
+        + ", base.html "
+        + in_html.group(1)
+    )

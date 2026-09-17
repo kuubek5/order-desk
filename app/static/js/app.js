@@ -513,8 +513,13 @@ document.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-rail-collapse]");
   if (!btn) return;
   const collapsed = document.body.classList.toggle("rail-collapsed");
-  // KMStore сам ковтає приватний режим і сам чіпляє префікс kuubmill:v1:.
-  KMStore.set("railCollapsed", collapsed ? "1" : "0");
+  // На вузькому вікні (body.rail-auto) вибір НЕ запам'ятовується: там рейку
+  // згорнуло вікно, а не людина, і запис затер би налаштування, зроблене на
+  // великому моніторі. KMStore сам ковтає приватний режим і сам чіпляє
+  // префікс kuubmill:v1:.
+  if (!document.body.classList.contains("rail-auto")) {
+    KMStore.set("railCollapsed", collapsed ? "1" : "0");
+  }
   btn.setAttribute("aria-label", collapsed ? "Розгорнути меню" : "Згорнути меню");
   btn.setAttribute("title", collapsed ? "Розгорнути меню" : "Згорнути меню");
 });
@@ -531,15 +536,37 @@ document.addEventListener("click", (event) => {
 // рівно те, що людина обрала руками. Інакше одна робота на півекрана назавжди
 // стирала б налаштування, зроблене на великому моніторі.
 (function () {
-  const NARROW = 1100;
+  // 1200, а не 1100: на 1150 рейка ще не згорталась, а таблиця вже їхала вбік
+  // (власник, 17.09.26). Те саме число дублює анти-мигтючий скрипт у base.html
+  // — міняти разом, інакше на вузькому вікні рейка перескочить після першого
+  // ж кадру.
+  const NARROW = 1200;
   const body = document.body;
   if (!document.querySelector("[data-rail-collapse]")) return; // вхід, ліцензія
 
+  // Стан порівнюється з попереднім: інакше кожен піксель перетягування вікна
+  // заново згортав би рейку, яку оператор щойно розгорнув руками.
+  let narrow = null;
+
   function apply() {
-    if (window.innerWidth <= NARROW) {
+    const now = window.innerWidth <= NARROW;
+    if (now === narrow) return;
+    narrow = now;
+    body.classList.toggle("rail-auto", now);
+    if (now) {
       body.classList.add("rail-collapsed");
     } else {
       body.classList.toggle("rail-collapsed", KMStore.get("railCollapsed") === "1");
+    }
+    // Підпис кнопки мусить називати ДІЮ, а не стан: після автоматичного
+    // згортання він лишався «Згорнути меню» на кнопці, яка розгортає.
+    const btn = document.querySelector("[data-rail-collapse]");
+    if (btn) {
+      const label = body.classList.contains("rail-collapsed")
+        ? "Розгорнути меню"
+        : "Згорнути меню";
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("title", label);
     }
   }
 
