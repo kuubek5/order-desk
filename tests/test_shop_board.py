@@ -382,6 +382,40 @@ def test_shop_page_really_renders(app_db, monkeypatch):  # noqa: F811
     assert board.get("/static/js/app.js")[0] == 404
 
 
+def test_fault_calls_a_human_as_loudly_as_done(app_db, monkeypatch):  # noqa: F811
+    """Помилка на верстаті — на телевізорі так само голосно, як «ЗНЯТИ».
+
+    Власник 18.09.26: коли на верстаті помилка (350i Loader уночі: «Reference
+    run required!»), це має бути видно на табло цеху. Доти `fault` мав лише
+    червону рамку — ту саму, що й «немає звʼязку», і з проходу обидва стани
+    читались однаково. Тепер у помилки своя картка (`is-fault`, пульсує) і
+    велике слово замість смуги; «немає звʼязку» лишилось як було."""
+    from app.routers.furnace_board import create_board_app
+    from app.services import furnace_board as fb
+    from app.services import machines as machines_mod
+    from tests.test_furnace_board import _enable
+
+    _, factory = app_db
+    token = _enable(factory)
+    monkeypatch.setattr("app.db.SessionLocal", factory)
+    monkeypatch.setattr(machines_mod, "snapshot", lambda db: [
+        _card("350i Loader", "fault", percent=40, word="помилка",
+              note="верстат показує помилку · підійдіть"),
+        _card("250i", "off", word="немає зв'язку", note="мовчить порт агента"),
+    ])
+    monkeypatch.setattr(fb, "board_view", lambda db, now=None, cards=None: SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso=""))
+
+    status, _, frag = MiniClient(create_board_app()).get(f"/t/{token}/shop/cards")
+    assert status == 200
+    loader, offline = frag.split("250i", 1)[0], frag.split("250i", 1)[1]
+    assert "is-fault" in loader and "підійти" in loader
+    # Смуга відсотка на картці з помилкою не малюється: «40 %» читалось би як
+    # «працює», хоча верстат стоїть і чекає людину.
+    assert 'class="bar"' not in loader
+    assert "is-fault" not in offline and "підійти" not in offline
+
+
 def test_moving_a_machine_reorders_the_list(app_db):  # noqa: F811
     """Стрілки міняють верстат місцями з сусідом — і на рівних `sort_order`.
 

@@ -8,7 +8,7 @@
 
   <div class="mgrid">
     {% for m in view.machines %}
-      <div class="mc t-{{ m.tone }}">
+      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}">
         {% if m.portrait %}<div class="mc-port"><i style="background-image:url('{{ m.portrait }}')"></i></div>{% endif %}
         <div class="mc-top">
           <b>{{ m.name }}</b>
@@ -64,6 +64,10 @@
              на табло й дивляться. Замість неї слово, яке видно з проходу. #}
           {% if m.state == 'done' %}
             <span class="take">зняти</span>
+          {# Помилка — так само голосно, як «зняти» (власник 18.09.26), і так
+             само без смуги: відсоток поруч читався б як «працює». #}
+          {% elif m.state == 'fault' %}
+            <span class="take is-fault">підійти</span>
           {% elif m.percent is not none %}
             <div class="bar"><i style="width:{{ m.percent }}%"></i></div>
             <span class="pc">{{ m.percent }}<small>%</small></span>

@@ -143,6 +143,25 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
    саме місце й мусить читатись із тієї самої відстані. */
 .take{font:700 clamp(20px,2.6vw,52px)/.95 var(--font-display);letter-spacing:.04em;
   text-transform:uppercase;color:var(--accent-c)}
+/* Помилка на екрані верстата — окремо від «немає зв'язку», хоч тон у них
+   спільний (`t-bad`): до зв'язку йти нема сенсу, а до помилки — треба
+   (власник 18.09.26). Тому своя картка: густіший червоний контур, тло з
+   червоним відтінком і велике слово тим самим розміром, що «зняти». */
+/* Колір слова — сам `--alarm`, не `--alarm-ink`: той для тексту НА червоному
+   тлі й на табло читався рожевим. Контур — `outline`, бо він малюється ПОВЕРХ
+   фото (`box-shadow` і тло фото перекриває). Відтінок — у вуалі фото, з тієї
+   ж причини; решта вуалі та сама, що в `.mc-port::after`. */
+.take.is-fault{color:var(--alarm)}
+.mc.is-fault{border-color:rgba(var(--alarm-rgb),.9);
+  outline:3px solid rgba(var(--alarm-rgb),.85);outline-offset:-3px}
+.mc.is-fault::before,.mc.is-fault::after{border-color:var(--alarm)}
+.mc.is-fault .mc-top em{color:var(--alarm)}
+.mc.is-fault .mc-port::after{
+  background:linear-gradient(0deg,rgba(var(--alarm-rgb),.34) 0,rgba(var(--alarm-rgb),.1) 55%,rgba(var(--alarm-rgb),.18) 100%),
+    linear-gradient(90deg,#171008 6%,rgba(23,16,8,.95) 32%,
+      rgba(23,16,8,.62) 56%,rgba(23,16,8,.3) 82%,rgba(23,16,8,.5) 100%),
+    linear-gradient(180deg,rgba(23,16,8,.34) 0,rgba(23,16,8,.12) 32%,
+      rgba(23,16,8,.86) 82%,rgba(23,16,8,.95) 100%)}
 /* Пояснення переноситься, а не обрізається: «програма пішла · відсотка ще…»
    уривається саме на тому слові, заради якого його й читають. */
 .nd{font-family:var(--font-mono);font-size:clamp(10px,.85vw,17px);color:var(--ink-3);
@@ -264,6 +283,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   @keyframes beat{0%,100%{opacity:1}50%{opacity:.3}}
   .mc.t-done{animation:callme 2.4s ease-in-out infinite}
   @keyframes callme{50%{border-color:rgba(var(--accent-rgb),.28)}}
+  /* Частіше за «завершено»: помилка — верстат стоїть і чекає. */
+  .mc.is-fault{animation:callfault 1.4s ease-in-out infinite}
+  @keyframes callfault{50%{border-color:rgba(var(--alarm-rgb),.3);outline-color:rgba(var(--alarm-rgb),.2)}}
 }
 @media (prefers-reduced-motion:reduce){.gear svg{animation:none}
   .fc-sparks i{animation:none;display:none}}
