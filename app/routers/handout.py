@@ -68,6 +68,7 @@ from app.services.handout import (
     issue_group,
     mark_group_found,
     matched_folders,
+    night_claims_of,
     scan_export_for_clients,
     scan_export_latest_for_clients,
     similar_group_names,
@@ -138,6 +139,13 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     # ЛИШЕ черга (queue.py) — саме той екран, де заливка нічого не вирішує.
     # Видача, для якої вона й вирішує все, у нього не заглядала.
     sync_control.record_viewed_day(selected_day)
+    # Хто з клієнтів уже забрав яку нічну теку — по ВСІХ днях, не лише по
+    # показаному: теку ночі після 16.09 забирає робота вкладки 16.09, а питає
+    # про неї рядок 17.09 (Маріанна Голій, 18.09.26; `night_claims_of`).
+    by_client: dict[str, list[Order]] = {}
+    for order in eligible:
+        by_client.setdefault(handout_group_key(order), []).append(order)
+    night_claims = {key: night_claims_of(orders_) for key, orders_ in by_client.items()}
     if selected_day is not None:
         shown = [o for o in eligible if parse_sheet_tab(o.sheet_tab) == selected_day]
         # Скільки робіт лишилось на інших днях — щоб замовчування «останній
@@ -299,6 +307,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         client_folder_uri, client_folder_token = _client_folder_link(
             match, _export_root, _preview_roots, _validated_roots
         )
+        client_claims = night_claims.get(client_name, ())
         for order in group_orders:
             # Лічильник одиниць рахуємо ТУТ, а не в шаблоні: обидва режими
             # списку малюють один партіал (`_handout_work_row.html`), і
@@ -307,14 +316,16 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             order.units_found = found_units(order)
             work_day = parse_sheet_tab(order.sheet_tab)
             order.export_matches = entries_for_material(
-                order.material_color, export_entries, work_day
+                order.material_color, export_entries, work_day, client_claims, order.id
             )
             # Теки за день роботи немає, є лише старіші з тим самим кольором —
             # їх НЕ показуємо (хибна тека гірша за жодну), а рядок каже про
             # це й дає одним кліком теку клієнта (рішення власника 11.09.26).
             order.export_stale_day = (
                 None if order.export_matches
-                else stale_folder_day(order.material_color, export_entries, work_day)
+                else stale_folder_day(
+                    order.material_color, export_entries, work_day, client_claims, order.id
+                )
             )
             order.export_client_uri = client_folder_uri
             order.export_client_token = client_folder_token

@@ -8,15 +8,21 @@
 """
 
 import hashlib
+import re
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from app.business_day import business_date_of, business_today
+from app.business_day import (
+    business_date_of,
+    business_today,
+    get_rollover,
+    utc_to_business,
+)
 from app.client_matcher import (
     match_client_name,
     match_client_name_cached,
@@ -25,6 +31,7 @@ from app.client_matcher import (
 from app.export_scanner import scan_export_client_cached, scan_export_client_latest_cached
 from app.material_match import materials_match
 from app.services.clients import quantity_units
+from app.services.folder_merge import folder_sibling_map
 from app.models import ClientNameAlias, Order, StatusEvent
 from app.services.order_dates import parse_sheet_tab
 from app.sheet_writer import apply_status_markers
@@ -61,7 +68,13 @@ def day_fingerprint(orders) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def entries_for_material(material_color: str | None, entries: list, work_day=None) -> list:
+def entries_for_material(
+    material_color: str | None,
+    entries: list,
+    work_day=None,
+    night_claims=(),
+    order_id: int | None = None,
+) -> list:
     """The export folders under a client whose material matches this work's
     material_color, oldest-first. Empty when the work has no colour or nothing
     lines up — the row then simply shows no folder shortcut. See get_handout for
@@ -91,7 +104,11 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
     Дні — РОБОЧІ (межа 07:30), з обох боків: тека, створена о 01:00, належить
     нічній зміні попереднього дня, як і вкладка, у яку тоді пишуть рядок.
     Кілька тек лишається тільки тоді, коли вони справді з одного дня; вибір
-    між ними за оператором, як і був."""
+    між ними за оператором, як і був.
+
+    `night_claims` — нічні прорахунки робіт ЦЬОГО Ж клієнта (`night_claims_of`),
+    `order_id` — ця робота. Нічна тека дістається роботі з найближчим до неї
+    Sum3D — див. `_entry_belongs`."""
     matched = _material_matches(material_color, entries)
     if work_day is None or not matched:
         return matched
@@ -99,7 +116,9 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
     # Вкладка п'ятниці охоплює й вихідні: у суботу й неділю цех працює, а
     # роботи (і прийняті листи) пишуть у п'ятничну вкладку (власник 11.09.26).
     covered = covered_days(work_day)
-    in_tab = [e for e in matched if _entry_days(e) & set(covered)]
+    in_tab = [
+        e for e in matched if _entry_belongs(e, set(covered), night_claims, order_id)
+    ]
     if in_tab:
         return in_tab
     later = sorted({d for d in (_batch_day(e) for e in matched) if d > covered[-1]})
@@ -148,7 +167,13 @@ def covered_days(work_day) -> list:
     return days
 
 
-def stale_folder_day(material_color: str | None, entries: list, work_day=None):
+def stale_folder_day(
+    material_color: str | None,
+    entries: list,
+    work_day=None,
+    night_claims=(),
+    order_id: int | None = None,
+):
     """Робочий день найсвіжішої партії з тим самим матеріалом, якщо ВСІ такі
     партії старші за день роботи (і тому не показуються). None — інакше.
 
@@ -166,7 +191,7 @@ def stale_folder_day(material_color: str | None, entries: list, work_day=None):
     matched = _material_matches(material_color, entries)
     if not matched:
         return None
-    if entries_for_material(material_color, entries, work_day):
+    if entries_for_material(material_color, entries, work_day, night_claims, order_id):
         return None
     # Лишились самі старіші (пізніші `entries_for_material` вже віддав би).
     return max(_batch_day(e) for e in matched)
@@ -188,24 +213,94 @@ def _batch_day(entry):
     return business_date_of(entry.created_at)
 
 
-def _entry_days(entry) -> set:
-    """Дні, до яких партія може належати: РОБОЧИЙ (межа 07:30) і КАЛЕНДАРНИЙ.
+def _entry_belongs(entry, covered: set, night_claims=(), order_id=None) -> bool:
+    """Чи партія належить роботі з днями `covered`.
 
-    Уночі ці дві дати різні, і саме там правило ламалось. Бойовий випадок
-    17.09.26 (Кривовид `mono a3.5`, Тертычный `mono a4`): теки створені о
-    04:48–04:55 сімнадцятого, рядки зʼявились у вкладці 17.09 о 01:55 і 02:07
-    — цех уночі вже пише в НОВУ календарну дату, тоді як робоча доба до 07:30
-    ще вчорашня. Партія виходила «старішою за день роботи», рядок казав «за
-    17.09 теки немає», а тека лежала поруч із тією, яку сусідній рядок
-    відкривав (`Новая папка (597)`, той самий Sum3D 04-55-31 — секунда в
-    секунду з текою).
+    День партії — РОБОЧИЙ (межа 07:30) або КАЛЕНДАРНИЙ. Навіщо календарний:
+    бойовий випадок 17.09.26 (Кривовид `mono a3.5`, Тертычный `mono a4`) —
+    нічний оператор узяв ЗАВТРАШНЮ роботу: рядки у вкладці 17.09 о 01:55 і
+    02:07, теки о 04:48–04:55 сімнадцятого, коли робоча доба ще 16.09. Без
+    календарної дати рядок казав «за 17.09 теки немає», хоча тека лежала в
+    `Новая папка (597)`, секунда в секунду з Sum3D 04-55-31.
 
-    Захист від ЧУЖОЇ попередньої партії (рішення власника 11.09.26) від цього
-    не слабшає: вчорашня денна тека має і робочу, і календарну дату вчорашні,
-    тож під сьогоднішній рядок і далі не потрапляє. Додається рівно ніч самої
-    дати вкладки.
+    Але та сама ніч — ще й робоча доба ПОПЕРЕДНЬОЇ вкладки, тож нічна тека
+    підходить двом дням одразу. Бойовий випадок 18.09.26 (Маріанна Голій,
+    `emo a3`): о 00:10 сімнадцятого нічна зміна прорахувала роботу вкладки
+    16.09 (Sum3D `00-10-39`), тека о 00:12 — і робота вкладки 17.09 того самого
+    кольору (`14-41-08`) через календарну дату теж отримала цю теку: видача
+    показувала «00:12», чужу, вже видану коронку.
+
+    Тому нічну теку ділимо за часом: вона дістається роботі клієнта того самого
+    кольору, чий нічний прорахунок (`night_claims_of`) найближчий до неї, —
+    хоч учорашній, хоч завтрашній. Тека скачується просто перед прорахунком
+    (00:12 ↔ 00-10-39, 04:55 ↔ 04-55-31). Тієї ночі ніхто цей колір не
+    прораховував — правило як було: тека підходить обом дням.
     """
-    return {_batch_day(entry), entry.created_at.date()}
+    if _batch_day(entry) not in covered and entry.created_at.date() not in covered:
+        return False
+    if order_id is None or entry.created_at.time() >= get_rollover():
+        return True
+    rivals = [
+        claim for claim in night_claims
+        if claim.when.date() == entry.created_at.date()
+        and materials_match(claim.material, entry.material_color_folder_name)
+    ]
+    if not rivals:
+        return True
+    nearest = min(abs(claim.when - entry.created_at) for claim in rivals)
+    return any(
+        claim.order_id == order_id and abs(claim.when - entry.created_at) == nearest
+        for claim in rivals
+    )
+
+
+_SUM3D_TIME = re.compile(r"(\d{1,2})-(\d{2})-(\d{2})")
+
+
+@dataclass(frozen=True)
+class NightClaim:
+    """Нічний прорахунок роботи: коли саме (дата ночі + час) і якого кольору."""
+
+    order_id: int
+    when: datetime
+    material: str
+
+
+def night_claims_of(orders) -> list[NightClaim]:
+    """Нічні прорахунки робіт — за ними `_entry_belongs` ділить нічні теки.
+
+    Sum3D ID — лише час доби, тож дату ночі дає момент, коли рядок зʼявився:
+    це ніч ПІСЛЯ його робочого дня. Так виходить однаково для обох бойових
+    випадків: рядок Голій зʼявився 16.09 удень (ніч — 17.09, 00:10), рядок
+    Кривовида — о 01:55 сімнадцятого, коли робоча доба ще 16.09 (ніч — теж
+    17.09, 04:55).
+
+    Нічний — Sum3D до межі доби. Якщо Sum3D денний або його ще немає, а рядок
+    зʼявився вже після півночі, мірилом береться сама поява рядка: тека
+    скачується перед тим, як рядок пишуть. У клітинці Sum3D буває кілька ID
+    через перенос рядка — кожен нічний рахується.
+
+    `Order.created_at` — UTC (server_default на SQLite), тому через
+    `utc_to_business`."""
+    rollover = get_rollover()
+    claims: list[NightClaim] = []
+    for order in orders:
+        if order.created_at is None or not (order.material_color or "").strip():
+            continue
+        appeared = utc_to_business(order.created_at)
+        night = business_date_of(appeared) + timedelta(days=1)
+        moments = []
+        for h, m, s in _SUM3D_TIME.findall(order.sum3d_id or ""):
+            try:
+                taken = time(int(h), int(m), int(s))
+            except ValueError:
+                continue
+            if taken < rollover:
+                moments.append(datetime.combine(night, taken))
+        if not moments and appeared.time() < rollover:
+            moments.append(appeared)
+        claims.extend(NightClaim(order.id, when, order.material_color) for when in moments)
+    return claims
 
 
 # Ключ групи для робіт БЕЗ імені клієнта.
@@ -380,14 +475,47 @@ def handout_client_matches(db: Session, client_names, folder_names: list[str]) -
     # перебудовує екран і перезіставляє тих самих клієнтів із тими самими
     # теками. Відбиток входу рахуємо ОДИН раз на виклик, а не на клієнта.
     key = matcher_cache_key(folder_names, aliases)
+    siblings = folder_sibling_map(db)
     return {
         name: (
             match_client_name("", [], {})
             if name == NAMELESS_CLIENT_KEY
-            else match_client_name_cached(name, folder_names, aliases, key)
+            else _settle_by_merge(
+                match_client_name_cached(name, folder_names, aliases, key), siblings
+            )
         )
         for name in client_names
     }
+
+
+# Ті самі пороги, що за замовчуванням у `match_client_name`.
+_AUTO_MATCH_THRESHOLD = 90.0
+_AMBIGUOUS_MARGIN = 5.0
+
+
+def _settle_by_merge(match, siblings: dict[str, list[str]]):
+    """Неоднозначність між теками, які власник уже злив, — не неоднозначність.
+
+    Бойовий випадок 18.09.26 (Yatsenko): у `export` дві теки однаково схожі на
+    імʼя з таблиці, матчер чесно не обирає жодної — і рядки видачі стоять
+    зовсім без тек, навіть без «теки немає». Власник злив ці теки на екрані
+    дублікатів, але злиття діяло лише ПІСЛЯ вибору основної теки
+    (`folder_sibling_map` у роуті дочитує сестер обраної), тож рівно там, де
+    воно й потрібне, не діяло ніколи.
+
+    Якщо ВСІ рівні кандидати — одна група злитих тек, беремо першого: сестер
+    роут однаково дочитає, і набір партій той самий, хоч з якої почни. Кеш
+    матчера роздає спільні обʼєкти — тому копія, а не правка на місці."""
+    if match.matched_folder_name or not siblings or not match.candidates:
+        return match
+    best_name, best_score = match.candidates[0]
+    if best_score < _AUTO_MATCH_THRESHOLD:
+        return match
+    tied = [n for n, s in match.candidates if best_score - s < _AMBIGUOUS_MARGIN]
+    family = {best_name.strip(), *siblings.get(best_name.strip(), [])}
+    if len(tied) < 2 or not all(n.strip() in family for n in tied):
+        return match
+    return replace(match, matched_folder_name=best_name)
 
 
 def matched_folders(matches: dict) -> dict[str, str]:

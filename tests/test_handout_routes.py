@@ -1265,6 +1265,114 @@ class TestOneBatchPerRow:
         # У `mono a3` партії дві — обидві лишаються, вибір за оператором.
         assert [e.created_at.hour for e in entries_for_material("mono a3", entries, day)] == [4, 12]
 
+    @staticmethod
+    def _work(order_id, material, sum3d, appeared_kyiv):
+        """Робота, як її бачить `night_claims_of`: `created_at` у базі — UTC,
+        тож київський момент появи рядка переводимо назад (вересень, UTC+3)."""
+        return SimpleNamespace(
+            id=order_id, material_color=material, sum3d_id=sum3d,
+            created_at=appeared_kyiv - timedelta(hours=3),
+        )
+
+    def test_golii_18_09_night_folder_of_previous_tab_is_not_shown(self):
+        """Бойовий випадок 18.09.26 (Маріанна Голій, `emo a3`).
+
+        Вкладка 16.09: `emo a3`, Sum3D 00-10-39 — нічна зміна прорахувала її
+        о 00:10 сімнадцятого, тека о 00:12. Вкладка 17.09: теж `emo a3`,
+        Sum3D 14-41-08, але її тека на диску підписана `emo a1`. Через
+        календарну дату рядок 17.09 знаходив нічну теку 16.09 і показував
+        «00:12» — чужу коронку. Тепер рядок каже «теки за день немає»."""
+        from datetime import datetime
+
+        from app.services.handout import night_claims_of, stale_folder_day
+
+        claims = night_claims_of([
+            self._work(16, "emo a3", "00-10-39", datetime(2026, 9, 16, 23, 58)),
+            self._work(17, "emo a3", "14-41-08", datetime(2026, 9, 17, 14, 45)),
+        ])
+        entries = [
+            self._entry("emo a3", datetime(2026, 9, 17, 0, 12)),
+            self._entry("emo a1", datetime(2026, 9, 17, 14, 40)),
+        ]
+        day17 = date(2026, 9, 17)
+        assert entries_for_material("emo a3", entries, day17, claims, 17) == []
+        assert stale_folder_day("emo a3", entries, day17, claims, 17) == date(2026, 9, 16)
+        # Своя вкладка теку й далі бачить.
+        assert [e.created_at.hour for e in entries_for_material(
+            "emo a3", entries, date(2026, 9, 16), claims, 16)] == [0]
+
+    def test_one_night_yesterdays_and_tomorrows_work_split_the_folders(self):
+        """Нічний оператор тієї ж ночі взяв І вчорашню, І завтрашню роботу
+        того самого кольору (пояснення власника 18.09.26). Кожна нічна тека
+        дістається роботі з найближчим до неї прорахунком — жодна не губиться
+        і жодна не висить під чужим рядком."""
+        from datetime import datetime
+
+        from app.services.handout import night_claims_of
+
+        claims = night_claims_of([
+            # вкладка 16.09, рядок удень, прорахована о 00:10
+            self._work(16, "emo a3", "00-10-39", datetime(2026, 9, 16, 21, 0)),
+            # вкладка 17.09, рядок нічний (01:55), прорахована о 04:50
+            self._work(17, "emo a3", "04-50-02", datetime(2026, 9, 17, 1, 55)),
+        ])
+        entries = [
+            self._entry("emo a3", datetime(2026, 9, 17, 0, 12)),
+            self._entry("emo a3", datetime(2026, 9, 17, 4, 48)),
+        ]
+        got16 = entries_for_material("emo a3", entries, date(2026, 9, 16), claims, 16)
+        got17 = entries_for_material("emo a3", entries, date(2026, 9, 17), claims, 17)
+        assert [(e.created_at.hour, e.created_at.minute) for e in got16] == [(0, 12)]
+        assert [(e.created_at.hour, e.created_at.minute) for e in got17] == [(4, 48)]
+
+    def test_row_written_after_midnight_claims_by_its_own_time(self):
+        """Sum3D уже ранковий, але рядок зʼявився вночі — мірилом стає поява
+        рядка: тека скачується перед тим, як рядок пишуть."""
+        from datetime import datetime
+
+        from app.services.handout import night_claims_of
+
+        claims = night_claims_of([
+            self._work(16, "emo a3", "08-02-11", datetime(2026, 9, 17, 0, 15)),
+            self._work(17, "emo a3", "14-41-08", datetime(2026, 9, 17, 14, 45)),
+        ])
+        entries = [self._entry("emo a3", datetime(2026, 9, 17, 0, 12))]
+        assert entries_for_material("emo a3", entries, date(2026, 9, 17), claims, 17) == []
+
+    def test_krivovyd_keeps_his_night_folder(self):
+        """Випадок 17.09 не зламався: денні `mono a3` за 16.09 нічних тек не
+        змагають, і нічна тека лишається рядку 17.09."""
+        from datetime import datetime
+
+        from app.services.handout import night_claims_of
+
+        claims = night_claims_of([
+            self._work(1, "mono a3", "16-51-47", datetime(2026, 9, 16, 16, 40)),
+            self._work(2, "mono a3.5", "04-55-31", datetime(2026, 9, 17, 1, 55)),
+            self._work(3, "mono a3", "04-48-26", datetime(2026, 9, 17, 1, 50)),
+        ])
+        entries = [
+            self._entry("mono a3", datetime(2026, 9, 17, 4, 48)),
+            self._entry("mono a3.5", datetime(2026, 9, 17, 4, 55)),
+        ]
+        day = date(2026, 9, 17)
+        assert [e.created_at.minute for e in entries_for_material("mono a3.5", entries, day, claims, 2)] == [55]
+        assert [e.created_at.minute for e in entries_for_material("mono a3", entries, day, claims, 3)] == [48]
+        # Денна робота 16.09 того самого кольору нічну теку 17.09 не отримує.
+        assert entries_for_material("mono a3", entries, date(2026, 9, 16), claims, 1) == []
+
+    def test_weekend_night_gets_the_right_date(self):
+        """П'ятнична вкладка живе до неділі: рядок, що зʼявився в суботу, з
+        нічним Sum3D — це ніч на неділю, а не на суботу."""
+        from datetime import datetime
+
+        from app.services.handout import night_claims_of
+
+        (claim,) = night_claims_of([
+            self._work(5, "mono a2", "01-20-00", datetime(2026, 9, 12, 15, 0)),
+        ])
+        assert claim.when == datetime(2026, 9, 13, 1, 20)
+
     def test_files_uploaded_the_next_day_are_not_lost(self):
         """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше
         рядок лишився б зовсім без теки."""

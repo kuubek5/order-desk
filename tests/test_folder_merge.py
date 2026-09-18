@@ -89,3 +89,33 @@ def test_unmerge_splits_the_group():
         session.commit()
         assert list_groups(session) == []
         assert folder_sibling_map(session) == {}
+
+
+def test_merged_folders_settle_an_ambiguous_handout_match():
+    """Yatsenko, 18.09.26: дві теки однаково схожі на імʼя з таблиці —
+    матчер не обирає жодної, і рядки видачі стояли зовсім без тек. Власник
+    ці теки злив, тож рівні кандидати — одна група, і вибір є."""
+    from app.services.handout import handout_client_matches
+
+    folders = ["Serhii Yatsenko", "Yatsenko Serhii", "Pavlenko"]
+    with make_session() as session:
+        before = handout_client_matches(session, ["Yatsenko"], folders)
+        assert before["Yatsenko"].matched_folder_name is None
+
+        record_merge(session, "Serhii Yatsenko", "Yatsenko Serhii")
+        session.commit()
+        after = handout_client_matches(session, ["Yatsenko"], folders)
+        assert after["Yatsenko"].matched_folder_name in {"Serhii Yatsenko", "Yatsenko Serhii"}
+
+
+def test_merge_does_not_settle_ambiguity_with_a_stranger():
+    """Злиття двох тек не вирішує за оператора, якщо поруч рівний ТРЕТІЙ
+    кандидат поза групою — це вже справжня неоднозначність."""
+    from app.services.handout import handout_client_matches
+
+    folders = ["Serhii Yatsenko", "Yatsenko Serhii", "Oleh Yatsenko"]
+    with make_session() as session:
+        record_merge(session, "Serhii Yatsenko", "Yatsenko Serhii")
+        session.commit()
+        got = handout_client_matches(session, ["Yatsenko"], folders)
+        assert got["Yatsenko"].matched_folder_name is None
