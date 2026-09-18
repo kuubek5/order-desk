@@ -140,6 +140,11 @@ def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
                 "програма": mill.iso_name if mill else None,
                 "помилка": mill.error if mill else None,
                 "невдач_поспіль": mill.fail_streak if mill else None,
+                # Помилку на екрані («підійдіть») і те, з чого її видно. Заголовки
+                # вікон: None — агент їх не віддав, [] — віддав, але вікон нема.
+                "помилка_на_екрані": bool(mill and mill.fault),
+                "помилка_з": _local(mill.fault_since) if mill else None,
+                "заголовки_вікон": mill.titles_seen if mill else None,
                 "кадр": _file_facts(machines.frame_path(target.key)),
             }
         )

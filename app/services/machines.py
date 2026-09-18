@@ -209,6 +209,10 @@ class MachineState:
     # по-різному: червоний банер модалки (нове покоління) і вікно з заголовком
     # «Error» (RemiCORE) — див. machine_ocr.
     fault: bool = False
+    # З якого моменту помилка висить безперервно (None — її зараз немає).
+    # Без цього 18.09.26 не було чим відповісти, чи CRM бачив діалог «Error»
+    # на 350i Loader уночі: стан живе лише мить, а в лозі переходу не лишалось.
+    fault_since: Optional[datetime] = None
     # Скільки опитувань поспіль не вдалось. Нуль = останнє було успішним.
     fail_streak: int = 0
     # Вирок перевірки досяжності, знятий У МОМЕНТ обриву: винен порт чи мережа.
@@ -1575,6 +1579,40 @@ def _save_memory(db: Session, state: "MachineState", now: datetime) -> None:
         logger.exception("Памʼять верстата %s не збереглась", state.target.key)
 
 
+def _note_fault_change(
+    state: MachineState,
+    target: MachineTarget,
+    was_fault: bool,
+    now: datetime,
+    *,
+    from_frame: bool,
+    from_title: bool,
+) -> None:
+    """Запамʼятати, з якого часу висить помилка, і лишити слід переходу в лозі.
+
+    Лише ПЕРЕХОДИ, не кожен тік: помилка може висіти годинами, а кадр —
+    раз на 6 с. Звідки взято, пишемо словами: саме цього бракувало 18.09.26,
+    щоб відповісти, чи спрацював канал заголовків на 350i Loader."""
+    with _states_lock:
+        fault_now = state.fault
+        if fault_now and state.fault_since is None:
+            state.fault_since = now
+        started = state.fault_since
+        if not fault_now:
+            state.fault_since = None
+    if fault_now and not was_fault:
+        source = " і ".join(
+            word for word, on in (
+                ("заголовок вікна «Error»", from_title),
+                ("червоний банер на кадрі", from_frame),
+            ) if on
+        )
+        logger.warning("Верстат %s: помилка на екрані (%s)", target.name, source or "?")
+    elif was_fault and not fault_now:
+        held = f", трималась {(now - started).total_seconds() / 60:.0f} хв" if started else ""
+        logger.warning("Верстат %s: помилку прибрано з екрана%s", target.name, held)
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -1735,6 +1773,7 @@ def poll_target(
     # об'єкт стану (знайдено рев'ю 04.09.26).
     with _states_lock:
         was_completed = state.completed
+        was_fault = state.fault
         if state.fail_streak >= PROBLEM_AFTER_FAILURES:
             gap = (now - state.last_ok_at).total_seconds() if state.last_ok_at else None
             logger.warning(
@@ -1839,6 +1878,7 @@ def poll_target(
     # незалежний другий сигнал, і саме він не дає підсвітити чужу роботу.
     program = None
     known = False  # чи маємо ми право переписати прив'язку цим кадром
+    title_fault = False  # помилку показав заголовок вікна, а не кадр
     if target.is_agent:
         if titles is _NOT_FETCHED:
             # Одиничний виклик (ручне «Оновити» одного верстата) — читаємо самі.
@@ -1851,13 +1891,15 @@ def poll_target(
             # розбір картинки: на тому екрані червоний — норма (смуги
             # прострочення інструментів), тож банер там шукати не можна.
             # Домішуємо, а не перезаписуємо: у кадру свій голос.
+            title_fault = titles_have_error(titles)
             with _states_lock:
                 state.titles_seen = [str(x)[:120] for x in titles[:12]]
-                if titles_have_error(titles):
+                if title_fault:
                     state.fault = True
         else:
             with _states_lock:
                 state.titles_seen = None
+    _note_fault_change(state, target, was_fault, now, from_frame=fault, from_title=title_fault)
     if program is None:
         from_screen = _program_from_screen(db, target, frame)
         if from_screen is not None:
@@ -1873,7 +1915,10 @@ def poll_target(
         and not completed
         and not validating
         and not idle_known
-        and not fault
+        # Помилку, впізнану за заголовком вікна, теж: людину питати вже нема
+        # про що (18.09.26 — діалог RemiCORE падав у «невідомі» при стані
+        # «помилка», бо тут дивились лише на банер із кадру).
+        and not (fault or title_fault)
         and program is None
     ):
         # З кадру не знялось НІЧОГО: ні смуги RemiCORE, ні екрана SISMA, ні
