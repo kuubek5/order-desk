@@ -998,7 +998,7 @@ def write_fields_bulk(batch: dict[int, tuple[set[str], set[str]]]) -> str | None
         by_tab: dict[str, list[tuple[Order, set[str], set[str]]]] = {}
         for order_id, (fields, erase) in batch.items():
             order = bg.get(Order, order_id)
-            if order is None or not order_writes_to_sheet(order):
+            if order is None or not order.sheet_tab or not order_writes_to_sheet(order):
                 continue
             by_tab.setdefault(order.sheet_tab, []).append((order, set(fields), set(erase)))
 

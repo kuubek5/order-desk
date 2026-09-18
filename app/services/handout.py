@@ -13,8 +13,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Any, cast
 
 from sqlalchemy import case, func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, selectinload
 
 from app.business_day import (
@@ -743,12 +745,14 @@ def bump_found_units(db: Session, user, order: Order, delta: int) -> "UnitsResul
         if not was_complete:
             # Перехід виборює ОДИН запит: без цієї умови двоє операторів
             # дописали б у хронологію дві однакові події «знайдено при видачі».
-            if db.execute(
+            # `Session.execute` оголошений як загальний `Result` без `rowcount`;
+            # UPDATE завжди віддає `CursorResult` (як у journal_prune).
+            if cast("CursorResult[Any]", db.execute(
                 update(Order)
                 .where(Order.id == order.id, Order.status != STATUS_FOUND)
                 .values(status=STATUS_FOUND)
                 .execution_options(synchronize_session=False)
-            ).rowcount:
+            )).rowcount:
                 db.expire(order, ["status"])
                 db.add(
                     StatusEvent(
@@ -774,12 +778,12 @@ def bump_found_units(db: Session, user, order: Order, delta: int) -> "UnitsResul
             back_to = previous.status if previous else "відфрезеровано"
             # Так само один виборений перехід: двоє, що зняли по одиниці з
             # повної роботи, інакше вернули б статус двічі й двічі це записали.
-            if db.execute(
+            if cast("CursorResult[Any]", db.execute(
                 update(Order)
                 .where(Order.id == order.id, Order.status == STATUS_FOUND)
                 .values(status=back_to)
                 .execution_options(synchronize_session=False)
-            ).rowcount:
+            )).rowcount:
                 db.expire(order, ["status"])
                 db.add(
                     StatusEvent(
