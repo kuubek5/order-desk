@@ -272,6 +272,64 @@ def write_order_fields_bulk(
         call_with_retry(lambda: worksheet.batch_update(updates))
 
 
+# Колонки, які CRM знає про рядок, і поле роботи для кожної. Колонка E — вид
+# для лабораторного рядка й імʼя клієнта для клієнтського (як `_identity_cell`).
+_CONTENT_COLUMNS = (
+    (COL_WORK_ORDER_NO, "work_order_no"),
+    (COL_QUANTITY, "quantity"),
+    (COL_MATERIAL_COLOR, "material_color"),
+    (COL_KIND, None),
+    (COL_JOB_CODE, "job_code"),
+    (COL_TECHNICIAN, "technician_name"),
+    (COL_CAM_COMMENT, "cam_comment"),
+)
+# Скільки непорожніх полів мусить збігтись, щоб вміст вважався відбитком.
+_CONTENT_MIN_FILLED = 2
+
+
+def _confirm_by_content(
+    worksheet: gspread.Worksheet, order: Order
+) -> tuple[int, list[str]] | None:
+    """Рядок роботи БЕЗ якоря, підтверджений усім вмістом, або None.
+
+    Бойовий випадок 18.09.26 (#3907): лабораторний рядок без наряду («test /
+    tst») видалили в CRM, а в таблиці він лишився — стирання мовчки відмовило,
+    бо звіряти не було з чим. Такі рядки реальні: технік часто дописує наряд
+    пізніше (див. `_next_lab_row`).
+
+    Звіряється ЛИШЕ збережена позиція, без пошуку по таблиці: відбиток із
+    кількох клітинок не унікальний так, як наряд. Кожна з колонок B, C, D, E,
+    I, J, K мусить збігтися з базою — і порожні теж (порожнє в базі проти
+    заповненого в таблиці = рядок уже інший). Непорожніх полів — щонайменше
+    два, інакше «збіг» порожнечі з порожнечею нічого не доводить. Збій
+    читання — None: непрочитаний рядок не підтверджений.
+
+    Повертає (рядок, вміст A:N) — той самий вміст іде в журнал перед
+    стиранням, другий раз не читаємо."""
+    row = _sheet_row(order)
+    try:
+        values = read_row_values_strict(worksheet, row)
+    except Exception:
+        return None
+
+    def norm(value) -> str:
+        return str(value or "").strip().casefold()
+
+    filled = 0
+    for col, field in _CONTENT_COLUMNS:
+        if field is None:
+            is_client = getattr(order, "source", None) in ("sheet_client", "email")
+            field = "client_name" if is_client else "kind"
+        want = norm(getattr(order, field, None))
+        have = norm(values[col - 1] if col - 1 < len(values) else "")
+        if want != have:
+            return None
+        filled += bool(want)
+    if filled < _CONTENT_MIN_FILLED:
+        return None
+    return row, values
+
+
 def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     """Стерти рядок цієї роботи, СПЕРШУ підтвердивши, що він досі її.
 
@@ -289,15 +347,21 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     sheet_erase_guard.check()
     col, expected = _identity_cell(order)
     if col is None or not expected:
-        # Нема з чим звірити (наряд-less лабораторний рядок, клієнт без
-        # імені) — стирати НЕ МОЖНА: «непідтверджений рядок гірший за
-        # пропущений запис» (§14). Запис полів у такий рядок лишається
-        # оптимістичним, а стирання A:K — ні.
-        return False
-    row = _resolve_row(worksheet, order)
-    if row is None:
-        return False
-    erased = read_row_values(worksheet, row)
+        # Якоря немає (лабораторний рядок без наряду, клієнт без імені).
+        # Наосліп стирати НЕ МОЖНА — «непідтверджений рядок гірший за
+        # пропущений запис» (§14), — але звірити можна ВЕСЬ вміст рядка на
+        # збереженій позиції (`_confirm_by_content`). Не збіглось — як і
+        # раніше, відмова.
+        confirmed = _confirm_by_content(worksheet, order)
+        if confirmed is None:
+            return False
+        row, erased = confirmed
+    else:
+        resolved = _resolve_row(worksheet, order)
+        if resolved is None:
+            return False
+        row = resolved
+        erased = read_row_values(worksheet, row)
     logger.warning(
         "Стираю рядок %s вкладки %s (робота %s). Вміст до стирання: %s",
         row, getattr(order, "sheet_tab", "?"), getattr(order, "id", "?"),
@@ -360,6 +424,14 @@ def paint_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]
     used when the operator un-marks an accidentally-found work so the sheet
     goes back to "pending" and the next sync doesn't read it as issued."""
     _set_row_fills(spreadsheet, rows, _BLUE)
+
+
+def read_row_values_strict(worksheet: gspread.Worksheet, row: int) -> list[str]:
+    """Вміст A:N рядка; збій читання ПІДНІМАЄТЬСЯ (на відміну від
+    `read_row_values`) — для звірки, де непрочитане не можна вважати порожнім."""
+    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_MILLED)}"
+    values = call_with_retry(lambda: worksheet.get_values(a1)) or []
+    return [str(v) for v in (values[0] if values else [])]
 
 
 def read_row_values(worksheet: gspread.Worksheet, row: int) -> list[str]:

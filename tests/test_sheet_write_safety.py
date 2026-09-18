@@ -326,6 +326,89 @@ class TestEmptyCellIsNotAConfirmation:
         assert cleared == []
 
 
+class TestAnchorlessRowConfirmedByContent:
+    """#3907, 18.09.26: лабораторний рядок без наряду («test / tst») видалили в
+    CRM, а в таблиці він лишився — звіряти не було з чим. Тепер такий рядок
+    підтверджується всім вмістом на збереженій позиції; решта правил стирання
+    не змінилась (їх стережуть класи вище)."""
+
+    # Рядок 21 вкладки 18.09.26 як його прочитав би get_values A:N.
+    ROW = ["", "", "", "", "test", "", "", "", "test", "tst", ""]
+
+    def _order(self, **kw):
+        base = dict(
+            id=3907, row_number=15, source="lab", work_order_no=None,
+            quantity=None, material_color=None, kind="test", client_name=None,
+            job_code="test", technician_name="tst", cam_comment=None,
+            sheet_tab="18.09.26",
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def _run(self, monkeypatch, order, row_values=None, read_error=None):
+        import app.sheet_writer as sheet_writer
+
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            sheet_writer, "clear_placeholder_row", lambda ws, row: cleared.append(row)
+        )
+        ws = MagicMock()
+        if read_error:
+            ws.get_values.side_effect = read_error
+        else:
+            ws.get_values.return_value = [row_values if row_values is not None else self.ROW]
+        return sheet_writer.clear_order_row(ws, order), cleared, ws
+
+    def test_matching_content_is_erased(self, monkeypatch):
+        import app.sheet_writer as sheet_writer
+
+        ok, cleared, ws = self._run(monkeypatch, self._order())
+        assert ok is True
+        assert cleared == [21]
+        # Звірка — лише збережена позиція, без пошуку колонкою.
+        ws.col_values.assert_not_called()
+        row_no, values = sheet_writer.take_last_erased(3907)
+        assert row_no == 21 and "tst" in values
+
+    def test_one_differing_cell_refuses(self, monkeypatch):
+        """Технік уже переписав рядок — це інша робота."""
+        row = list(self.ROW)
+        row[9] = "Юля"
+        ok, cleared, _ = self._run(monkeypatch, self._order(), row)
+        assert ok is False and cleared == []
+
+    def test_filled_cell_that_the_base_does_not_know_refuses(self, monkeypatch):
+        """Порожнє в базі проти заповненого в таблиці — рядок уже інший
+        (наприклад, технік дописав наряд, а синк ще не встиг)."""
+        row = list(self.ROW)
+        row[1] = "31999"
+        ok, cleared, _ = self._run(monkeypatch, self._order(), row)
+        assert ok is False and cleared == []
+
+    def test_single_filled_field_is_not_a_fingerprint(self, monkeypatch):
+        order = self._order(job_code=None, technician_name=None)
+        row = ["", "", "", "", "test"]
+        ok, cleared, _ = self._run(monkeypatch, order, row)
+        assert ok is False and cleared == []
+
+    def test_unreadable_row_refuses(self, monkeypatch):
+        ok, cleared, _ = self._run(
+            monkeypatch, self._order(), read_error=RuntimeError("проксі обірвав зʼєднання")
+        )
+        assert ok is False and cleared == []
+
+    def test_nameless_client_row_uses_column_e_as_the_name(self, monkeypatch):
+        """Клієнтський рядок без імені: у колонці E імені немає — і в базі
+        теж, а збігтися мають кількість і матеріал."""
+        order = self._order(
+            source="sheet_client", kind=None, job_code=None, technician_name=None,
+            quantity="6", material_color="pmma a2",
+        )
+        row = ["", "", "6", "pmma a2", ""]
+        ok, cleared, _ = self._run(monkeypatch, order, row)
+        assert ok is True and cleared == [21]
+
+
 class TestErasedRowLeavesATrace:
     """Ревʼю 07.09.26: у спільній таблиці «щось зникло, і невідомо що там було»
     — найгірший результат. Перед стиранням вміст рядка читається й лягає в

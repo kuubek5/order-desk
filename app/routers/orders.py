@@ -55,9 +55,11 @@ from app.services.sheet_writeback import (
     append_comment_background,
     append_manual_rows_warm,
     await_on_writeback,
+    STILL_QUEUED,
     clear_sheet_row_background,
     order_writes_to_sheet,
     submit_sheet_write,
+    wait_for_write,
     write_calculated_cell_warm,
     write_rework_sum3d_fields_warm,
     write_sheet_fields_background,
@@ -684,6 +686,12 @@ async def dismiss_sheet_change(
     )
 
 
+# Скільки «Видалити» чекає на таблицю, перш ніж відпустити оператора: стирання
+# — це читання рядка й запис (~3 с на лаб-проксі), а довше тримати клік не
+# варто — стирання тоді доходить у фоні, і тост каже саме це.
+DELETE_WAIT_SECONDS = 10
+
+
 @router.post("/orders/{order_id}/delete")
 async def delete_order(
     request: Request,
@@ -749,16 +757,36 @@ async def delete_order(
     # навігація «назад». Кнопку в тост не повертаємо — її свідомо прибрали на
     # користь двох статичних стрілок; називаємо саме їх (прохання власника,
     # 07.09.26).
+    kind = "success"
     if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
-        clear_sheet_row_background(order.id)
-        message = "Роботу видалено з черги, рядок у таблиці очищено · «Крок назад» (←) поверне"
+        # Чекаємо на таблицю коротко, щоб повідомлення казало ПРАВДУ. Доти тост
+        # обіцяв «рядок очищено» ще до спроби, а відмова стирання (рядок не
+        # підтверджено) жила лише в журналі синку — 18.09.26 (#3907) оператор
+        # видалив роботу, «очищено», а рядок у таблиці лишився.
+        error = await wait_for_write(
+            clear_sheet_row_background(order.id), timeout=DELETE_WAIT_SECONDS
+        )
+        if error is None:
+            message = "Роботу видалено з черги, рядок у таблиці очищено · «Крок назад» (←) поверне"
+        elif error == STILL_QUEUED:
+            kind = "info"
+            message = (
+                "Роботу видалено з черги; таблиця відповідає повільно — рядок "
+                "очиститься у фоні · «Крок назад» (←) поверне"
+            )
+        else:
+            kind = "warning"
+            message = (
+                f"Роботу видалено з черги, але рядок у таблиці НЕ стерто: {error} "
+                "· «Крок назад» (←) поверне"
+            )
     else:
         message = "Роботу видалено з черги · «Крок назад» (←) поверне"
 
     if request.headers.get("HX-Request") == "true":
         if isinstance(inline, str) and inline.strip():
-            return toast_response(message)
-        response = toast_response(message)
+            return toast_response(message, kind=kind)
+        response = toast_response(message, kind=kind)
         # Хай сторінка перемалюється — рядок має зникнути з черги одразу.
         response.headers["HX-Redirect"] = "/"
         return response

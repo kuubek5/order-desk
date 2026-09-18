@@ -326,7 +326,12 @@ def _append_manual_rows(
 _AWAIT_WRITE_TIMEOUT_SECONDS = 90
 
 
-async def await_on_writeback(fn, *args) -> str | None:
+# Текст «ще в черзі» — окремою константою: викликач, який чекає коротко
+# (видалення), відрізняє «не встигли дочекатись» від «таблиця відмовила».
+STILL_QUEUED = "таблиця не відповідає — запис лишився в черзі й може ще пройти"
+
+
+async def await_on_writeback(fn, *args, timeout: float | None = None) -> str | None:
     """Виконати запис у таблицю на воркері write-back і дочекатись результату,
     НЕ блокуючи event loop.
 
@@ -340,16 +345,20 @@ async def await_on_writeback(fn, *args) -> str | None:
     Повертає рядок помилки або None — той самий контракт, що й у синхронних
     `write_*`, щоб роут показав чесне «записано / не вдалось».
     """
-    future = submit_sheet_write(fn, *args)
+    return await wait_for_write(submit_sheet_write(fn, *args), timeout=timeout)
+
+
+async def wait_for_write(future, *, timeout: float | None = None) -> str | None:
+    """Дочекатись уже поставленого в пул запису — та сама половина
+    `await_on_writeback`, для викликача, який ставить задачу сам."""
+    limit = _AWAIT_WRITE_TIMEOUT_SECONDS if timeout is None else timeout
     try:
-        return await asyncio.wait_for(
-            asyncio.wrap_future(future), _AWAIT_WRITE_TIMEOUT_SECONDS
-        )
+        return await asyncio.wait_for(asyncio.wrap_future(future), limit)
     except asyncio.TimeoutError:
         # Потік не переривається — запис лишається в черзі й, найпевніше,
         # дійде. Кажемо саме це, а не «не вдалося».
-        logger.warning("Sheet write-back is taking longer than %ss", _AWAIT_WRITE_TIMEOUT_SECONDS)
-        return "таблиця не відповідає — запис лишився в черзі й може ще пройти"
+        logger.warning("Sheet write-back is taking longer than %ss", limit)
+        return STILL_QUEUED
     except Exception as exc:  # noqa: BLE001 — помилка йде в тост, не в 500
         logger.exception("Sheet write-back on the pool failed")
         return str(exc) or "запис у таблицю не вдався"
@@ -634,7 +643,7 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
     submit_sheet_write(worker)
 
 
-def clear_sheet_row_background(order_id: int) -> None:
+def clear_sheet_row_background(order_id: int):
     """Blank a deleted order's row in the sheet, on the write-back worker.
 
     BLANK, never delete: removing a row in Google shifts every row below it up,
@@ -648,68 +657,83 @@ def clear_sheet_row_background(order_id: int) -> None:
     technician may have deleted a row above it, and the stored position would
     then point at someone else's live work (аудит 05.09.26, синк H-5).
     """
-    def worker() -> None:
-        try:
-            with writeback_session() as bg:
-                order = bg.get(Order, order_id)
-                if order is None or not order.sheet_tab or order.row_number is None:
-                    return
-                sheet_tab = order.sheet_tab
-                worksheet = get_worksheet_by_name(open_spreadsheet(db=bg), sheet_tab)
-                if worksheet is None:
-                    logger.warning("Delete: sheet tab %s not found", sheet_tab)
-                    return
-                try:
-                    cleared = clear_order_row(worksheet, order)
-                except SheetEraseBlocked as blocked:
-                    # Запобіжник, а не збій таблиці: причина в журналі має бути
-                    # своя, інакше «стеля стирань» виглядатиме як «рядок не
-                    # підтверджено» і ніхто не зрозуміє, що спрацював захист.
-                    _log_sync(bg, SyncLog(
-                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
-                        message=f"order {order_id}: {blocked}",
-                    ))
-                    bg.commit()
-                    return
-                if not cleared:
-                    _log_sync(bg, SyncLog(
-                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
-                        message=(
-                            f"order {order_id}: рядок не підтверджено — "
-                            "стирання пропущено, приберіть рядок у таблиці вручну"
-                        ),
-                    ))
-                    bg.commit()
-                    return
-                # У журнал іде ВМІСТ стертого рядка: у спільній таблиці
-                # «щось зникло, і невідомо що» — найгірший результат, а так
-                # рядок завжди можна набрати назад із «Журналу синку».
-                erased = take_last_erased(order_id)
-                detail = ""
-                erased_row = None
-                erased_values = None
-                if erased is not None:
-                    row_no, values = erased
-                    shown = " | ".join(v for v in values if v) or "порожній"
-                    detail = f" (рядок {row_no}: {shown})"
-                    # Той самий вміст ще й даними: з нього росте кнопка
-                    # «Відновити рядок». Текст лишається для читання людиною.
-                    if any(v for v in values if isinstance(v, str) and v.strip()):
-                        erased_row = row_no
-                        erased_values = json.dumps(values, ensure_ascii=False)
-                bg.add(
-                    SyncLog(
-                        direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
-                        message=f"видалено роботу {order_id}: рядок очищено{detail}",
-                        erased_row=erased_row,
-                        erased_values=erased_values,
-                    )
-                )
-                bg.commit()
-        except Exception:
-            logger.exception("Clearing sheet row failed for order %s", order_id)
+    # Future повертаємо: кнопка «Видалити» чекає на результат коротко
+    # (`wait_for_write`), а «Крок назад» його просто не бере.
+    return submit_sheet_write(lambda: clear_sheet_row_warm(order_id))
 
-    submit_sheet_write(worker)
+
+def clear_sheet_row_warm(order_id: int) -> str | None:
+    """Тіло `clear_sheet_row_background` — на воркері, з результатом.
+
+    None — рядок стерто (або стирати нічого); рядок — чому НЕ стерто, тим
+    самим текстом, що йде в журнал синку. Кнопка «Видалити» чекає на нього
+    (`await_on_writeback`), щоб повідомлення не обіцяло «рядок очищено», коли
+    стирання пропущено (18.09.26, #3907: оператор бачив «очищено», а рядок
+    лишився й про відмову знав лише журнал)."""
+    try:
+        with writeback_session() as bg:
+            order = bg.get(Order, order_id)
+            if order is None or not order.sheet_tab or order.row_number is None:
+                return None
+            sheet_tab = order.sheet_tab
+            worksheet = get_worksheet_by_name(open_spreadsheet(db=bg), sheet_tab)
+            if worksheet is None:
+                logger.warning("Delete: sheet tab %s not found", sheet_tab)
+                return f"вкладки {sheet_tab} немає в таблиці"
+            try:
+                cleared = clear_order_row(worksheet, order)
+            except SheetEraseBlocked as blocked:
+                # Запобіжник, а не збій таблиці: причина в журналі має бути
+                # своя, інакше «стеля стирань» виглядатиме як «рядок не
+                # підтверджено» і ніхто не зрозуміє, що спрацював захист.
+                _log_sync(bg, SyncLog(
+                    direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                    message=f"order {order_id}: {blocked}",
+                ))
+                bg.commit()
+                return str(blocked)
+            if not cleared:
+                _log_sync(bg, SyncLog(
+                    direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                    message=(
+                        f"order {order_id}: рядок не підтверджено — "
+                        "стирання пропущено, приберіть рядок у таблиці вручну"
+                    ),
+                ))
+                bg.commit()
+                return (
+                    "рядок не підтверджено — стирання пропущено, "
+                    "приберіть рядок у таблиці вручну"
+                )
+            # У журнал іде ВМІСТ стертого рядка: у спільній таблиці
+            # «щось зникло, і невідомо що» — найгірший результат, а так
+            # рядок завжди можна набрати назад із «Журналу синку».
+            erased = take_last_erased(order_id)
+            detail = ""
+            erased_row = None
+            erased_values = None
+            if erased is not None:
+                row_no, values = erased
+                shown = " | ".join(v for v in values if v) or "порожній"
+                detail = f" (рядок {row_no}: {shown})"
+                # Той самий вміст ще й даними: з нього росте кнопка
+                # «Відновити рядок». Текст лишається для читання людиною.
+                if any(v for v in values if isinstance(v, str) and v.strip()):
+                    erased_row = row_no
+                    erased_values = json.dumps(values, ensure_ascii=False)
+            bg.add(
+                SyncLog(
+                    direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
+                    message=f"видалено роботу {order_id}: рядок очищено{detail}",
+                    erased_row=erased_row,
+                    erased_values=erased_values,
+                )
+            )
+            bg.commit()
+            return None
+    except Exception as exc:  # noqa: BLE001 — причина йде в повідомлення, не в 500
+        logger.exception("Clearing sheet row failed for order %s", order_id)
+        return str(exc) or "стирання рядка не вдалося"
 
 
 def clear_group_fills_background(order_ids: list[int]) -> None:

@@ -238,3 +238,49 @@ def test_the_delete_toast_names_the_way_back():
     message = trigger["toast"]["message"]
     assert "видалено" in message.lower()
     assert "Крок назад" in message
+
+
+def _delete_toast(result=None, *, never_finishes=False, timeout=None):
+    """Видалити роботу з черги й повернути (тост, kind), підмінивши стирання
+    рядка готовим результатом воркера."""
+    from concurrent.futures import Future
+
+    future: Future = Future()
+    if not never_finishes:
+        future.set_result(result)
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(orders_router_mod, "clear_sheet_row_background", return_value=future):
+            if timeout is not None:
+                patch_timeout = patch.object(orders_router_mod, "DELETE_WAIT_SECONDS", timeout)
+            else:
+                patch_timeout = patch.object(orders_router_mod, "DELETE_WAIT_SECONDS", 10)
+            with patch_timeout:
+                response = asyncio.run(orders_router_mod.delete_order(
+                    request=_request(user.id, {"HX-Request": "true"}),
+                    order_id=order.id, inline="1", db=db,
+                ))
+    toast = json.loads(response.headers["HX-Trigger"])["toast"]
+    return toast["message"], toast["kind"]
+
+
+def test_toast_says_cleared_only_when_the_sheet_confirmed_it():
+    message, kind = _delete_toast(None)
+    assert "рядок у таблиці очищено" in message and kind == "success"
+
+
+def test_skipped_erase_is_said_out_loud():
+    """#3907, 18.09.26: тост казав «очищено», а стирання відмовило — про це
+    знав лише журнал синку, і оператор бачив рядок, що «не видаляється»."""
+    message, kind = _delete_toast("рядок не підтверджено — стирання пропущено, приберіть рядок у таблиці вручну")
+    assert kind == "warning"
+    assert "НЕ стерто" in message and "вручну" in message
+    assert "очищено" not in message
+
+
+def test_slow_sheet_does_not_hold_the_click_and_says_so():
+    message, kind = _delete_toast(never_finishes=True, timeout=0.05)
+    assert kind == "info"
+    assert "у фоні" in message and "очищено" not in message
