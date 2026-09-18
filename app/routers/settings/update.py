@@ -1,6 +1,7 @@
 """Оновлення застосунку: перевірка релізу, стан установки, запуск інсталятора."""
 
 import logging
+import time
 from threading import Thread
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -35,6 +36,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Стадії, поки йде установка (див. `_install_update_in_background`).
+_INSTALL_BUSY = frozenset({"downloading", "launching", "launched"})
+# «launched» — інсталятор запущено, і застосунок от-от перезапуститься. Якщо
+# інсталятор тихо не спрацював, стан лишився б назавжди й заблокував кнопку
+# до рестарту; тому після запуску вона блокується лише на цей час.
+_LAUNCHED_HOLD_SECONDS = 600
+_launched_at: float | None = None
+
 
 def _install_update_in_background(release) -> None:
     """Runs on its own daemon thread — download+verify+silent-install can
@@ -51,6 +60,8 @@ def _install_update_in_background(release) -> None:
         )
         set_install_state(stage="launching", version=version)
         launch_silent_install(installer_path)
+        global _launched_at
+        _launched_at = time.monotonic()
         # Далі — watchdog: інсталятор, перезапуск, /health. Оверлей чекає на
         # падіння й повернення сервера, як і раніше.
         set_install_state(stage="launched", version=version)
@@ -117,6 +128,13 @@ def update_install_status(request: Request, db: Session = Depends(get_db)):
     return JSONResponse(install_state(), headers={"Cache-Control": "no-store"})
 
 
+def _install_busy() -> bool:
+    stage = install_state().get("stage")
+    if stage == "launched":
+        return _launched_at is not None and time.monotonic() - _launched_at < _LAUNCHED_HOLD_SECONDS
+    return stage in _INSTALL_BUSY
+
+
 @router.post("/settings/update/install")
 def install_update(request: Request, db: Session = Depends(get_db)):
     """Admin-triggered install of the update already found by the
@@ -132,6 +150,18 @@ def install_update(request: Request, db: Session = Depends(get_db)):
     release = get_known_update()
     if release is None:
         request.session["settings_flash"] = {"kind": "error", "message": "Оновлень немає"}
+        return RedirectResponse("/settings", status_code=303)
+
+    # Установка вже йде — другу НЕ запускаємо. 18.09.26 оператор натиснув тричі:
+    # перша ще качала 45 МБ через проксі, друга й третя вперлись у той самий
+    # файл (WinError 32) і показали СВОЮ помилку, хоча перша тривала. Після
+    # «failed» (і в «idle») кнопка знову працює. Потік, що впав, сам ставить
+    # «failed»; ReadTimeout на кожен шматок не дає йому висіти вічно.
+    if _install_busy():
+        request.session["settings_flash"] = {
+            "kind": "info",
+            "message": "Оновлення вже встановлюється — зачекайте, прогрес видно у вікні встановлення",
+        }
         return RedirectResponse("/settings", status_code=303)
 
     # Знімок «скільки чого в базі» ПЕРЕД оновленням: після першого старту нової

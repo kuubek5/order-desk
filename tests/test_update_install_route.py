@@ -114,6 +114,54 @@ def test_known_update_starts_background_thread_and_flashes_success():
     assert request.session["settings_flash"]["kind"] == "success"
 
 
+@pytest.mark.parametrize("stage", ["downloading", "launching", "launched"])
+def test_second_click_while_installing_does_not_start_another_install(stage, monkeypatch):
+    """18.09.26: оператор натиснув «Встановити» тричі. Перша спроба ще качала
+    45 МБ через проксі, друга й третя вперлись у той самий файл
+    (WinError 32), і вікно показало ЇХНЮ помилку, хоча перша тривала.
+    Повторне натискання під час установки не має запускати другу."""
+    from app.update_check import reset_install_state_for_tests, set_install_state
+
+    set_install_state(stage=stage, version="9.9.9", done=10, total=45)
+    # «launched» блокує лише щойно після запуску інсталятора.
+    monkeypatch.setattr(settings_router_mod, "_launched_at", settings_router_mod.time.monotonic())
+    try:
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            request = _request(admin.id)
+            with patch("app.routers.settings.update.get_known_update", return_value=_RELEASE), \
+                    patch("app.routers.settings.update.Thread") as mock_thread, \
+                    patch("app.routers.settings.update.snapshot_before_update") as mock_backup:
+                response = settings_router_mod.install_update(request=request, db=db)
+        mock_thread.assert_not_called()
+        mock_backup.assert_not_called()
+        assert response.status_code == 303
+        assert request.session["settings_flash"]["kind"] == "info"
+        assert "вже встановлюється" in request.session["settings_flash"]["message"]
+    finally:
+        reset_install_state_for_tests()
+
+
+@pytest.mark.parametrize("stage", ["idle", "failed"])
+def test_after_a_failure_the_button_works_again(stage):
+    from app.update_check import reset_install_state_for_tests, set_install_state
+
+    set_install_state(stage=stage, version="9.9.9")
+    try:
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            request = _request(admin.id)
+            with patch("app.routers.settings.update.get_known_update", return_value=_RELEASE), \
+                    patch("app.routers.settings.update.Thread") as mock_thread, \
+                    patch("app.routers.settings.update.snapshot_before_update"):
+                settings_router_mod.install_update(request=request, db=db)
+        mock_thread.assert_called_once()
+    finally:
+        reset_install_state_for_tests()
+
+
 # --- B.6: повна копія бази перед інсталятором -----------------------------
 
 
@@ -265,3 +313,19 @@ def test_status_route_gates_like_install():
         assert response.headers["cache-control"] == "no-store"
         assert b'"stage":"downloading"' in response.body
         uc.reset_install_state_for_tests()
+
+
+def test_a_stale_launched_state_does_not_lock_the_button_forever(monkeypatch):
+    """Інсталятор запущено, але застосунок так і не перезапустився: через
+    `_LAUNCHED_HOLD_SECONDS` кнопка знову працює, а не чекає рестарту."""
+    from app.update_check import reset_install_state_for_tests, set_install_state
+
+    set_install_state(stage="launched", version="9.9.9")
+    monkeypatch.setattr(settings_router_mod, "_launched_at",
+                        settings_router_mod.time.monotonic() - settings_router_mod._LAUNCHED_HOLD_SECONDS - 1)
+    try:
+        assert settings_router_mod._install_busy() is False
+        monkeypatch.setattr(settings_router_mod, "_launched_at", settings_router_mod.time.monotonic())
+        assert settings_router_mod._install_busy() is True
+    finally:
+        reset_install_state_for_tests()
