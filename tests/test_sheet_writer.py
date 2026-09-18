@@ -409,6 +409,38 @@ class TestAppendMailPlaceholderRow:
             (60, 5): "Вова",    # Вид роботи
         }
 
+    def test_leftover_sum3d_in_a_free_row_is_blanked_first(self):
+        """Рядок 60 вкладки 18.09.26: B/C/E порожні (рядок вільний), але в L:M
+        лишились Sum3D і «V» від видаленої роботи. Нова робота лягає саме
+        туди — і без стирання синк прочитав би її прорахованою з чужим ID."""
+        from app.sheet_writer import COL_MILLED, COL_SUM3D_ID
+
+        fake_ws = MagicMock()
+        fake_ws.id = 5
+        leftover = ["", "", "", "", "", "", "", "", "", "", "12-45-45", "V"]
+        fake_ws.get.side_effect = [[], [leftover]]
+
+        row_number = append_mail_placeholder_row(fake_ws, "Вова", "5", "емо а3", start_row=60)
+
+        assert row_number == 60
+        assert fake_ws.get.call_args_list[1][0][0] == "B60:N60"
+        requests = fake_ws.spreadsheet.batch_update.call_args[0][0]["requests"]
+        blank = requests[0]["updateCells"]
+        assert blank["range"]["startRowIndex"] == 59
+        assert blank["range"]["startColumnIndex"] == COL_SUM3D_ID - 1
+        assert blank["range"]["endColumnIndex"] == COL_MILLED
+        assert blank["fields"] == "userEnteredValue"
+
+    def test_free_row_without_leftovers_writes_nothing_extra(self):
+        fake_ws = MagicMock()
+        fake_ws.get.side_effect = _scan_then_free([])
+        append_mail_placeholder_row(fake_ws, "Вова", "5", "емо а3", start_row=60)
+        requests = fake_ws.spreadsheet.batch_update.call_args[0][0]["requests"]
+        assert all(
+            r.get("updateCells", {}).get("range", {}).get("startColumnIndex") != 11
+            for r in requests
+        )
+
     def test_skips_occupied_rows_60_to_65_and_uses_66(self):
         """Rows 60-65 already have something in Номер наряду / Кількість /
         Вид роботи (existing manual notes or unrelated data) — the scan
@@ -774,6 +806,20 @@ def test_clear_placeholder_row_whitens_the_whole_ak_block():
     assert rc["cell"]["userEnteredFormat"]["backgroundColor"] == _WHITE
 
 
+def test_clear_placeholder_row_blanks_sum3d_and_marks_too():
+    """Рядок 60 вкладки 18.09.26: після видалення пробної роботи в L:N лишились
+    Sum3D `12-45-45` і «V» без роботи — наступне ручне додавання успадкувало б
+    їх. Стирання чистить ЗНАЧЕННЯ A:N (оформлення L:N не чіпає — заливка лише A:K)."""
+    from app.sheet_writer import COL_MILLED, clear_placeholder_row
+
+    ws = MagicMock()
+    ws.id = 777
+    clear_placeholder_row(ws, 60)
+    update = ws.batch_update.call_args[0][0][0]
+    assert update["range"] == f"A60:{gspread.utils.rowcol_to_a1(60, COL_MILLED)}"
+    assert update["values"] == [[""] * COL_MILLED]
+
+
 def _lab_order(work_order_no="A", row_number=1, sum3d_id="12-01-45"):
     return SimpleNamespace(
         id=1, row_number=row_number, sheet_tab="27.07.26", source="lab",
@@ -848,9 +894,23 @@ class TestRestoreOrderRow:
             work_order_no="24122", quantity="4", material_color="mono a3",
             kind="анатомія", client_name=None, job_code="2026-07-21_00016-007",
             technician_name="Юля", cam_comment="на швидку", status="прийнято",
+            sum3d_id=None, calculated_raw=None, milled_raw=None,
         )
         base.update(kw)
         return SimpleNamespace(**base)
+
+    def test_undo_brings_back_sum3d_and_marks(self):
+        """Стирання тепер чистить і L:N — отже скасування мусить їх повернути,
+        інакше «повернута» робота втратила б Sum3D і позначки."""
+        from app.sheet_writer import COL_CALCULATED, COL_SUM3D_ID, restore_order_row
+
+        fake_ws = MagicMock()
+        fake_ws.get_values.return_value = [[""] * 11]
+        restore_order_row(fake_ws, self._order(sum3d_id="12-45-45", calculated_raw="V"))
+        writes = {u["range"]: u["values"][0][0] for u in fake_ws.batch_update.call_args[0][0]}
+        row = 3 + HEADER_ROWS
+        assert writes[gspread.utils.rowcol_to_a1(row, COL_SUM3D_ID)] == "12-45-45"
+        assert writes[gspread.utils.rowcol_to_a1(row, COL_CALCULATED)] == "V"
 
     def test_restores_values_into_the_blanked_row(self):
         from app.sheet_writer import restore_order_row

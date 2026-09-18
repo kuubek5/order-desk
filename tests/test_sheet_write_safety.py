@@ -458,6 +458,18 @@ class TestRestoreErasedRow:
         assert payload[0]["values"][0][:4] == ["1", "24122", 2, "моно а3"]
         assert len(payload[0]["values"][0]) == 11
 
+    def test_sum3d_and_marks_come_back_too(self):
+        """З 18.09.26 стирання знімає A:N і чистить L:N — «Відновити рядок»
+        повертає їх із журналу. Старі записи (лише A:K) L:N не чіпають."""
+        from app.sheet_writer import restore_erased_row
+
+        ws = self._worksheet([[""] * 11])
+        saved = ["", "", "2", "mo o", "fdtyt", "", "", "", "", "", "", "12-45-45", "V"]
+        restore_erased_row(ws, 60, saved)
+        (payload,), _ = ws.batch_update.call_args
+        assert payload[0]["range"] == "A60:N60"
+        assert payload[0]["values"][0][11:] == ["12-45-45", "V", ""]
+
     def test_occupied_row_is_never_overwritten(self):
         from app.sheet_writer import RowOccupiedError, restore_erased_row
 

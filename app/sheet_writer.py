@@ -276,7 +276,7 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     """Стерти рядок цієї роботи, СПЕРШУ підтвердивши, що він досі її.
 
     Стирання не має «оптимістичного» варіанта: `clear_placeholder_row` чистить
-    A:K цілком, тож влучання в сусідній рядок знищує чужу живу роботу у
+    A:N цілком, тож влучання в сусідній рядок знищує чужу живу роботу у
     спільній таблиці без жодного сліду. Не підтвердили позицію — не стираємо.
     Повертає False, якщо стирання пропущено. Перед стиранням вміст рядка
     читається й лягає в журнал (`SheetRowErase`-рядок пише викликач): у
@@ -363,12 +363,15 @@ def paint_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]
 
 
 def read_row_values(worksheet: gspread.Worksheet, row: int) -> list[str]:
-    """Вміст A:K рядка — щоб було ЩО записати в журнал перед стиранням.
+    """Вміст A:N рядка — щоб було ЩО записати в журнал перед стиранням.
+
+    До N, а не до K: стирання чистить і L:N (Sum3D, «Прорахував»,
+    «Відфрезерував»), тож «Відновити рядок» мусить мати, що повернути.
 
     Помилка читання не має зривати саму дію: журнал це страховка, а не умова.
     Тоді повертаємо порожній список, і викликач напише «вміст не прочитано».
     """
-    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)}"
+    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_MILLED)}"
     try:
         values = call_with_retry(lambda: worksheet.get_values(a1)) or []
     except Exception:  # noqa: BLE001 — журнал ніколи не блокує стирання
@@ -382,15 +385,22 @@ def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
     so a deleted or un-accepted work leaves a row that looks brand-new. Blanking
     (not deleting) keeps every other row's position — and therefore every other
     order's row_number — intact; an all-empty row reads as a free row on the
-    next sync, so it's never re-imported. Columns L/M/N are left untouched
-    (their green «технік заповнює» styling is the empty-row template), matching
-    the write side.
+    next sync, so it's never re-imported.
+
+    ЗНАЧЕННЯ L:N (Sum3D, «Прорахував», «Відфрезерував») стираються теж, а їхнє
+    зелене оформлення «технік заповнює» лишається — це шаблон порожнього
+    рядка. Довго L:N не чіпали взагалі, щоб скасування видалення не мало що
+    втрачати, — і рядок 60 вкладки 18.09.26 після видалення пробної роботи
+    лишився з Sum3D `12-45-45` і «V» без роботи: синк щогодини скаржився, а
+    наступне ручне додавання лягло б саме туди й успадкувало б чужий Sum3D.
+    Скасування тепер повертає L:N саме (`restore_order_row`,
+    `restore_erased_row`).
 
     The fill is cleared across the FULL A:K block, not just the name cell: the
     manual-add paints the blue "pending" fill over all of A:K, so whitening only
     column E left the rest of the row blue after a delete (operator report)."""
-    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)}"
-    call_with_retry(lambda: worksheet.batch_update([{"range": a1, "values": [[""] * COL_CAM_COMMENT]}]))
+    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_MILLED)}"
+    call_with_retry(lambda: worksheet.batch_update([{"range": a1, "values": [[""] * COL_MILLED]}]))
     # Whiten A:K — same span the blue "pending" fill was painted over.
     request = {
         "repeatCell": {
@@ -515,8 +525,9 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
     would silently overwrite a colleague's work, so this raises RowOccupiedError
     and the caller reports it instead of guessing.
 
-    L/M/N are not touched: clear_placeholder_row leaves them alone, so Sum3D and
-    the mill markers were never lost in the first place."""
+    L/M/N повертаються з полів роботи: `clear_placeholder_row` тепер стирає і їх.
+    Порожнечу перевіряємо лише в A:K — у рядках, стертих до цієї зміни, L:N
+    лишились, і вимога порожнього L:N назавжди заблокувала б їхнє скасування."""
     row = _sheet_row(order)
     # A read failure must REFUSE, never fall through to the write: the emptiness
     # check is the only thing standing between a restore and overwriting a
@@ -544,6 +555,9 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
         COL_JOB_CODE: order.job_code,
         COL_TECHNICIAN: order.technician_name,
         COL_CAM_COMMENT: order.cam_comment,
+        COL_SUM3D_ID: order.sum3d_id,
+        COL_CALCULATED: order.calculated_raw,
+        COL_MILLED: order.milled_raw,
     }
     updates = [
         {"range": gspread.utils.rowcol_to_a1(row, col), "values": [[value]]}
@@ -570,7 +584,9 @@ def restore_erased_row(
     «запишемо поверх». Збій читання теж відмова: непрочитаний рядок не можна
     вважати вільним.
 
-    L/M/N не чіпаються — `clear_placeholder_row` їх не стирав.
+    L:N повертаються, якщо вони є в збереженому вмісті: з 18.09.26 стирання
+    знімає A:N і чистить L:N. Старі записи журналу несуть лише A:K — тоді L:N
+    не чіпаються (у таких рядках їх і не стирали).
     """
     if not values or not any(v.strip() for v in values if isinstance(v, str)):
         raise ValueError("нема чого відновлювати: збережений вміст порожній")
@@ -586,13 +602,15 @@ def restore_erased_row(
     if occupied:
         raise RowOccupiedError(f"рядок {row} уже зайнято")
 
-    trimmed: list = list(values[:11])
-    trimmed += [""] * (11 - len(trimmed))
+    width = COL_MILLED if len(values) > COL_CAM_COMMENT else COL_CAM_COMMENT
+    trimmed: list = list(values[:width])
+    trimmed += [""] * (width - len(trimmed))
     trimmed[COL_QUANTITY - 1] = sheet_quantity(trimmed[COL_QUANTITY - 1])
+    last = gspread.utils.rowcol_to_a1(row, width)
     # batch_update, а не `update`: у gspread 6 порядок аргументів `update`
     # змінився, а тут той самий виклик, що вже вживає `restore_order_row`.
     call_with_retry(
-        lambda: worksheet.batch_update([{"range": f"A{row}:K{row}", "values": [trimmed]}])
+        lambda: worksheet.batch_update([{"range": f"A{row}:{last}", "values": [trimmed]}])
     )
 
 
@@ -720,6 +738,25 @@ _MATERIAL_FILLS = {
     "Титан": _GREEN,
     "Віск": _CYAN,
 }
+
+
+# L:N у зрізі B:N перевірочного читання (B — нульовий індекс).
+_GUARD_MARKS = slice(COL_SUM3D_ID - 2, COL_MILLED - 1)
+
+
+def _blank_marks_request(sheet_id: int, row_number: int) -> dict:
+    """Стерти ЗНАЧЕННЯ L:N одного рядка; зелене оформлення лишається."""
+    return {
+        "updateCells": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_number - 1, "endRowIndex": row_number,
+                "startColumnIndex": COL_SUM3D_ID - 1, "endColumnIndex": COL_MILLED,
+            },
+            "rows": [{"values": [{}, {}, {}]}],
+            "fields": "userEnteredValue",
+        }
+    }
 
 
 def _row_value_map(work: dict) -> dict[int, str]:
@@ -904,18 +941,35 @@ def append_manual_work_rows(
     #
     # Помилка читання НЕ пропускає запис: неперевірений рядок гірший за
     # пропущений запис — те саме правило, що на `_resolve_row` (CLAUDE.md §14).
-    guard_rows = call_with_retry(lambda: worksheet.get(f"B{first}:E{last}"))
+    #
+    # Читаємо до N, а не до E: зайнятість і далі вирішують B/C/E, але L:N
+    # (Sum3D, «Прорахував», «Відфрезерував») без роботи в рядку — це залишок,
+    # і нова робота його УСПАДКУВАЛА б: синк прочитав би її прорахованою з
+    # чужим Sum3D. Так лежав рядок 60 вкладки 18.09.26 після видалення
+    # пробної роботи (17.09, 19:50) — його стирання чистило лише A:K.
+    guard_rows = call_with_retry(lambda: worksheet.get(f"B{first}:N{last}"))
+    leftovers: list[int] = []
     for offset, row in enumerate(guard_rows or []):
         if _row_is_occupied(row):
             raise RuntimeError(
                 f"рядок {first + offset} у таблиці вже зайнятий — хтось писав "
                 "у цю вкладку одночасно з вами. Спробуйте ще раз."
             )
+        marks = [c for c in row[_GUARD_MARKS] if isinstance(c, str)]
+        if any(c.strip() for c in marks):
+            logger.warning(
+                "Ручне додавання: рядок %s без роботи мав залишок у L:N %r — стираю, "
+                "інакше нова робота його успадкує",
+                first + offset, marks,
+            )
+            leftovers.append(first + offset)
 
     # Values + blue fill in ONE spreadsheets.batchUpdate — one fewer proxy
     # round-trip than a separate values write + format. Blue paints only A:K,
-    # so the green ID/mill columns (L/M/N) are never overwritten.
-    requests = _grid_write_requests(
+    # so the green ID/mill columns (L/M/N) are never overwritten. Залишок L:N
+    # стирається ПЕРШИМ у тому самому пакеті — значення роботи лягають поверх.
+    requests = [_blank_marks_request(worksheet.id, row) for row in leftovers]
+    requests += _grid_write_requests(
         worksheet.id, rows, works, paint_blue=paint_blue, first=first, last=last
     )
     call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": requests}))
