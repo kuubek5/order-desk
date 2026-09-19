@@ -33,10 +33,16 @@ _SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# HTTP statuses worth retrying: Google rate-limit (429) and transient
-# server-side failures (5xx). A 4xx other than 429 (bad Sheet ID, revoked
-# access) is a real error and must fail fast, not spin through retries.
-_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# HTTP statuses worth retrying: Google rate-limit (429), the concurrency
+# conflict 409, and transient server-side failures (5xx). A 409 "The operation
+# was aborted" is Google refusing an operation because another edit held the
+# document lock at that instant — "aborted" means it did NOT apply, so a retry
+# is safe for BOTH reads and writes and almost always succeeds on the next
+# attempt (бойовий лог 19.09.26: два одиночні 409 на читанні вкладки під час
+# гарячого синку валили «Гарячий тік синку впав», хоча наступний тік проходив
+# сам). Any other 4xx (bad Sheet ID, revoked access) is a real error and must
+# fail fast, not spin through retries.
+_RETRYABLE_STATUS = {409, 429, 500, 502, 503, 504}
 
 _T = TypeVar("_T")
 

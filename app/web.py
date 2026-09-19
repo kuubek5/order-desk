@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+import asyncio
 import logging
 from datetime import datetime
 import os
@@ -888,8 +889,42 @@ class _BackgroundWorker:
             self.thread.join(timeout=timeout)
 
 
+def _quiet_benign_proactor_reset(loop, context: dict) -> None:
+    """Обробник винятків event loop, який глушить ОДИН відомий нешкідливий
+    випадок Windows і все інше віддає дефолту без змін.
+
+    Коли браузер (чи будь-який клієнт) рве TCP-зʼєднання під час відповіді,
+    подієвий цикл Windows (Proactor) кидає `ConnectionResetError [WinError
+    10054]` уже після того, як зʼєднання зникло, — усередині власного колбека
+    `_ProactorBasePipeTransport._call_connection_lost`. Дефолтний обробник
+    asyncio пише це як `ERROR asyncio: Exception in callback ...`, хоча
+    робити з ним нічого: відповідь віддавати нема кому, стан застосунку цілий.
+    Бойовий лог 17–19.09.26 показав такі рядки в добовому звіті бота як
+    «помилки», лякаючи червоним щоранку.
+
+    Ми НЕ ховаємо помилки: звужуємо саме до цього транспортного колбека з
+    саме `ConnectionResetError`. Будь-який інший виняток (у т.ч. інший
+    `ConnectionResetError` не з цього колбека) іде в
+    `loop.default_exception_handler` як раніше, тож справжні збої видно.
+    """
+    exc = context.get("exception")
+    handle = context.get("handle")
+    if isinstance(exc, ConnectionResetError) and "_call_connection_lost" in repr(handle):
+        logger.debug("Клієнт розірвав зʼєднання під час відповіді (WinError 10054)")
+        return
+    loop.default_exception_handler(context)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Приглушити відомий нешкідливий шум event loop на Windows (обрив клієнта
+    # під час відповіді) — ставиться на ЖИВИЙ цикл застосунку, той самий, що
+    # обслуговує HTTP і кидає цей виняток. Решта винятків циклу логуються як
+    # раніше (див. _quiet_benign_proactor_reset).
+    try:
+        asyncio.get_running_loop().set_exception_handler(_quiet_benign_proactor_reset)
+    except Exception:  # noqa: BLE001 — обробник шуму не має блокувати старт
+        logger.debug("Не вдалося поставити обробник винятків event loop", exc_info=True)
     # Схему доводить до голови міграцій `app.schema.ensure_schema` — той самий
     # код, що й у Windows-лаунчері. Раніше тут стояв голий `create_all`, який
     # створює відсутні таблиці, але НЕ додає колонку в наявну: база тихо

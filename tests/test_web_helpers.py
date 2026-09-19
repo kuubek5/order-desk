@@ -800,3 +800,47 @@ def test_approval_pending_is_not_the_approved_form_of_the_same_word():
         None,
     ):
         assert is_approval_pending_comment(comment) is False, comment
+
+
+# --- обробник нешкідливого обриву клієнта на Windows (WinError 10054) ---
+
+
+def test_proactor_reset_from_connection_lost_is_swallowed():
+    """Саме `_call_connection_lost` + `ConnectionResetError` глушиться:
+    default_exception_handler НЕ викликається."""
+    from app.web import _quiet_benign_proactor_reset
+
+    calls = []
+    loop = SimpleNamespace(default_exception_handler=calls.append)
+    context = {
+        "exception": ConnectionResetError(10054, "reset"),
+        "handle": "<Handle _ProactorBasePipeTransport._call_connection_lost(None)>",
+    }
+
+    _quiet_benign_proactor_reset(loop, context)
+
+    assert calls == []
+
+
+def test_other_loop_exceptions_reach_default_handler():
+    """Будь-що інше йде дефолтному обробнику без змін."""
+    from app.web import _quiet_benign_proactor_reset
+
+    calls = []
+    loop = SimpleNamespace(default_exception_handler=calls.append)
+
+    # інший виняток на тому ж колбеку
+    ctx_other_exc = {
+        "exception": ValueError("bug"),
+        "handle": "<Handle _ProactorBasePipeTransport._call_connection_lost(None)>",
+    }
+    _quiet_benign_proactor_reset(loop, ctx_other_exc)
+
+    # ConnectionResetError, але НЕ з цього колбека
+    ctx_other_handle = {
+        "exception": ConnectionResetError(10054, "reset"),
+        "handle": "<Handle SomeOther.callback()>",
+    }
+    _quiet_benign_proactor_reset(loop, ctx_other_handle)
+
+    assert calls == [ctx_other_exc, ctx_other_handle]

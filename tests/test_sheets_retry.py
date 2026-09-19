@@ -24,8 +24,10 @@ def _api_error(status_code: int) -> gspread.exceptions.APIError:
 # --- is_transient_sheet_error -------------------------------------------
 
 
-@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
-def test_google_rate_limit_and_5xx_are_transient(status):
+@pytest.mark.parametrize("status", [409, 429, 500, 502, 503, 504])
+def test_google_rate_limit_conflict_and_5xx_are_transient(status):
+    # 409 "The operation was aborted" — конкурентний конфлікт: операція НЕ
+    # застосувалась, тож повтор безпечний (бойовий лог 19.09.26).
     assert is_transient_sheet_error(_api_error(status)) is True
 
 
