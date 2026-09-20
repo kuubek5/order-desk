@@ -54,12 +54,19 @@ jobs:
       - name: Package (portable zip)
         run: zip -j kmill-agent.zip kmill-agent.exe config.example.json install.ps1 README.md
 
+      # retention-days: 7 — артефакти агента це build-вихід, а не спосіб
+      # доставки (агент качається з тега `agent-latest` у публічному
+      # релізному репо, див. джоб installer). Дефолтні 90 днів накопичували
+      # їх щопуш, і безкоштовне сховище Actions (500 МБ) заповнилось на 100%
+      # за пів місяця — 506 артефактів, 1.3 ГБ (20.09.26). Тиждень вистачає,
+      # щоб за потреби зняти exe останніх білдів зі сторінки Actions.
       - name: Upload portable zip
         uses: actions/upload-artifact@v4
         with:
           name: kmill-agent
           path: agent/kmill-agent.zip
           if-no-files-found: error
+          retention-days: 7
 
       - name: Upload exe (for the installer job)
         uses: actions/upload-artifact@v4
@@ -67,6 +74,7 @@ jobs:
           name: kmill-agent-exe
           path: agent/kmill-agent.exe
           if-no-files-found: error
+          retention-days: 7
 
   installer:
     needs: build
@@ -103,6 +111,7 @@ jobs:
           name: KMillAgent-Setup
           path: agent/Output/*.exe
           if-no-files-found: error
+          retention-days: 7
 
       # Публікуємо в публічний репозиторій релізів під СТАЛИМ тегом
       # `agent-latest`: екран «Налаштування → Верстати» посилається саме на
