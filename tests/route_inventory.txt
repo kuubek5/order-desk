@@ -46,6 +46,7 @@ GET /machines/strip
 GET /machines/{key}/frame.png
 GET /machines/{key}/history
 GET /mail
+GET /mail/queue-mirror
 GET /mail/{email_id}
 GET /orders/new
 GET /orders/{order_id}
@@ -160,6 +161,7 @@ POST /orders/{order_id}/focus
 POST /orders/{order_id}/found-units
 POST /orders/{order_id}/mark-found
 POST /orders/{order_id}/operator
+POST /orders/{order_id}/quantity
 POST /orders/{order_id}/status
 POST /orders/{order_id}/sum3d-id
 POST /orders/{order_id}/unissue

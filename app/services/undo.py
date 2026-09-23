@@ -29,7 +29,7 @@ from app.services.sheet_writeback import (
 # others may have built on top of a change made long ago.
 UNDO_WINDOW_SECONDS = 5 * 60
 
-UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator", "cam_comment", "delete")
+UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator", "quantity", "cam_comment", "delete")
 
 
 def _run_sheet_call(sheet_call) -> str | None:
@@ -156,6 +156,15 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             return UndoOutcome("Не можна скасувати — оператора вже змінили", kind="error")
         order.calculated_raw = entry.old_value or ""
         sheet_call = (write_calculated_cell_warm, (order.id, order.calculated_raw))
+    elif entry.action_type == "quantity":
+        # Кількість — лише клієнтські рядки (пошта/вписаний клієнт). Той самий
+        # захист «значення вже змінили», що й в оператора; запис назад у таблицю
+        # (колонка C) через спільний write_sheet_fields_warm — для email тихий
+        # no-op (order_writes_to_sheet).
+        if (order.quantity or "") != (entry.new_value or ""):
+            return UndoOutcome("Не можна скасувати — кількість уже змінили", kind="error")
+        order.quantity = entry.old_value or None
+        sheet_call = (write_sheet_fields_warm, (order.id, {"quantity"}))
     elif entry.action_type == "cam_comment":
         if (order.cam_comment or "") != (entry.new_value or ""):
             return UndoOutcome("Не можна скасувати — коментар уже змінили", kind="error")
@@ -260,6 +269,11 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             return UndoOutcome("Не можна повторити — оператора вже змінили", kind="error")
         order.calculated_raw = entry.new_value or ""
         sheet_call = (write_calculated_cell_warm, (order.id, order.calculated_raw))
+    elif entry.action_type == "quantity":
+        if (order.quantity or "") != (entry.old_value or ""):
+            return UndoOutcome("Не можна повторити — кількість уже змінили", kind="error")
+        order.quantity = entry.new_value or None
+        sheet_call = (write_sheet_fields_warm, (order.id, {"quantity"}))
     elif entry.action_type == "cam_comment":
         if (order.cam_comment or "") != (entry.old_value or ""):
             return UndoOutcome("Не можна повторити — коментар уже змінили", kind="error")

@@ -159,5 +159,26 @@
             {% endif %}
         </section>
     </div>
+
+    {# Дзеркало черги (23.09.26): read-only список робіт, ПРИЙНЯТИХ саме з пошти.
+       Оператор прийняв лист — робота одразу видима внизу, без переходу в чергу.
+       НЕ вся черга (рішення власника): лаба й табличні клієнти сюди не йдуть.
+       Свій полл (кожні 15с, тільки тіло) і згортання (клас .qmir-collapsed,
+       стан у KMStore, обробник у mail.js). Полл спить у схованій вкладці
+       ([!document.hidden]) — те саме правило, що й у списку тріажу. #}
+    <section class="qmir" id="mail-queue-mirror" aria-labelledby="qmir-title">
+        <header class="qmir-head">
+            <button type="button" class="qmir-toggle" aria-expanded="true"
+                    aria-controls="qmir-body" title="Згорнути / розгорнути">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <h2 class="qmir-title" id="qmir-title">Прийняте з пошти <span class="qmir-count">{{ mirror_orders|length }}</span></h2>
+        </header>
+        <div class="qmir-body" id="qmir-body"
+             hx-get="/mail/queue-mirror" hx-trigger="every 15s[!document.hidden]"
+             hx-swap="innerHTML">
+            {% include "_mail_queue_mirror.html" %}
+        </div>
+    </section>
 </main>
 {% endblock %}

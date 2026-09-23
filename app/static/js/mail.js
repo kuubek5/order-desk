@@ -263,3 +263,32 @@ document.addEventListener("keydown", (event) => {
   // заодно доводить підсвітку через markMailRowActive вище.
   next.click();
 });
+
+// ── Дзеркало черги внизу пошти: згортання ────────────────────────────────────
+// Read-only список робіт, прийнятих з пошти (source=email). Кнопка в шапці
+// перемикає клас .qmir-collapsed на секції, а CSS ховає тіло; стан памʼятається
+// в KMStore. Полл тіла (кожні 15с) від класу не залежить — він свопає лише вміст
+// .qmir-body, шапка з кнопкою лишаються, тож клас переживає полл.
+(function () {
+  const KEY = "mailMirrorCollapsed";
+  const mirror = document.getElementById("mail-queue-mirror");
+  if (!mirror) return; // не екран пошти
+  const btn = mirror.querySelector(".qmir-toggle");
+
+  function apply(collapsed) {
+    mirror.classList.toggle("qmir-collapsed", collapsed);
+    if (btn) btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+
+  let saved = "0";
+  try { saved = (window.KMStore && KMStore.get(KEY)) || "0"; } catch (e) { saved = "0"; }
+  apply(saved === "1");
+
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const collapsed = !mirror.classList.contains("qmir-collapsed");
+      apply(collapsed);
+      try { if (window.KMStore) KMStore.set(KEY, collapsed ? "1" : "0"); } catch (e) { /* сховище недоступне */ }
+    });
+  }
+})();

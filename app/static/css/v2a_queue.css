@@ -380,6 +380,24 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
 .q2 .queue-row:hover .operator-input{border-color:var(--line);background:var(--field)}
 .q2 .operator-input:focus{border-color:rgba(var(--accent-rgb), .45);background:var(--field)}
 .q2 .operator-input::placeholder{color:var(--ink-3)}
+/* Кількість — редагована ТІЛЬКИ в клієнтських рядках (пошта/вписаний клієнт).
+   Той самий «тихий доти, доки не потрібно» афорданс, що й .operator-input:
+   нижня лінія в спокої, повна межа+фон на hover рядка або у фокусі. Різниця —
+   вирівнювання по центру своєї колонки (td.quantity{text-align:center}) і моно
+   fs-2 як у статичного числа поруч. Специфічність (0,2,0) = як в operator-input,
+   тож глобальний `.q2 input[type="text"]` (свідомо відсутній, див. treatment-a)
+   його не роздуває. */
+.q2 .qty-form{display:inline-flex;align-items:center;justify-content:center}
+.q2 .qty-input{
+  width:40px;height:21px;padding:0 4px;border-radius:5px;background:transparent;
+  border:1px solid transparent;border-bottom-color:var(--control-edge);
+  color:var(--ink);font-family:var(--font-mono);font-size:var(--fs-2);
+  text-align:center;outline:none;
+  transition:border-color .12s ease,background .12s ease;
+}
+.q2 .queue-row:hover .qty-input{border-color:var(--line);background:var(--field)}
+.q2 .qty-input:focus{border-color:rgba(var(--accent-rgb), .45);background:var(--field)}
+.q2 .qty-input::placeholder{color:var(--ink-3)}
 body.layout-edit .q2 table.qtable{user-select:none}
 
 /* ── Режим редагування віджетів (04.09.26) ────────────────────────────────

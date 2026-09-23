@@ -221,7 +221,25 @@
             {% if order.source not in ('email', 'sheet_client') and order.client_name %}<div class="rowclient" title="{{ order.client_name }}">{{ order.client_name }}</div>{% endif %}
         </div>
     </td>
-    <td class="quantity">{{ order.quantity or '—' }}</td>
+    {# Кількість. Для КЛІЄНТСЬКИХ робіт (пошта/вписаний клієнт) — редагована
+       прямо в рядку: у них немає наряду й техніка, а к-сть оператор уточнює вже
+       після листа. Enter/blur зберігає в quantity + пише назад у таблицю (для
+       sheet_client — колонка C; email рядка не має, тож запис no-op). Порожнє =
+       очистити. Лабораторні рядки лишаються звичайним моно-текстом — їх к-сть
+       задає технік у таблиці (форми тут немає). Архівні (row_locked) — теж лише
+       текст, як решта полів. #}
+    <td class="quantity">
+        {% if _is_client and not row_locked %}
+        <form class="qty-form" onsubmit="return false"
+              hx-post="/orders/{{ order.id }}/quantity"
+              hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
+              hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+            <input type="text" inputmode="numeric" name="quantity" value="{{ order.quantity or '' }}"
+                   class="mono qty-input" placeholder="—"
+                   title="Кількість одиниць — впишіть і натисніть Enter або перейдіть далі; порожнє поле очищає.">
+        </form>
+        {% else %}{{ order.quantity or '—' }}{% endif %}
+    </td>
     <td class="material-cell">{% include "_matpair.html" %}</td>
     <td class="kind-cell">
         {% if order.kind %}

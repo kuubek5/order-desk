@@ -87,6 +87,7 @@ from app.routers.deps import (
 )
 from app.sender_memory import list_sender_memories, lookup_sender
 from app.services.mail_accept import accept_letter, resolve_wizard_overrides
+from app.services.mail_mirror import mail_mirror_orders
 from app.services.config_state import (
     mail_preview_roots,
     mail_trusted_roots,
@@ -369,6 +370,9 @@ def get_mail(
             # Frozen-list state (see the `since` comment above).
             "list_watermark": list_watermark,
             "held_back_count": held_back_count,
+            # Дзеркало черги внизу сторінки — роботи, ПРИЙНЯТІ саме з пошти.
+            # Свій легкий прохід (mail_mirror_orders), read-only.
+            "mirror_orders": mail_mirror_orders(db),
         },
     )
 
@@ -390,6 +394,24 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(f"/mail?error={quote(str(exc))}", status_code=303)
 
     return RedirectResponse(f"/mail?synced={count}", status_code=303)
+
+
+@router.get("/mail/queue-mirror", response_class=HTMLResponse)
+def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
+    """Полл-фрагмент дзеркала черги (лише рядки) — свопається в .qmir-body кожні
+    15с. Read-only список робіт, ПРИЙНЯТИХ з пошти (mail_mirror_orders).
+
+    Оголошено ВИЩЕ за `/mail/{email_id}`: інакше FastAPI матчив би «queue-mirror»
+    як email_id (та сама пастка, що з `/settings/furnaces/password`)."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    blocked = blocked_response(request, db, user, "mail")
+    if blocked is not None:
+        return blocked
+    return templates.TemplateResponse(
+        request, "_mail_queue_mirror.html", {"mirror_orders": mail_mirror_orders(db)}
+    )
 
 
 @router.get("/mail/{email_id}", response_class=HTMLResponse)

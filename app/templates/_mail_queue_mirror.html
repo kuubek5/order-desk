@@ -1,0 +1,29 @@
+{# Дзеркало черги (лише рядки) — read-only список робіт, ПРИЙНЯТИХ з пошти
+   (source=email). Полл кожні 15с перемальовує саме цей вміст (див. обгортку
+   .qmir-body в mail_triage.html). Компактний рядок: клієнт · к-сть · матеріал ·
+   статус. Жодних дій — екран пошти лише показує, що прийняте вже в черзі; ім'я
+   веде на паспорт роботи звичайним посиланням (не модалка, щоб не залежати від
+   обробників черги). Матеріал — той самий партіал _matpair.html, що й у черзі,
+   тож маркування збігається. #}
+{% if mirror_orders %}
+<table class="qmir-table">
+    <tbody>
+        {% for order in mirror_orders %}
+        {% set _dc = status_dot(order.status) %}
+        <tr class="qmir-row">
+            <td class="qmir-name">
+                <a href="/orders/{{ order.id }}" class="qmir-link" title="{{ order.client_name or 'Без імені клієнта' }}">{{ order.client_name or 'Без імені клієнта' }}</a>
+            </td>
+            <td class="qmir-qty mono">{{ order.quantity or '—' }}</td>
+            <td class="qmir-mat">{% include "_matpair.html" %}</td>
+            <td class="qmir-status">
+                <span class="qmir-dot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
+                <span class="qmir-status-t">{{ order.status }}</span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="qmir-empty">Прийнятих з пошти робіт поки немає — приймеш лист, робота зʼявиться тут.</div>
+{% endif %}

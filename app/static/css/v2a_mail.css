@@ -545,3 +545,36 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
    що й у панелі: «3 з 5 файл.» має читатись як проблема, а не як подробиця. */
 .mailv2 .mailrow .att.att-gone{color:var(--alarm-ink)}
 .mailv2 .mailrow .att.att-gone svg{stroke:var(--alarm)}
+
+
+/* ── Дзеркало черги (низ екрана пошти, 23.09.26) ─────────────────────────────
+   Read-only список робіт, ПРИЙНЯТИХ саме з пошти (source=email). Оператор
+   прийняв лист — робота одразу видима тут, без переходу в чергу. НЕ вся черга
+   (рішення власника): лаба й табличні клієнти сюди не йдуть. Компактні рядки,
+   свій полл (кожні 15с, .qmir-body), згортання (клас .qmir-collapsed — стан у
+   KMStore, обробник у mail.js). Матеріал через спільний _matpair.html. */
+.mailv2 .qmir{margin:18px 0 0;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.mailv2 .qmir-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.mailv2 .qmir-collapsed .qmir-head{border-bottom-color:transparent}
+.mailv2 .qmir-toggle{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:1px solid var(--control-edge);border-radius:6px;background:var(--card-2);color:var(--ink-2);cursor:pointer;transition:border-color .12s ease,color .12s ease}
+.mailv2 .qmir-toggle svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s ease}
+.mailv2 .qmir-toggle:hover{border-color:var(--line-2);color:var(--ink)}
+/* Згорнуто → стрілка «вниз» повертається на «вправо» (класичний дисклоужер). */
+.mailv2 .qmir-collapsed .qmir-toggle svg{transform:rotate(-90deg)}
+.mailv2 .qmir-title{margin:0;font-family:var(--font-head);font-size:var(--fs-2);font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px}
+.mailv2 .qmir-count{font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;color:var(--ink-2);background:var(--card-2);border:1px solid var(--line);border-radius:20px;padding:1px 8px}
+.mailv2 .qmir-body{max-height:280px;overflow:auto}
+.mailv2 .qmir-collapsed .qmir-body{display:none}
+.mailv2 .qmir-table{width:100%;border-collapse:collapse;font-size:var(--fs-1)}
+.mailv2 .qmir-row{border-bottom:1px solid var(--line)}
+.mailv2 .qmir-row:last-child{border-bottom:none}
+.mailv2 .qmir-row:hover{background:var(--card-2)}
+.mailv2 .qmir-row td{padding:6px 14px;vertical-align:middle}
+.mailv2 .qmir-name{width:40%}
+.mailv2 .qmir-link{color:var(--ink);text-decoration:none;font-weight:500}
+.mailv2 .qmir-link:hover{color:var(--accent-c);text-decoration:underline}
+.mailv2 .qmir-qty{width:56px;text-align:center;color:var(--ink-2)}
+.mailv2 .qmir-status{white-space:nowrap;color:var(--ink-2)}
+.mailv2 .qmir-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.mailv2 .qmir-status-t{font-size:var(--fs-0)}
+.mailv2 .qmir-empty{padding:16px 14px;color:var(--ink-2);font-size:var(--fs-1)}

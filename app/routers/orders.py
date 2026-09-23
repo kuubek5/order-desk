@@ -344,6 +344,73 @@ async def set_operator(request: Request, order_id: int, operator: str = Form("")
     return response
 
 
+@router.post("/orders/{order_id}/quantity", response_class=HTMLResponse)
+async def set_quantity(request: Request, order_id: int, quantity: str = Form(""), db: Session = Depends(get_db)):
+    """Правка кількості одиниць прямо в рядку черги — ЛИШЕ для клієнтських робіт
+    (пошта / вписаний клієнт, source email/sheet_client). У них немає наряду й
+    техніка, а к-сть оператор часто уточнює вже після листа. Лабораторну к-сть
+    задає технік у таблиці — її звідси не чіпаємо: форма в рядку показується
+    лише для клієнтських, і сервер тримає те саме правило, щоб пряма POST не
+    міняла к-сть лабораторного рядка повз таблицю.
+
+    Порожнє значення = очистити (Form(""), не Form(...) — порожнє поле валідне,
+    як у set_operator/set_sum3d_id). Для sheet_client пише назад у колонку C
+    (позиція рядка звіряється всередині write_sheet_fields); для email рядка в
+    таблиці немає, тож запис тихо no-op (order_writes_to_sheet). Дія логується
+    → «Крок назад» (undo.py, action_type "quantity")."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    if order.source not in ("email", "sheet_client"):
+        raise HTTPException(
+            status_code=400, detail="кількість редагується лише для клієнтських робіт"
+        )
+
+    if sync_control.is_paused():
+        return templates.TemplateResponse(
+            request, "_order_row.html",
+            _row_context(request, db, order, SYNC_PAUSED_MSG),
+        )
+
+    value = quantity.strip()
+    old_value = order.quantity
+    if (old_value or "") == value:
+        # No change — return the row untouched, no log, no toast (as set_operator).
+        attach_export_folder_uris(db, [order])
+        attach_job_code_folder_uris(db, [order])
+        return templates.TemplateResponse(
+            request, "_order_row.html", _row_context(request, db, order, None)
+        )
+
+    order.quantity = value or None
+    note = f"кількість → {value}" if value else "кількість очищено"
+    log_entry = log_action(
+        db, order=order, operator=user, action_type="quantity", field="quantity",
+        old=old_value or "", new=value, note=note,
+    )
+    db.commit()
+    # Запис у таблицю — на воркері write-back, не на event loop (синк C-2).
+    sync_error = await await_on_writeback(write_sheet_fields_warm, order.id, {"quantity"})
+    db.refresh(order)
+
+    attach_export_folder_uris(db, [order])
+    attach_job_code_folder_uris(db, [order])
+
+    response = templates.TemplateResponse(
+        request, "_order_row.html", _row_context(request, db, order, sync_error)
+    )
+    if sync_error is None:
+        attach_action_toast(response, log_entry, note)
+    else:
+        attach_sync_error_toast(response, note, sync_error)
+    return response
+
+
 @router.post("/orders/{order_id}/cam-comment", response_class=HTMLResponse)
 async def set_cam_comment(
     request: Request,
