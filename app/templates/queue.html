@@ -290,7 +290,10 @@
                     {% if pending_emails %}
                     <div class="maillist">
                         {% for email in pending_emails[:6] %}
-                        <a class="mailrow" href="/mail/{{ email.id }}">
+                        {# `?open=` (а не /mail/{id}): відкриває ПОВНУ сторінку
+                           тріажу з цим листом у правій панелі, а не самотню
+                           картку без списку й дзеркала (прохання власника). #}
+                        <a class="mailrow" href="/mail?open={{ email.id }}">
                             <span class="from">{{ email.client_name_guess or email.from_address or 'без імені' }}</span>
                             <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%H:%M') }}{% else %}—{% endif %}</span>
                             <span class="subj">{{ email.subject or 'Без теми' }}</span>
