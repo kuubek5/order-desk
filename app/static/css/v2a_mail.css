@@ -563,18 +563,11 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .qmir-collapsed .qmir-toggle svg{transform:rotate(-90deg)}
 .mailv2 .qmir-title{margin:0;font-family:var(--font-head);font-size:var(--fs-2);font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px}
 .mailv2 .qmir-count{font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;color:var(--ink-2);background:var(--card-2);border:1px solid var(--line);border-radius:20px;padding:1px 8px}
-.mailv2 .qmir-body{max-height:280px;overflow:auto}
+/* Тіло несе `.q2`, щоб усередині діяли стилі таблиці черги (queue_table.css,
+   v2a_queue.css). Власного скролу тіло не має — скролиться внутрішній .tablewrap,
+   як у черзі; лише стеля нижча, щоб дзеркало не займало пів екрана під списком
+   листів. */
+.mailv2 .qmir-body{overflow:visible}
 .mailv2 .qmir-collapsed .qmir-body{display:none}
-.mailv2 .qmir-table{width:100%;border-collapse:collapse;font-size:var(--fs-1)}
-.mailv2 .qmir-row{border-bottom:1px solid var(--line)}
-.mailv2 .qmir-row:last-child{border-bottom:none}
-.mailv2 .qmir-row:hover{background:var(--card-2)}
-.mailv2 .qmir-row td{padding:6px 14px;vertical-align:middle}
-.mailv2 .qmir-name{width:40%}
-.mailv2 .qmir-link{color:var(--ink);text-decoration:none;font-weight:500}
-.mailv2 .qmir-link:hover{color:var(--accent-c);text-decoration:underline}
-.mailv2 .qmir-qty{width:56px;text-align:center;color:var(--ink-2)}
-.mailv2 .qmir-status{white-space:nowrap;color:var(--ink-2)}
-.mailv2 .qmir-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
-.mailv2 .qmir-status-t{font-size:var(--fs-0)}
+.mailv2 .qmir-body .tablewrap{max-height:min(60vh,520px)}
 .mailv2 .qmir-empty{padding:16px 14px;color:var(--ink-2);font-size:var(--fs-1)}

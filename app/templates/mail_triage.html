@@ -160,12 +160,16 @@
         </section>
     </div>
 
-    {# Дзеркало черги (23.09.26): read-only список робіт, ПРИЙНЯТИХ саме з пошти.
-       Оператор прийняв лист — робота одразу видима внизу, без переходу в чергу.
-       НЕ вся черга (рішення власника): лаба й табличні клієнти сюди не йдуть.
-       Свій полл (кожні 15с, тільки тіло) і згортання (клас .qmir-collapsed,
-       стан у KMStore, обробник у mail.js). Полл спить у схованій вкладці
-       ([!document.hidden]) — те саме правило, що й у списку тріажу. #}
+    {# Дзеркало черги (23.09.26): ПОВНА копія рядків черги для робіт, ПРИЙНЯТИХ з
+       пошти (source=email) — той самий вигляд і те саме inline-редагування, що в
+       черзі. Оператор прийняв лист — робота видима внизу й правиться прямо тут,
+       без переходу в чергу. НЕ вся черга (рішення власника): лаба й табличні
+       клієнти сюди не йдуть. Згортання (клас .qmir-collapsed, стан у KMStore,
+       обробник у mail.js). Полл (/mail/queue-mirror) свопає ЛИШЕ тіло й спить у
+       схованій вкладці ([!document.hidden]); `load` дотягує іконки папок після
+       першого малюнку (як #queue-rows у черзі). `.q2` на самому тілі, бо воно
+       переживає innerHTML-своп полла, а таблиця всередині — ні; queue.js бере
+       ширини з `.q2 .tablewrap table.qtable`, тож стовпці збігаються з чергою. #}
     <section class="qmir" id="mail-queue-mirror" aria-labelledby="qmir-title">
         <header class="qmir-head">
             <button type="button" class="qmir-toggle" aria-expanded="true"
@@ -174,11 +178,26 @@
             </button>
             <h2 class="qmir-title" id="qmir-title">Прийняте з пошти <span class="qmir-count">{{ mirror_orders|length }}</span></h2>
         </header>
-        <div class="qmir-body" id="qmir-body"
-             hx-get="/mail/queue-mirror" hx-trigger="every 15s[!document.hidden]"
+        <div class="qmir-body q2" id="qmir-body"
+             hx-get="/mail/queue-mirror" hx-trigger="load, every 15s[!document.hidden]"
              hx-swap="innerHTML">
             {% include "_mail_queue_mirror.html" %}
         </div>
     </section>
 </main>
+
+{# Виїзний паспорт роботи (slide-over) — ТОЙ САМИЙ, що в черзі: клік по наряду/виду
+   в дзеркалі відкриває реальну картку /orders/{id} у панелі (iframe). Без JS
+   посилання просто веде на /orders/{id} (обробник у queue.js тихо не чіпляється,
+   якщо панелі нема, — тому вона потрібна й тут). #}
+<aside class="detail-pane" id="order-detail-pane" aria-hidden="true" aria-label="Паспорт роботи">
+    <div class="detail-head">
+        <span class="ord mono" id="order-detail-title">Паспорт роботи</span>
+        <button class="detail-close" type="button" id="order-detail-close" aria-label="Закрити">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+    <div class="detail-body"><iframe id="order-detail-frame" title="Паспорт роботи"></iframe></div>
+</aside>
+<div class="detail-backdrop" id="order-detail-backdrop"></div>
 {% endblock %}

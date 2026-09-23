@@ -7,6 +7,10 @@
    (задача 1, app.js). Поза режимом вона неактивна/прихована (CSS), тому клік
    по заголовку для сортування працює як звичайно. #}
 {% set _grip %}<span class="colgrip" data-col-resize aria-hidden="true"></span>{% endset %}
+{# Дзеркало черги (екран пошти) вимикає сортування, передаючи sortable=false у
+   контекст include; черга його не задає → default true. Передаємо в макрос
+   ЯВНО, бо import `with context` не доносить `set`-змінні до макросу. #}
+{% set _sortable = sortable if sortable is defined else true %}
 <thead>
     {# Column order mirrors the Google Sheet: Наряд, Кількість, Матеріал/Колір,
        Вид роботи, Шлях (Номер роботи), Технік, Коментар, Sum3D ID — then Статус
@@ -23,9 +27,9 @@
            на шпильку+крапку+чіп), тому резерв точний; height:0+visibility:hidden
            не додають ані висоти, ані видимого сліду. #}
         <th class="col-order">Наряд / Клієнт{% if widest_order_label %}<span class="col-order-sizer" aria-hidden="true">{{ widest_order_label }}</span>{% endif %}{{ _grip }}</th>
-        <th class="col-qty">{{ sortcol.th('quantity', 'Кількість') }}{{ _grip }}</th>
-        <th class="col-material">{{ sortcol.th('material', 'Матеріал / Колір') }}{{ _grip }}</th>
-        <th class="col-kind">{{ sortcol.th('kind', 'Вид роботи') }}{{ _grip }}</th>
+        <th class="col-qty">{{ sortcol.th('quantity', 'Кількість', _sortable) }}{{ _grip }}</th>
+        <th class="col-material">{{ sortcol.th('material', 'Матеріал / Колір', _sortable) }}{{ _grip }}</th>
+        <th class="col-kind">{{ sortcol.th('kind', 'Вид роботи', _sortable) }}{{ _grip }}</th>
         <th class="col-path">Шлях{{ _grip }}</th>
         <th class="col-tech">Технік{{ _grip }}</th>
         <th class="col-comment">Коментар{{ _grip }}</th>

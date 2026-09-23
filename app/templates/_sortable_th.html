@@ -13,7 +13,14 @@
    лишається справжнім (Ctrl-клік, без JS, індексація) — при звичайному кліку
    htmx його перехоплює. Скрол .tablewrap зберігає той самий обробник app.js,
    що й на поллі (htmx:beforeSwap/afterSwap на #queue-rows). #}
-{% macro th(field, label) %}
+{% macro th(field, label, sortable=true) %}
+{# Дзеркало черги на екрані пошти рендерить ті самі заголовки, але БЕЗ сортування
+   (воно таргетить #queue-rows, якого там немає, і клік стрибав би в чергу). Гард
+   стоїть ПЕРШИМ — плоский підпис не торкається period/ready/selected_date, яких
+   у контексті пошти немає. `sortable` — ПАРАМЕТР (не змінна контексту): import
+   `with context` не доносить `{% set %}` до макросу, тож дзеркало передає його
+   явно; черга кличе без аргументу → default true, як раніше. #}
+{% if not sortable %}<span class="th-plain">{{ label }}</span>{% else %}
 {% set is_active = sort == field %}
 {% set next_dir = 'desc' if (is_active and sort_dir == 'asc') else 'asc' %}
 {% set date_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
@@ -23,4 +30,5 @@
    title="Сортувати за «{{ label }}»">
     <span>{{ label }}</span>{% if is_active %}<span class="th-sort-icon" aria-hidden="true">{% if sort_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>{% endif %}
 </a>
+{% endif %}
 {% endmacro %}

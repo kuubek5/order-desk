@@ -67,6 +67,8 @@ from app.models import (
 )
 from app.order_folder import (
     attach_email_preview_tokens,
+    attach_export_folder_uris,
+    attach_job_code_folder_uris,
     resolve_email_attachment_folder,
 )
 from app.queue_filters import (
@@ -88,6 +90,8 @@ from app.routers.deps import (
 from app.sender_memory import list_sender_memories, lookup_sender
 from app.services.mail_accept import accept_letter, resolve_wizard_overrides
 from app.services.mail_mirror import mail_mirror_orders
+from app.services.focus import focused_ids
+from app.statuses import STATUSES
 from app.services.config_state import (
     mail_preview_roots,
     mail_trusted_roots,
@@ -370,9 +374,17 @@ def get_mail(
             # Frozen-list state (see the `since` comment above).
             "list_watermark": list_watermark,
             "held_back_count": held_back_count,
-            # Дзеркало черги внизу сторінки — роботи, ПРИЙНЯТІ саме з пошти.
-            # Свій легкий прохід (mail_mirror_orders), read-only.
+            # Дзеркало черги внизу сторінки — ПОВНА копія рядків черги для робіт,
+            # ПРИЙНЯТИХ саме з пошти, з тим самим inline-редагуванням. Контекст,
+            # який очікує _order_row.html: статуси (меню статусу) і набір «мої
+            # зараз» (персональна мітка; сторож test_order_focus вимагає його на
+            # КОЖНОМУ рендері рядка). Іконки папок тут НЕ чіпляємо — їх дотягне
+            # полл /mail/queue-mirror одразу після першого малюнку (hx-trigger
+            # `load`), як #queue-rows у черзі, щоб не платити скан мережевої шари
+            # на повному рендері сторінки.
             "mirror_orders": mail_mirror_orders(db),
+            "statuses": STATUSES,
+            "focused_ids": focused_ids(db, user),
         },
     )
 
@@ -409,8 +421,19 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
     blocked = blocked_response(request, db, user, "mail")
     if blocked is not None:
         return blocked
+    orders = mail_mirror_orders(db)
+    # Іконки папок (export + STL-прев'ю) — саме на поллі, як #queue-rows у черзі:
+    # скан мережевої шари дорогий, тож повний рендер сторінки його пропускає, а
+    # цей полл (спрацьовує на `load` одразу після малюнку) домальовує іконки.
+    attach_export_folder_uris(db, orders)
+    attach_job_code_folder_uris(db, orders)
     return templates.TemplateResponse(
-        request, "_mail_queue_mirror.html", {"mirror_orders": mail_mirror_orders(db)}
+        request, "_mail_queue_mirror.html",
+        {
+            "mirror_orders": orders,
+            "statuses": STATUSES,
+            "focused_ids": focused_ids(db, user),
+        },
     )
 
 

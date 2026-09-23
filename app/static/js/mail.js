@@ -264,11 +264,44 @@ document.addEventListener("keydown", (event) => {
   next.click();
 });
 
+// ── Дзеркало черги внизу пошти: захист полла ─────────────────────────────────
+// Тіло #qmir-body самополлиться кожні 15с (свопає вміст на свіжу таблицю). Дві
+// небезпеки, як у #queue-rows черги: (1) полл під час набору затер би
+// напівуведене поле; (2) без потреби перемальовував би однакову таблицю, гублячи
+// скрол .tablewrap. Тому: пропускаємо своп, якщо всередині сфокусоване поле
+// вводу, або якщо відповідь байт-у-байт та сама; інакше зберігаємо скрол.
+let lastMirrorResponse = null;
+let savedMirrorScroll = null;
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const target = event.detail.target;
+  if (!target || target.id !== "qmir-body") return;
+  const ae = document.activeElement;
+  if (ae && target.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) {
+    event.detail.shouldSwap = false; // оператор друкує — не чіпаємо
+    return;
+  }
+  const incoming = event.detail.serverResponse;
+  if (incoming != null && incoming === lastMirrorResponse) {
+    event.detail.shouldSwap = false;
+    return;
+  }
+  lastMirrorResponse = incoming;
+  const wrap = target.querySelector(".tablewrap");
+  savedMirrorScroll = wrap ? wrap.scrollTop : null;
+});
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = event.detail.target;
+  if (!target || target.id !== "qmir-body") return;
+  if (savedMirrorScroll == null) return;
+  const wrap = target.querySelector(".tablewrap");
+  if (wrap) wrap.scrollTop = savedMirrorScroll;
+  savedMirrorScroll = null;
+});
+
 // ── Дзеркало черги внизу пошти: згортання ────────────────────────────────────
-// Read-only список робіт, прийнятих з пошти (source=email). Кнопка в шапці
-// перемикає клас .qmir-collapsed на секції, а CSS ховає тіло; стан памʼятається
-// в KMStore. Полл тіла (кожні 15с) від класу не залежить — він свопає лише вміст
-// .qmir-body, шапка з кнопкою лишаються, тож клас переживає полл.
+// Кнопка в шапці перемикає клас .qmir-collapsed на секції, а CSS ховає тіло;
+// стан памʼятається в KMStore. Полл тіла від класу не залежить — він свопає лише
+// вміст .qmir-body, шапка з кнопкою лишаються, тож клас переживає полл.
 (function () {
   const KEY = "mailMirrorCollapsed";
   const mirror = document.getElementById("mail-queue-mirror");
