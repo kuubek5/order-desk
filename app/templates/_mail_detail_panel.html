@@ -16,7 +16,11 @@
 {% set on_disk_count = att_count - missing_count %}
 <div class="detail-head">
     <div>
-        <div class="from">{{ email.from_address or 'Відправник не визначений' }}</div>
+        {# Ведемо показним іменем (як ukr.net); адреса — дрібним рядком під ним,
+           бо на ній тримаються фільтри й пам'ять відправників, тож ховати її
+           не можна. Без показного імені адреса стає головним написом, як було. #}
+        <div class="from">{{ email.from_name or email.from_address or 'Відправник не визначений' }}</div>
+        {% if email.from_name and email.from_address %}<div class="from-addr mono">{{ email.from_address }}</div>{% endif %}
         <div class="subj">{{ email.subject or 'Без теми' }}</div>
     </div>
     <div class="when">{% if email.received_at %}{{ email.received_at.strftime('%d.%m.%y %H:%M') }}{% else %}—{% endif %}</div>

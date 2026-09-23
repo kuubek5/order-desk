@@ -155,6 +155,9 @@
        — і картка зникатиме на кожному тіку. #}
     {% include "_shift_card.html" %}
     {% include "_queue_sidebar.html" %}
+    {# Груповий Sum3D — ВИЩЕ `.worklayout` (поза #queue-rows), показується лише
+       коли є пришпилені роботи. Дім для набору «мої зараз». #}
+    {% include "_sum3d_batch_bar.html" %}
 
     <div class="worklayout">
         <section class="queue-panel" aria-labelledby="queue-title">

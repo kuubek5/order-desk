@@ -588,6 +588,13 @@ class EmailMessage(Base):
         String(50), default="", server_default="", nullable=False
     )
     from_address: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    # Показне ім'я відправника з заголовка From ("Юрій Струбицький"), окремо від
+    # самої адреси. imap-tools дає його як from_values.name; ми його раніше
+    # викидали, лишаючи оператору лише адресу, коли класифікатор не вгадав
+    # клієнта. Список тріажу показує його головним написом — як ukr.net, за яким
+    # оператор звик обробляти пошту. NULL для листів, імпортованих до появи поля,
+    # і для листів без показного імені в заголовку (тоді падаємо на здогад/адресу).
+    from_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)

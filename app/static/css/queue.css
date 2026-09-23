@@ -390,3 +390,21 @@
 .licstrip-bad{border-color:rgba(var(--alarm-rgb), .45);background:rgba(var(--alarm-rgb), .10)}
 .licstrip-bad:hover{background:rgba(var(--alarm-rgb), .17)}
 .licstrip-bad .licstrip-dot{background:var(--alarm)}
+
+/* Груповий Sum3D — акцентна смуга дії над чергою (поза #queue-rows). Тон
+   акценту (blush), бо це активна дія оператора, а не попередження. */
+.sum3d-batch{display:flex;align-items:center;gap:10px;margin:0 0 8px;padding:8px 12px;
+  border:1px solid rgba(var(--accent-rgb), .4);border-radius:var(--r-card);
+  background:rgba(var(--accent-base-rgb), .10);font-size:var(--fs-1);flex-wrap:wrap}
+.sum3d-batch .sb-pin{display:inline-flex;flex:0 0 auto}
+.sum3d-batch .sb-pin svg{width:18px;height:18px;stroke:var(--accent-c);fill:none;stroke-width:1.6}
+.sum3d-batch .sb-pin svg .duo{fill:rgba(var(--accent-rgb), .18);stroke:none}
+.sum3d-batch .sb-lead{color:var(--ink)}
+.sum3d-batch .sb-lead b{font-weight:600}
+.sum3d-batch .sb-review{color:var(--accent-c);text-decoration:none}
+.sum3d-batch .sb-review:hover{text-decoration:underline}
+.sum3d-batch .sb-field{margin-left:auto;min-width:0}
+.sum3d-batch .sb-input{width:200px;max-width:100%;padding:5px 9px;font-size:var(--fs-1);
+  color:var(--ink);background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r-input, 8px)}
+.sum3d-batch .sb-input:focus{outline:none;border-color:var(--accent-c);box-shadow:0 0 0 2px rgba(var(--accent-rgb), .25)}
+.sum3d-batch .sb-go{flex:0 0 auto}

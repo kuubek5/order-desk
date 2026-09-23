@@ -143,7 +143,12 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
    файлів з'їжджала тим сильніше, чим коротша тема, тобто в кожному рядку по
    своєму. Фіксована колонка під файли ставить їх усі на одну вертикаль. */
 .mailv2 .mailrow .r2{display:grid;grid-template-columns:minmax(0,1fr) var(--mail-att-col, 92px) auto;align-items:baseline;gap:8px;min-width:0}
-.mailv2 .mailrow .from{font-size:var(--fs-2);font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .mailrow .from{font-size:var(--fs-2);font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+/* Розпізнаний клієнт — тиха підказка ПРАВОРУЧ від показного імені: менша, сіра,
+   стискається першою (flex:0 1 auto + ellipsis), щоб ніколи не з'їдати саме
+   ім'я відправника. Стрілка «→» відділяє «від кого» від «кого впізнали». */
+.mailv2 .mailrow .from-guess{flex:0 1 auto;min-width:0;font-size:var(--fs-0);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .mailrow .from-guess::before{content:"→ ";color:var(--ink-4, var(--ink-3))}
 .mailv2 .mailrow .t{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);flex:0 0 auto;text-align:right}
 .mailv2 .mailrow .subj{font-size:var(--fs-1);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 /* Right-hand column: badge + ✕, centred against both text lines.
@@ -281,6 +286,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .detail-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:thin;max-height:calc(100vh - 190px);background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 26px 64px -34px rgba(0,0,0,.92),0 8px 22px -16px rgba(0,0,0,.66)}
 .mailv2 .detail-head{display:flex;align-items:flex-start;gap:10px;padding:16px 20px 14px;border-bottom:1px solid var(--line)}
 .mailv2 .detail-head .from{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600}
+.mailv2 .detail-head .from-addr{font-size:var(--fs-0);color:var(--ink-3);margin-top:1px}
 .mailv2 .detail-head .addr{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-3);margin-top:2px}
 .mailv2 .detail-head .subj{font-size:var(--fs-2);color:var(--ink-2);margin-top:5px}
 .mailv2 .detail-head .when{margin-left:auto;flex:0 0 auto;font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-3);text-align:right}

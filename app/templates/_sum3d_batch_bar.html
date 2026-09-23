@@ -1,0 +1,27 @@
+{# Груповий Sum3D — призначити один ID усім пришпиленим роботам («мої зараз»).
+
+   Стоїть ВИЩЕ `.worklayout` — поза `#queue-rows`, який свапає 15-секундний полл:
+   усередині смуга мигтіла б щотіку (та сама причина, що в стрічки печей і картки
+   зміни). Показується ЛИШЕ коли є пришпилені роботи (focus_count), тож у
+   звичайний день порожньої черги її немає взагалі.
+
+   Це і є той «дім» для «мої зараз», якого просив власник (30.08.26): шпилька в
+   рядку збирає набір, а тут набір отримує мету — вписати отриманий у Sum3D
+   time-id один раз на всю партію. Форма — звичайний POST (сторінка не на
+   hx-boost), редірект назад зберігає фільтри й показує тост. #}
+{% if focus_count %}
+{% set _n = focus_count %}
+{% set _word = 'робота' if (_n % 10 == 1 and _n % 100 != 11) else ('роботи' if (_n % 10 in [2,3,4] and _n % 100 not in [12,13,14]) else 'робіт') %}
+<form class="sum3d-batch" method="post" action="/orders/sum3d-batch"
+      onsubmit="sessionStorage.setItem('od-scroll', String(window.scrollY)); var tw=document.querySelector('.tablewrap'); if(tw) sessionStorage.setItem('od-tablescroll', String(tw.scrollTop));">
+    <span class="sb-pin" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" class="duo"/><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
+    </span>
+    <span class="sb-lead"><b>{{ _n }}</b> {{ _word }} у наборі <a class="sb-review" href="/?mine=1" title="Показати в черзі лише пришпилені">«мої зараз»</a></span>
+    <label class="sb-field">
+        <span class="sr-only">Sum3D ID для всього набору</span>
+        <input type="text" name="sum3d_id" class="sb-input mono" placeholder="Sum3D ID, напр. 12-01-45" autocomplete="off" required>
+    </label>
+    <button type="submit" class="btn sm primary sb-go">Призначити всім</button>
+</form>
+{% endif %}

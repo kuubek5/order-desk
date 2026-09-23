@@ -148,6 +148,7 @@ POST /mcp
 POST /open-folder
 POST /orders/focus/clear
 POST /orders/new
+POST /orders/sum3d-batch
 POST /orders/{order_id}/cam-comment
 POST /orders/{order_id}/change-seen
 POST /orders/{order_id}/comments

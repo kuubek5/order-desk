@@ -66,7 +66,7 @@ from app.services.sheet_writeback import (
     queue_sheet_fields,
     write_sheet_fields_warm,
 )
-from app.services.focus import clear_all as clear_focus, focused_ids, release as release_focus, toggle as toggle_focus
+from app.services.focus import clear_all as clear_focus, focused_ids, toggle as toggle_focus
 from app.services.undo import (
     UNDOABLE_ACTION_TYPES,
     UNDO_WINDOW_SECONDS,
@@ -77,7 +77,9 @@ from app.services.undo import (
 )
 from app.sheet_writer import apply_status_markers
 from app.services.order_path import build_path as build_order_path
-from app.statuses import STATUSES, STATUS_ACCEPTED, STATUS_CALCULATED, STATUS_NEW
+from app.services.sum3d import apply_sum3d
+from app.routers.queue import back_to_queue
+from app.statuses import STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -101,41 +103,6 @@ def _row_context(request: Request, db: Session, order, sync_error) -> dict:
         "sync_error": sync_error,
         "focused_ids": focused_ids(db, user),
     }
-
-
-def _status_before_sum3d(db: Session, order: Order) -> str | None:
-    """Статус, який робота мала ДО того, як оператор вписав Sum3D.
-
-    Береться зі знімка «до» останньої дії Sum3D у журналі — того самого, яким
-    користується «Крок назад». Свого поля під це заводити не треба: знімок уже
-    пишеться на кожну таку дію.
-
-    Шукається не просто остання дія Sum3D, а остання, у знімку якої статус ЩЕ НЕ
-    «прораховано» — тобто та, що роботу туди й підняла. Брати буквально останню
-    не можна: оператор часто спершу вписує ID, потім виправляє одруківку в ньому,
-    і в знімку ДРУГОЇ дії статус уже «прораховано». Тоді відкат порівнював
-    «прораховано» з «прораховано», вирішував, що міняти нічого, і статус
-    залишався висіти при порожній таблиці.
-
-    Повертає None, коли доказу немає (роботу імпортували з таблиці, журнал
-    підчистили). Тоді статус НЕ чіпаємо: «нове» тут було б здогадкою, а робота,
-    прийнята з пошти, мала «прийнято» — і здогадка тихо стерла б цей факт.
-    """
-    entries = db.execute(
-        select(ActionLog)
-        .where(ActionLog.order_id == order.id, ActionLog.action_type == "sum3d")
-        .order_by(ActionLog.id.desc())
-    ).scalars().all()
-    for entry in entries:
-        if not entry.old_value:
-            continue
-        try:
-            previous = json.loads(entry.old_value).get("status")
-        except (ValueError, TypeError):
-            continue
-        if isinstance(previous, str) and previous and previous != STATUS_CALCULATED:
-            return previous
-    return None
 
 
 @router.post("/orders/{order_id}/sum3d-id", response_class=HTMLResponse)
@@ -164,106 +131,11 @@ async def set_sum3d_id(
         )
 
     value = sum3d_id.strip() or None
-    # Entering a Sum3D ID IS the "I calculated this in Sum3D" moment, so the
-    # portal stamps the operator's letter into the "Прорахував" column — М for a
-    # normal work, Х for a rework — matching the lab's existing by-hand
-    # convention. Only when the operator actually has a letter assigned and a
-    # value is being set (never on a clear); an operator without a letter just
-    # gets the Sum3D written, "Прорахував" left as-is.
-    initial = (user.sheet_initial or "").strip() or None
-    stamp = initial if (initial and value) else None
-    rework = order.active_rework
-    write_fields: set[str] = set()
-    # Full before-snapshot so "Скасувати" reverts EVERYTHING this action touched
-    # (Sum3D + the auto-stamped letter + the auto-advanced status), not just the
-    # Sum3D cell — a real "крок назад".
-    if rework is not None:
-        before = {"rework.sum3d_id": rework.sum3d_id, "rework.calculated_raw": rework.calculated_raw}
-    else:
-        before = {"sum3d_id": order.sum3d_id, "calculated_raw": order.calculated_raw, "status": order.status}
-
-    if rework is not None:
-        # A reworked job — the ID the operator types is the redo calculation's
-        # Sum3D (column W), NOT the original job's ID (column L, left intact as
-        # the "previous calculation" the operator reviews to avoid repeating the
-        # mistake — see the order passport's rework block). The letter goes to
-        # the rework "Прорахував" (column Х), the redo counterpart of М.
-        rework.sum3d_id = value
-        if stamp:
-            rework.calculated_raw = stamp
-        elif not value:
-            # Очищення ID повертає переробку в «не прораховано», тож літера
-            # оператора в колонці Х лишатись не має — інакше в таблиці висить
-            # «прорахував», а прораховувати вже нічого.
-            rework.calculated_raw = None
-        after = {"rework.sum3d_id": rework.sum3d_id, "rework.calculated_raw": rework.calculated_raw}
-        note = f"Sum3D переробки → {value}" if value else "Sum3D переробки очищено"
-        undo_field = "rework.sum3d_id"
-    else:
-        order.sum3d_id = value
-        write_fields = {"sum3d_id"}
-        # Те саме для звичайної роботи: стерли ID — стираємо й літеру в колонці М.
-        # `erase` обовʼязковий, бо calculated_raw маркерне поле: без нього запис
-        # прочитав би живу літеру, ЗБЕРІГ її і ще й повернув у базу.
-        erase_fields: set[str] = set()
-        if not value and order.calculated_raw:
-            order.calculated_raw = None
-            write_fields.add("calculated_raw")
-            erase_fields.add("calculated_raw")
-        # Вписаний ID — це і є момент «прораховано», тож стертий ID мусить
-        # забрати статус назад разом із літерою. Інакше в черзі лишалась робота,
-        # у якої в таблиці порожньо, фільтр каже «можна брати», а крапка статусу
-        # каже «прораховано» — і жодне з трьох тверджень не пояснює інші два.
-        # Повертаємо РІВНО той статус, що був (з журналу), і лише коли робота
-        # відтоді нікуди не рушила: «відфрезеровано» чи «проблема» відкочувати
-        # не наша справа.
-        if not value and order.status == STATUS_CALCULATED:
-            previous = _status_before_sum3d(db, order)
-            if previous and previous != order.status:
-                order.status = previous
-                db.add(StatusEvent(
-                    order_id=order.id, operator_id=user.id,
-                    status=previous, actor=user.username,
-                ))
-        if stamp:
-            order.calculated_raw = stamp
-            write_fields.add("calculated_raw")
-            # The letter in М is the "прораховано" marker, so advance the DB
-            # status to match (never downgrade a further state), recording the
-            # real logged-in operator who calculated it.
-            if order.status in (STATUS_NEW, STATUS_ACCEPTED):
-                order.status = "прораховано"
-                db.add(StatusEvent(
-                    order_id=order.id, operator_id=user.id,
-                    status="прораховано", actor=user.username,
-                ))
-        after = {"sum3d_id": order.sum3d_id, "calculated_raw": order.calculated_raw, "status": order.status}
-        note = f"Sum3D → {value}" if value else "Sum3D очищено"
-        undo_field = "sum3d_id"
-
-    log_entry = log_action(
-        db, order=order, operator=user, action_type="sum3d", field=undo_field,
-        old=json.dumps(before, ensure_ascii=False),
-        new=json.dumps(after, ensure_ascii=False), note=note,
-    )
-    # Мітка «беру зараз» існує рівно для того, щоб не загубити, КУДИ вписувати
-    # Sum3D. Вписали — причина відпала, мітка знімається в тій самій транзакції.
-    # Набір самоочищується, і «Зняти всі» лишається рідкісною ручною дією.
-    # Знімається лише МОЯ мітка: якщо роботу тримає в наборі й колега, це його
-    # набір, і чистити його не наша справа. При очищенні ID (value порожнє)
-    # мітку не чіпаємо — робота знову «в руках».
-    if value:
-        release_focus(db, order, user)
-    # Позначка «Sum3D ще не в таблиці» ставиться ДО звернення в Google — і це
-    # не косметика. Доти вона зʼявлялась лише ПІСЛЯ невдалого запису, тож
-    # застосунок, убитий у ті 1–4 с, поки він чекав відповіді, лишав значення в
-    # базі без жодного сліду — а синк у таблицю сам не пише, і ID тихо не
-    # доїжджав. Тепер будь-яке падіння означає лише затримку: рядок показує
-    # «ще не в таблиці», синк не стирає значення порожньою колонкою, а фоновий
-    # повтор допише. Очищення (порожній ID) не тримаємо — там у таблиці лишився
-    # старий ID, і синк поверне його, тобто оператор побачить, що не вийшло.
-    if rework is None and value and order_writes_to_sheet(order):
-        order.sum3d_pending = value
+    # Уся доменна робота (переробка/звичайна, авто-літера, авто-статус, зняття
+    # мітки «мої зараз», позначка «ще не в таблиці») — у `apply_sum3d`, спільному
+    # ядрі з груповим призначенням `/orders/sum3d-batch`. Тут лишився ЛИШЕ HTTP:
+    # коміт, запис у таблицю й рендер рядка.
+    applied = apply_sum3d(db, order, value, user)
     db.commit()
 
     # Таблиця — ПІСЛЯ коміту і НЕ на event loop: воркер write-back читає вже
@@ -275,17 +147,17 @@ async def set_sum3d_id(
     # всі. Чесність сигналу не втрачена: доки таблиця не підтвердила, у рядку
     # стоїть позначка «ще не в таблиці», і зникає вона лише після підтвердження.
     sync_error = None
-    if rework is not None:
+    if applied.rework is not None:
         # Переробка пише в інші колонки (W/X) і пачкою не йде: випадок рідкісний,
         # а спільного пакетного шляху для них немає — чекаємо, як і чекали.
         # На очищенні передаємо порожній рядок, а не None: None означає «колонку
         # Х не чіпати», а нам треба саме стерти літеру разом з ID.
-        letter = stamp if value else ""
+        letter = applied.stamp if value else ""
         sync_error = await await_on_writeback(
             write_rework_sum3d_fields_warm, order.id, value or "", letter
         )
     else:
-        queue_sheet_fields(order.id, write_fields, erase_fields)
+        queue_sheet_fields(order.id, applied.write_fields, applied.erase_fields)
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
@@ -304,12 +176,12 @@ async def set_sum3d_id(
         # казати «записано» рано: за це відповідає позначка в рядку, яка зникне
         # після підтвердження. Очищення описуємо очима оператора: клітинка
         # спорожніла.
-        if rework is not None:
-            toast_note = f"{note} · {'записано в таблицю' if value else 'стерто в таблиці'}"
+        if applied.rework is not None:
+            toast_note = f"{applied.note} · {'записано в таблицю' if value else 'стерто в таблиці'}"
         else:
-            toast_note = f"{note} · {'іде в таблицю' if value else 'стирається в таблиці'}"
+            toast_note = f"{applied.note} · {'іде в таблицю' if value else 'стирається в таблиці'}"
     else:
-        toast_note = note
+        toast_note = applied.note
     context = _row_context(request, db, order, sync_error)
     # Прапорець живе рівно один рендер — саме цієї відповіді. Полл через 15 с
     # перемалює рядок без нього, тож підсвітка не повторюється щотіку.
@@ -319,13 +191,99 @@ async def set_sum3d_id(
     # Правду показує позначка «ще не в таблиці» — вона стоїть, доки таблиця не
     # підтвердила, і зникає сама. Переробку ми дочекались, там підтвердження
     # чесне.
-    context["sum3d_confirmed"] = wrote_to_sheet and bool(value) and rework is not None
+    context["sum3d_confirmed"] = wrote_to_sheet and bool(value) and applied.rework is not None
     response = templates.TemplateResponse(request, "_order_row.html", context)
     if sync_error is None:
-        attach_action_toast(response, log_entry, toast_note)
+        attach_action_toast(response, applied.log_entry, toast_note)
     else:
-        attach_sync_error_toast(response, note, sync_error)
+        attach_sync_error_toast(response, applied.note, sync_error)
     return response
+
+
+@router.post("/orders/sum3d-batch")
+def set_sum3d_batch(
+    request: Request,
+    sum3d_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Призначити ОДИН Sum3D ID усім роботам набору «мої зараз».
+
+    Один Sum3D-проєкт часто накриває кілька робіт — кілька клієнтів з пошти, а
+    буває й лаба+пошта разом. Оператор пришпилює їх шпилькою, рахує в Sum3D і тут
+    вписує отриманий time-id ОДИН раз: портал кладе його в кожен рядок і бере
+    роботи в роботу рівно як одиночна дія (`apply_sum3d`), знімаючи шпильки.
+
+    Звичайний `def` (threadpool), не `async`: звичайна робота пише в таблицю
+    через `queue_sheet_fields` (не блокує event loop), а переробки в пачку не
+    йдуть — вони ЧЕКАЮТЬ на запис (await) і лишаються оператору на одиночну дію.
+
+    Набір береться з СЕРВЕРА (`focused_ids`), а не зі списку id у формі: так
+    вибір не залежить від 15-секундного полла черги й немає гонок. Редірект назад
+    зберігає фільтри (`back_to_queue`), тост їде через сесію (queue.py читає
+    flash), а не через рядок — змінюється відразу кілька рядків.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+
+    back = back_to_queue(request)
+
+    value = sum3d_id.strip() or None
+    if value is None:
+        request.session["toast_flash"] = {
+            "kind": "error", "message": "Введіть Sum3D ID, щоб призначити його набору.",
+        }
+        return RedirectResponse(back, status_code=303)
+
+    if sync_control.is_paused():
+        request.session["toast_flash"] = {"kind": "info", "message": SYNC_PAUSED_MSG}
+        return RedirectResponse(back, status_code=303)
+
+    ids = focused_ids(db, user)
+    orders = list(db.scalars(select(Order).where(Order.id.in_(ids)))) if ids else []
+
+    applied: list = []
+    skipped_rework = 0
+    skipped_taken = 0
+    for order in orders:
+        # Переробку пачкою не чіпаємо (див. докстрінг): лишаємо на одиночну дію.
+        if order.active_rework is not None:
+            skipped_rework += 1
+            continue
+        # Уже має Sum3D — не перезаписуємо мовчки: пачка ПРИЗНАЧАЄ новим роботам,
+        # а не переклацує вже взяті. Оператор бачить це в тості.
+        if order.sum3d_id:
+            skipped_taken += 1
+            continue
+        applied.append(apply_sum3d(db, order, value, user))
+
+    db.commit()
+
+    # Таблиця — ПІСЛЯ коміту, кожна робота окремою правкою в ту саму пачку (той
+    # самий шлях, що й одиночна дія). НЕ на event loop: роут звичайний `def`.
+    for result in applied:
+        queue_sheet_fields(result.order.id, result.write_fields, result.erase_fields)
+
+    assigned = len(applied)
+    if assigned == 0:
+        if skipped_taken or skipped_rework:
+            message = "Sum3D не призначено: усі пришпилені роботи вже взяті або є переробками."
+        else:
+            message = "Немає пришпилених робіт — познач роботи шпилькою «мої зараз», тоді признач Sum3D."
+        request.session["toast_flash"] = {"kind": "warning", "message": message}
+    else:
+        extra = []
+        if skipped_taken:
+            extra.append(f"{skipped_taken} вже взято")
+        if skipped_rework:
+            extra.append(f"{skipped_rework} переробок пропущено")
+        tail = f" ({', '.join(extra)})" if extra else ""
+        _w = "роботі" if assigned == 1 else "роботам"
+        request.session["toast_flash"] = {
+            "kind": "success",
+            "message": f"Sum3D {value} призначено {assigned} {_w}{tail}.",
+        }
+    return RedirectResponse(back, status_code=303)
 
 
 @router.post("/orders/{order_id}/operator", response_class=HTMLResponse)

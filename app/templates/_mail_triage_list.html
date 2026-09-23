@@ -47,7 +47,14 @@
             <span class="rowmain">
             <span class="r1">
                 {% if is_unread %}<span class="newdot" aria-hidden="true"></span>{% endif %}
-                <span class="from">{{ email.client_name_guess or email.from_address or 'Відправник не визначений' }}</span>
+                {# Головний напис — показне ім'я відправника (як ukr.net, за яким
+                   оператор звик обробляти пошту). Здогад класифікатора лишається,
+                   але другим написом-підказкою й лише коли він є І відрізняється
+                   від показного імені — інакше дублювали б те саме двічі. Без
+                   показного імені падаємо на здогад/адресу, як було. #}
+                <span class="from">{{ email.from_name or email.client_name_guess or email.from_address or 'Відправник не визначений' }}</span>
+                {% set _guess = email.client_name_guess %}
+                {% if email.from_name and _guess and _guess|lower != email.from_name|lower %}<span class="from-guess" title="Розпізнаний клієнт">{{ _guess }}</span>{% endif %}
                 {% if is_unread %}<span class="sr-only">непрочитано</span>{% endif %}
             </span>
             <span class="r2">

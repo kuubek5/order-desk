@@ -48,6 +48,19 @@ MISSING_FILE_RETRIES = 3
 MISSING_FILE_RETRY_DELAY = 0.3
 _UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
+
+def sender_display_name(msg) -> str | None:
+    """Показне ім'я відправника з заголовка From ("Юрій Струбицький"), або None.
+
+    imap-tools кладе його у `from_values.name` окремо від адреси (`from_`).
+    Захищаємось від листа без From (`from_values` = None) і від порожнього
+    імені (тоді список тріажу впаде на здогад/адресу). Ніколи не кидає —
+    некритична підказка для екрана, не має валити синк.
+    """
+    values = getattr(msg, "from_values", None)
+    name = (getattr(values, "name", "") or "").strip()
+    return name or None
+
 # Tags that should force a line break in the extracted text so paragraphs/
 # list items/table rows in the source HTML don't all run together into one
 # unreadable line.
@@ -684,6 +697,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     uid=uid,
                     uid_validity=uid_validity,
                     from_address=msg.from_,
+                    from_name=sender_display_name(msg),
                     subject=msg.subject,
                     received_at=msg.date,
                     status="нове",
