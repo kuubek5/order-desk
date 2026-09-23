@@ -95,6 +95,13 @@
                     <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/unfilter" hx-target="closest .mailrow" hx-swap="delete" onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
                         <button type="submit" class="list-reject" title="Повернути в чергу" aria-label="Повернути лист у чергу">↩</button>
                     </form>
+                {% elif view == 'processed' %}
+                    {# Перенесений лист + зворотна дія «↩ у вхідні»: якщо робота
+                       насправді ще в роботі, лист можна повернути в Inbox. #}
+                    <span class="reco ok" title="Перенесено в папку «{{ email.mailbox_folder }}»">↦ у папці</span>
+                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/move-to-inbox" hx-vals='{"row":"1"}' hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Повернути лист у «Усі листи» (Inbox)? Він знову зʼявиться у вхідних скриньки." onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                        <button type="submit" class="list-move" title="Повернути у «Усі листи»" aria-label="Повернути лист у вхідні">↩</button>
+                    </form>
                 {% else %}
                     {% set rd = triage_readiness(email) %}
                     {% if rd.state == 'no_files' %}
@@ -108,6 +115,15 @@
                     <span class="reco warn" title="Не розпізнано: {{ rd.missing|join(', ') }} — відкрий лист і заповни перед прийняттям.">{{ rd.missing|join(', ') }}?</span>
                     {% else %}
                     <span class="reco ok" title="Ключові поля розпізнано — можна приймати в чергу.">готово</span>
+                    {% endif %}
+                    {# Швидкий перенос у папку «оброблено» просто з рядка (робота
+                       пішла в цех) — біля ✕, як у справжній пошті. Лише коли папку
+                       задано. `row=1` каже роуту прибрати рядок, а не вести на
+                       картку. #}
+                    {% if mail_processed_folder %}
+                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/move-processed" hx-vals='{"row":"1"}' hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Перенести лист у «{{ mail_processed_folder }}»? Він зникне з «Усі листи» й перейде у вкладку папки." onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                        <button type="submit" class="list-move" title="Перенести в «{{ mail_processed_folder }}» — робота пішла в цех" aria-label="Перенести лист у папку оброблених">↦</button>
+                    </form>
                     {% endif %}
                     {# keyup must be stopped as well as click: the ROW listens
                        for keyup[key=='Enter'] to open the letter, so tabbing to
@@ -130,6 +146,9 @@
             {% if view == 'archive' %}
             <h3>Архів порожній</h3>
             <p>Тут з’являться листи після прийняття в чергу або відхилення.</p>
+            {% elif view == 'processed' %}
+            <h3>Тут порожньо</h3>
+            <p>Сюди потраплятимуть листи, які ти перенесеш кнопкою «↦ У «{{ mail_processed_folder }}»» на картці листа — коли робота пішла в цех.</p>
             {% else %}
             <h3>Нових листів немає</h3>
             <p>Пошта перевіряється автоматично кожні 2 хвилини — нові листи з’являться тут самі.</p>

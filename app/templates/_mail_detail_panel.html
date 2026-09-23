@@ -311,6 +311,9 @@
                     <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
                 </form>
                 {% endif %}
+                {# Робота пішла в цех — прибрати лист зі скриньки в папку
+                   «оброблено» (кнопка з'являється, коли папку задано). #}
+                {% include "_mail_move_control.html" %}
             </div>
         </section>
         {% endif %}
@@ -356,6 +359,9 @@
                   onsubmit="return confirm('Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється).')">
                 <button type="submit" class="btn danger sm">Відхилити</button>
             </form>
+            {# «Перемістити в оброблені» доступне й на новому листі (рішення
+               власника 23.09.26) — оператор вирішує сам, коли робота пішла в цех. #}
+            {% include "_mail_move_control.html" %}
             <span class="ssum-div" aria-hidden="true"></span>
             <button type="button" class="btn primary seg-go" data-seg-go="accept">Прийняти →</button>
         </div>

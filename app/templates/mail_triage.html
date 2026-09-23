@@ -59,6 +59,13 @@
     <div class="list-controls">
         <nav class="tab-nav" aria-label="Розділ">
             <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}"{% if view == 'pending' %} aria-current="page"{% endif %}>Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
+            {# Папка «оброблено» зі скриньки — ДРУГОЮ, одразу після «Усі листи»
+               (рішення власника 23.09.26). Вкладка = та сама папка, що закріплена
+               в Налаштуваннях; зʼявляється лише коли папку задано або туди вже
+               щось перенесено. #}
+            {% if mail_processed_folder or processed_count %}
+            <a href="/mail?view=processed" class="tab-link {% if view == 'processed' %}active{% endif %}"{% if view == 'processed' %} aria-current="page"{% endif %} title="Листи, перенесені в папку «{{ mail_processed_folder }}» — робота пішла в цех">{{ mail_processed_folder or 'Перенесені' }}{% if processed_count %} <span class="tab-badge">{{ processed_count }}</span>{% endif %}</a>
+            {% endif %}
             <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}"{% if view == 'filtered' %} aria-current="page"{% endif %}>Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
             <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}"{% if view == 'archive' %} aria-current="page"{% endif %}>Архів <span class="tab-badge">{{ archive_count }}</span></a>
             <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}"{% if view == 'auto' %} aria-current="page"{% endif %} title="Довірені відправники — вкладення скачуються автоматично">Авто-скачування{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>

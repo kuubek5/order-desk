@@ -1,0 +1,19 @@
+{# Кнопка «перемістити лист у папку оброблених» (робота пішла в цех). Показується
+   ЛИШЕ коли адмін задав папку в Налаштуваннях (mail_processed_folder) і лист ще
+   не переміщено. Після переміщення — напис замість кнопки. Перший запис у
+   скриньку, тож із підтвердженням. Потребує email, mail_processed_folder. #}
+{% if email.mailbox_folder %}
+<span class="mail-moved" title="Лист переміщено у скриньці">✓ у папці «{{ email.mailbox_folder }}»</span>
+{# Зворотна дія: повернути лист у Inbox, якщо робота ще в роботі. #}
+<form method="post" action="/mail/{{ email.id }}/move-to-inbox"
+      hx-post="/mail/{{ email.id }}/move-to-inbox" hx-target="#mail-detail" hx-swap="innerHTML"
+      hx-confirm="Повернути лист у «Усі листи» (Inbox)? Він знову зʼявиться у вхідних скриньки.">
+    <button type="submit" class="btn sm accent-outline" title="Повернути лист у вхідні скриньки">↩ У «Усі листи»</button>
+</form>
+{% elif mail_processed_folder %}
+<form method="post" action="/mail/{{ email.id }}/move-processed"
+      hx-post="/mail/{{ email.id }}/move-processed" hx-target="#mail-detail" hx-swap="innerHTML"
+      hx-confirm="Перемістити лист у папку «{{ mail_processed_folder }}» у скриньці? Він зникне з Inbox.">
+    <button type="submit" class="btn sm accent-outline" title="Перенести лист у папку «{{ mail_processed_folder }}» — робота пішла в цех">↦ У «{{ mail_processed_folder }}»</button>
+</form>
+{% endif %}

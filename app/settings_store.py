@@ -228,6 +228,10 @@ PREFERENCE_KEYS = {
     "machine_calibration_path",
     "mail_default_material",
     "mail_download_all",
+    # Папка скриньки, куди сторінка пошти переносить листи оброблених робіт
+    # (Налаштування → Пошта). Порожнє значення = функція вимкнена; має власну
+    # форму збереження з опцією «не переносити», тому в CLEARABLE не потрібне.
+    "mail_processed_folder",
     "notify_style",
     "notify_position",
     "notify_events",

@@ -46,9 +46,12 @@ from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.settings_store import (
     get_mail_default_material,
     get_mail_download_all,
+    get_setting,
     set_mail_default_material,
     set_mail_download_all,
+    set_setting,
 )
+from app.mail_reader import list_mailbox_folders
 from app.services.settings_nav import can_edit
 from .common import require_settings_edit
 
@@ -350,6 +353,48 @@ def toggle_mail_download_all(
         request.session["toast_flash"] = {"kind": "success", "message": message}
         return RedirectResponse("/mail", status_code=303)
     request.session["settings_flash"] = {"kind": "success", "message": message}
+    return RedirectResponse("/settings#mail-download", status_code=303)
+
+
+@router.get("/settings/mail/folders", response_class=HTMLResponse)
+def mail_folders_picker(request: Request, db: Session = Depends(get_db)):
+    """Зчитати папки скриньки й повернути селект вибору папки «оброблено».
+
+    Окремою дією (кнопка), а не на кожному відкритті /settings: це IMAP
+    round-trip. Помилку показуємо в самому фрагменті, не валимо сторінку."""
+    require_settings_edit(request, db, "mail-download")
+    error = ""
+    folders: list[str] = []
+    try:
+        folders = list_mailbox_folders(db)
+    except Exception as exc:  # noqa: BLE001 — будь-яка помилка IMAP у підпис
+        error = f"Не вдалося зчитати папки: {exc}"
+    return templates.TemplateResponse(
+        request, "_settings_mail_folder_picker.html",
+        {
+            "mail_folders": folders,
+            "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
+            "folders_error": error,
+        },
+    )
+
+
+@router.post("/settings/mail/processed-folder")
+def save_mail_processed_folder(
+    request: Request, folder: str = Form(""), db: Session = Depends(get_db)
+):
+    """Зберегти вибрану папку «оброблено» — куди сторінка пошти переносить листи
+    робіт, що пішли в цех. Порожнє значення дозволене (вимкнути функцію)."""
+    require_settings_edit(request, db, "mail-download")
+    set_setting(db, "mail_processed_folder", folder.strip())
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (
+            f"Папка «оброблено»: {folder.strip()}." if folder.strip()
+            else "Папку «оброблено» очищено — кнопка переміщення на пошті сховається."
+        ),
+    }
     return RedirectResponse("/settings#mail-download", status_code=303)
 
 

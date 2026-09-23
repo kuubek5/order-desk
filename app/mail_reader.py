@@ -61,6 +61,17 @@ def sender_display_name(msg) -> str | None:
     name = (getattr(values, "name", "") or "").strip()
     return name or None
 
+
+def message_id_of(msg) -> str | None:
+    """Заголовок Message-ID листа — стабільний ідентифікатор, що НЕ міняється при
+    переміщенні між папками (на відміну від UID). None, якщо листа без нього.
+    Ніколи не кидає — некритична підказка, не має валити синк."""
+    try:
+        value = (msg.obj.get("Message-ID") or "").strip()
+    except Exception:  # noqa: BLE001
+        return None
+    return value or None
+
 # Tags that should force a line break in the extracted text so paragraphs/
 # list items/table rows in the source HTML don't all run together into one
 # unreadable line.
@@ -542,6 +553,91 @@ def _refuse_stale_uid_namespace(mailbox, email_message: EmailMessage) -> None:
         )
 
 
+def list_mailbox_folders(session: Session) -> list[str]:
+    """Усі папки скриньки — для вибору в Налаштуваннях, куди переносити оброблені
+    листи. Порядок як віддає сервер; службові (Inbox/Trash/Spam) лишаємо, адмін
+    вирішує сам. Порожній список, якщо IMAP не налаштовано — екран підкаже."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        return []
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        return [f.name for f in mailbox.folder.list()]
+
+
+def move_message_to_folder(session: Session, email_message: EmailMessage, folder: str) -> None:
+    """Перемістити лист у папку скриньки за UID — ПЕРШИЙ запис у скриньку (досі
+    лише читали). Той самий гейт нумерації, що й у скачуванні: після
+    перестворення теки провайдером uid належить чужому листу, і ми пересунули б
+    не той. Кидає на будь-якій невдачі (imap-tools підніме виняток, якщо папки
+    немає або COPY не пройшов) — роут покаже помилку, поле в базі не ставиться."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    if not (folder or "").strip():
+        raise RuntimeError("Не вибрано папку для переміщення — задайте її в Налаштуваннях пошти")
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        _refuse_stale_uid_namespace(mailbox, email_message)
+        # Беккфіл Message-ID, поки лист ще в Inbox під відомим UID — потрібен,
+        # щоб потім можна було повернути його з папки назад (реверс шукає за ним).
+        if not email_message.message_id:
+            got = list(
+                mailbox.fetch(AND(uid=email_message.uid), mark_seen=False, headers_only=True)
+            )
+            if got:
+                email_message.message_id = message_id_of(got[0])
+        mailbox.move(email_message.uid, folder)
+
+
+def _imap_quote(value: str) -> str:
+    """Значення для IMAP-рядка в лапках: екрануємо \\ і ", решта — як є."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def move_message_back_to_inbox(session: Session, email_message: EmailMessage) -> None:
+    """Повернути перенесений лист із папки назад у Inbox (зворотна до
+    move_message_to_folder дія).
+
+    UID листа в папці — інший, ніж збережений, а після повернення в Inbox стане
+    ще іншим, тож знаходимо лист за Message-ID (стабільний). ОБОВʼЯЗКОВО оновлюємо
+    email.uid на новий Inbox-UID: інакше наступний синк побачив би цей лист як
+    «новий» (його UID не в existing_uids) і створив би дубль. Кидає на будь-якій
+    невдачі — роут покаже помилку, поле в базі лишиться."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    mid = (email_message.message_id or "").strip()
+    if not mid:
+        raise RuntimeError(
+            "Цей лист імпортовано до появи функції (немає Message-ID) — "
+            "повернути автоматично не можемо, перенесіть у пошті вручну."
+        )
+    folder = (email_message.mailbox_folder or "").strip()
+    if not folder:
+        raise RuntimeError("Лист не в папці — повертати нічого")
+
+    search = f'HEADER MESSAGE-ID "{_imap_quote(mid)}"'
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        mailbox.folder.set(folder)
+        found = list(mailbox.fetch(search, mark_seen=False, headers_only=True))
+        if not found:
+            raise RuntimeError(
+                "Лист не знайдено в папці — можливо, його вже перемістили у пошті вручну."
+            )
+        mailbox.move(found[0].uid, "INBOX")
+        # Лист тепер в Inbox під новим UID — знаходимо його й оновлюємо базу.
+        mailbox.folder.set("INBOX")
+        back = list(mailbox.fetch(search, mark_seen=False, headers_only=True))
+        if back:
+            email_message.uid = str(back[0].uid)
+            email_message.uid_validity = (
+                _folder_uidvalidity(mailbox) or email_message.uid_validity
+            )
+    email_message.mailbox_folder = None
+
+
 def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:
     """Manually pull a "skipped" letter's attachments on demand (operator
     decided a non-whitelisted letter is relevant after all). Re-fetches the
@@ -698,6 +794,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     uid_validity=uid_validity,
                     from_address=msg.from_,
                     from_name=sender_display_name(msg),
+                    message_id=message_id_of(msg),
                     subject=msg.subject,
                     received_at=msg.date,
                     status="нове",

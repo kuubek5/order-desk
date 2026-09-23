@@ -324,6 +324,12 @@ def get_settings(
             select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
         ).all(),
         "mail_download_all": get_mail_download_all(db),
+        # Папка «оброблено», куди сторінка пошти переносить листи робіт, що пішли
+        # в цех. Список папок НЕ читаємо тут (IMAP round-trip на кожному відкритті
+        # /settings) — його тягне кнопка «Зчитати папки». Порожній список = ще не
+        # читали; шаблон покаже поточну збережену назву й підказку.
+        "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
+        "mail_folders": [],
         # Пічки: рядки таблиці як є, паролі — НІКОЛИ. Назад у поле секрет
         # не підставляється, у шаблон іде лише ознака «збережено».
         "furnaces": list_furnaces(db),

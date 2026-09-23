@@ -46,6 +46,8 @@ from app.mail_parser import material_candidates
 from app.mail_reader import (
     download_attachments_now,
     extract_archive_attachments,
+    move_message_back_to_inbox,
+    move_message_to_folder,
     redownload_missing_attachments,
 )
 from app.mail_sync_service import (
@@ -94,6 +96,7 @@ from app.settings_store import (
     get_export_folder_path,
     get_imap_login,
     get_mail_download_all,
+    get_setting,
 )
 from app.sheet_erase_guard import SheetEraseBlocked
 from app.sheet_writer import clear_order_row
@@ -137,24 +140,33 @@ def get_mail(
     # screen's source/ready filters.
     if service not in SERVICE_TYPE_FILTERS:
         service = "all"
-    if view not in ("pending", "filtered", "archive", "auto"):
+    if view not in ("pending", "filtered", "archive", "auto", "processed"):
         view = "pending"
     # Pop the flash only on a full-page render — the 15s poll (partial="list")
     # would otherwise consume it before the real navigation shows it.
     toast_flash = request.session.pop("toast_flash", None) if partial != "list" else None
 
-    # Three views: pending = "нове" NOT stamped by a filter rule; filtered =
-    # "нове" stamped (kept, never deleted — one click brings a letter back);
-    # archive = accepted/rejected.
-    if view == "archive":
-        status_clause = EmailMessage.status.in_(_ARCHIVE_STATUSES)
+    # Views: pending = "нове" NOT stamped by a filter rule; filtered = "нове"
+    # stamped (kept, never deleted — one click brings a letter back); archive =
+    # accepted/rejected; processed = перенесені в папку скриньки.
+    #
+    # Перенесений лист ПОКИДАЄ решту вкладок — як у справжній скриньці, де він
+    # пішов з Inbox у папку (рішення власника 23.09.26). Тому `not_moved` висить
+    # на pending/filtered/archive, а вкладка папки показує саме перенесені.
+    not_moved = EmailMessage.mailbox_folder.is_(None)
+    if view == "processed":
+        status_clause = EmailMessage.mailbox_folder.is_not(None)
+    elif view == "archive":
+        status_clause = sa_and(EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved)
     elif view == "filtered":
         status_clause = sa_and(
-            EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None)
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
+            not_moved,
         )
     else:
         status_clause = sa_and(
-            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None)
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
+            not_moved,
         )
     # STABLE ORDER (pending view). The list polls every 15s; without this a
     # letter arriving mid-glance inserted itself and pushed every row down
@@ -186,20 +198,29 @@ def get_mail(
             )
         ) or 0
 
-    # Top-level view counts (pending vs filtered vs archive) for the tabs.
+    # Top-level view counts for the tabs. Перенесені листи (`not_moved`)
+    # виключені звідусіль, крім своєї вкладки — інакше значок вкладки бреше
+    # проти списку, який її фільтр показує.
     pending_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None)
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
+            not_moved,
         )
     ) or 0
     filtered_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None)
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
+            not_moved,
         )
     ) or 0
     archive_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status.in_(_ARCHIVE_STATUSES)
+            EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved
+        )
+    ) or 0
+    processed_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.mailbox_folder.is_not(None)
         )
     ) or 0
     sender_memories = list_sender_memories(db) if view == "auto" else []
@@ -216,6 +237,7 @@ def get_mail(
             EmailMessage.status == "нове",
             EmailMessage.seen_at.is_(None),
             EmailMessage.filter_category.is_(None),
+            not_moved,
         )
     ) or 0
 
@@ -290,6 +312,9 @@ def get_mail(
                 "service": service,
                 "list_watermark": list_watermark,
                 "held_back_count": held_back_count,
+                # Потрібне рядку для кнопки «↦ у папку»: без нього полл кожні 15с
+                # перемальовував би рядки без кнопки.
+                "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
             },
         )
 
@@ -326,6 +351,10 @@ def get_mail(
             "sender_memories": sender_memories,
             "auto_count": auto_count,
             "archive_count": archive_count,
+            "processed_count": processed_count,
+            # Назва папки скриньки для підпису вкладки перенесених. Порожньо →
+            # вкладка ховається (переносити нікуди не налаштовано).
+            "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
             "unread_count": unread_count,
             "filter_rules": filter_rules,
             "filter_categories": filter_categories,
@@ -469,6 +498,9 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         "link_flash": None,
         # Admin-editable category names for the card's «У фільтр» select.
         "filter_categories": _mail_filter_categories(db),
+        # Папка «оброблено» з налаштувань — картка показує кнопку переміщення лише
+        # коли вона задана (інакше кнопці нема куди переносити).
+        "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
         **_email_partial_state(db, email, on_disk),
     }
     context.update(extra)
@@ -1131,6 +1163,104 @@ def accept_email(
     target = f"/mail?open={email.id}" if result.partial else "/mail"
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)
+
+
+@router.post("/mail/{email_id}/move-processed", response_class=HTMLResponse)
+def move_email_processed(
+    request: Request, email_id: int, row: str = Form(""), db: Session = Depends(get_db)
+):
+    """Перемістити лист у налаштовану папку «оброблено» (робота пішла в цех).
+
+    Перший ЗАПИС у скриньку — свідома кнопка оператора, не авто. Два викликачі,
+    як у reject: РЯДОК списку (`row=1`, HTMX, hx-swap="delete" — хоче лише
+    прибрати цей рядок) і КАРТКА листа (повний перехід/HX-Redirect). На невдачі
+    поле в базі не ставиться, лист лишається в Inbox."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    folder = (get_setting(db, "mail_processed_folder") or "").strip()
+    if not folder:
+        raise HTTPException(
+            status_code=409,
+            detail="Папку «оброблено» не налаштовано — задайте її в Налаштуваннях пошти.",
+        )
+    if email.mailbox_folder:
+        raise HTTPException(status_code=409, detail="лист уже переміщено")
+
+    hx = (getattr(request, "headers", None) or {}).get("HX-Request") == "true"
+    from_row = bool(row)
+    try:
+        move_message_to_folder(db, email, folder)
+    except Exception as exc:  # noqa: BLE001 — текст будь-якої помилки IMAP у тост
+        message = f"Не вдалося перемістити лист: {exc}"
+        if from_row and hx:
+            # Рядок лишається (htmx не свапає на 409); коротке пояснення в тілі.
+            return HTMLResponse(message, status_code=409)
+        request.session["toast_flash"] = {"kind": "error", "message": message}
+        target = f"/mail?open={email.id}"
+        if hx:
+            return Response(status_code=204, headers={"HX-Redirect": target})
+        return RedirectResponse(target, status_code=303)
+
+    email.mailbox_folder = folder
+    db.commit()
+    # Рядок списку: тихо прибрати його (порожній 200 → hx-swap="delete"), без
+    # тосту через сесію — зникнення рядка і є сигнал, як у ✕. Картка: тост +
+    # перехід, щоб кнопка стала «переміщено».
+    if from_row and hx:
+        return HTMLResponse("", status_code=200)
+    request.session["toast_flash"] = {
+        "kind": "success", "message": f"Лист переміщено в «{folder}».",
+    }
+    target = f"/mail?open={email.id}"
+    if hx:
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)
+
+
+@router.post("/mail/{email_id}/move-to-inbox", response_class=HTMLResponse)
+def move_email_to_inbox(
+    request: Request, email_id: int, row: str = Form(""), db: Session = Depends(get_db)
+):
+    """Повернути перенесений лист із папки назад у Inbox (зворотна до
+    move-processed дія). Два викликачі, як у move-processed: РЯДОК вкладки папки
+    (`row=1`, прибрати рядок) і КАРТКА (перехід)."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    if not email.mailbox_folder:
+        raise HTTPException(status_code=409, detail="лист не в папці — повертати нічого")
+
+    hx = (getattr(request, "headers", None) or {}).get("HX-Request") == "true"
+    from_row = bool(row)
+    try:
+        move_message_back_to_inbox(db, email)
+    except Exception as exc:  # noqa: BLE001
+        message = f"Не вдалося повернути лист: {exc}"
+        if from_row and hx:
+            return HTMLResponse(message, status_code=409)
+        request.session["toast_flash"] = {"kind": "error", "message": message}
+        target = f"/mail?view=processed&open={email.id}"
+        if hx:
+            return Response(status_code=204, headers={"HX-Redirect": target})
+        return RedirectResponse(target, status_code=303)
+
+    db.commit()
+    if from_row and hx:
+        return HTMLResponse("", status_code=200)
+    request.session["toast_flash"] = {
+        "kind": "success", "message": "Лист повернуто у «Усі листи».",
+    }
+    target = f"/mail?open={email.id}"
+    if hx:
         return Response(status_code=204, headers={"HX-Redirect": target})
     return RedirectResponse(target, status_code=303)
 

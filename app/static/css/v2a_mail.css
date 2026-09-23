@@ -15,7 +15,7 @@
    ========================================================================== */
 /* Ширина росте з екраном. 1400px обмежував так, що на моніторі 1920+ права
    третина лишалась мертвою, хоча списку бракувало місця на теми листів. */
-main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
+main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .mailv2 .m-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .mailv2 .m-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
@@ -218,6 +218,11 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .list-reject:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
 .mailv2 .list-reject:hover{color:var(--alarm);border-color:rgba(var(--alarm-rgb), .4)}
 .mailv2 .list-reject svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+/* Кнопка швидкого переносу в папку «оброблено» — поруч із ✕, той самий розмір,
+   але акцентний тон (це не видалення, а «робота пішла в цех»). Символ ↦. */
+.mailv2 .list-move{margin-left:6px;width:24px;height:24px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-2);line-height:1;color:var(--ink-3);border:1px solid var(--control-edge);background:none;cursor:pointer}
+.mailv2 .list-move:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
+.mailv2 .list-move:hover{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .45)}
 .mailv2 .list-foot{padding:9px 15px;border-top:1px solid var(--line);font-size:var(--fs-1);color:var(--ink-3)}
 
 /* Accept wizard (semi-auto): stepper + step body inside the triage panel. */
@@ -350,11 +355,15 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .seg-pane.on{display:block}
 @keyframes segPaneIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .mailv2 .mail-metabar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
-.mailv2 .seg-stickybar{position:sticky;bottom:0;z-index:var(--z-raised);display:flex;align-items:center;gap:12px;padding:11px 16px 11px 20px;background:var(--card-3);border-top:1px solid var(--line-2)}
-.mailv2 .ssum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-2);color:var(--ink-2);min-width:0}
+/* flex-wrap: коли кнопок у смузі багато (додався перенос у папку), вони мусять
+   ПЕРЕНЕСТИСЬ на новий рядок, а не чавити підсумок у вузький стовпчик, де ім'я
+   й матеріал з'їжджали по літері (баг 23.09.26). Підсумок тримає власну ширину
+   (flex:1 1 auto), дії з margin-left:auto самі стають праворуч свого рядка. */
+.mailv2 .seg-stickybar{position:sticky;bottom:0;z-index:var(--z-raised);display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:11px 16px 11px 20px;background:var(--card-3);border-top:1px solid var(--line-2)}
+.mailv2 .ssum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 1 auto;font-size:var(--fs-2);color:var(--ink-2);min-width:0}
 .mailv2 .ssum .ssum-client{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
 .mailv2 .ssum .ssum-sep{color:var(--ink-3)}
-.mailv2 .ssum-actions{margin-left:auto;display:flex;gap:8px;flex:0 0 auto;align-items:center}
+.mailv2 .ssum-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:8px;flex:0 1 auto;align-items:center;justify-content:flex-end}
 .mailv2 .ssum-actions form{margin:0}
 /* Hairline between the disposal group and the apex, so a misclick has to
    cross a visible boundary rather than 8px of nothing. */

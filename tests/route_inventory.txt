@@ -60,6 +60,7 @@ GET /settings
 GET /settings/backup/files.zip
 GET /settings/changelog
 GET /settings/feedback
+GET /settings/mail/folders
 GET /settings/materials
 GET /settings/materials/probe
 GET /settings/report.txt
@@ -138,6 +139,8 @@ POST /mail/{email_id}/download-attachments
 POST /mail/{email_id}/extract-archives
 POST /mail/{email_id}/fetch-link
 POST /mail/{email_id}/filter
+POST /mail/{email_id}/move-processed
+POST /mail/{email_id}/move-to-inbox
 POST /mail/{email_id}/open-folder
 POST /mail/{email_id}/redownload
 POST /mail/{email_id}/reject
@@ -199,6 +202,7 @@ POST /settings/machines/{machine_id}/portrait
 POST /settings/machines/{machine_id}/portrait/delete
 POST /settings/mail-download/toggle
 POST /settings/mail-spool/prune
+POST /settings/mail/processed-folder
 POST /settings/materials/add
 POST /settings/materials/alias/add
 POST /settings/materials/alias/{alias_id}/delete

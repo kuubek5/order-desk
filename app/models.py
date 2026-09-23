@@ -595,6 +595,18 @@ class EmailMessage(Base):
     # оператор звик обробляти пошту. NULL для листів, імпортованих до появи поля,
     # і для листів без показного імені в заголовку (тоді падаємо на здогад/адресу).
     from_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Папка скриньки, куди оператор ПЕРЕМІСТИВ лист вручну після того, як робота
+    # пішла в цех («Скачано-просчитано» тощо — назва в налаштуваннях). NULL =
+    # лист лишається в Inbox. Ми моніторимо лише Inbox, тож переміщений лист
+    # синк більше не перечитує, але рядок у базі лишається — це поле показує
+    # операторові, що лист уже прибрано зі скриньки, й ховає кнопку переміщення.
+    mailbox_folder: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    # Заголовок Message-ID листа — унікальний і НЕ міняється при переміщенні між
+    # папками (на відміну від UID). Потрібен, щоб повернути перенесений лист у
+    # Inbox: UID у папці інший, а після повернення в Inbox — ще інший, тож
+    # знаходимо лист саме за Message-ID. NULL для листів, імпортованих до появи
+    # поля (їх повернути не можна — кнопка «у вхідні» тоді ховається).
+    message_id: Mapped[Optional[str]] = mapped_column(String(400), nullable=True, index=True)
     subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)

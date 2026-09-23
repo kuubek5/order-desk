@@ -1,0 +1,24 @@
+{# Селект вибору папки «оброблено». Рендериться при відкритті вкладки з порожнім
+   mail_folders (список ще не читали — щоб не робити IMAP-запит на кожному
+   відкритті /settings) і замінюється відповіддю GET /settings/mail/folders після
+   кнопки «Зчитати папки». Потребує mail_folders, mail_processed_folder;
+   folders_error — лише у відповіді на зчитування. #}
+<div id="mail-folder-picker">
+    {% if folders_error %}
+    <p class="settings-help settings-error-text">{{ folders_error }}</p>
+    {% endif %}
+    <select name="folder" class="suminput" aria-label="Папка для оброблених листів">
+        <option value="">— не переносити (вимкнено) —</option>
+        {% for f in mail_folders %}
+        <option value="{{ f }}" {% if f == mail_processed_folder %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+        {# Збережена папка, якої немає в зчитаному списку (список ще не читали або
+           папку прибрали зі скриньки) — показуємо, щоб не загубити вибір. #}
+        {% if mail_processed_folder and mail_processed_folder not in mail_folders %}
+        <option value="{{ mail_processed_folder }}" selected>{{ mail_processed_folder }} (збережено)</option>
+        {% endif %}
+    </select>
+    {% if not mail_folders %}
+    <p class="settings-help">Натисни «Зчитати папки скриньки», щоб вибрати зі списку.</p>
+    {% endif %}
+</div>

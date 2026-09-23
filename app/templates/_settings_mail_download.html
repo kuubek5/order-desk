@@ -50,6 +50,24 @@
                     </div>
                 </div>
 
+                {# ── Папка «оброблено» ── куди сторінка пошти переносить листи
+                   робіт, що пішли в цех. Список папок читається кнопкою (IMAP),
+                   не на кожному відкритті. #}
+                <div class="stand-cells">
+                    <div class="stand-cell w3">
+                        <h3>Куди переносити оброблені листи</h3>
+                        <p class="settings-help">Лист, робота якого пішла в цех, оператор переносить у цю папку скриньки кнопкою на сторінці пошти («Скачано-просчитано» тощо). Спершу зчитай папки, тоді вибери й збережи.</p>
+                        <form method="post" action="/settings/mail/processed-folder" class="mail-folder-form">
+                            {% include "_settings_mail_folder_picker.html" %}
+                            <div class="mail-folder-actions">
+                                <button type="button" class="settings-secondary-button" hx-get="/settings/mail/folders" hx-target="#mail-folder-picker" hx-swap="outerHTML" hx-indicator="#mail-folders-spin" hx-disabled-elt="this">Зчитати папки скриньки</button>
+                                <span class="check-spinner htmx-indicator" id="mail-folders-spin" aria-hidden="true"></span>
+                                <button type="submit" class="settings-secondary-button">Зберегти</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 {% if spool_report and spool_report.prunable_dirs %}
                 {# Ручне прибирання спулу. Автоматично не видаляється НІЧОГО —
                    див. app/mail_spool.py; тому дія живе у зоні руйнівних. #}
