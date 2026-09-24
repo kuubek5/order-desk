@@ -638,6 +638,10 @@ def move_message_back_to_inbox(session: Session, email_message: EmailMessage) ->
             )
     email_message.mailbox_folder = None
     email_message.mailbox_moved_at = None
+    # Лист фізично повернувся у Вхідні → він НЕ «покинув Вхідні». Без цього
+    # рядка повернута робота падала б у «Покинули Вхідні» (якщо мітку встиг
+    # поставити віковий синк), а не в «Усі листи» (власник 24.09.26).
+    email_message.inbox_gone_at = None
 
 
 def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) -> int:

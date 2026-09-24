@@ -154,6 +154,29 @@ class TestProcessedTabFiltering:
         # Значок вкладки папки рахує саме перенесені.
         assert "скачано" in processed.lower() or "Оброблено" in processed
 
+    def test_return_action_matches_status(self, app_db):
+        """Повернення з папки веде САМЕ в «Усі листи» (власник 24.09.26). Прийнята
+        робота — через ВІДКАТ (restore: видаляє роботу, лист → нове), ↦-перенесений
+        нове-лист — через лёгкий move-to-inbox."""
+        app, session_factory = app_db
+        with session_factory() as db:
+            _set_folder(db)
+            today_moved = datetime.combine(business_today(), get_rollover()) + timedelta(hours=1)
+            acc = _letter(db, uid="301", status="прийнято", folder="Оброблено",
+                          mailbox_moved_at=today_moved)
+            new = _letter(db, uid="302", status="нове", folder="Оброблено",
+                          mailbox_moved_at=today_moved)
+            acc_id, new_id = acc.id, new.id
+
+        client = MiniClient(app)
+        client.login(*OPERATOR)
+        _, _, processed = client.get("/mail?view=processed")
+        # Прийнята → відкат прийняття; нове ↦ → лёгке повернення. Обидві в «Усі листи».
+        assert f"/mail/{acc_id}/restore" in processed
+        assert f"/mail/{acc_id}/move-to-inbox" not in processed
+        assert f"/mail/{new_id}/move-to-inbox" in processed
+        assert f"/mail/{new_id}/restore" not in processed
+
 
 class TestSaveProcessedFolder:
     def test_save_folder_setting_whitelisted(self, app_db):  # noqa: F811
