@@ -556,6 +556,20 @@ def _int_arg(args: dict, name: str, *, default: int, low: int, high: int) -> int
     return value
 
 
+def tool_handout_match(db: Session, args: dict) -> dict[str, Any]:
+    """Діагностика зіставлення видачі для одного клієнта: чому робота показує
+    (чи ні) STL-прев'ю. Тіло — у `handout_diag` (той самий ланцюг, що будує
+    екран видачі). Імпорт локальний: тягне сканер export і stl_preview."""
+    query = str(args.get("query") or "").strip()
+    if not query:
+        raise ToolError(
+            "потрібен `query`: ім'я клієнта (підрядок) або id/наряд роботи з видачі"
+        )
+    from app.services.handout_diag import diagnose_handout_client
+
+    return diagnose_handout_client(db, query)
+
+
 # ── Реєстр ───────────────────────────────────────────────────────────────────
 
 
@@ -629,6 +643,29 @@ TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_order,
+    ),
+    Tool(
+        name="kmill_handout_match",
+        description=(
+            "Чому робота на видачі не показує STL-прев'ю. Для клієнта (ім'я-підрядок "
+            "або id/наряд роботи) показує: як зіставилось ім'я з текою в export "
+            "(впевненість, кандидати), які партії знайшов сканер (тека, ДАТА "
+            "СТВОРЕННЯ = робочий день партії, матеріал, к-сть STL), і по кожній "
+            "роботі — зіставлено з текою чи ні і ЧОМУ (немає партії того дня, "
+            "старіша тека, матеріал не збігся, ім'я не знайшло теки)."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Ім'я клієнта (підрядок, напр. «Голій») або id/наряд роботи.",
+                }
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        run=tool_handout_match,
     ),
     Tool(
         name="kmill_sync_journal",
