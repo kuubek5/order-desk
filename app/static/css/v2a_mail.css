@@ -142,7 +142,11 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
    і на часі), і вільний простір ділився між ними порівну: колонка з кількістю
    файлів з'їжджала тим сильніше, чим коротша тема, тобто в кожному рядку по
    своєму. Фіксована колонка під файли ставить їх усі на одну вертикаль. */
-.mailv2 .mailrow .r2{display:grid;grid-template-columns:minmax(0,1fr) var(--mail-att-col, 92px) auto;align-items:baseline;gap:8px;min-width:0}
+/* Колонка файлів — СТИСКАЄМА (minmax(0, …)), не фіксовані 92px: на вузькому
+   моніtorі 2-го оператора фіксована ширина не влазила й штовхала «не
+   скачано»/дату під бейдж готовності (скарга 24.09.26). Тепер вона худне, а
+   текст обрізається трикрапкою (title лишає повний). */
+.mailv2 .mailrow .r2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0, var(--mail-att-col, 92px)) auto;align-items:baseline;gap:8px;min-width:0}
 .mailv2 .mailrow .from{font-size:var(--fs-2);font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
 /* Розпізнаний клієнт — тиха підказка ПРАВОРУЧ від показного імені: менша, сіра,
    стискається першою (flex:0 1 auto + ellipsis), щоб ніколи не з'їдати саме
@@ -155,9 +159,15 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
    Ширина стала: колонка бейджа була auto, тож «МАТЕРІАЛ?» робив її ширшою за
    «ГОТОВО», і на цю різницю з'їжджало ВСЕ, що ліворуч — файли й час. Тепер
    бейджі стоять колонкою, а сусіди від них не залежать. */
-.mailv2 .mailrow .r3{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto;min-width:118px}
-.mailv2 .mailrow .reco{min-width:70px;text-align:center}
-.mailv2 .mailrow .att{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);display:inline-flex;align-items:center;gap:4px;min-width:0;white-space:nowrap}
+.mailv2 .mailrow .r3{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto;min-width:118px;max-width:52%}
+/* Бейдж готовності. Довгий текст пропущених полів («1 файл(ів) за посиланням»)
+   з nowrap раніше роздував колонку r3 без меж і кришив рядок на вузькому
+   моніторі 2-го оператора — сусідній «не скачано»/дата переповнювались і
+   налазили. Кеп ширини + трикрапка тримають бейдж у межах; повний текст лишився
+   в title. Короткі («3D-друк?», «готово», «матеріал?») влазять цілком. */
+.mailv2 .mailrow .reco{min-width:70px;max-width:150px;text-align:center;overflow:hidden;text-overflow:ellipsis}
+.mailv2 .mailrow .att{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);display:inline-flex;align-items:center;gap:4px;min-width:0;white-space:nowrap;overflow:hidden}
+.mailv2 .mailrow .att svg{flex:0 0 auto}
 .mailv2 .mailrow .att svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .reco{font-size:var(--fs-0);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .mailv2 .reco.ok{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .3)}
@@ -504,7 +514,12 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
    каже — на 1920px з відкритим листом список може бути вузьким. */
 .mailv2 .list-panel{container-type:inline-size;container-name:maillist}
 
-@container maillist (min-width: 460px){
+@container maillist (min-width: 600px){
+  /* Поріг піднято 460→600 (скарга власника 24.09.26): на меншому моніторі 2-го
+     оператора двопанельний список звужувався до ~500px, і 1-рядкова сітка
+     кришила рядок (довгий бейдж готовності + фіксована колонка файлів не
+     влазили, «не скачано»/дата налазили). Нижче 600px лишаємо 2-рядковий
+     вигляд — він худне вертикально й не переповнюється. */
   /* Один поверх: відправник · тема · файли · час. Рядок худне до ~36px,
      тобто в екран влазить помітно більше листів.
 
