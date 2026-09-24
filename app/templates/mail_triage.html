@@ -2,6 +2,12 @@
 
 {% block title %}{{ page_title }} — KuubMill{% endblock %}
 {% block stl_scripts %}{% include "_stl_scripts.html" %}{% endblock %}
+{% block extra_head %}
+{# Комбобокс підказок клієнта/матеріалу у майстрі прийняття листа (той самий, що
+   в «Додати роботу» на черзі). materialsuggest.js глобальний; тут потрібен лише
+   стиль випадаючого списку. #}
+<link rel="stylesheet" href="/static/css/suggest.css?v={{ static_ver('css/suggest.css') }}">
+{% endblock %}
 
 {% block content %}
 {% from "_lookgear.html" import lookgear %}

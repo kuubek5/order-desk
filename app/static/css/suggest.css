@@ -13,7 +13,8 @@
 .ms-field[hidden] {
   display: none;
 }
-.ms-field > .addwork-input {
+.ms-field > .addwork-input,
+.ms-field > .suminput {
   width: 100%;
 }
 

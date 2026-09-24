@@ -260,6 +260,15 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .wpb-hint{font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .wpb-hint.ok{color:var(--accent-c)}
 .mailv2 .wpb-hint.new{color:var(--warn)}
+/* Пропонована тека на Кроці 1 — компактніша за .wiz-pathbox кроку 2: один рядок
+   «Ляжуть у: export / клієнт / дата / матеріал» + прапорець наявна/нова. Ті самі
+   .wpb-seg (колір наявна/нова спільний). */
+.mailv2 .wiz-pathhint{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;border:1px solid var(--line-2);border-radius:9px;background:var(--card);padding:9px 12px;margin:0 0 11px}
+.mailv2 .wph-label{font-size:var(--fs-1);color:var(--ink-2)}
+.mailv2 .wph-path{font-size:var(--fs-1);color:var(--ink-2);line-height:1.7;word-break:break-word}
+.mailv2 .wph-flag{font-size:var(--fs-0)}
+.mailv2 .wph-flag.ok{color:var(--accent-c)}
+.mailv2 .wph-flag.new{color:var(--warn)}
 .mailv2 .wiz-summary{margin:0}
 .mailv2 .wiz-summary>div{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--card-2)}
 .mailv2 .wiz-summary>div:first-child{border-top:none}

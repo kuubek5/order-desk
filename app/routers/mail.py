@@ -862,8 +862,18 @@ def _wizard_context(
     # Step 1 opens with the remembered name when the operator hasn't typed one;
     # step 2 pre-selects the remembered folder (only if it still exists) when
     # no explicit pick/new-folder override was given.
-    if step == 1 and not client_name.strip() and sender_hint:
-        client_name = sender_hint.client_name
+    # Дефолт імені клієнта: постійний клієнт (пам'ять) → показне ім'я
+    # відправника (from_name, «Стоматологія Ритченка») → здогад. НЕ email-адреса:
+    # раніше поле падало на неї, і оператор бачив «irytchenkodental@gmail.com»
+    # замість імені, а тека потім рахувалась від адреси (скарга власника
+    # 24.09.26). Адреса лишається крайнім запасом уже в шаблоні.
+    if step == 1 and not client_name.strip():
+        if sender_hint and sender_hint.client_name:
+            client_name = sender_hint.client_name
+        elif email.from_name:
+            client_name = email.from_name
+        elif email.client_name_guess:
+            client_name = email.client_name_guess
     if (
         step >= 2 and sender_hint and sender_hint.export_folder
         and not folder_pick.strip() and not folder_new.strip()
@@ -903,13 +913,17 @@ def _wizard_context(
     selected_ids = set(attachment_ids)
     _batch = [a for a in ctx["unclaimed_attachments"] if a.id in selected_ids] if selected_ids else ctx["unclaimed_attachments"]
     ctx["batch_count"] = len(_batch)
+    # Пропонована тека рахується вже на КРОЦІ 1 (прохання власника 24.09.26:
+    # «щоб система орієнтувалась на ім'я замовника й пропонувала папку»). На
+    # кроці 1 це підказка за поточним іменем; крок 2 її ж підтверджує й дає
+    # перекрити. preview_export_target нічого не пише на диск.
+    export_root = Path(get_export_folder_path(db))
+    ctx["preview"] = preview_export_target(
+        export_root, client_name, material_color, client_override, material_override
+    )
+    ctx["attachment_count"] = ctx["batch_count"]
     if step >= 2:
-        export_root = Path(get_export_folder_path(db))
-        ctx["preview"] = preview_export_target(
-            export_root, client_name, material_color, client_override, material_override
-        )
         ctx["existing_folders"] = list_client_folders(export_root)
-        ctx["attachment_count"] = ctx["batch_count"]
 
     return ctx
 

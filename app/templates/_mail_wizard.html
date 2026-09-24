@@ -37,9 +37,17 @@
     <div class="fieldgrid">
         <div class="field full">
             <label for="wiz-client">Ім’я клієнта<span class="form-required">*</span></label>
-            <input type="text" id="wiz-client" name="client_name" class="suminput"
-                   value="{{ client_name or email.client_name_guess or email.from_address or '' }}"
-                   placeholder="вкажіть ім’я клієнта" required>
+            {# Комбобокс підказок клієнтів (той самий materialsuggest.js +
+               /suggest/client, що в «Додати роботу»): оператор дописує ім'я й
+               обирає ВЖЕ наявного клієнта — тоді тека в export збігається. Дефолт
+               — показне ім'я відправника (from_name), а не email-адреса. #}
+            <div class="ms-field" data-matsuggest data-suggest-url="/suggest/client">
+                <input type="text" id="wiz-client" name="client_name" class="suminput"
+                       role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input
+                       value="{{ client_name or email.client_name_guess or email.from_name or '' }}"
+                       placeholder="вкажіть ім’я клієнта" required>
+                <ul class="ms-list" role="listbox" aria-label="Підказки клієнта" hidden data-matsuggest-list></ul>
+            </div>
         </div>
         <div class="field full">
             <label for="wiz-material">Матеріал · колір</label>
@@ -52,9 +60,16 @@
                 {% endfor %}
             </div>
             {% endif %}
-            <input type="text" id="wiz-material" name="material_color" class="suminput"
-                   value="{{ material_color or email.material_color_guess or '' }}"
-                   placeholder="напр. емо а3.5, титан">
+            {# Той самий розумний комбобокс матеріалу, що в «Додати роботу»:
+               підказки + скорочення (Tab розгортає «ma3»→«mono a3», розкладка/
+               гомогліфи). «Розпізнано»-чипи вище лишаються швидким вибором. #}
+            <div class="ms-field" data-matsuggest>
+                <input type="text" id="wiz-material" name="material_color" class="suminput"
+                       role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input
+                       value="{{ material_color or email.material_color_guess or '' }}"
+                       placeholder="напр. емо а3.5, титан">
+                <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
+            </div>
         </div>
         <div class="field">
             <label for="wiz-qty">Кількість</label>
@@ -67,6 +82,16 @@
                    value="{{ kind or email.kind_guess or '' }}" placeholder="напр. анатомія, абатмент">
         </div>
     </div>
+    {# Пропонована тека вже тут (Крок 1), за іменем клієнта — оператор одразу
+       бачить, КУДИ ляжуть файли. Крок 2 її підтверджує й дає перекрити. Підказка
+       статична (за поточним іменем): зміниш ім'я — точну теку покаже Крок 2. #}
+    {% if preview %}
+    <div class="wiz-pathhint" role="note">
+        <span class="wph-label">Ляжуть у:</span>
+        <span class="wph-path mono"><span class="wpb-root">export</span> / <span class="wpb-seg {% if preview.client_folder_existing %}exists{% else %}new{% endif %}">{{ preview.client_folder }}</span> / <span class="wpb-seg">{{ preview.batch_folder }}</span> / <span class="wpb-seg mat">{{ preview.material_folder }}</span></span>
+        {% if preview.client_folder_existing %}<span class="wph-flag ok">↺ наявна папка клієнта</span>{% else %}<span class="wph-flag new">＋ нова папка</span>{% endif %}
+    </div>
+    {% endif %}
     {% if unclaimed_count > 1 %}
     <div class="field full wiz-files">
         <label>Файли цієї роботи <span class="wf-hint">познач, які файли цього кольору — решта лишиться в листі</span></label>
