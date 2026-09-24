@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
-from app.material_class import material_badge, material_color_css_class
+from app.material_class import (
+    mail_material_badge,
+    material_badge,
+    material_color_css_class,
+)
 
 
 def _order(material_name=None, is_production=True, material_color="моно а3"):
@@ -68,3 +72,41 @@ def test_zircon_variants_unchanged():
 def test_none_and_empty():
     assert material_color_css_class(None) == ""
     assert material_color_css_class("") == ""
+
+
+# ── Чіп матеріалу+кольору на рядку тріажу (mail_material_badge) ───────────────
+
+
+def test_mail_badge_recognises_zircon_synonyms_and_typos():
+    # Виробник monolith; клієнти пишуть по-різному — сидові аліаси + нечіткий збіг.
+    for text in ("monolith a2", "монолайт a2", "моно а3", "моноліт а3.5", "800"):
+        b = mail_material_badge(text)
+        assert b is not None and b["symbol"] == "Zr" and b["cls"] == "mat-zr"
+
+
+def test_mail_badge_pulls_shade_code():
+    assert mail_material_badge("monolith a2")["color"] == "a2"
+    assert mail_material_badge("pmma a2") == {
+        "symbol": "PMMA", "cls": "mat-pmma", "title": "ПММА", "color": "a2",
+    }
+    # Матеріал без коду відтінку — чіп є, колір порожній.
+    assert mail_material_badge("титан корея")["symbol"] == "Ti"
+    assert mail_material_badge("титан корея")["color"] == ""
+
+
+def test_mail_badge_hidden_for_non_material_and_unknown():
+    # Не наша робота, омоніми й порожнеча — БЕЗ чіпа (не вигадуємо).
+    for text in (None, "", "моделювання втулки", "implant abatment", "нет времени"):
+        assert mail_material_badge(text) is None
+
+
+def test_mail_badge_respects_db_aliases():
+    # Адмін довчив написання в бібліотеці матеріалів → чіп його підхоплює.
+    from app.material_classifier import seed_alias_rows, AliasRow, PMMA
+    # Нейтральне написання (не містить сидових аліасів на кшталт «моно»), яке
+    # без запису в БАЗІ не впізнати.
+    novel = "флексикор b1"
+    assert mail_material_badge(novel) is None  # без аліаса — не гадаємо
+    extended = seed_alias_rows() + [AliasRow(pattern="флексикор", match_type="contains", material=PMMA)]
+    b = mail_material_badge(novel, extended)
+    assert b is not None and b["symbol"] == "PMMA"

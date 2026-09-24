@@ -44,6 +44,8 @@ from app.mail_export import (
 )
 from app.mail_filters import apply_rule_retroactively
 from app.mail_parser import material_candidates
+from app.material_catalog import load_alias_rows
+from app.material_class import mail_material_badge
 from app.mail_reader import (
     download_attachments_now,
     extract_archive_attachments,
@@ -212,6 +214,12 @@ def get_mail(
             EmailMessage.created_at.desc()
         )
     ).all()
+    # Чіп матеріалу+кольору на рядку — здогад із листа (material_color_guess),
+    # класифікований аліасами З БАЗИ (як синк), тож нові написання з бібліотеки
+    # матеріалів чіп підхоплює. Аліаси читаємо ОДИН раз на список, не на рядок.
+    _mat_aliases = load_alias_rows(db)
+    for _email in emails:
+        _email.mat_badge = mail_material_badge(_email.material_color_guess, _mat_aliases)
     # How many pending letters are being held back from the frozen list.
     held_back_count = 0
     if since is not None and view == "pending":

@@ -56,6 +56,12 @@
                 {% set _guess = email.client_name_guess %}
                 {% if email.from_name and _guess and _guess|lower != email.from_name|lower %}<span class="from-guess" title="Розпізнаний клієнт">{{ _guess }}</span>{% endif %}
                 {% if is_unread %}<span class="sr-only">непрочитано</span>{% endif %}
+                {# Чіп матеріалу+кольору — ЗДОГАД із листа (material_color_guess),
+                   класифікований у роутері (email.mat_badge), лише для впевнено
+                   фрезерувальних (Zr/PMMA/Ti/Wax). Підказка, як `from-guess`:
+                   рішення за оператором у майстрі. #}
+                {% set _mb = email.mat_badge %}
+                {% if _mb %}<span class="matmini {{ _mb.cls }}" title="Матеріал (здогад): {{ _mb.title }}{% if _mb.color %} · {{ _mb.color }}{% endif %} — перевір у майстрі"><b>{{ _mb.symbol }}</b>{% if _mb.color %}<span class="mm-c">{{ _mb.color }}</span>{% endif %}</span>{% endif %}
             </span>
             <span class="r2">
                 {# A subject that is nothing but a reply/forward prefix is not a

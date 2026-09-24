@@ -155,3 +155,32 @@ def material_badge(order) -> dict | None:
         return None
     symbol, cls = _MATERIAL_BADGES.get(material.name, (material.name[:4], "mat-other"))
     return {"symbol": symbol, "cls": cls, "title": material.name}
+
+
+def mail_material_badge(text: str | None, aliases=None) -> dict | None:
+    """Компактний чіп матеріалу+кольору для рядка тріажу — зі ЗДОГАДУ з листа.
+
+    Клієнти пишуть матеріал десятками невірних назв («монолайт», «monilit» замість
+    monolith); класифікатор ловить це аліасами + нечітким збігом
+    (`classify_material`), тому чіп бере той самий здогад, що вже стоїть у
+    `EmailMessage.material_color_guess`. `aliases` — рядки з БАЗИ
+    (`load_alias_rows`), тож нові написання, які адмін додає в бібліотеку
+    матеріалів, чіп підхоплює так само, як синк; None → сидові (тести/без БД).
+    Показуємо ЛИШЕ впевнено фрезерувальні (Zr/PMMA/Ti/Wax); «Не матеріал» і
+    невпізнане → None (чіп — ПІДКАЗКА, як `from-guess`; не вигадуємо, рішення за
+    оператором у майстрі). Колір — код відтінку з тексту (a2, 800); порожній,
+    коли листа без нього.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    # Локальний імпорт: material_classifier тягне rapidfuzz — тримаємо цей модуль
+    # (суто візуальний) вільним від важкого імпорту на старті.
+    from app.material_classifier import classify_material
+
+    category = classify_material(text, aliases)
+    if category is None or category not in _MATERIAL_BADGES:
+        return None
+    symbol, cls = _MATERIAL_BADGES[category]
+    _word, code = split_material_color(text)
+    return {"symbol": symbol, "cls": cls, "title": category, "color": code.strip()}

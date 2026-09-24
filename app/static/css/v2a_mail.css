@@ -175,6 +175,19 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mailrow .att{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);display:inline-flex;align-items:center;gap:4px;min-width:0;white-space:nowrap;overflow:hidden}
 .mailv2 .mailrow .att svg{flex:0 0 auto}
 .mailv2 .mailrow .att svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+/* Чіп матеріалу+кольору — здогад із листа (mail_material_badge), праворуч на
+   першій лінії. Символ фарбується кольором родини (як легенда Черги: Zr крижаний,
+   PMMA бурштин, Ti смарагд, Wax троянда, SLM сталь); решта чіпа нейтральна, бо
+   це ПІДКАЗКА, а не статус. `margin-left:auto` тримає його праворуч від імені,
+   `flex:0 0 auto` — не дає стиснути (ім'я/клієнт худнуть першими). */
+.mailv2 .mailrow .matmini{flex:0 0 auto;display:inline-flex;align-items:baseline;gap:5px;font-family:var(--font-mono);font-size:var(--fs-0);white-space:nowrap;padding:2px 7px;border-radius:5px;border:1px solid var(--line);background:var(--card-2)}
+.mailv2 .mailrow .matmini b{font-weight:700;letter-spacing:.02em}
+.mailv2 .mailrow .matmini .mm-c{color:var(--ink-2)}
+.mailv2 .mailrow .matmini.mat-zr b{color:var(--mat-zr)}
+.mailv2 .mailrow .matmini.mat-pmma b{color:var(--mat-pmma)}
+.mailv2 .mailrow .matmini.mat-ti b{color:var(--mat-ti)}
+.mailv2 .mailrow .matmini.mat-wax b{color:var(--mat-wax)}
+.mailv2 .mailrow .matmini.mat-slm b{color:var(--mat-slm)}
 .mailv2 .reco{font-size:var(--fs-0);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .mailv2 .reco.ok{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .3)}
 .mailv2 .reco.warn{background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .3)}
