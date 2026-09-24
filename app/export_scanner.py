@@ -209,6 +209,65 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
     return entries
 
 
+def entry_for_folder(root: Path, rel_path: str) -> "ExportEntry | None":
+    """Один ExportEntry за ТОЧНИМ rel-шляхом `<клієнт>/<партія>/<матеріал>`.
+
+    Для поштової роботи ми знаємо теку матеріалу точно (прийняття листа саме
+    переносить туди файли й записує шлях у Order.export_folder_path) — нечіткий
+    збіг за іменем тут зайвий і небезпечний (клієнт із кількома роботами того
+    самого кольору дістав би чужу теку). Читає РІВНО цю теку: один scandir
+    листа, як і решта видачі. None — теки вже немає (оператор перейменував чи
+    прибрав) або шлях кривий: викликач тоді тихо падає на нечіткий збіг.
+    """
+    rel = (rel_path or "").strip().replace("\\", "/").strip("/")
+    if not rel:
+        return None
+    parts = rel.split("/")
+    # Три рівні — інваріант save_attachments_to_export; будь-що інше (порожні
+    # частини, `.`/`..`) відкидаємо як биту чи небезпечну назву.
+    if len(parts) != 3 or any(p in ("", ".", "..") for p in parts):
+        return None
+    target = Path(root).joinpath(*parts)
+    try:
+        if not target.is_dir():
+            return None
+    except OSError:
+        return None
+
+    files_list: list[str] = []
+    subfolders = 0
+    for f in _dir_entries(target):
+        try:
+            if f.is_file():
+                if f.name.lower() not in _SYSTEM_FILES:
+                    files_list.append(f.name)
+            elif f.is_dir():
+                subfolders += 1
+        except OSError:
+            continue
+
+    # Час — з теки ПАРТІЇ (рівень 2), як у решти сканера; тека матеріалу чи
+    # `now` — лише запаска, щоб шаблон видачі мав що показати (created_at
+    # обовʼязковий). Для прямого шляху дата вторинна: збіг уже точний.
+    created_at = datetime.now()
+    for candidate in (target.parent, target):
+        try:
+            created_at = datetime.fromtimestamp(candidate.stat().st_ctime)
+            break
+        except (OSError, ValueError, OverflowError):
+            continue
+
+    return ExportEntry(
+        client_folder_name=parts[0],
+        batch_folder_name=parts[1],
+        created_at=created_at,
+        material_color_folder_name=parts[2],
+        files=files_list,
+        folder_path=target,
+        subfolders=subfolders,
+    )
+
+
 def scan_export_client_latest(
     root: Path, client_folder_name: str, count: int = 3
 ) -> list[ExportEntry]:

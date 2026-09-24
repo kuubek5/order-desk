@@ -211,6 +211,45 @@ def test_successful_accept_writes_the_sheet_placeholder_row_once(tmp_path, monke
         assert order.row_number == 65 - HEADER_ROWS
 
 
+def test_accept_records_direct_export_folder_and_handout_uses_it(tmp_path, monkeypatch):
+    """Частина A: прийняття записує ТОЧНУ теку видачі (`export_folder_path`), і
+    видача будує з неї прямий запис — минаючи нечіткий збіг за іменем, який
+    плутається, коли в клієнта кілька робіт того самого кольору."""
+    from app.export_scanner import entry_for_folder
+
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+        response = _accept(db, user, email)
+        assert "error=" not in response.headers["location"]
+
+    with Session(engine) as db:
+        order = db.scalar(select(Order))
+        rel = order.export_folder_path
+        assert rel is not None
+        parts = rel.split("/")
+        # Рівно три рівні; тека матеріалу — саме прийнятий колір.
+        assert len(parts) == 3
+        assert parts[2] == "моно а3"
+        # Файл фізично лежить у цій теці.
+        assert (export_root.joinpath(*parts) / "crown.stl").is_file()
+
+    # Видача будує ОДИН прямий запис із цього шляху, з файлом усередині.
+    entry = entry_for_folder(export_root, rel)
+    assert entry is not None
+    assert entry.material_color_folder_name == "моно а3"
+    assert "crown.stl" in entry.files
+    assert entry.folder_path == export_root.joinpath(*parts)
+    # Перейменована/зникла тека → None → видача падає на нечіткий збіг.
+    assert entry_for_folder(export_root, "Хтось/01.01.26/pmma a2") is None
+    # Крива назва (не три рівні, спроба виходу за корінь) — теж None.
+    assert entry_for_folder(export_root, "../secrets") is None
+    assert entry_for_folder(export_root, rel + "/../../../etc") is None
+
+
 def test_failed_unaccept_commit_returns_files_to_export(tmp_path, monkeypatch):
     """Дзеркальний випадок: відкат прийняття перемістив файли назад у спул, але
     коміт впав → БД знову вважає лист прийнятим, тож файли мусять повернутись

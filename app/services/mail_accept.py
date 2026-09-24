@@ -439,9 +439,17 @@ def _move_attachments(
             attachment.saved_path = str(new_path)
             attachment.order_id = new_order.id
         try:
-            used_folder = new_paths[0].relative_to(export_root).parts[0] if new_paths else None
+            rel = new_paths[0].relative_to(export_root) if new_paths else None
         except (ValueError, IndexError):
-            used_folder = None
+            rel = None
+        if rel is not None:
+            used_folder = rel.parts[0]
+            # `rel` вказує на ФАЙЛ; його батько — тека матеріалу
+            # (`<клієнт>/<партія>/<матеріал>`), точна тека видачі цієї роботи.
+            # Видача бере STL прямо звідси, минаючи нечіткий збіг за іменем
+            # (Order.export_folder_path). posix — щоб шлях однаково читався
+            # незалежно від платформи, що його записала.
+            new_order.export_folder_path = rel.parent.as_posix()
 
     db.add(SyncLog(
         direction="mail_to_export", status="ok",

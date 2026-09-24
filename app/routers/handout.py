@@ -27,6 +27,7 @@ from app.business_day import business_today
 from app.client_matcher import match_client_name
 from app.export_scanner import (
     cache_counters as export_cache_counters,
+    entry_for_folder,
     list_export_client_names_cached,
     scan_export_client_cached,
     scan_export_client_latest_cached,
@@ -109,6 +110,28 @@ def _client_folder_link(match, export_root, preview_roots, validated_roots):
         folder_to_file_uri(client_folder),
         build_preview_token_lexical(client_folder, preview_roots, validated_roots),
     )
+
+
+def _direct_export_entry(order, export_root, preview_roots, validated_roots):
+    """Синтетичний ExportEntry за прямим шляхом поштової роботи, або None.
+
+    `Order.export_folder_path` записується прийняттям листа й указує точну теку
+    матеріалу. Будуємо з неї один запис і декоруємо тими самими похідними
+    полями (folder_uri + токен прев'ю), що й скановані теки, тож шаблон
+    `_handout_work_row.html` не відрізняє його від звичайного. None — поля нема
+    (лаба, вписаний клієнт) або тека зникла: викликач падає на нечіткий збіг.
+    """
+    rel = getattr(order, "export_folder_path", None)
+    if not rel:
+        return None
+    entry = entry_for_folder(export_root, rel)
+    if entry is None:
+        return None
+    entry.folder_uri = folder_to_file_uri(entry.folder_path)
+    entry.preview_token = build_preview_token_lexical(
+        entry.folder_path, preview_roots, validated_roots
+    )
+    return entry
 
 
 def handout_context(request: Request, user, source: str, day: str, db: Session) -> dict:
@@ -315,18 +338,31 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             order.units_total = work_units(order)
             order.units_found = found_units(order)
             work_day = parse_sheet_tab(order.sheet_tab)
-            order.export_matches = entries_for_material(
-                order.material_color, export_entries, work_day, client_claims, order.id
+            # Поштова робота знає свою теку ТОЧНО (accept сам переніс туди файли
+            # й записав шлях). Беремо STL прямо звідти, минаючи нечіткий збіг за
+            # іменем — інакше клієнт із кількома роботами того самого кольору
+            # діставав би під рядком чужу теку або жодної. Нечіткий збіг лишається
+            # запаскою: тека зникла (перейменували) → direct is None → падаємо на
+            # неї, як для робіт без прямого шляху (лаба, вписаний клієнт).
+            direct = _direct_export_entry(
+                order, _export_root, _preview_roots, _validated_roots
             )
-            # Теки за день роботи немає, є лише старіші з тим самим кольором —
-            # їх НЕ показуємо (хибна тека гірша за жодну), а рядок каже про
-            # це й дає одним кліком теку клієнта (рішення власника 11.09.26).
-            order.export_stale_day = (
-                None if order.export_matches
-                else stale_folder_day(
+            if direct is not None:
+                order.export_matches = [direct]
+                order.export_stale_day = None
+            else:
+                order.export_matches = entries_for_material(
                     order.material_color, export_entries, work_day, client_claims, order.id
                 )
-            )
+                # Теки за день роботи немає, є лише старіші з тим самим кольором —
+                # їх НЕ показуємо (хибна тека гірша за жодну), а рядок каже про
+                # це й дає одним кліком теку клієнта (рішення власника 11.09.26).
+                order.export_stale_day = (
+                    None if order.export_matches
+                    else stale_folder_day(
+                        order.material_color, export_entries, work_day, client_claims, order.id
+                    )
+                )
             order.export_client_uri = client_folder_uri
             order.export_client_token = client_folder_token
         # Теки, чий матеріал не збігся з жодним рядком, раніше показувались
