@@ -6,6 +6,49 @@
    Needs: email, wizard_step, client_name, material_color, kind, quantity,
    client_folder_override, material_cands; (step≥2) preview, existing_folders,
    attachment_count. #}
+{# Компактний редактор директорії — СПІЛЬНИЙ для Кроку 2 і Кроку 3 (власник
+   24.09.26: «розтягнулось меню, все в один рядок»). Тонкий рядок-превʼю шляху
+   (той самий вигляд, що підказка на Кроці 1) + три поля в ОДИН ряд. Бекенд-
+   контракт не міняється: folder_pick (select), folder_new (вписана нова),
+   material_folder — усі три несуться далі, як і раніше. Правити ТУТ, не в
+   двох місцях. #}
+{% macro dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, step, include_target, idp) %}
+<div class="wiz-pathhint" role="note">
+    <span class="wph-label">Файли ({{ attachment_count }}) ляжуть у:</span>
+    <span class="wph-path mono"><span class="wpb-root">export</span> / <span class="wpb-seg {% if preview.client_folder_existing %}exists{% else %}new{% endif %}">{{ preview.client_folder }}</span> / <span class="wpb-seg">{{ preview.batch_folder }}</span> / <span class="wpb-seg mat">{{ preview.material_folder }}</span></span>
+    {% if preview.client_folder_existing %}<span class="wph-flag ok">↺ наявна</span>{% else %}<span class="wph-flag new">＋ нова</span>{% endif %}
+    {% if preview.batch_reused %}<span class="wph-flag">партія дописується в наявну</span>{% endif %}
+</div>
+<div class="wiz-dirgrid">
+    <div class="field">
+        <label for="{{ idp }}-pick">Папка клієнта</label>
+        <select id="{{ idp }}-pick" name="folder_pick" class="suminput"
+                hx-post="/mail/{{ email.id }}/wizard" hx-include="{{ include_target }}"
+                hx-vals='{"step":"{{ step }}"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
+            <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
+            {% for folder in existing_folders %}
+            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if sender_hint and sender_hint.export_folder == folder %} · цього клієнта{% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="{{ idp }}-new">Нова папка</label>
+        <input type="text" id="{{ idp }}-new" name="folder_new" class="suminput"
+               value="{{ folder_new }}" placeholder="якщо нема в списку"
+               hx-post="/mail/{{ email.id }}/wizard" hx-include="{{ include_target }}"
+               hx-vals='{"step":"{{ step }}"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
+    </div>
+    <div class="field">
+        <label for="{{ idp }}-matfolder">Підпапка матеріалу</label>
+        <input type="text" id="{{ idp }}-matfolder" name="material_folder" class="suminput"
+               value="{{ material_folder or preview.material_folder }}"
+               placeholder="напр. моно а3"
+               hx-post="/mail/{{ email.id }}/wizard" hx-include="{{ include_target }}"
+               hx-vals='{"step":"{{ step }}"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
+    </div>
+</div>
+<div class="wiz-dirnote">«Нова папка» перекриває вибір зі списку.</div>
+{% endmacro %}
 <div class="wiz-progress" aria-hidden="true">
     <span class="wp-dot {% if wizard_step == 1 %}on{% elif wizard_step > 1 %}done{% endif %}">1</span>
     <span class="wp-line {% if wizard_step > 1 %}done{% endif %}"></span>
@@ -121,53 +164,7 @@
     <input type="hidden" name="quantity" value="{{ quantity }}">
     {% for aid in attachment_ids %}<input type="hidden" name="attachment_ids" value="{{ aid }}">{% endfor %}
 
-    <div class="wiz-pathbox">
-        <div class="wpb-label">Файли ({{ attachment_count }}) ляжуть у:</div>
-        <div class="wpb-path mono">
-            <span class="wpb-root">export</span> /
-            <span class="wpb-seg {% if preview.client_folder_existing %}exists{% else %}new{% endif %}">{{ preview.client_folder }}</span> /
-            <span class="wpb-seg">{{ preview.batch_folder }}</span> /
-            <span class="wpb-seg mat">{{ preview.material_folder }}</span>
-        </div>
-        <div class="wpb-hints">
-            {% if preview.client_folder_existing %}
-            <span class="wpb-hint ok">↺ наявна папка клієнта</span>
-            {% else %}
-            <span class="wpb-hint new">＋ нова папка клієнта</span>
-            {% endif %}
-            {% if preview.batch_reused %}<span class="wpb-hint">партія дописується в наявну</span>{% endif %}
-        </div>
-    </div>
-
-    <div class="field full">
-        <label for="wiz-pick">Папка клієнта</label>
-        <select id="wiz-pick" name="folder_pick" class="suminput"
-                hx-post="/mail/{{ email.id }}/wizard" hx-include="closest form"
-                hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
-            <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
-            {% for folder in existing_folders %}
-            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if sender_hint and sender_hint.export_folder == folder %} · папка цього клієнта{% endif %}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="field full">
-        <label for="wiz-new">…або нова папка клієнта</label>
-        <input type="text" id="wiz-new" name="folder_new" class="suminput"
-               value="{{ folder_new }}" placeholder="впиши назву, якщо папки нема в списку"
-               hx-post="/mail/{{ email.id }}/wizard" hx-include="closest form"
-               hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
-        <div class="wiz-hint">Якщо заповнено — перекриває вибір зі списку вище.</div>
-    </div>
-
-    <div class="field full">
-        <label for="wiz-matfolder">Підпапка матеріалу</label>
-        <input type="text" id="wiz-matfolder" name="material_folder" class="suminput"
-               value="{{ material_folder or preview.material_folder }}"
-               placeholder="напр. моно а3"
-               hx-post="/mail/{{ email.id }}/wizard" hx-include="closest form"
-               hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
-    </div>
+    {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "2", "closest form", "wiz") }}
 
     <div class="wiz-foot">
         <button type="submit" name="step" value="1" class="btn">← Назад</button>
@@ -204,70 +201,29 @@
        оператор бачить фінальний шлях і за потреби міняє папку клієнта чи підпапку
        матеріалу, не вертаючись на Крок 2. Кожна зміна перерендерює Крок 3 з новим
        шляхом (hx-post step=3), значення несуться в тому ж #wiz3form у /accept. #}
-    <div class="wiz-pathbox">
-        <div class="wpb-label">Файли ({{ attachment_count }}) ляжуть у (можна змінити):</div>
-        <div class="wpb-path mono">
-            <span class="wpb-root">export</span> /
-            <span class="wpb-seg {% if preview.client_folder_existing %}exists{% else %}new{% endif %}">{{ preview.client_folder }}</span> /
-            <span class="wpb-seg">{{ preview.batch_folder }}</span> /
-            <span class="wpb-seg mat">{{ preview.material_folder }}</span>
-        </div>
-        <div class="wpb-hints">
-            {% if preview.client_folder_existing %}
-            <span class="wpb-hint ok">↺ наявна папка клієнта</span>
-            {% else %}
-            <span class="wpb-hint new">＋ нова папка клієнта</span>
-            {% endif %}
-            {% if preview.batch_reused %}<span class="wpb-hint">партія дописується в наявну</span>{% endif %}
-        </div>
-    </div>
+    {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "3", "#wiz3form", "wiz3") }}
 
-    <div class="field full">
-        <label for="wiz3-pick">Папка клієнта</label>
-        <select id="wiz3-pick" name="folder_pick" class="suminput"
-                hx-post="/mail/{{ email.id }}/wizard" hx-include="#wiz3form"
-                hx-vals='{"step":"3"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
-            <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
-            {% for folder in existing_folders %}
-            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if sender_hint and sender_hint.export_folder == folder %} · папка цього клієнта{% endif %}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="field full">
-        <label for="wiz3-new">…або нова папка клієнта</label>
-        <input type="text" id="wiz3-new" name="folder_new" class="suminput"
-               value="{{ folder_new }}" placeholder="впиши назву, якщо папки нема в списку"
-               hx-post="/mail/{{ email.id }}/wizard" hx-include="#wiz3form"
-               hx-vals='{"step":"3"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
-        <div class="wiz-hint">Якщо заповнено — перекриває вибір зі списку вище.</div>
-    </div>
-
-    <div class="field full">
-        <label for="wiz3-matfolder">Підпапка матеріалу</label>
-        <input type="text" id="wiz3-matfolder" name="material_folder" class="suminput"
-               value="{{ material_folder or preview.material_folder }}"
-               placeholder="напр. моно а3"
-               hx-post="/mail/{{ email.id }}/wizard" hx-include="#wiz3form"
-               hx-vals='{"step":"3"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
-    </div>
-
-    {# Файли за посиланням (Drive, ukr.net) не є вкладеннями, тому
-       attachments_status їх не бачить: лист із трьома STL на Drive проходив
-       прийняття мовчки, створюючи роботу БЕЗ жодного файлу. Оператор бере її в
-       Sum3D, файлів немає, а лист уже в архіві. Той самий гейт продубльовано
-       на сервері — цей лише робить його видимим до кліку. #}
-    {% if undownloaded_links or attachment_count == 0 %}
+    {# Наполегливе попередження про НЕскачані файли (власник 24.09.26: «щоб
+       пропускав, але було наполегливе повідомлення»). Два джерела:
+        • undownloaded_links — файли за посиланням (Drive, ukr.net), не вкладення;
+        • undownloaded_files — вкладення листа, яких фізично немає на диску.
+       Без цього роботу приймали мовчки БЕЗ файлів (лист в архів, оператор бере
+       в Sum3D — файлів нема). НЕ блокуємо намертво: галка «прийняти без них»
+       пропускає свідомо. Той самий гейт продубльовано на сервері
+       (mail_accept.accept_letter) — цей лише робить його видимим до кліку. #}
+    {% if undownloaded_links or undownloaded_files or attachment_count == 0 %}
     <div class="files-summary warn">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
         <span>
-            {% if attachment_count == 0 %}<b>Жодного файлу</b> не переїде в export.{% else %}Ще <b>{{ undownloaded_links|length }}</b> файл(ів) за посиланням не скачано.{% endif %}
-            Скачайте у вкладці «Файли + STL» — або прийміть свідомо без них.
+            {% if attachment_count == 0 %}<b>Увага: жодного файлу</b> не переїде в export.{% else %}<b>Увага:</b>
+                {% if undownloaded_files %}<b>{{ undownloaded_files }}</b> файл(ів) листа ще не скачано на диск{% if undownloaded_links %}; {% endif %}{% endif %}{% if undownloaded_links %}<b>{{ undownloaded_links|length }}</b> файл(ів) за посиланням не скачано{% endif %}.
+                Робота піде в чергу <b>без них</b>.{% endif %}
+            Скачайте у вкладці «Файли + STL» — або підтвердіть, що приймаєте свідомо.
         </span>
     </div>
     <label class="wiz-anyway">
         <input type="checkbox" name="accept_anyway" value="1">
-        <span>Прийняти без цих файлів</span>
+        <span>Так, прийняти без цих файлів</span>
     </label>
     {% endif %}
 

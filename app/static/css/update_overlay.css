@@ -694,10 +694,12 @@ body.has-toast-chip .toast-stack[data-toast-pos="tc"]{padding-top:40px}
 }
 
 /* «Постійний клієнт» hint (sender memory) — card Лист pane + wizard step 1. */
-.sender-hint{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;margin-bottom:14px;background:rgba(var(--accent-base-rgb), .09);border:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c)}
-.sender-hint svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
-.sender-hint .sh-text{display:flex;flex-direction:column;gap:2px;min-width:0}
-.sender-hint b{font-size:var(--fs-2);font-weight:600}
+/* Компактний однорядковий вигляд (власник 24.09.26): іконка + ім'я + мета в
+   один рядок, wrap лише на вузькому. Раніше було два рядки з великим ім'ям. */
+.sender-hint{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:8px;margin-bottom:10px;background:rgba(var(--accent-base-rgb), .09);border:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c)}
+.sender-hint svg{width:14px;height:14px;flex:0 0 14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;align-self:center}
+.sender-hint .sh-text{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;min-width:0}
+.sender-hint b{font-size:var(--fs-1);font-weight:600}
 .sender-hint .sh-meta{font-size:var(--fs-0);color:var(--ink-2)}
 
 /* Multi-colour partial accept: file picker + «частково прийнято» badge. */
