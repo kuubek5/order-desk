@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app.archive_extract import is_archive
+from app.business_day import business_today, get_rollover
 from app.config import MAIL_ATTACHMENTS_PATH
 from app.export_scanner import clear_export_cache
 from app.link_attachments import (
@@ -164,10 +165,20 @@ def get_mail(
     # власника 24.09.26). `not_gone` тому висить на pending/filtered поряд із
     # `not_moved`.
     not_gone = EmailMessage.inbox_gone_at.is_(None)
+    # Вкладка «Оброблено» — лише ПОТОЧНИЙ робочий день (власник 24.09.26: «ті, що
+    # сьогодні обробляв, — тільки вони»), інакше вона росла б безмежно. Межа —
+    # робоча доба (07:30), як усюди в §14: день D покриває [D 07:30, D+1 07:30).
+    # Листи, перенесені до появи поля (mailbox_moved_at IS NULL), не сьогоднішні —
+    # у вкладці не показуються, але фізично лишаються в папці й у базі.
+    processed_today = sa_and(
+        EmailMessage.mailbox_folder.is_not(None),
+        EmailMessage.mailbox_moved_at.is_not(None),
+        EmailMessage.mailbox_moved_at >= datetime.combine(business_today(), get_rollover()),
+    )
     if view == "gone":
         status_clause = EmailMessage.inbox_gone_at.is_not(None)
     elif view == "processed":
-        status_clause = EmailMessage.mailbox_folder.is_not(None)
+        status_clause = processed_today
     elif view == "archive":
         status_clause = sa_and(EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved)
     elif view == "filtered":
@@ -236,9 +247,7 @@ def get_mail(
         )
     ) or 0
     processed_count = db.scalar(
-        select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.mailbox_folder.is_not(None)
-        )
+        select(func.count()).select_from(EmailMessage).where(processed_today)
     ) or 0
     sender_memories = list_sender_memories(db) if view == "auto" else []
     auto_count = db.scalar(
@@ -1283,6 +1292,7 @@ def move_email_processed(
         return RedirectResponse(target, status_code=303)
 
     email.mailbox_folder = folder
+    email.mailbox_moved_at = datetime.now()  # для вкладки «Оброблено за сьогодні»
     db.commit()
     # Рядок списку: тихо прибрати його (порожній 200 → hx-swap="delete"), без
     # тосту через сесію — зникнення рядка і є сигнал, як у ✕. Картка: тост +

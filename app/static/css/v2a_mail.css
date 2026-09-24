@@ -128,7 +128,13 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 /* --mail-row-pad — відступ рядка з акаунта оператора (шестерня над списком).
    Одна змінна на обидва режими: оператор крутить її, дивлячись на той режим,
    у якому працює, і два окремих числа він би не пов'язав між собою. */
-.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:var(--mail-row-pad, 8px) 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
+/* Права колонка (r3): підлога 146px вирівнює короткі бейджі («готово»,
+   «матеріал?») у стовпчик, а minmax(…,max-content) дає їй ВИРОСТИ, коли контенту
+   більше (бейдж + ДВІ кнопки ↦/✕). Раніше стояло `auto` + `min-width:118px` на
+   самій r3: 118px було вужче за бейдж із двома кнопками (~146px), і r3
+   переповнювалась ВЛІВО, накриваючи час «24.09 16:34» (скарга власника 24.09.26,
+   великий монітор). Тепер трек тримає контент, зазор до часу лишається. */
+.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(146px,max-content);align-items:center;column-gap:10px;padding:var(--mail-row-pad, 8px) 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
 .mailv2 .mailrow:last-child{border-bottom:0}
 .mailv2 .mailrow:hover{background:var(--card-2);opacity:1}
 .mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
@@ -159,7 +165,7 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
    Ширина стала: колонка бейджа була auto, тож «МАТЕРІАЛ?» робив її ширшою за
    «ГОТОВО», і на цю різницю з'їжджало ВСЕ, що ліворуч — файли й час. Тепер
    бейджі стоять колонкою, а сусіди від них не залежать. */
-.mailv2 .mailrow .r3{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto;min-width:118px;max-width:52%}
+.mailv2 .mailrow .r3{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap;min-width:0;max-width:none}
 /* Бейдж готовності. Довгий текст пропущених полів («1 файл(ів) за посиланням»)
    з nowrap раніше роздував колонку r3 без меж і кришив рядок на вузькому
    моніторі 2-го оператора — сусідній «не скачано»/дата переповнювались і

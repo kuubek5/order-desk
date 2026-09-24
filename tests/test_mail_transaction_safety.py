@@ -211,6 +211,48 @@ def test_successful_accept_writes_the_sheet_placeholder_row_once(tmp_path, monke
         assert order.row_number == 65 - HEADER_ROWS
 
 
+def test_processed_view_shows_only_todays_letters(monkeypatch):
+    """Вкладка «Оброблено» — лише поточний робочий день (власник 24.09.26):
+    сьогоднішній лист показується, вчорашній і безчасовий (legacy) — ні. Так само
+    лічильник вкладки."""
+    from datetime import datetime, timedelta
+    from app.business_day import business_today, get_rollover
+
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: context,
+    )
+    monkeypatch.setattr(
+        mail_router_mod, "get_current_user",
+        lambda request, db: SimpleNamespace(id=1, is_active=True, username="op"),
+    )
+    monkeypatch.setattr(mail_router_mod, "blocked_response", lambda *a, **k: None)
+
+    day_start = datetime.combine(business_today(), get_rollover())
+    req = SimpleNamespace(
+        session={"user_id": 1}, client=SimpleNamespace(host="127.0.0.1"),
+        headers={}, query_params={},
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        db.add_all([
+            EmailMessage(uid="today", status="прийнято", attachments_status="ready",
+                         mailbox_folder="F", mailbox_moved_at=day_start + timedelta(minutes=5),
+                         subject="s", message_id="<today>"),
+            EmailMessage(uid="yest", status="прийнято", attachments_status="ready",
+                         mailbox_folder="F", mailbox_moved_at=day_start - timedelta(hours=2),
+                         subject="s", message_id="<yest>"),
+            EmailMessage(uid="legacy", status="прийнято", attachments_status="ready",
+                         mailbox_folder="F", mailbox_moved_at=None,
+                         subject="s", message_id="<legacy>"),
+        ])
+        db.commit()
+
+        ctx = mail_router_mod.get_mail(request=req, db=db, view="processed")
+        assert {e.uid for e in ctx["emails"]} == {"today"}
+        assert ctx["processed_count"] == 1
+
+
 def test_full_accept_moves_letter_to_processed_folder(tmp_path, monkeypatch):
     """Робота пішла в роботу → лист переноситься в налаштовану папку «оброблено»
     скриньки, mailbox_folder ставиться (CRM і пошта синхронні, рішення власника

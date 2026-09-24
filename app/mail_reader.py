@@ -637,6 +637,7 @@ def move_message_back_to_inbox(session: Session, email_message: EmailMessage) ->
                 _folder_uidvalidity(mailbox) or email_message.uid_validity
             )
     email_message.mailbox_folder = None
+    email_message.mailbox_moved_at = None
 
 
 def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) -> int:
@@ -701,6 +702,7 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
     for row in forward:
         if (row.message_id or "").strip() in mids_in_folder:
             row.mailbox_folder = folder
+            row.mailbox_moved_at = now  # для вкладки «Оброблено за сьогодні»
             row.inbox_gone_at = None  # у папці «оброблено» ⇒ не «покинув»
             changed += 1
 
@@ -722,6 +724,7 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
         # У вікні, але в папці немає, і фаза 1 не всиновила назад у Inbox →
         # перенесений в іншу папку або видалений: «Покинули Вхідні».
         row.mailbox_folder = None
+        row.mailbox_moved_at = None
         row.inbox_gone_at = now
         changed += 1
 
@@ -985,6 +988,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                 adopted.uid = uid
                 adopted.uid_validity = uid_validity
                 adopted.mailbox_folder = None
+                adopted.mailbox_moved_at = None
                 adopted.inbox_gone_at = None
                 if not adopted.from_name:
                     adopted.from_name = sender_display_name(msg)

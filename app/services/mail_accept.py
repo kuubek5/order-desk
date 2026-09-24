@@ -16,6 +16,7 @@
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from threading import Lock
 import logging
@@ -354,6 +355,7 @@ def _move_letter_to_processed_folder(db: Session, email: EmailMessage) -> None:
     try:
         move_message_to_folder(db, email, folder)
         email.mailbox_folder = folder
+        email.mailbox_moved_at = datetime.now()  # для вкладки «Оброблено за сьогодні»
         email.inbox_gone_at = None  # опрацьований лист у папці ⇒ не «покинув»
         db.commit()
     except Exception as exc:  # noqa: BLE001 — best-effort, слід у журнал

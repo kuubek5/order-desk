@@ -8,8 +8,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 
+from app.business_day import business_today, get_rollover
 from app.models import EmailMessage
 from app.routers import mail as mail_router_mod
 from app.settings_store import get_setting, set_setting
@@ -129,16 +132,25 @@ class TestProcessedTabFiltering:
         app, session_factory = app_db
         with session_factory() as db:
             _set_folder(db)
+            today_moved = datetime.combine(business_today(), get_rollover()) + timedelta(hours=1)
             _letter(db, uid="200")  # лишається в Inbox
-            _letter(db, uid="201", folder="Оброблено")  # перенесений
+            # Перенесений СЬОГОДНІ — показується (вкладка «Оброблено» лише за
+            # поточний день, власник 24.09.26).
+            today_row = _letter(db, uid="201", folder="Оброблено", mailbox_moved_at=today_moved)
+            # Перенесений ВЧОРА — у вкладці за сьогодні НЕ показується.
+            yest_row = _letter(db, uid="202", folder="Оброблено",
+                               mailbox_moved_at=today_moved - timedelta(days=1))
+            today_id, yest_id = today_row.id, yest_row.id
 
         client = MiniClient(app)
         client.login(*OPERATOR)
         _, _, pending = client.get("/mail?view=pending")
         _, _, processed = client.get("/mail?view=processed")
-        # Перенесений лист (uid 201) не в «Усі листи», а у вкладці папки.
+        # Перенесений лист не в «Усі листи», а у вкладці папки.
         assert "mailrow-" in pending
         assert "↦ у папці" in processed
+        assert f"mailrow-{today_id}" in processed      # сьогоднішній показано
+        assert f"mailrow-{yest_id}" not in processed   # вчорашній схований
         # Значок вкладки папки рахує саме перенесені.
         assert "скачано" in processed.lower() or "Оброблено" in processed
 
