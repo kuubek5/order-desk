@@ -774,3 +774,131 @@ def test_redownload_refuses_a_stale_uid_namespace_before_deleting_rows(monkeypat
             redownload_missing_attachments(session, email, tmp_path)
         session.rollback()
         assert session.query(Attachment).count() == 1
+
+
+# ── Беккфіл from_name / message_id на наявних рядках (скарга власника 24.09.26) ──
+
+
+def _header_with_name_and_mid(uid, name, mid, from_="client@example.test", subject="case"):
+    """Заголовок з показним ім'ям (from_values.name) і Message-ID (obj)."""
+    return SimpleNamespace(
+        uid=uid, from_=from_, subject=subject, date=None,
+        from_values=SimpleNamespace(name=name),
+        obj={"Message-ID": mid},
+    )
+
+
+def test_backfills_from_name_and_message_id_on_existing_rows(monkeypatch, tmp_path):
+    """Лист, синкнутий ДО появи from_name/message_id, показувався адресою й не
+    мав Message-ID. Наступний синк мусить добілити обидва поля з заголовка, не
+    створюючи дубль і не перетираючи вже наявне."""
+    mailbox = FakeMailbox(
+        headers=[_header_with_name_and_mid("42", "Іван Клієнт", "<abc@x>")],
+        full_by_uid={},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(
+            uid="42", uid_validity=None, from_address="client@example.test",
+            from_name=None, message_id=None, subject="case", status="нове",
+            attachments_status="ready",
+        ))
+        session.commit()
+
+        created = fetch_new_emails(session, tmp_path)
+        assert created == 0  # не новий лист — той самий uid
+        assert session.query(EmailMessage).count() == 1
+
+        row = session.scalar(select(EmailMessage))
+        assert row.from_name == "Іван Клієнт"   # добілено
+        assert row.message_id == "<abc@x>"      # добілено
+        assert row.status == "нове"             # не зачеплено
+
+
+def test_backfill_does_not_overwrite_an_existing_name(monkeypatch, tmp_path):
+    mailbox = FakeMailbox(
+        headers=[_header_with_name_and_mid("7", "Заголовкове Ім'я", "<z@x>")],
+        full_by_uid={},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(
+            uid="7", uid_validity=None, from_address="client@example.test",
+            from_name="Вже Стояло", message_id="<kept@x>", subject="case",
+            status="нове", attachments_status="ready",
+        ))
+        session.commit()
+
+        fetch_new_emails(session, tmp_path)
+        row = session.scalar(select(EmailMessage))
+        assert row.from_name == "Вже Стояло"   # не перетерто
+        assert row.message_id == "<kept@x>"
+
+
+# ── Звірка папки «оброблено»: лист, перенесений у папку прямо в пошті ───────────
+
+
+class _FolderFake:
+    """Мінімальний mailbox лише для _reflect_processed_folder: перемикання
+    папки — no-op, fetch віддає задані заголовки папки."""
+
+    def __init__(self, folder_msgs):
+        self._msgs = folder_msgs
+        self.folder = SimpleNamespace(set=lambda name: None)
+
+    def fetch(self, criteria=None, **kwargs):
+        return iter(self._msgs)
+
+
+def _folder_msg(mid):
+    return SimpleNamespace(obj={"Message-ID": mid})
+
+
+def test_reflect_processed_folder_marks_only_message_id_matches():
+    from app.mail_reader import _reflect_processed_folder
+
+    with _engine_session() as session:
+        rows = {
+            "match": EmailMessage(uid="1", from_address="a@x", message_id="<m1@x>",
+                                  subject="s", status="прийнято",
+                                  attachments_status="ready", mailbox_folder=None),
+            "other": EmailMessage(uid="2", from_address="b@x", message_id="<m2@x>",
+                                  subject="s", status="нове",
+                                  attachments_status="ready", mailbox_folder=None),
+            "nomid": EmailMessage(uid="3", from_address="c@x", message_id=None,
+                                  subject="s", status="нове",
+                                  attachments_status="ready", mailbox_folder=None),
+            "already": EmailMessage(uid="4", from_address="d@x", message_id="<m4@x>",
+                                    subject="s", status="прийнято",
+                                    attachments_status="ready", mailbox_folder="Оброблено"),
+        }
+        session.add_all(rows.values())
+        session.commit()
+
+        # У папці лежать <m1@x> (треба позначити) і <m4@x> (уже позначений).
+        fake = _FolderFake([_folder_msg("<m1@x>"), _folder_msg("<m4@x>")])
+        marked = _reflect_processed_folder(session, fake, "Оброблено", business_today())
+
+        assert marked == 1
+        for row in rows.values():
+            session.refresh(row)
+        assert rows["match"].mailbox_folder == "Оброблено"   # перенесено в пошті → позначено
+        assert rows["other"].mailbox_folder is None          # не в папці → без змін
+        assert rows["nomid"].mailbox_folder is None          # без Message-ID → не гадаємо
+        assert rows["already"].mailbox_folder == "Оброблено"  # вже стояло
+
+
+def test_reflect_processed_folder_empty_name_is_noop():
+    from app.mail_reader import _reflect_processed_folder
+
+    with _engine_session() as session:
+        session.add(EmailMessage(uid="1", from_address="a@x", message_id="<m1@x>",
+                                 subject="s", status="нове",
+                                 attachments_status="ready", mailbox_folder=None))
+        session.commit()
+        # Папку не налаштовано → 0, нічого не читаємо.
+        assert _reflect_processed_folder(session, _FolderFake([]), "", business_today()) == 0

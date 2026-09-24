@@ -26,6 +26,7 @@ from app.settings_store import (
     get_imap_password,
     get_mail_default_material,
     get_mail_download_all,
+    get_setting,
 )
 
 logger = logging.getLogger(__name__)
@@ -638,6 +639,63 @@ def move_message_back_to_inbox(session: Session, email_message: EmailMessage) ->
     email_message.mailbox_folder = None
 
 
+def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) -> int:
+    """Відобразити реальний стан папки скриньки: листи, перенесені в неї ПРЯМО
+    в пошті (не кнопкою додатка), позначити перенесеними — щоб вони покинули
+    «Нові з пошти» так само, як перенесені кнопкою (прохання власника 24.09.26:
+    «якщо на пошті листи в папці „Скачано, просчитано“ — в додатку теж мають
+    бути там»).
+
+    Зіставлення — за Message-ID (стабільний між папками; UID у папці інший).
+    Рядок без Message-ID пропускаємо: беккфіл (фаза 1) проставляє його всім
+    листам, поки вони ще в Inbox, тож перенесений далі лист уже його має; гадати
+    за темою/адресою тут небезпечно — можна помітити чужий pending-лист.
+
+    НАПРЯМ ЛИШЕ ВПЕРЕД (Inbox → папка): повернення з папки в чергу робить
+    оператор кнопкою «↩» (move_message_back_to_inbox) — там оновлюється UID, чого
+    сканом не зробити безпечно. Не кидає: збій читання папки не має валити синк.
+    Повертає, скільки листів позначено.
+    """
+    folder = (folder or "").strip()
+    if not folder:
+        return 0
+    try:
+        mailbox.folder.set(folder)
+        folder_msgs = list(
+            mailbox.fetch(
+                AND(date_gte=cutoff), mark_seen=False, headers_only=True,
+                limit=IMAP_MAX_MESSAGES,
+            )
+        )
+    except Exception:
+        logger.exception("Синк: не вдалося прочитати папку '%s' для звірки", folder)
+        return 0
+    mids_in_folder = {
+        mid for m in folder_msgs if (mid := message_id_of(m))
+    }
+    if not mids_in_folder:
+        return 0
+    # Кандидати — рядки, які додаток вважає НЕ перенесеними, але фізично вони вже
+    # в папці. Не чіпаємо вже позначені (їхнє поле стоїть) і листи без Message-ID.
+    rows = list(
+        session.scalars(
+            select(EmailMessage).where(
+                EmailMessage.mailbox_folder.is_(None),
+                EmailMessage.message_id.is_not(None),
+            )
+        )
+    )
+    marked = 0
+    for row in rows:
+        if (row.message_id or "").strip() in mids_in_folder:
+            row.mailbox_folder = folder
+            marked += 1
+    if marked:
+        session.commit()
+        logger.info("Синк: позначено перенесеними в папку '%s': %d", folder, marked)
+    return marked
+
+
 def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:
     """Manually pull a "skipped" letter's attachments on demand (operator
     decided a non-whitelisted letter is relevant after all). Re-fetches the
@@ -781,10 +839,24 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                 )
         if adopted:
             session.commit()
+        # Наявні рядки цього namespace за uid — щоб добілити поля, яких у них
+        # ще немає (лист синкнули ДО появи колонки). from_name зʼявився пізніше,
+        # тож усі старіші листи показувались адресою замість імені (скарга
+        # власника 24.09.26); message_id теж — без нього перенесення в папку не
+        # знаходить лист назад. Пишемо лише коли поле порожнє: не перетираємо
+        # правок і не чіпаємо те, що вже стоїть.
+        existing_by_uid = {row.uid: row for row in existing_rows}
+
         seen_uids: set[str] = set()
         for msg in headers:
             uid = str(msg.uid)
             if uid in seen_uids or uid in existing_uids:
+                row = existing_by_uid.get(uid)
+                if row is not None:
+                    if not row.from_name:
+                        row.from_name = sender_display_name(msg)
+                    if not row.message_id:
+                        row.message_id = message_id_of(msg)
                 continue
             seen_uids.add(uid)
 
@@ -803,6 +875,11 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
             )
             session.commit()
             created += 1
+
+        # Зберегти добілені поля наявних рядків (from_name / message_id): у циклі
+        # вище вони лише виставляються на обʼєктах, а комітяться лише вставки
+        # нових листів. Один коміт наприкінці фази — не на кожен рядок.
+        session.commit()
 
         # --- Phase 2: full fetch of every pending row, self-healing across runs ---
         pending = list(
@@ -898,5 +975,12 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     except OSError:
                         pass
                 continue
+
+        # --- Phase 3: звірка папки «оброблено» — ОСТАННЯ в блоці, бо перемикає
+        # активну папку скриньки з Inbox (далі в блоці нічого не читає Inbox).
+        # Листи, перенесені в папку прямо в пошті, стають перенесеними й у базі.
+        _reflect_processed_folder(
+            session, mailbox, get_setting(session, "mail_processed_folder") or "", cutoff
+        )
 
     return created
