@@ -68,6 +68,12 @@
             {% endif %}
             <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}"{% if view == 'filtered' %} aria-current="page"{% endif %}>Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
             <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}"{% if view == 'archive' %} aria-current="page"{% endif %}>Архів <span class="tab-badge">{{ archive_count }}</span></a>
+            {# «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (переклали
+               в папку АБО видалили — усі чистять скриньку). CRM дзеркалить
+               Вхідні. Вкладка лише коли такі листи є. #}
+            {% if gone_count %}
+            <a href="/mail?view=gone" class="tab-link {% if view == 'gone' %}active{% endif %}"{% if view == 'gone' %} aria-current="page"{% endif %} title="Листи, яких уже немає у Вхідних пошти — переклали в папку або видалили">Покинули Вхідні <span class="tab-badge">{{ gone_count }}</span></a>
+            {% endif %}
             <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}"{% if view == 'auto' %} aria-current="page"{% endif %} title="Довірені відправники — вкладення скачуються автоматично">Авто-скачування{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
         </nav>
 
@@ -131,7 +137,7 @@
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}
             </div>
-            <div class="list-foot">{% if view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}Клік по листу відкриває картку тріажу · «✕» відхиляє лист без видалення{% endif %}</div>
+            <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. Повертаються в чергу самі, якщо знову зʼявляться у Вхідних{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}Клік по листу відкриває картку тріажу · «✕» відхиляє лист без видалення{% endif %}</div>
         </section>
 
         <section class="detail-panel" id="mail-detail">

@@ -4,7 +4,7 @@ import logging
 import mimetypes
 import re
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -696,6 +696,67 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
     return marked
 
 
+def _reconcile_inbox_gone(
+    session: Session, incoming_uids: set[str], cutoff, complete_fetch: bool
+) -> int:
+    """CRM «Нові з пошти» дзеркалить Вхідні пошти: лист, якого вже НЕМА у
+    Вхідних (переклали в будь-яку папку АБО видалили — усі чистять скриньку
+    напряму), виходить із черги тріажу у вкладку «Покинули Вхідні»
+    (`inbox_gone_at`). Ловимо за ФАКТОМ відсутності, не за Message-ID — щоб
+    брати й старі листи без нього (рішення власника 24.09.26).
+
+    Дві гілки:
+      1. Лист у вікні синку (`received_at >= cutoff`) — мітимо ЛИШЕ коли вибірка
+         Вхідних ПОВНА (`complete_fetch`, не вперлись у ліміт) і листа в ній
+         немає: тоді відсутність доведена.
+      2. Лист СТАРШИЙ за вікно (`received_at < cutoff`) — синк його взагалі не
+         тягне, тож відсутність не довести; але скриньку чистять щодня, і
+         «нове», що висить понад вікно, майже напевно вже оброблене — прибираємо
+         в ту саму вкладку (лист не зникає, лежить у «Покинули Вхідні»).
+
+    Самовиправно: якщо лист знову зʼявився у Вхідних (той самий UID) — мітку
+    знімаємо. Лист без `received_at` не чіпаємо (дати немає — не гадаємо).
+    Не чіпаємо перенесені кнопкою (`mailbox_folder` задано) й уже архівні
+    (статус не «нове»). Повертає, скільки нових листів позначено."""
+    now = datetime.now()
+    cutoff_dt = datetime.combine(cutoff, datetime.min.time())
+
+    # Самовиправлення: лист повернувся у Вхідні під тим самим UID → знімаємо.
+    if incoming_uids:
+        for row in session.scalars(
+            select(EmailMessage).where(
+                EmailMessage.inbox_gone_at.is_not(None),
+                EmailMessage.uid.in_(incoming_uids),
+            )
+        ):
+            row.inbox_gone_at = None
+
+    candidates = session.scalars(
+        select(EmailMessage).where(
+            EmailMessage.status == "нове",
+            EmailMessage.mailbox_folder.is_(None),
+            EmailMessage.inbox_gone_at.is_(None),
+        )
+    ).all()
+    marked = 0
+    for row in candidates:
+        received = row.received_at
+        if received is None:
+            continue  # дати немає — не гадаємо
+        if received >= cutoff_dt:
+            if complete_fetch and str(row.uid) not in incoming_uids:
+                row.inbox_gone_at = now
+                marked += 1
+        else:
+            row.inbox_gone_at = now  # старший за вікно синку
+            marked += 1
+    if marked or incoming_uids:
+        session.commit()
+    if marked:
+        logger.info("Синк: покинули Вхідні (прибрано з черги тріажу): %d", marked)
+    return marked
+
+
 def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:
     """Manually pull a "skipped" letter's attachments on demand (operator
     decided a non-whitelisted letter is relevant after all). Re-fetches the
@@ -880,6 +941,19 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         # вище вони лише виставляються на обʼєктах, а комітяться лише вставки
         # нових листів. Один коміт наприкінці фази — не на кожен рядок.
         session.commit()
+
+        # CRM-черга дзеркалить Вхідні: лист, якого вже нема у Вхідних (папка або
+        # видалення), покидає чергу тріажу. `complete_fetch` — вибірка Вхідних
+        # повна (не вперлись у ліміт), тож відсутність у вікні доведена.
+        # Обгорнуто: збій звірки не має валити весь синк (Фаза 2 важливіша).
+        try:
+            _reconcile_inbox_gone(
+                session, incoming_uids, cutoff,
+                complete_fetch=len(headers) < IMAP_MAX_MESSAGES,
+            )
+        except Exception:
+            logger.exception("Синк: звірка «Покинули Вхідні» впала — пропускаємо")
+            session.rollback()
 
         # --- Phase 2: full fetch of every pending row, self-healing across runs ---
         pending = list(

@@ -902,3 +902,84 @@ def test_reflect_processed_folder_empty_name_is_noop():
         session.commit()
         # Папку не налаштовано → 0, нічого не читаємо.
         assert _reflect_processed_folder(session, _FolderFake([]), "", business_today()) == 0
+
+
+# ── CRM дзеркалить Вхідні: лист покинув Вхідні → з черги (inbox_gone_at) ────────
+
+from datetime import datetime as _dt  # noqa: E402
+from app.mail_reader import _reconcile_inbox_gone, IMAP_LOOKBACK_DAYS as _LB  # noqa: E402
+from app.business_day import business_today as _bt  # noqa: E402
+
+
+def _cutoff():
+    return _bt() - timedelta(days=_LB)
+
+
+def _msg(db, uid, *, status="нове", received=None, folder=None, gone=None):
+    e = EmailMessage(
+        uid=uid, uid_validity="1", from_address="c@x", subject="s", status=status,
+        attachments_status="ready", mailbox_folder=folder, message_id=f"<{uid}@x>",
+        received_at=received, inbox_gone_at=gone,
+    )
+    db.add(e)
+    db.commit()
+    return e
+
+
+def test_inbox_gone_marks_letter_absent_from_complete_inbox():
+    with _engine_session() as db:
+        rec = _dt.combine(_bt(), _dt.min.time())  # у вікні (сьогодні)
+        e = _msg(db, "10", received=rec)
+        # incoming Вхідні НЕ містять uid 10 → лист переклали/видалили
+        n = _reconcile_inbox_gone(db, {"20", "21"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert n == 1 and e.inbox_gone_at is not None
+
+
+def test_inbox_gone_skips_letter_still_in_inbox():
+    with _engine_session() as db:
+        e = _msg(db, "10", received=_dt.combine(_bt(), _dt.min.time()))
+        n = _reconcile_inbox_gone(db, {"10"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert n == 0 and e.inbox_gone_at is None
+
+
+def test_inbox_gone_skips_when_fetch_incomplete_in_window():
+    with _engine_session() as db:
+        e = _msg(db, "10", received=_dt.combine(_bt(), _dt.min.time()))
+        # вибірка НЕ повна → у вікні не мітимо (могло не влізти)
+        n = _reconcile_inbox_gone(db, {"20"}, _cutoff(), complete_fetch=False)
+        db.refresh(e)
+        assert n == 0 and e.inbox_gone_at is None
+
+
+def test_inbox_gone_marks_letter_older_than_window():
+    with _engine_session() as db:
+        old = _dt.combine(_bt() - timedelta(days=_LB + 5), _dt.min.time())
+        e = _msg(db, "10", received=old)
+        # старший за вікно — мітимо навіть при неповній вибірці
+        n = _reconcile_inbox_gone(db, {"20"}, _cutoff(), complete_fetch=False)
+        db.refresh(e)
+        assert n == 1 and e.inbox_gone_at is not None
+
+
+def test_inbox_gone_self_corrects_when_letter_returns():
+    with _engine_session() as db:
+        e = _msg(db, "10", received=_dt.combine(_bt(), _dt.min.time()),
+                 gone=_dt.now())
+        # лист знову у Вхідних (той самий uid) → мітку знімаємо
+        _reconcile_inbox_gone(db, {"10"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert e.inbox_gone_at is None
+
+
+def test_inbox_gone_ignores_moved_and_dateless():
+    with _engine_session() as db:
+        moved = _msg(db, "10", received=_dt.combine(_bt(), _dt.min.time()),
+                     folder="Оброблено")
+        nodate = _msg(db, "11", received=None)
+        _reconcile_inbox_gone(db, {"99"}, _cutoff(), complete_fetch=True)
+        db.refresh(moved)
+        db.refresh(nodate)
+        assert moved.inbox_gone_at is None   # перенесений кнопкою — не чіпаємо
+        assert nodate.inbox_gone_at is None  # без дати — не гадаємо

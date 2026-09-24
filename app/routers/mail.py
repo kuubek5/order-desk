@@ -145,7 +145,7 @@ def get_mail(
     # screen's source/ready filters.
     if service not in SERVICE_TYPE_FILTERS:
         service = "all"
-    if view not in ("pending", "filtered", "archive", "auto", "processed"):
+    if view not in ("pending", "filtered", "archive", "auto", "processed", "gone"):
         view = "pending"
     # Pop the flash only on a full-page render — the 15s poll (partial="list")
     # would otherwise consume it before the real navigation shows it.
@@ -159,19 +159,26 @@ def get_mail(
     # пішов з Inbox у папку (рішення власника 23.09.26). Тому `not_moved` висить
     # на pending/filtered/archive, а вкладка папки показує саме перенесені.
     not_moved = EmailMessage.mailbox_folder.is_(None)
-    if view == "processed":
+    # Лист, який ПОКИНУВ Вхідні пошти (`inbox_gone_at`), виходить із черги тріажу
+    # й живе у своїй вкладці «Покинули Вхідні» — CRM дзеркалить Вхідні (рішення
+    # власника 24.09.26). `not_gone` тому висить на pending/filtered поряд із
+    # `not_moved`.
+    not_gone = EmailMessage.inbox_gone_at.is_(None)
+    if view == "gone":
+        status_clause = EmailMessage.inbox_gone_at.is_not(None)
+    elif view == "processed":
         status_clause = EmailMessage.mailbox_folder.is_not(None)
     elif view == "archive":
         status_clause = sa_and(EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved)
     elif view == "filtered":
         status_clause = sa_and(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
-            not_moved,
+            not_moved, not_gone,
         )
     else:
         status_clause = sa_and(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
-            not_moved,
+            not_moved, not_gone,
         )
     # STABLE ORDER (pending view). The list polls every 15s; without this a
     # letter arriving mid-glance inserted itself and pushed every row down
@@ -209,13 +216,18 @@ def get_mail(
     pending_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
-            not_moved,
+            not_moved, not_gone,
         )
     ) or 0
     filtered_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
-            not_moved,
+            not_moved, not_gone,
+        )
+    ) or 0
+    gone_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.inbox_gone_at.is_not(None)
         )
     ) or 0
     archive_count = db.scalar(
@@ -242,7 +254,7 @@ def get_mail(
             EmailMessage.status == "нове",
             EmailMessage.seen_at.is_(None),
             EmailMessage.filter_category.is_(None),
-            not_moved,
+            not_moved, not_gone,
         )
     ) or 0
 
@@ -357,6 +369,10 @@ def get_mail(
             "auto_count": auto_count,
             "archive_count": archive_count,
             "processed_count": processed_count,
+            # «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (папка або
+            # видалення). CRM дзеркалить Вхідні; вкладка показується лише коли є
+            # такі листи.
+            "gone_count": gone_count,
             # Назва папки скриньки для підпису вкладки перенесених. Порожньо →
             # вкладка ховається (переносити нікуди не налаштовано).
             "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",

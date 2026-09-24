@@ -607,6 +607,17 @@ class EmailMessage(Base):
     # знаходимо лист саме за Message-ID. NULL для листів, імпортованих до появи
     # поля (їх повернути не можна — кнопка «у вхідні» тоді ховається).
     message_id: Mapped[Optional[str]] = mapped_column(String(400), nullable=True, index=True)
+    # Лист ПОКИНУВ Вхідні пошти (переклали в будь-яку папку АБО видалили — усі:
+    # адміни, логісти, оператори чистять скриньку напряму). CRM «Нові з пошти»
+    # мусить дзеркалити Вхідні, тож такий лист виходить із черги тріажу й живе у
+    # вкладці «Покинули Вхідні». Ставиться синком, коли рядок «нове» більше не
+    # видно у ПОВНІЙ вибірці Вхідних (не за Message-ID — щоб ловити й старі листи
+    # без нього); знімається, якщо лист знову зʼявився у Вхідних (самовиправно).
+    # Ширше за mailbox_folder: те — конкретна папка через кнопку/скан, це — факт
+    # «зник зі скриньки», хоч куди й хоч ким (рішення власника 24.09.26).
+    inbox_gone_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True, index=True
+    )
     subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
