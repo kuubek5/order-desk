@@ -35,11 +35,11 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
-from app.mail_reader import _file_is_missing
+from app.mail_reader import _file_is_missing, move_message_to_folder
 from app.models import EmailMessage, Order, StatusEvent, SyncLog
 from app.parser import HEADER_ROWS
 from app.sender_memory import remember_sender
-from app.settings_store import get_export_folder_path
+from app.settings_store import get_export_folder_path, get_setting
 from app.sheet_writer import append_mail_placeholder_row
 from app.sheets import latest_worksheet_on_or_before, open_spreadsheet
 
@@ -317,6 +317,15 @@ def _accept_letter_locked(
             "Could not persist placeholder-row bookkeeping for email %s", email.id
         )
 
+    # Робота пішла в роботу → лист переносимо в папку «оброблено» скриньки, щоб
+    # CRM і пошта лишались синхронні (рішення власника 24.09.26). Лише при
+    # ПОВНОМУ прийнятті: доки в листі є нерозібрані кольори, він тримається у
+    # Вхідних. Best-effort, як рядок-нотатка: прийняття вже успішне, збій IMAP
+    # (мережа, папка) не відкочуємо — лишаємо слід у SyncLog, а лист лишається у
+    # Вхідних, звідки його потім забере кнопка чи наступний синк.
+    if not remaining:
+        _move_letter_to_processed_folder(db, email)
+
     return AcceptResult(
         order=new_order,
         saved_files=len(attachments),
@@ -324,6 +333,43 @@ def _accept_letter_locked(
         material_label=(new_order.material_color or "").strip() or "без матеріалу",
         partial=bool(remaining),
     )
+
+
+def _move_letter_to_processed_folder(db: Session, email: EmailMessage) -> None:
+    """Перенести прийнятий лист у папку «оброблено» скриньки й позначити його
+    перенесеним у базі (`mailbox_folder`) — CRM і пошта синхронні: лист покидає
+    Вхідні і в скриньці, і в CRM (вкладка «Оброблено»).
+
+    Best-effort: прийняття вже зафіксоване. Будь-який збій (папку не задано, IMAP
+    недоступний, листа вже нема в Inbox) лише логуємо в SyncLog — не кидаємо і не
+    відкочуємо прийняття. Папку не задано → тихо пропускаємо (переніс лишається
+    ручним, як було). `move_message_to_folder` сам беккфілить Message-ID (потрібен
+    для повернення), тож `mailbox_folder` ставимо лише ПІСЛЯ успішного переносу.
+    """
+    folder = (get_setting(db, "mail_processed_folder") or "").strip()
+    if not folder:
+        return  # папку не задано → переніс лишається ручним, як було
+    if getattr(email, "mailbox_folder", None):
+        return  # уже в папці
+    try:
+        move_message_to_folder(db, email, folder)
+        email.mailbox_folder = folder
+        email.inbox_gone_at = None  # опрацьований лист у папці ⇒ не «покинув»
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — best-effort, слід у журнал
+        db.rollback()
+        logger.warning(
+            "Прийнято лист %s, але не перенесено в папку '%s': %s", email.id, folder, exc
+        )
+        try:
+            db.add(SyncLog(
+                direction="mail_to_folder", status="error",
+                message=f"email {email.id}: прийнято, не перенесено в «{folder}»: {exc}",
+            ))
+            db.commit()
+        except Exception:  # noqa: BLE001 — слід важливий, але не критичний
+            db.rollback()
+            logger.exception("Не вдалося записати слід про непереміщення листа %s", email.id)
 
 
 def _resolve_target_tab(db: Session, email: EmailMessage):

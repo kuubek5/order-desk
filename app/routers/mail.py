@@ -1876,6 +1876,18 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
     email.order_id = None
     email.status = "нове"
     email.attachments_status = "ready"
+    # Симетрія до прийняття: якщо accept переніс лист у папку «оброблено»,
+    # відкат повертає його у Вхідні (і в скриньці, і в базі — `mailbox_folder`
+    # знімається всередині move_message_back_to_inbox). Інакше лист завис би
+    # «нове», але у вкладці «Оброблено». Best-effort: збій IMAP не має валити
+    # відкат — файли й база вже повернені, лишиться слід у лозі.
+    if email.mailbox_folder:
+        try:
+            move_message_back_to_inbox(db, email)
+        except Exception:  # noqa: BLE001 — відкат важливіший за цей крок
+            logger.exception(
+                "Відкат листа %s: не вдалося повернути з папки у Вхідні", email.id
+            )
     return moved_pairs
 
 

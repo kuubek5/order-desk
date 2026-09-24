@@ -211,6 +211,68 @@ def test_successful_accept_writes_the_sheet_placeholder_row_once(tmp_path, monke
         assert order.row_number == 65 - HEADER_ROWS
 
 
+def test_full_accept_moves_letter_to_processed_folder(tmp_path, monkeypatch):
+    """Робота пішла в роботу → лист переноситься в налаштовану папку «оброблено»
+    скриньки, mailbox_folder ставиться (CRM і пошта синхронні, рішення власника
+    24.09.26). Назва папки — ЗАВЖДИ з налаштувань (на різних ПК різна)."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    calls = []
+
+    def _fake_move(session, email_message, folder):
+        calls.append((email_message.id, folder))
+
+    monkeypatch.setattr(mail_accept_svc, "move_message_to_folder", _fake_move)
+    monkeypatch.setattr(
+        mail_accept_svc, "get_setting",
+        lambda db, key: "Оброблено" if key == "mail_processed_folder" else None,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+        response = _accept(db, user, email)
+        assert "error=" not in response.headers["location"]
+
+    with Session(engine) as db:
+        email = db.scalar(select(EmailMessage))
+        assert email.status == "прийнято"
+        assert email.mailbox_folder == "Оброблено"   # позначено перенесеним
+    # Переніс покликано рівно раз, у налаштовану папку.
+    assert len(calls) == 1 and calls[0][1] == "Оброблено"
+
+
+def test_move_to_folder_failure_does_not_undo_accept(tmp_path, monkeypatch):
+    """Best-effort: збій IMAP-переносу не відкочує вже успішне прийняття. Робота
+    лишається в черзі, лист — у Вхідних (mailbox_folder не ставиться), слід у
+    журналі."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    def _boom(session, email_message, folder):
+        raise OSError("IMAP недоступний")
+
+    monkeypatch.setattr(mail_accept_svc, "move_message_to_folder", _boom)
+    monkeypatch.setattr(
+        mail_accept_svc, "get_setting",
+        lambda db, key: "Оброблено" if key == "mail_processed_folder" else None,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+        response = _accept(db, user, email)
+        assert "error=" not in response.headers["location"]   # прийняття успішне
+
+    with Session(engine) as db:
+        order = db.scalar(select(Order))
+        assert order is not None                     # робота в черзі
+        email = db.scalar(select(EmailMessage))
+        assert email.status == "прийнято"
+        assert email.mailbox_folder is None          # у папку не перенесено
+
+
 def test_accept_records_direct_export_folder_and_handout_uses_it(tmp_path, monkeypatch):
     """Частина A: прийняття записує ТОЧНУ теку видачі (`export_folder_path`), і
     видача будує з неї прямий запис — минаючи нечіткий збіг за іменем, який

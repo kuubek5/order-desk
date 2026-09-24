@@ -9,7 +9,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from imap_tools import AND, MailBox
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.business_day import business_today
@@ -640,21 +640,33 @@ def move_message_back_to_inbox(session: Session, email_message: EmailMessage) ->
 
 
 def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) -> int:
-    """Відобразити реальний стан папки скриньки: листи, перенесені в неї ПРЯМО
-    в пошті (не кнопкою додатка), позначити перенесеними — щоб вони покинули
-    «Нові з пошти» так само, як перенесені кнопкою (прохання власника 24.09.26:
-    «якщо на пошті листи в папці „Скачано, просчитано“ — в додатку теж мають
-    бути там»).
+    """Дзеркалити папку «оброблено» в ОБИДВА боки за фізичним станом скриньки.
 
-    Зіставлення — за Message-ID (стабільний між папками; UID у папці інший).
-    Рядок без Message-ID пропускаємо: беккфіл (фаза 1) проставляє його всім
-    листам, поки вони ще в Inbox, тож перенесений далі лист уже його має; гадати
-    за темою/адресою тут небезпечно — можна помітити чужий pending-лист.
+    Модель (рішення власника 24.09.26): місце листа визначає, у якій він вкладці.
+    У папці «Скачано-прошитано» → «Оброблено»; десь інде (інша папка / видалено) →
+    «Покинули Вхідні»; у Вхідних → тріаж. Рівно ОДИН стан, і папка «оброблено»
+    перемагає «покинули»: лист у ній опрацьований, а не загублений.
 
-    НАПРЯМ ЛИШЕ ВПЕРЕД (Inbox → папка): повернення з папки в чергу робить
-    оператор кнопкою «↩» (move_message_back_to_inbox) — там оновлюється UID, чого
-    сканом не зробити безпечно. Не кидає: збій читання папки не має валити синк.
-    Повертає, скільки листів позначено.
+    ВПЕРЕД (щось → папка): лист, перенесений у папку прямо в пошті (або кнопкою
+    «оброблено»), стає перенесеним і в базі. Заразом ЗНІМАЄ `inbox_gone_at`:
+    `_reconcile_inbox_gone` біжить РАНІШЕ в цьому ж синку й міг помітити його
+    «покинув Вхідні» (він фізично зник з Inbox), а лист насправді опрацьований —
+    без цього рядка він двоївся б у вкладках «Оброблено» і «Покинули Вхідні»
+    водночас.
+
+    НАЗАД (папка → десь інде): лист, який база вважає в папці, а фізично його там
+    уже НЕМА, — знімаємо мітку папки. Повернення саме в Inbox обробляє фаза 1 за
+    Message-ID (оновлює UID); сюди доходять лише ті, кого фаза 1 не всиновила,
+    тобто перенесені в ІНШУ папку чи видалені → у «Покинули Вхідні». Робимо це
+    ЛИШЕ для листів у вікні синку (`received_at >= cutoff`): фетч папки теж
+    обмежений `date_gte`, тож для старішого листа «немає в папці» довести не
+    можна — його не чіпаємо (лишається «оброблено»), інакше він злітав би сам
+    щойно постаріє за 30 днів.
+
+    Зіставлення — за Message-ID (стабільний між папками; UID у папці інший). Без
+    Message-ID пропускаємо: беккфіл (фаза 1) проставляє його всім листам, поки
+    вони ще в Inbox. Не кидає: збій читання папки не має валити синк. Повертає,
+    скільки листів змінено.
     """
     folder = (folder or "").strip()
     if not folder:
@@ -673,11 +685,12 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
     mids_in_folder = {
         mid for m in folder_msgs if (mid := message_id_of(m))
     }
-    if not mids_in_folder:
-        return 0
-    # Кандидати — рядки, які додаток вважає НЕ перенесеними, але фізично вони вже
-    # в папці. Не чіпаємо вже позначені (їхнє поле стоїть) і листи без Message-ID.
-    rows = list(
+    now = datetime.now()
+    cutoff_dt = datetime.combine(cutoff, datetime.min.time())
+    changed = 0
+
+    # ВПЕРЕД: рядки, які додаток вважає НЕ в папці, але фізично вони вже в ній.
+    forward = list(
         session.scalars(
             select(EmailMessage).where(
                 EmailMessage.mailbox_folder.is_(None),
@@ -685,15 +698,37 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
             )
         )
     )
-    marked = 0
-    for row in rows:
+    for row in forward:
         if (row.message_id or "").strip() in mids_in_folder:
             row.mailbox_folder = folder
-            marked += 1
-    if marked:
+            row.inbox_gone_at = None  # у папці «оброблено» ⇒ не «покинув»
+            changed += 1
+
+    # НАЗАД: рядки, позначені цією папкою, яких фізично в ній уже немає.
+    marked_rows = list(
+        session.scalars(
+            select(EmailMessage).where(
+                EmailMessage.mailbox_folder == folder,
+                EmailMessage.message_id.is_not(None),
+            )
+        )
+    )
+    for row in marked_rows:
+        if (row.message_id or "").strip() in mids_in_folder:
+            continue  # усе ще в папці
+        received = row.received_at
+        if received is None or received < cutoff_dt:
+            continue  # поза вікном — відсутність у папці не довести
+        # У вікні, але в папці немає, і фаза 1 не всиновила назад у Inbox →
+        # перенесений в іншу папку або видалений: «Покинули Вхідні».
+        row.mailbox_folder = None
+        row.inbox_gone_at = now
+        changed += 1
+
+    if changed:
         session.commit()
-        logger.info("Синк: позначено перенесеними в папку '%s': %d", folder, marked)
-    return marked
+        logger.info("Синк: дзеркало папки '%s' змінило листів: %d", folder, changed)
+    return changed
 
 
 def _reconcile_inbox_gone(
@@ -908,6 +943,28 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         # правок і не чіпаємо те, що вже стоїть.
         existing_by_uid = {row.uid: row for row in existing_rows}
 
+        # Лист, який ПОВЕРНУВСЯ у Вхідні (перенесли назад прямо в пошті з папки
+        # «оброблено» чи з іншої): у Inbox він тепер під НОВИМ uid. Без цього
+        # фаза 1 створила б дубль, а стара мітка (`mailbox_folder`/`inbox_gone_at`)
+        # лишилася б на старому рядку — лист висів би в «Оброблено»/«Покинули»
+        # і водночас з'явився б новим у тріажі. Зіставляємо за Message-ID зі
+        # ЗМІЩЕНИМИ рядками (не у Вхідних за нашою базою) і всиновлюємо той самий
+        # рядок: оновлюємо uid, знімаємо мітки — лист знову в тріажі. Це і є
+        # зворотний бік дзеркала папки (рішення власника 24.09.26).
+        header_mids = {mid for msg in headers if (mid := message_id_of(msg))}
+        displaced_by_mid: dict[str, EmailMessage] = {}
+        if header_mids:
+            for row in session.scalars(
+                select(EmailMessage).where(
+                    EmailMessage.message_id.in_(header_mids),
+                    or_(
+                        EmailMessage.mailbox_folder.is_not(None),
+                        EmailMessage.inbox_gone_at.is_not(None),
+                    ),
+                )
+            ):
+                displaced_by_mid.setdefault((row.message_id or "").strip(), row)
+
         seen_uids: set[str] = set()
         for msg in headers:
             uid = str(msg.uid)
@@ -920,6 +977,19 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                         row.message_id = message_id_of(msg)
                 continue
             seen_uids.add(uid)
+
+            mid = message_id_of(msg)
+            adopted = displaced_by_mid.pop((mid or "").strip(), None) if mid else None
+            if adopted is not None:
+                # Той самий лист під новим uid — повернувся у Вхідні.
+                adopted.uid = uid
+                adopted.uid_validity = uid_validity
+                adopted.mailbox_folder = None
+                adopted.inbox_gone_at = None
+                if not adopted.from_name:
+                    adopted.from_name = sender_display_name(msg)
+                session.commit()
+                continue
 
             session.add(
                 EmailMessage(

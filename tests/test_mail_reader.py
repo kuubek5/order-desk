@@ -817,6 +817,37 @@ def test_backfills_from_name_and_message_id_on_existing_rows(monkeypatch, tmp_pa
         assert row.status == "нове"             # не зачеплено
 
 
+def test_returned_letter_is_adopted_by_message_id_not_duplicated(monkeypatch, tmp_path):
+    """Лист, повернутий у Вхідні прямо в пошті (з папки «оброблено» чи іншої), у
+    Inbox під НОВИМ uid. Фаза 1 мусить упізнати його за Message-ID і всиновити
+    СТАРИЙ рядок: оновити uid, зняти mailbox_folder/inbox_gone_at (знову в
+    тріажі) — без дубля. Це зворотний бік дзеркала папки."""
+    mailbox = FakeMailbox(
+        headers=[_header_with_name_and_mid("new99", "Клієнт", "<ret@x>")],
+        full_by_uid={},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(
+            uid="old12", uid_validity=None, from_address="client@example.test",
+            from_name="Клієнт", message_id="<ret@x>", subject="case", status="нове",
+            attachments_status="ready", mailbox_folder="Оброблено",
+        ))
+        session.commit()
+
+        created = fetch_new_emails(session, tmp_path)
+        assert created == 0                       # не новий лист — той самий Message-ID
+        assert session.query(EmailMessage).count() == 1   # без дубля
+
+        row = session.scalar(select(EmailMessage))
+        assert row.uid == "new99"                 # uid оновлено на inbox-овий
+        assert row.mailbox_folder is None         # знято — знову у Вхідних
+        assert row.inbox_gone_at is None
+        assert row.status == "нове"
+
+
 def test_backfill_does_not_overwrite_an_existing_name(monkeypatch, tmp_path):
     mailbox = FakeMailbox(
         headers=[_header_with_name_and_mid("7", "Заголовкове Ім'я", "<z@x>")],
@@ -902,6 +933,74 @@ def test_reflect_processed_folder_empty_name_is_noop():
         session.commit()
         # Папку не налаштовано → 0, нічого не читаємо.
         assert _reflect_processed_folder(session, _FolderFake([]), "", business_today()) == 0
+
+
+def test_reflect_processed_folder_clears_inbox_gone_when_marking():
+    """Взаємовиключність: лист, який reconcile встиг позначити «покинув Вхідні»
+    (він фізично зник з Inbox), а насправді лежить у папці «оброблено», мусить
+    стати ЛИШЕ обробленим — inbox_gone_at знімається, інакше він двоївся б у
+    вкладках «Оброблено» і «Покинули Вхідні» водночас."""
+    from app.mail_reader import _reflect_processed_folder
+
+    with _engine_session() as session:
+        row = EmailMessage(
+            uid="1", from_address="a@x", message_id="<g1@x>", subject="s",
+            status="нове", attachments_status="ready",
+            mailbox_folder=None, inbox_gone_at=_dt.now(),
+        )
+        session.add(row)
+        session.commit()
+
+        fake = _FolderFake([_folder_msg("<g1@x>")])
+        changed = _reflect_processed_folder(session, fake, "Оброблено", business_today())
+
+        session.refresh(row)
+        assert changed == 1
+        assert row.mailbox_folder == "Оброблено"
+        assert row.inbox_gone_at is None  # у папці ⇒ не «покинув»
+
+
+def test_reflect_processed_folder_reverse_marks_departed_letter_gone():
+    """Назад: лист, який база вважає в папці, а фізично його там уже НЕМА (і фаза
+    1 не всиновила назад у Inbox → перенесений в іншу папку/видалений) →
+    «Покинули Вхідні». Лише у вікні синку; старіший за вікно лишається
+    «обробленим» (відсутність у папці не довести, фетч теж обмежений датою)."""
+    from app.mail_reader import _reflect_processed_folder
+
+    with _engine_session() as session:
+        within = EmailMessage(
+            uid="1", from_address="a@x", message_id="<r1@x>", subject="s",
+            status="прийнято", attachments_status="ready",
+            mailbox_folder="Оброблено",
+            received_at=_dt.combine(business_today(), _dt.min.time()),
+        )
+        old = EmailMessage(
+            uid="2", from_address="b@x", message_id="<r2@x>", subject="s",
+            status="прийнято", attachments_status="ready",
+            mailbox_folder="Оброблено",
+            received_at=_dt.combine(business_today(), _dt.min.time()) - timedelta(days=999),
+        )
+        still = EmailMessage(
+            uid="3", from_address="c@x", message_id="<r3@x>", subject="s",
+            status="прийнято", attachments_status="ready",
+            mailbox_folder="Оброблено",
+            received_at=_dt.combine(business_today(), _dt.min.time()),
+        )
+        session.add_all([within, old, still])
+        session.commit()
+
+        # У папці фізично лишився лише <r3@x>.
+        fake = _FolderFake([_folder_msg("<r3@x>")])
+        _reflect_processed_folder(session, fake, "Оброблено", business_today())
+
+        for r in (within, old, still):
+            session.refresh(r)
+        # У вікні, зник із папки → «Покинули Вхідні».
+        assert within.mailbox_folder is None and within.inbox_gone_at is not None
+        # Поза вікном → лишається обробленим (не можемо довести відсутність).
+        assert old.mailbox_folder == "Оброблено" and old.inbox_gone_at is None
+        # Досі в папці → без змін.
+        assert still.mailbox_folder == "Оброблено" and still.inbox_gone_at is None
 
 
 # ── CRM дзеркалить Вхідні: лист покинув Вхідні → з черги (inbox_gone_at) ────────
