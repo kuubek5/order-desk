@@ -35,6 +35,18 @@
 
   const REDUCED_MOTION = Core.reducedMotion();
 
+  // Ручне обертання/зум — той самий контракт, що в панелі прев'ю на видачі
+  // (stl-preview.js): тягнеш модель мишею — крутиться навколо СВІТОВИХ осей
+  // (трекбол, без gimbal lock), колесо наближає/віддаляє. Будь-яка кнопка
+  // (ліва чи права) хапає модель і одразу глушить авто-обертання: щоб звіряти
+  // форму, модель має стояти там, де оператор її лишив.
+  const DRAG_SENS = 0.01; // радіан на піксель
+  const ZOOM_STEP = 1.1;  // множник відстані камери на один «зубчик» колеса
+  const ZOOM_MIN = 1.5;   // ближче не пускаємо — модель не влітає в екран
+  const ZOOM_MAX = 8.0;   // далі не пускаємо — не губиться крапкою
+  const WORLD_UP = new THREE.Vector3(0, 1, 0);
+  const WORLD_RIGHT = new THREE.Vector3(1, 0, 0);
+
   // Розгортання на весь екран (аудит 05.09.26, UX 1.5). Панель прев'ю на
   // видачі відкривається розгорнутою за замовчуванням, бо там звірка форми —
   // єдина робота оператора. Тут інакше: тріаж — це заповнення полів ПОРУЧ із
@@ -74,6 +86,10 @@
       camera: null,
       mesh: null,
       geometryCache: new Map(), // filename -> BufferGeometry (raw)
+      dragging: false, // кнопка затиснута — ручне обертання
+      dragLastX: 0,
+      dragLastY: 0,
+      frozen: false, // оператор крутнув модель рукою — авто-спін більше не вертається
     };
 
     function setStatus(text) {
@@ -104,7 +120,10 @@
 
     function startRenderLoop() {
       stopRenderLoop();
-      if (REDUCED_MOTION) {
+      // frozen: оператор уже крутнув модель рукою — тримаємо кадр нерухомим,
+      // не палимо RAF-цикл (стан переживає перемикання файлів, як слайдер=0
+      // у панелі прев'ю).
+      if (REDUCED_MOTION || state.frozen) {
         renderOnce();
         return;
       }
@@ -177,6 +196,68 @@
       if (index === state.activeIndex) return;
       selectFile(index);
     });
+
+    function freezeSpin() {
+      state.frozen = true;
+      stopRenderLoop();
+      renderOnce();
+    }
+
+    // Ручне обертання/зум мишею — механізм повністю дзеркалить stl-preview.js.
+    function attachManualRotation() {
+      // Права кнопка не має відкривати системне меню поверх моделі.
+      canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+      // Зум колесом: множимо позицію камери (напрямок зберігається, міняється
+      // лише відстань), тримаємо в межах. passive:false — перехопити прокрутку
+      // сторінки під моделлю.
+      canvas.addEventListener("wheel", (event) => {
+        if (!state.camera) return;
+        event.preventDefault();
+        const factor = event.deltaY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        const pos = state.camera.position;
+        const dist = pos.length() * factor;
+        if (dist >= ZOOM_MIN && dist <= ZOOM_MAX) {
+          pos.multiplyScalar(factor);
+          state.camera.lookAt(0, 0, 0);
+          renderOnce();
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("pointerdown", (event) => {
+        if (!state.mesh) return;
+        if (event.button !== 0 && event.button !== 2) return; // ліва або права
+        freezeSpin();
+        state.dragging = true;
+        state.dragLastX = event.clientX;
+        state.dragLastY = event.clientY;
+        try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* ok */ }
+        event.preventDefault();
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (!state.dragging || !state.mesh) return;
+        const dx = event.clientX - state.dragLastX;
+        const dy = event.clientY - state.dragLastY;
+        state.dragLastX = event.clientX;
+        state.dragLastY = event.clientY;
+        // Обертання навколо СВІТОВИХ осей (трекбол) — без gimbal lock; знаки як
+        // у панелі видачі: тягнеш — видима грань іде за курсором.
+        state.mesh.rotateOnWorldAxis(WORLD_UP, dx * DRAG_SENS);
+        state.mesh.rotateOnWorldAxis(WORLD_RIGHT, dy * DRAG_SENS);
+        renderOnce();
+      });
+
+      function endDrag(event) {
+        if (!state.dragging) return;
+        state.dragging = false;
+        try { canvas.releasePointerCapture(event.pointerId); } catch (_) { /* ok */ }
+      }
+      canvas.addEventListener("pointerup", endDrag);
+      canvas.addEventListener("pointercancel", endDrag);
+      canvas.addEventListener("pointerleave", endDrag);
+    }
+    attachManualRotation();
 
     // Розгортання на весь екран: та сама роль, що й у панелі прев'ю на видачі.
     const maxBtn = root.querySelector(".stl-gallery-max");
