@@ -1,7 +1,7 @@
 #define MyAppName "KuubMill"
 ; Must be bumped by hand together with app/__version__.py::VERSION at every
 ; release — tests/test_version_sync.py fails the suite if these two drift.
-#define MyAppVersion "0.20.24"
+#define MyAppVersion "0.20.25"
 #define MyAppExeName "KuubMill.exe"
 #ifndef BuildRoot
   #define BuildRoot "..\dist\KuubMill"
