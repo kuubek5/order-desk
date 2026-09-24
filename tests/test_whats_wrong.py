@@ -110,6 +110,64 @@ def test_successful_sync_is_not_a_problem():
     assert whats_wrong.collect(db) == []
 
 
+def test_a_sheet_outage_that_recovered_is_only_a_warning():
+    """Разовий обрив доступу до таблиці, після якого синк пройшов, — це вже не
+    «стоп»: тримати його стопом добу означає брехати, що працювати не можна
+    (бойовий випадок 20.09.26)."""
+    db = _db()
+    _sync(db, "sheet_to_db", "error", "Не вдалося синхронізувати Google Таблицю.", minutes_ago=60)
+    _sync(db, "sheet_to_db", "ok", "прочитано 96 рядків", minutes_ago=59)
+
+    problems = whats_wrong.collect(db)
+    healed = _find(problems, "відновився")
+
+    assert healed is not None, "знята проблема зникла зовсім"
+    assert healed.level == whats_wrong.LEVEL_WARN
+    assert not any(p.level == whats_wrong.LEVEL_STOP for p in problems), "СТОП досі висить"
+
+
+def test_a_sheet_outage_still_open_stays_a_stop():
+    """Без пізнішого успіху це справжня активна поломка — лишається стопом."""
+    db = _db()
+    _sync(db, "sheet_to_db", "error", "Не вдалося синхронізувати Google Таблицю.", minutes_ago=5)
+
+    found = _find(whats_wrong.collect(db), "доступу")
+
+    assert found is not None
+    assert found.level == whats_wrong.LEVEL_STOP
+
+
+def test_license_with_tz_aware_expiry_does_not_break_diagnostics(monkeypatch):
+    """tz-aware expires_at не має валити перевірку ліцензії (TypeError → картка
+    «Частина діагностики не спрацювала», бойовий випадок 20.09.26)."""
+    from datetime import timezone
+    from app import license as lic
+
+    exp = datetime.now(timezone.utc) + timedelta(days=10)
+    monkeypatch.setattr(
+        lic, "get_license_status",
+        lambda db: lic.LicenseStatus(valid=True, customer="x", expires_at=exp),
+    )
+    db = _db()
+
+    problems = whats_wrong.collect(db)
+
+    assert not any("спрацювала" in p.title.lower() for p in problems), "діагностика впала"
+    found = _find(problems, "ліцензія")
+    assert found is not None and found.level == whats_wrong.LEVEL_WARN
+
+
+def test_a_recovered_mail_outage_is_only_a_warning():
+    db = _db()
+    _sync(db, "mail_to_db", "error", "Не вдалося синхронізувати пошту.", minutes_ago=30)
+    _sync(db, "mail_to_db", "ok", "прочитано 3 листи", minutes_ago=29)
+
+    problems = whats_wrong.collect(db)
+
+    assert not any(p.level == whats_wrong.LEVEL_STOP for p in problems)
+    assert _find(problems, "пошта") is not None
+
+
 # ── Читабельність ───────────────────────────────────────────────────────────
 
 

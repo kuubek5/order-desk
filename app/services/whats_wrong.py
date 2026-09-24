@@ -211,17 +211,63 @@ def _sync_problem(row: SyncLog) -> Optional[Problem]:
     return None
 
 
+# Помилки цих каналів лікуються самі: пізніший успішний синк ТОГО САМОГО
+# каналу означає, що зв'язок повернувся. Тримати їх «стопом» після відновлення
+# — брехати оператору (бойовий випадок 20.09.26: разовий 409 о 20:45
+# відновився за хвилину, а картка «Немає доступу» висіла СТОПом добу). Запис
+# про специфічний рядок (`sheet_write_error`) сюди НЕ входить: пізніший успішний
+# запис ІНШОГО рядка не доводить, що той, що впав, дописався.
+_RECOVERABLE_SYNC_KEYS = {"sheets_error", "sheet_tab_missing", "mail_error"}
+
+
+def _recovery_channel(key: str) -> str:
+    """Напрям синку, чий успіх знімає цю проблему."""
+    return "mail" if key == "mail_error" else "sheet_to_db"
+
+
+def _as_recovered(problem: Problem, span_min: float) -> Problem:
+    """Знята проблема зв'язку: не «стоп», а тиха помітка «було, відновилось».
+    Нічого не ховаємо — лишаємо в переліку для історії, лише знижуємо рівень."""
+    span = _span(span_min) if span_min > 0 else "менше хвилини"
+    if problem.key == "mail_error":
+        title = "Пошта тимчасово не читалась — відновилась"
+    else:
+        title = "Зв'язок із Google Таблицею пропадав — відновився"
+    problem.level = LEVEL_WARN
+    problem.title = title
+    problem.means = (
+        f"Було відсутнє близько {span}, зараз працює. Показано для історії — "
+        "робити нічого не треба."
+    )
+    problem.actions = []
+    problem.key = f"{problem.key}_recovered"
+    return problem
+
+
 def _sync_problems(db: Session, since_utc: datetime) -> list[Problem]:
     rows = db.scalars(
         select(SyncLog)
         .where(SyncLog.occurred_at >= since_utc)
         .order_by(SyncLog.occurred_at.desc())
     ).all()
+    # Найсвіжіший успіх кожного каналу: рядки йдуть найновішим уперед, тож
+    # перший «ok» у каналі — це і є останнє відновлення.
+    latest_ok: dict[str, datetime] = {}
+    for row in rows:
+        if (row.status or "") == "ok" and row.occurred_at is not None:
+            channel = "mail" if (row.direction or "").startswith("mail") else (row.direction or "")
+            latest_ok.setdefault(channel, row.occurred_at)
     out: list[Problem] = []
     for row in rows:
         problem = _sync_problem(row)
-        if problem is not None:
-            out.append(problem)
+        if problem is None:
+            continue
+        if problem.key in _RECOVERABLE_SYNC_KEYS and row.occurred_at is not None:
+            healed = latest_ok.get(_recovery_channel(problem.key))
+            if healed is not None and healed > row.occurred_at:
+                span_min = (healed - row.occurred_at).total_seconds() / 60
+                problem = _as_recovered(problem, span_min)
+        out.append(problem)
     return out
 
 
@@ -379,7 +425,12 @@ def _license_problem(db: Session) -> Optional[Problem]:
         return None
     if status.expires_at is None:
         return None
-    days = (status.expires_at - datetime.now()).days
+    # `expires_at` може бути tz-aware (ISO-рядок ключа з офсетом): віднімати від
+    # голого datetime.now() → TypeError, який тихо валив саме цю перевірку в
+    # «Що не так» (картка «Частина діагностики не спрацювала (ліцензія)»,
+    # 20.09.26). Той самий безпечний `now`, що й у app/license.py.
+    now = datetime.now(status.expires_at.tzinfo) if status.expires_at.tzinfo else datetime.now()
+    days = (status.expires_at - now).days
     if days > 30:
         return None
     if days < 0:
