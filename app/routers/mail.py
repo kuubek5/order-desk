@@ -930,6 +930,12 @@ def _wizard_context(
     selected_ids = set(attachment_ids)
     _batch = [a for a in ctx["unclaimed_attachments"] if a.id in selected_ids] if selected_ids else ctx["unclaimed_attachments"]
     ctx["batch_count"] = len(_batch)
+    # Скільки нерозібраних вкладень листа ще НЕ на диску (гейт «не всі файли
+    # скачані», власник 24.09.26). unclaimed_attachments уже відфільтроване до
+    # on_disk (див. _email_partial_state), тож різниця з усіма нерозібраними
+    # вкладеннями = не скачані — БЕЗ ще одного проходу по мережевій шарі.
+    _unclaimed_total = sum(1 for a in email.attachments if a.order_id is None)
+    ctx["undownloaded_files"] = _unclaimed_total - ctx["unclaimed_count"]
     # Пропонована тека рахується вже на КРОЦІ 1 (прохання власника 24.09.26:
     # «щоб система орієнтувалась на ім'я замовника й пропонувала папку»). На
     # кроці 1 це підказка за поточним іменем; крок 2 її ж підтверджує й дає

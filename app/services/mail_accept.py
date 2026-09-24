@@ -176,6 +176,24 @@ def _accept_letter_locked(
             )
         )
 
+    # Захист (власник 24.09.26): усі ВКЛАДЕННЯ листа мають бути на диску. Досі
+    # `unclaimed` нижче просто ВИКЛЮЧАВ відсутні файли — робота приймалась, лист
+    # позначався прийнятим, а не скачаний файл тихо лишався в спулі й губився.
+    # Тепер прийняття блокується, поки файл не скачають (кнопка у «Файли + STL»)
+    # або оператор свідомо не підтвердить (accept_anyway). `_file_is_missing`, а
+    # не `Path.exists()`: мережеве моргання UNC не має рахуватись як «не скачано».
+    missing_files = [
+        a for a in email.attachments
+        if a.order_id is None and _file_is_missing(a.saved_path)
+    ]
+    if missing_files and not accept_anyway:
+        return AcceptResult(
+            error=(
+                f"Ще {len(missing_files)} файл(ів) листа не скачано на диск — "
+                "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
+            )
+        )
+
     target_tab, target_worksheet = _resolve_target_tab(db, email)
 
     new_order = Order(

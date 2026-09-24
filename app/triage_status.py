@@ -53,6 +53,15 @@ def triage_readiness(email) -> dict:
     if pending_links:
         missing.append(f"{pending_links} файл(ів) за посиланням")
 
+    # Нескачані ВКЛАДЕННЯ (не за посиланням): частина файлів листа є на диску,
+    # частина — ні. `_has_rows_but_no_files` вище ловить лише випадок «жоден не
+    # скачаний»; серверний гейт прийняття (mail_accept) блокує й часткову
+    # нестачу, тож бейдж мусить рахувати так само, інакше список каже «ГОТОВО»
+    # на листі, який прийняти дадуть тільки з підтвердженням (власник 24.09.26).
+    pending_files = _undownloaded_attachments(email)
+    if pending_files:
+        missing.append(f"{pending_files} файл(ів) листа")
+
     return {"state": "ready" if not missing else "incomplete", "missing": missing}
 
 
@@ -71,6 +80,21 @@ def _has_rows_but_no_files(email) -> bool:
     if not attachments:
         return False
     return not any(_Path(a.saved_path).exists() for a in attachments)
+
+
+def _undownloaded_attachments(email) -> int:
+    """Скільки НЕрозібраних вкладень листа фізично відсутні на диску.
+
+    Дзеркалить серверний гейт прийняття (mail_accept.accept_letter): прийняте в
+    чергу вкладення (order_id) не рахуємо — його файл переїхав у export.
+    """
+    from pathlib import Path as _Path
+
+    n = 0
+    for attachment in getattr(email, "attachments", []) or []:
+        if getattr(attachment, "order_id", None) is None and not _Path(attachment.saved_path).exists():
+            n += 1
+    return n
 
 
 def files_on_disk(email) -> int:

@@ -19,7 +19,7 @@ from starlette.datastructures import Headers
 
 import app.web as web
 from app.db import Base
-from app.models import EmailMessage, User
+from app.models import Attachment, EmailMessage, User
 from app.routers import mail as mail_router_mod
 from app.triage_status import triage_readiness
 
@@ -100,6 +100,57 @@ class TestAcceptErrorStaysInTheWizard:
             assert ctx["quantity"] == "7"
             # Лист лишається в тріажі — нічого не прийнято.
             assert email.status == "нове"
+
+    def test_undownloaded_attachment_blocks_with_a_loud_message(self, monkeypatch):
+        """Вкладення листа, якого немає на диску, не пропускається мовчки —
+        крок 3 з наполегливим попередженням, лист лишається «нове» (власник
+        24.09.26). Без accept_anyway гейт тримає."""
+        engine = _database()
+        captured = {}
+        self._stub_templates(monkeypatch, captured)
+
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            email = _letter(db)
+            db.add(Attachment(
+                email_message_id=email.id, filename="crown.stl",
+                saved_path="/no/such/dir/crown.stl",
+            ))
+            db.commit()
+
+            _accept(db, user, email, _request(user.id, htmx=True))
+
+            ctx = captured["ctx"]
+            assert ctx["wizard_step"] == 3
+            assert "не скачано на диск" in ctx["error"]
+            assert email.status == "нове"
+
+    def test_accept_anyway_passes_the_undownloaded_attachment_gate(self, monkeypatch):
+        """Галка «прийняти без них» пропускає повз гейт нескачаного вкладення —
+        помилка вже НЕ про диск (сервер іде далі). Не блокуємо намертво."""
+        engine = _database()
+        captured = {}
+        self._stub_templates(monkeypatch, captured)
+
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            email = _letter(db)
+            db.add(Attachment(
+                email_message_id=email.id, filename="crown.stl",
+                saved_path="/no/such/dir/crown.stl",
+            ))
+            db.commit()
+
+            result = mail_router_mod.accept_email(
+                request=_request(user.id, htmx=True), email_id=email.id,
+                client_name="Люмі-Дент", material_color="моно а3", kind="",
+                quantity="7", folder_pick="", folder_new="", material_folder="",
+                attachment_ids=[], accept_anyway="1", db=db,
+            )
+            # Гейт диска пройдено: якщо крок повернувся з помилкою, вона вже
+            # НЕ про «не скачано на диск».
+            if captured.get("ctx"):
+                assert "не скачано на диск" not in (captured["ctx"].get("error") or "")
 
     def test_pending_attachments_also_stay_in_the_wizard(self, monkeypatch):
         engine = _database()
