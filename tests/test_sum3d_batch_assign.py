@@ -34,7 +34,7 @@ def _email_order(db, client_name, material, *, sum3d=None, status="прийня�
     return order
 
 
-def test_batch_assigns_one_id_to_all_pinned_and_skips_taken(app_db):
+def test_batch_assigns_one_id_to_all_pinned_and_skips_taken(app_db):  # noqa: F811
     app, session_factory = app_db
     with session_factory() as db:
         op = db.scalar(select(User).where(User.username == OPERATOR[0]))
@@ -71,7 +71,7 @@ def test_batch_assigns_one_id_to_all_pinned_and_skips_taken(app_db):
             ) is not None
 
 
-def test_batch_without_pinned_works_assigns_nothing(app_db):
+def test_batch_without_pinned_works_assigns_nothing(app_db):  # noqa: F811
     app, session_factory = app_db
     with session_factory() as db:
         _email_order(db, "Не пришпилений", "mono a3")  # є робота, але не в наборі
@@ -85,7 +85,7 @@ def test_batch_without_pinned_works_assigns_nothing(app_db):
         assert all(o.sum3d_id is None for o in db.scalars(select(Order)))
 
 
-def test_batch_rejects_empty_id(app_db):
+def test_batch_rejects_empty_id(app_db):  # noqa: F811
     app, session_factory = app_db
     with session_factory() as db:
         op = db.scalar(select(User).where(User.username == OPERATOR[0]))

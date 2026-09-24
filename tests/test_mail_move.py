@@ -9,9 +9,8 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
 
-from app.models import EmailMessage, User
+from app.models import EmailMessage
 from app.routers import mail as mail_router_mod
 from app.settings_store import get_setting, set_setting
 from tests.asgi_client import MiniClient
@@ -38,7 +37,7 @@ def _set_folder(db, name="Оброблено"):
 
 
 class TestMoveToProcessed:
-    def test_move_sets_folder_and_leaves_inbox(self, app_db, monkeypatch):
+    def test_move_sets_folder_and_leaves_inbox(self, app_db, monkeypatch):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             _set_folder(db)
@@ -52,7 +51,7 @@ class TestMoveToProcessed:
         with session_factory() as db:
             assert db.get(EmailMessage, eid).mailbox_folder == "Оброблено"
 
-    def test_row_context_deletes_row_with_empty_200(self, app_db, monkeypatch):
+    def test_row_context_deletes_row_with_empty_200(self, app_db, monkeypatch):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             _set_folder(db)
@@ -67,7 +66,7 @@ class TestMoveToProcessed:
         assert status == 200
         assert body.strip() == ""
 
-    def test_no_folder_configured_is_409(self, app_db, monkeypatch):
+    def test_no_folder_configured_is_409(self, app_db, monkeypatch):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             eid = _letter(db).id  # папку НЕ задано
@@ -79,7 +78,7 @@ class TestMoveToProcessed:
         with session_factory() as db:
             assert db.get(EmailMessage, eid).mailbox_folder is None
 
-    def test_imap_failure_keeps_letter_in_inbox(self, app_db, monkeypatch):
+    def test_imap_failure_keeps_letter_in_inbox(self, app_db, monkeypatch):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             _set_folder(db)
@@ -98,7 +97,7 @@ class TestMoveToProcessed:
 
 
 class TestMoveBackToInbox:
-    def test_reverse_clears_folder(self, app_db, monkeypatch):
+    def test_reverse_clears_folder(self, app_db, monkeypatch):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             eid = _letter(db, status="прийнято", folder="Оброблено").id
@@ -114,7 +113,7 @@ class TestMoveBackToInbox:
         with session_factory() as db:
             assert db.get(EmailMessage, eid).mailbox_folder is None
 
-    def test_reverse_on_non_moved_is_409(self, app_db, monkeypatch):
+    def test_reverse_on_non_moved_is_409(self, app_db, monkeypatch):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             eid = _letter(db).id  # у папці не був
@@ -126,7 +125,7 @@ class TestMoveBackToInbox:
 
 
 class TestProcessedTabFiltering:
-    def test_moved_leaves_pending_and_shows_in_processed(self, app_db):
+    def test_moved_leaves_pending_and_shows_in_processed(self, app_db):  # noqa: F811
         app, session_factory = app_db
         with session_factory() as db:
             _set_folder(db)
@@ -145,7 +144,7 @@ class TestProcessedTabFiltering:
 
 
 class TestSaveProcessedFolder:
-    def test_save_folder_setting_whitelisted(self, app_db):
+    def test_save_folder_setting_whitelisted(self, app_db):  # noqa: F811
         app, session_factory = app_db
         client = MiniClient(app)
         client.login(*ADMIN)

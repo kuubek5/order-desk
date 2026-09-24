@@ -159,10 +159,10 @@ def test_mail_mirror_shows_only_email_orders_newest_day_first():
     with Session(engine, expire_on_commit=False) as db:
         _user(db)
         # дві поштові роботи різних днів + чужі джерела + архівна
-        old = _order(db, source="email", client_name="Стара", sheet_tab=day_old,
-                     row_number=7)
-        new = _order(db, source="email", client_name="Нова", sheet_tab=day_new,
-                     row_number=7)
+        _order(db, source="email", client_name="Стара", sheet_tab=day_old,
+               row_number=7)
+        _order(db, source="email", client_name="Нова", sheet_tab=day_new,
+               row_number=7)
         _order(db, source="lab", client_name=None, work_order_no="24122",
                sheet_tab=day_new, row_number=8)
         _order(db, source="sheet_client", client_name="Табличний",
