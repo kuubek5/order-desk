@@ -132,49 +132,34 @@ def _resolve_client_folder_name(export_root: Path, client_name: str) -> str:
     return sanitize_folder_name(client_name)
 
 
-def _batch_number_re(base: str) -> re.Pattern:
-    return re.compile(r"^" + re.escape(base) + r" \((\d+)\)$")
+def _unique_material_folder(batch_dir: Path, material_name: str) -> Path:
+    """Тека матеріалу в межах ОДНІЄЇ дата-теки дня.
 
+    Раніше повтор того самого матеріалу за день плодив нову НУМЕРОВАНУ ДАТА-теку
+    (`24.09.26 (2)`, `(3)`…), і клієнт з 15 роботами за день давав до 15 дата-тек
+    — «дублікати» на око (скарга власника 24.09.26). Тепер дата-тека дня ОДНА, а
+    нумерується саме підпапка МАТЕРІАЛУ: `mono a3`, `mono a3 (2)`, … Тобто 15
+    робіт = 1 дата-тека з 15 підпапками.
 
-def _next_batch_folder(client_dir: Path, base: str) -> Path:
-    candidate = client_dir / base
+    Це стало безпечним завдяки Частині A: кожна поштова робота знаходиться у
+    видачі ПРЯМО через `Order.export_folder_path`, тож назва підпапки для видачі
+    вже не критична (нечіткий збіг лишається тільки запаскою для legacy-робіт без
+    прямого шляху). Глибина export незмінна — client/дата/матеріал.
+
+    `material_name` уже санітизований (без роздільників); перша спроба йде через
+    `_contained_child` (та сама гарантія від виходу за корінь), а суфікс ` (N)`
+    додає лише цифри/пробіл/дужки — плоский join лишається всередині дата-теки,
+    як і стара нумерація дата-тек.
+    """
+    candidate = _contained_child(batch_dir, material_name)
     if not candidate.exists():
         return candidate
     n = 2
-    while (client_dir / f"{base} ({n})").exists():
+    while True:
+        numbered = batch_dir / f"{material_name} ({n})"
+        if not numbered.exists():
+            return numbered
         n += 1
-    return client_dir / f"{base} ({n})"
-
-
-def _latest_batch_folder(client_dir: Path, base: str) -> Path | None:
-    """The most recently created batch folder for TODAY's date `base`, or None.
-
-    Batches for one day are named "17.08.26", "17.08.26 (2)", ... in strictly
-    increasing order (see _next_batch_folder), so the highest number is the most
-    recent. Only folders for THIS date are considered — a different day's date
-    folder is a separate drop-off and is never reused, and arbitrary folders a
-    technician dropped in by hand are ignored.
-    """
-    number_re = _batch_number_re(base)
-    try:
-        candidates = [p for p in client_dir.iterdir() if p.is_dir()]
-    except (OSError, FileNotFoundError):
-        return None
-
-    best: Path | None = None
-    best_n = -1
-    for p in candidates:
-        if p.name == base:
-            n = 1
-        else:
-            match = number_re.match(p.name)
-            if not match:
-                continue
-            n = int(match.group(1))
-        if n > best_n:
-            best_n = n
-            best = p
-    return best
 
 
 def list_client_folders(export_root: Path) -> list[str]:
@@ -211,21 +196,20 @@ def preview_export_target(
     material_folder = sanitize_folder_name(
         material_override or material_color or _NO_MATERIAL_NAME
     )
-    latest_batch = _latest_batch_folder(client_dir, base)
-    if latest_batch is not None and not (latest_batch / material_folder).exists():
-        batch_folder = latest_batch.name
-        batch_reused = True
-    else:
-        batch_folder = _next_batch_folder(client_dir, base).name
-        batch_reused = False
+    # Дзеркало save_attachments_to_export: ОДНА дата-тека дня, повтор матеріалу
+    # нумерує підпапку матеріалу (не дата-теку). `batch_reused` тепер = «дата-тека
+    # дня вже є» (дописуємо в неї, а не створюємо першу).
+    batch_dir = _contained_child(client_dir, base)
+    batch_reused = batch_dir.is_dir()
+    material_folder = _unique_material_folder(batch_dir, material_folder).name
 
     return {
         "client_folder": client_folder,
         "client_folder_existing": client_folder_existing,
-        "batch_folder": batch_folder,
+        "batch_folder": base,
         "batch_reused": batch_reused,
         "material_folder": material_folder,
-        "rel_path": f"{client_folder}/{batch_folder}/{material_folder}",
+        "rel_path": f"{client_folder}/{base}/{material_folder}",
     }
 
 
@@ -392,12 +376,11 @@ def save_attachments_to_export(
         material_override or material_color or _NO_MATERIAL_NAME
     )
 
-    latest_batch = _latest_batch_folder(client_dir, base)
-    if latest_batch is not None and not (latest_batch / material_name).exists():
-        batch_dir = latest_batch
-    else:
-        batch_dir = _next_batch_folder(client_dir, base)
-    material_dir = _contained_child(batch_dir, material_name)
+    # ОДНА дата-тека клієнта на день; повтор матеріалу нумерує МАТЕРІАЛ-підпапку,
+    # а не плодить нові дата-теки (рішення власника 24.09.26). Див.
+    # _unique_material_folder.
+    batch_dir = _contained_child(client_dir, base)
+    material_dir = _unique_material_folder(batch_dir, material_name)
     missing = [path for path in attachment_paths if not path.is_file()]
     if missing:
         raise FileNotFoundError(f"вкладення не знайдено: {missing[0]}")

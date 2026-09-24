@@ -44,10 +44,10 @@ def test_moves_single_attachment_into_client_batch_material_tree(tmp_path):
     assert not src.exists()
 
 
-def test_second_batch_for_same_client_gets_next_number(tmp_path):
-    """A second order for a material the latest batch already has must not
-    land inside that same material folder alongside the first order's files
-    — it collides, so it gets its own new batch instead."""
+def test_repeat_material_gets_numbered_subfolder_in_same_date(tmp_path):
+    """Повтор того самого матеріалу за день не мішається з першим і НЕ плодить
+    нову дата-теку — нумерується сама підпапка матеріалу в ОДНІЙ даті дня
+    (рішення власника 24.09.26)."""
     export_root = tmp_path / "export"
     (export_root / "Клієнт" / BATCH / "пмма").mkdir(parents=True)
 
@@ -56,7 +56,8 @@ def test_second_batch_for_same_client_gets_next_number(tmp_path):
 
     new_paths = save_attachments_to_export(export_root, "Клієнт", "пмма", [src])
 
-    assert new_paths[0].parent.parent.name == f"{BATCH} (2)"
+    assert new_paths[0].parent.parent.name == BATCH   # та сама дата-тека дня
+    assert new_paths[0].parent.name == "пмма (2)"     # нумерована підпапка матеріалу
 
 
 def test_different_material_reuses_latest_batch_instead_of_new_one(tmp_path):
@@ -80,13 +81,12 @@ def test_different_material_reuses_latest_batch_instead_of_new_one(tmp_path):
 
 
 def test_vova_three_order_batching_scenario(tmp_path):
-    """Exact scenario confirmed with the user (CLAUDE.md task): same
-    material twice in a row collides and starts a new batch; a third,
-    different material then lands in that new batch without forking again.
+    """Три замовлення одного клієнта за день лягають у ОДНУ дата-теку, повтор
+    матеріалу нумерує підпапку матеріалу (рішення власника 24.09.26):
 
-    Замовлення 1 (емо а3) -> нема батчів -> "нова папка/емо а3".
-    Замовлення 2 (емо а3) -> колізія в "нова папка" -> "нова папка (2)/емо а3".
-    Замовлення 3 (емо а2) -> "нова папка (2)" вільна -> "нова папка (2)/емо а2".
+    Замовлення 1 (емо а3) -> "24.09.26/емо а3".
+    Замовлення 2 (емо а3) -> колізія -> "24.09.26/емо а3 (2)".
+    Замовлення 3 (емо а2) -> вільно -> "24.09.26/емо а2".
     """
     export_root = tmp_path / "export"
 
@@ -102,21 +102,22 @@ def test_vova_three_order_batching_scenario(tmp_path):
     src3.write_bytes(b"3")
     paths3 = save_attachments_to_export(export_root, "Вова", "емо а2", [src3])
 
+    # Усі три — в ОДНІЙ дата-теці дня.
     assert paths1[0].parent.parent.name == BATCH
     assert paths1[0].parent.name == "емо а3"
 
-    assert paths2[0].parent.parent.name == f"{BATCH} (2)"
-    assert paths2[0].parent.name == "емо а3"
+    assert paths2[0].parent.parent.name == BATCH
+    assert paths2[0].parent.name == "емо а3 (2)"   # повтор → нумерована підпапка
 
-    assert paths3[0].parent.parent.name == f"{BATCH} (2)"
+    assert paths3[0].parent.parent.name == BATCH
     assert paths3[0].parent.name == "емо а2"
 
     client_dir = export_root / "Вова"
-    assert sorted(p.name for p in client_dir.iterdir()) == [BATCH, f"{BATCH} (2)"]
-    assert sorted(p.name for p in (client_dir / BATCH).iterdir()) == ["емо а3"]
-    assert sorted(p.name for p in (client_dir / f"{BATCH} (2)").iterdir()) == [
+    assert sorted(p.name for p in client_dir.iterdir()) == [BATCH]   # ОДНА дата-тека
+    assert sorted(p.name for p in (client_dir / BATCH).iterdir()) == [
         "емо а2",
         "емо а3",
+        "емо а3 (2)",
     ]
 
 
@@ -194,7 +195,8 @@ def test_repeat_client_with_retyped_name_reuses_existing_folder(tmp_path):
     client_dirs = [p for p in export_root.iterdir() if p.is_dir()]
     assert len(client_dirs) == 1
     assert new_paths[0].parent.parent.parent.name == "Литвиненко Олег"
-    assert new_paths[0].parent.parent.name == f"{BATCH} (2)"
+    assert new_paths[0].parent.parent.name == BATCH          # та сама дата-тека
+    assert new_paths[0].parent.name == "моно а3 (2)"         # повтор → нумерована підпапка
 
 
 def test_genuinely_new_client_still_gets_own_folder(tmp_path):
@@ -320,9 +322,10 @@ def test_repeat_same_material_lands_in_new_batch_no_loss(tmp_path):
 
     first = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
     second = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
-    assert first[0].parent != second[0].parent  # different batch folders
+    assert first[0].parent != second[0].parent  # різні підпапки матеріалу
     assert first[0].is_file() and second[0].is_file()  # nothing lost
-    assert f"{BATCH} (2)" in second[0].parts  # numbered repeat batch
+    assert "моно а3 (2)" in second[0].parts  # повтор → нумерована підпапка матеріалу
+    assert second[0].parent.parent.name == BATCH  # у ТІЙ САМІЙ даті дня
 
 
 def test_repeat_different_material_reuses_batch(tmp_path):
