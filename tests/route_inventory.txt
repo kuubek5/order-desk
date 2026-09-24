@@ -64,6 +64,7 @@ GET /settings/feedback
 GET /settings/mail/folders
 GET /settings/materials
 GET /settings/materials/probe
+GET /settings/network/folder-helper
 GET /settings/report.txt
 GET /settings/sheets/download-all
 GET /settings/sheets/download-month/{month}
@@ -215,6 +216,7 @@ POST /settings/materials/shortcut/{shortcut_id}/delete
 POST /settings/materials/shortcut/{shortcut_id}/edit
 POST /settings/mcp/toggle
 POST /settings/mcp/token
+POST /settings/network/folder-open
 POST /settings/network/toggle
 POST /settings/notifications
 POST /settings/recognition/default-material

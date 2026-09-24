@@ -5,6 +5,7 @@
 імпортує ні `app.web`, ні жоден роутер.
 """
 
+import base64
 import ipaddress
 import json
 import logging
@@ -40,6 +41,7 @@ from app.settings_store import (
     get_notify_events,
     get_notify_position,
     get_notify_style,
+    get_setting,
 )
 from app.services.queue import is_approval_pending_comment, is_rush_comment
 from app.services.settings_nav import can_edit, can_see, nav_payload, visible_nav
@@ -162,7 +164,17 @@ def open_folder_response(request: Request, db: Session, folder, *, opener, log_l
     if not is_loopback_request(request):
         if not is_trusted_request(request, db):
             raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
-        return JSONResponse({"opened": False, "path": str(folder)})
+        # З мережевого ПК Провідник сервера не відкрити. Типово віддаємо шлях,
+        # і браузер його копіює. Якщо адмін увімкнув «Відкриття тек на ПК
+        # операторів» (і на тих ПК стоїть помічник kmill-folder://) — додаємо
+        # протокол-посилання: клік по ньому відкриває теку в Провіднику саме на
+        # ПК оператора. Шлях у base64url, бо UNC (`\\host\share`) містить символи,
+        # яких у URL бути не має; помічник декодує назад (tools/kmill-folder).
+        payload = {"opened": False, "path": str(folder)}
+        if get_setting(db, "network_folder_open") == "1":
+            encoded = base64.urlsafe_b64encode(str(folder).encode("utf-8")).decode().rstrip("=")
+            payload["proto"] = "kmill-folder://" + encoded
+        return JSONResponse(payload)
     try:
         opener(folder)
     except NotImplementedError:

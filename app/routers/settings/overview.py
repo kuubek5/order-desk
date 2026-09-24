@@ -424,6 +424,9 @@ def get_settings(
     context["network_links"] = network_access.app_links()
     context["network_firewall_command"] = network_access.firewall_command()
     context["network_firewall_remove_command"] = network_access.firewall_remove_command()
+    # Відкриття тек на ПК операторів (протокол kmill-folder://) — тумблер у тому
+    # ж розділі; типово вимкнено (кнопка копіює шлях).
+    context["network_folder_open"] = get_setting(db, "network_folder_open") == "1"
 
     # Плити стану розділів (макет «Стенд»). Рахуються ПІСЛЯ контексту й з
     # нього ж: жодного власного джерела правди — інакше плита й тіло

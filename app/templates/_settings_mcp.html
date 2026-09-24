@@ -92,6 +92,43 @@
                 </div>
                 </div>
 
+                {# ── Відкриття тек на ПК операторів ──────────────────────────
+                   З мережевого ПК браузер не може відкрити Провідник — сервер
+                   на іншому ПК. Помічник (протокол kmill-folder://, ставиться
+                   раз на кожен ПК оператора) дозволяє кнопці «Відкрити папку»
+                   відкривати теку локально. Без помічника лишається копіювання
+                   шляху; вмикати тумблер лише коли помічник стоїть на тих ПК. #}
+                <h3>Відкриття тек на ПК операторів</h3>
+                <p class="settings-help">
+                    З іншого ПК кнопка «Відкрити папку» типово лише копіює шлях (браузер не
+                    має права відкривати Провідник). Постав на кожен операторський ПК крихітний
+                    помічник — і кнопка відкриватиме теку прямо там. Прав адміністратора для
+                    установки не треба.
+                </p>
+                <div class="stand-cells">
+                <div class="stand-cell w6">
+                    <h3>Помічник — раз на кожен ПК</h3>
+                    <p class="settings-help">
+                        Завантаж, розпакуй і запусти <span class="mono">install-kmill-folder.cmd</span>
+                        на ПК оператора (подвійний клік). Повторний запуск безпечний.
+                    </p>
+                    <a class="settings-secondary-button" href="/settings/network/folder-helper" download>Завантажити помічник (.zip)</a>
+                </div>
+                <div class="stand-cell w3">
+                    <h3>Режим</h3>
+                    <div class="settings-field">
+                        <p class="settings-help">
+                            Вмикай лише коли помічник стоїть на ПК операторів — інакше в них
+                            вискочить вікно «немає застосунку».
+                        </p>
+                        <form method="post" action="/settings/network/folder-open">
+                            <button type="submit" class="settings-secondary-button">{{ 'Вимкнути відкриття тек' if network_folder_open else 'Увімкнути відкриття тек' }}</button>
+                        </form>
+                        <p class="settings-help">Стан: {% if network_folder_open %}<span class="stand-state stand-state-ok">кнопка відкриває теки</span>{% else %}<span class="stand-state stand-state-none">кнопка копіює шлях</span>{% endif %}</p>
+                    </div>
+                </div>
+                </div>
+
                 <h3>Читання стану з дому (MCP)</h3>
                 <p class="settings-help">
                     Перемикач відкриває ОКРЕМИЙ, крихітний порт (<span class="mono">{{ mcp_port }}</span>),

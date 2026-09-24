@@ -87,6 +87,16 @@ window.openFolderOrCopy = async function openFolderOrCopy(url, body) {
     payload = null;
   }
   if (!payload || payload.opened || !payload.path) return "opened";
+  // Помічник відкриття тек стоїть на ПК оператора (адмін увімкнув тумблер): сервер
+  // дав протокол-посилання kmill-folder://<шлях> — навігація на нього запускає
+  // обробник, який відкриває теку в Провіднику саме на цьому ПК. Протокол не
+  // міняє документ, тож сторінка лишається. Без помічника браузер покаже своє
+  // вікно «немає застосунку» — тому це лише коли адмін свідомо ввімкнув режим.
+  if (payload.proto) {
+    try { window.location.href = payload.proto; } catch (e) { /* немає помічника */ }
+    if (window.showToast) window.showToast("Відкриваю теку на вашому ПК…", "success");
+    return "handler";
+  }
   const copied = await window.copyTextToClipboard(payload.path);
   if (copied) {
     if (window.showToast) {

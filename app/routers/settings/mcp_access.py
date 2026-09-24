@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.routers.deps import get_db
-from app.settings_store import set_setting
+from app.settings_store import get_setting, set_setting
 from .common import require_settings_admin
 
 router = APIRouter()
@@ -113,4 +113,65 @@ def regenerate_mcp_token(request: Request, db: Session = Depends(get_db)):
     db.commit()
     return _flash(
         request, "success", "Новий рядок готовий — старий більше не працює, передай новий."
+    )
+
+
+NETWORK_FOLDER_OPEN_KEY = "network_folder_open"
+
+
+@router.post("/settings/network/folder-open")
+def toggle_network_folder_open(request: Request, db: Session = Depends(get_db)):
+    """Увімкнути/вимкнути відкриття тек на ПК операторів (протокол
+    kmill-folder://). Увімкнено → сервер віддає мережевому клієнту протокол-
+    посилання, і кнопка «Відкрити папку» відкриває теку в Провіднику на ПК
+    оператора (потрібен помічник, встановлений із .zip нижче). Вимкнено →
+    кнопка копіює шлях, як було. Адмін + loopback (керує поведінкою на чужих
+    ПК)."""
+    require_settings_admin(request, db)
+    on = get_setting(db, NETWORK_FOLDER_OPEN_KEY) != "1"
+    set_setting(db, NETWORK_FOLDER_OPEN_KEY, "1" if on else "")
+    db.commit()
+    if on:
+        message = (
+            "Відкриття тек увімкнено. На ПК операторів має стояти помічник "
+            "(.zip вище) — інакше в них вискочить вікно «немає застосунку». "
+            "Перезавантаж сторінку на тих ПК."
+        )
+    else:
+        message = "Відкриття тек вимкнено — кнопка знову копіює шлях."
+    return _flash(request, "success", message)
+
+
+@router.get("/settings/network/folder-helper")
+def download_folder_helper(request: Request, db: Session = Depends(get_db)):
+    """Віддати .zip із помічником відкриття тек (install-kmill-folder.cmd +
+    open-folder.vbs) для установки на ПК оператора. Адмін + loopback: файли
+    реєструють протокол-обробник, тож віддаємо їх лише з робочого столу
+    сервера, як решту дій цього розділу."""
+    import io
+    import zipfile
+
+    from fastapi.responses import Response
+
+    from app.routers.deps import is_loopback_request
+    from app.runtime import resource_path
+
+    require_settings_admin(request, db)
+    if not is_loopback_request(request):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="лише з цього ПК")
+
+    src = resource_path("tools/kmill-folder")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in ("install-kmill-folder.cmd", "open-folder.vbs"):
+            path = src / name
+            if path.exists():
+                zf.write(path, name)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="kmill-folder-helper.zip"'},
     )

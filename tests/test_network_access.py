@@ -127,6 +127,32 @@ def test_open_folder_response_opens_locally_and_copies_over_network(app_db, monk
     assert opened == [tmp_path]
 
 
+def test_open_folder_over_network_adds_proto_when_folder_open_on(app_db, tmp_path):  # noqa: F811
+    """Тумблер «Відкриття тек на ПК операторів» → сервер додає протокол-посилання
+    kmill-folder://<base64url шляху>, і кнопка на ПК оператора відкриває теку."""
+    import base64
+    import json
+
+    from app.routers import deps
+    from app.settings_store import set_setting
+
+    _, session_factory = app_db
+    _set_enabled(session_factory, True)
+    with session_factory() as db:
+        set_setting(db, "network_folder_open", "1")
+        db.commit()
+    with session_factory() as db:
+        response = deps.open_folder_response(
+            _request(LAN), db, tmp_path, opener=lambda p: None, log_label="t"
+        )
+        payload = json.loads(response.body)
+        assert payload["opened"] is False and payload["path"] == str(tmp_path)
+        expected = "kmill-folder://" + base64.urlsafe_b64encode(
+            str(tmp_path).encode("utf-8")
+        ).decode().rstrip("=")
+        assert payload["proto"] == expected
+
+
 # ── Перемикач і перезапуск ──────────────────────────────────────────────────
 
 

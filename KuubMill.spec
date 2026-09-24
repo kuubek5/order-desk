@@ -27,6 +27,9 @@ datas = [
     # Еталони цифр табло печей — без них екран печей читає лише статус
     # (resource_path("app/data/furnace_glyphs.json")).
     ("app/data", "app/data"),
+    # Помічник відкриття тек на ПК операторів (протокол kmill-folder://) —
+    # роздається з Налаштувань як .zip (resource_path("tools/kmill-folder")).
+    ("tools/kmill-folder", "tools/kmill-folder"),
 ]
 datas += collect_data_files("tzdata")
 
