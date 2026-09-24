@@ -9,6 +9,8 @@ in app/web.py::get_queue, combined via a separate `ready` query parameter.
 лишається без БД, щоб його можна було звати з будь-якого місця.
 """
 
+from collections.abc import Sequence
+
 from app.models import EmailMessage, Order
 
 READY_FILTERS = ("all", "not_ready", "can_take", "in_work")
@@ -76,7 +78,7 @@ def count_client_groups_by_source(client_groups: list[dict]) -> dict[str, int]:
 
 
 def filter_emails_by_service_type(
-    emails: list[EmailMessage], service: str
+    emails: Sequence[EmailMessage], service: str
 ) -> list[EmailMessage]:
     """Visually narrows the mail triage list by guess_service_type's guess.
 
@@ -94,7 +96,7 @@ def filter_emails_by_service_type(
     return list(emails)
 
 
-def count_by_service_type(emails: list[EmailMessage]) -> dict[str, int]:
+def count_by_service_type(emails: Sequence[EmailMessage]) -> dict[str, int]:
     """Counts for the mail triage screen's service-type filter chips."""
     other_count = sum(1 for email in emails if email.service_type_guess == "3d_print")
     return {

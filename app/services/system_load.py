@@ -22,7 +22,7 @@ import threading
 try:
     import psutil
 except Exception:  # noqa: BLE001 — на будь-якій платформі без psutil не падаємо
-    psutil = None  # type: ignore[assignment]
+    psutil = None
 
 logger = logging.getLogger(__name__)
 

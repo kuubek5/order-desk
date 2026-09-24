@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from app.models import Order, ReworkRecord
 
 
@@ -10,7 +12,7 @@ def parse_int_safe(value: str | None) -> int | None:
         return None
 
 
-def summarize_rework_by_blame(records: list[ReworkRecord]) -> list[dict]:
+def summarize_rework_by_blame(records: Sequence[ReworkRecord]) -> list[dict]:
     groups: dict[str, dict] = {}
     for record in records:
         blame = record.blame or "не вказано"

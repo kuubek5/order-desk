@@ -8,6 +8,7 @@
 """
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 from sqlalchemy import select
@@ -32,7 +33,7 @@ def quantity_units(raw: str | None) -> int:
     return int(digits) if digits else 0
 
 
-def ensure_client_profiles(db: Session, named_orders: list[Order]) -> int:
+def ensure_client_profiles(db: Session, named_orders: Sequence[Order]) -> int:
     """Give every client that appears in real work a card, so «Клієнти» and the
     morning handout show the SAME people.
 

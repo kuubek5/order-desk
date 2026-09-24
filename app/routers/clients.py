@@ -8,6 +8,7 @@
 
 import logging
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def client_pane_context(db: Session, client: Client, named_orders: list[Order] | None = None) -> dict:
+def client_pane_context(db: Session, client: Client, named_orders: Sequence[Order] | None = None) -> dict:
     """Everything the right-hand card shows for one client. Split out so the
     shell render and the HTMX pane request build it identically.
 
@@ -60,7 +61,7 @@ def client_pane_context(db: Session, client: Client, named_orders: list[Order] |
         names = db.scalars(
             select(Order.client_name).where(Order.client_name.isnot(None)).distinct()
         ).all()
-        wanted = matching_client_names(client.canonical_name, list(names))
+        wanted = matching_client_names(client.canonical_name, [n for n in names if n])
         matched = (
             list(db.scalars(select(Order).where(Order.client_name.in_(wanted))).all())
             if wanted else []

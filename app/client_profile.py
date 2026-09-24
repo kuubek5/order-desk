@@ -25,6 +25,7 @@ no caching or indexing needed for this.
 
 import unicodedata
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -47,7 +48,7 @@ def _normalize(name: str) -> str:
 
 def find_matching_orders(
     canonical_name: str,
-    orders: list[Order],
+    orders: Sequence[Order],
     threshold: float = MATCH_THRESHOLD,
 ) -> list[Order]:
     """Return the subset of orders whose client_name fuzzy-matches canonical_name.
@@ -80,7 +81,7 @@ def name_matches(canonical_name: str, candidate: str, threshold: float = MATCH_T
 
 
 def matching_client_names(
-    canonical_name: str, names: list[str], threshold: float = MATCH_THRESHOLD
+    canonical_name: str, names: Sequence[str], threshold: float = MATCH_THRESHOLD
 ) -> list[str]:
     """Ті з написань у таблиці, які належать цьому клієнтові."""
     if not canonical_name or not canonical_name.strip():
@@ -88,7 +89,7 @@ def matching_client_names(
     return [name for name in names if name and name_matches(canonical_name, name, threshold)]
 
 
-def index_orders_by_name(orders: list[Order]) -> dict[str, list[Order]]:
+def index_orders_by_name(orders: Sequence[Order]) -> dict[str, list[Order]]:
     """Orders grouped by normalized client_name.
 
     The client list matches EVERY client against EVERY order, and the sheet

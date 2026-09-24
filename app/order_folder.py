@@ -17,6 +17,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Sequence
 from pathlib import Path, PureWindowsPath
 
 from sqlalchemy import select
@@ -233,7 +234,7 @@ def resolve_email_attachment_folder(
 
 
 def attach_email_folder_availability(
-    emails: list[EmailMessage], trusted_roots: list[Path]
+    emails: Sequence[EmailMessage], trusted_roots: list[Path]
 ) -> None:
     """Annotate pending messages for queue rendering without exposing paths."""
     for email in emails:
@@ -260,7 +261,7 @@ def clear_email_preview_token_cache() -> None:
 
 
 def attach_email_preview_tokens(
-    emails: list[EmailMessage], trusted_roots: list[Path], preview_roots: dict[str, str | None]
+    emails: Sequence[EmailMessage], trusted_roots: list[Path], preview_roots: dict[str, str | None]
 ) -> None:
     """Sets a transient `stl_preview_token` (str | None) on each email so
     mail_triage.html/_pending_mail_row.html/mail_detail.html can offer the

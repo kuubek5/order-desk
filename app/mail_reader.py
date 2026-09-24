@@ -870,13 +870,14 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
     # garbled/made-up word from a client email isn't accepted as a real
     # material/color (see app/mail_parser.fuzzy_match_material_color). Computed
     # once up front and reused by both phase 1 (unused there) and phase 2.
-    known_materials = list(
-        session.scalars(
+    known_materials = [
+        m for m in session.scalars(
             select(Order.material_color)
             .where(Order.source == "lab", Order.material_color.is_not(None))
             .distinct()
         )
-    )
+        if m
+    ]
 
     # Editable material dictionary (admin-maintained, /settings/materials):
     # material aliases feed the triage material guess. Loaded once per sync and

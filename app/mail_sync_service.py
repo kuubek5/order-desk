@@ -180,7 +180,7 @@ def _fetch_with_deadline(session: Session, attachments_dir: Path) -> int:
         )
     if "error" in result:
         raise result["error"]  # type: ignore[misc]
-    return int(result.get("created", 0))  # type: ignore[arg-type]
+    return int(result.get("created", 0))
 
 
 def _record_failure(session: Session, error: MailSyncError, *, persist: bool) -> None:

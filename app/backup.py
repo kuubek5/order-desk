@@ -246,7 +246,8 @@ def _row_to_dict(obj: Any) -> dict[str, Any]:
 
 def _dict_to_row(model: type, data: dict[str, Any]):
     kwargs: dict[str, Any] = {}
-    for col in sa_inspect(model).columns:
+    columns: Any = sa_inspect(model).columns
+    for col in columns:
         name = col.name
         if name not in data:
             continue

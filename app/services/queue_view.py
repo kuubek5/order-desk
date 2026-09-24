@@ -245,7 +245,7 @@ def build_queue_view(
     ]
 
     # Categorize orders into buckets
-    buckets = {"today": [], "yesterday": [], "tomorrow": [], "earlier": []}
+    buckets: dict[str, list] = {"today": [], "yesterday": [], "tomorrow": [], "earlier": []}
 
     for order in all_orders:
         day = order_date(order)

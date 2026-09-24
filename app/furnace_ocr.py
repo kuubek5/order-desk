@@ -192,7 +192,7 @@ def _cache_only_success(load):
     def cache_clear() -> None:
         box.pop("value", None)
 
-    wrapper.cache_clear = cache_clear  # type: ignore[attr-defined]
+    wrapper.cache_clear = cache_clear
     return wrapper
 
 
