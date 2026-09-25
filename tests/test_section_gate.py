@@ -192,3 +192,33 @@ def test_slab_counts_closed_sections():
     sg.set_section_state(db, "furnaces", sg.OPEN)
     sg.set_section_state(db, "stats", sg.OPEN)
     assert _slab_sections({"sections_admin": sg.sections_admin(db)}).label == "усі відкриті"
+
+
+def test_named_user_gets_through_a_section_closed_for_the_role():
+    """Власник 25.09.26: пошта закрита для операторів, але досвідченому
+    оператору — відкрита поіменно. Інші оператори блокатор бачать далі."""
+    db = _db()
+    trusted = _user(db, "оператор", "senior")
+    other = _user(db, "оператор", "junior")
+    sg.set_section_state(db, "mail", "gauge")
+    sg.set_section_users(db, "mail", [str(trusted.id)])
+    db.commit()
+    assert sg.blocked_for(db, trusted, "mail") is None
+    assert sg.blocked_for(db, other, "mail") == "gauge"
+    # Виняток — лише на цей розділ.
+    sg.set_section_state(db, "stats", "gauge")
+    db.commit()
+    assert sg.blocked_for(db, trusted, "stats") == "gauge"
+
+
+def test_named_users_listed_without_admins_and_can_be_cleared():
+    db = _db()
+    op = _user(db, "оператор", "op")
+    _user(db, "адмін", "boss")
+    sg.set_section_users(db, "mail", [op.id])
+    db.commit()
+    mail = next(s for s in sg.sections_admin(db) if s["section"] == "mail")
+    assert [(u["id"], u["on"]) for u in mail["users"]] == [(op.id, True)]
+    sg.set_section_users(db, "mail", [])
+    db.commit()
+    assert sg.section_users(db, "mail") == set()

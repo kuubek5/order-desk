@@ -106,6 +106,30 @@ def _aud_key(section: str) -> str:
     return f"section_audience:{section}"
 
 
+def _users_key(section: str) -> str:
+    return f"section_users:{section}"
+
+
+def section_users(db: Session, section: str) -> set[int]:
+    """Кому розділ ВІДКРИТО поіменно, попри закриття для ролі (власник
+    25.09.26: «пошта закрита для всіх, крім мене — дати її досвідченому
+    оператору; так само нові функції спершу лише йому»). id через кому."""
+    raw = get_setting(db, _users_key(section)) or ""
+    out: set[int] = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return out
+
+
+def set_section_users(db: Session, section: str, user_ids) -> None:
+    if section not in SECTIONS:
+        raise KeyError(section)
+    clean = sorted({int(u) for u in user_ids if str(u).strip().isdigit()})
+    set_setting(db, _users_key(section), ",".join(str(u) for u in clean))
+
+
 def non_admin_roles(db: Session) -> list[str]:
     """Ролі, які можна закрити (усі, крім адміна) — з реальних акаунтів, тому
     нова роль зʼявляється в таргетингу сама, без правок коду."""
@@ -156,11 +180,15 @@ def sections_admin(db: Session) -> list[dict]:
     поточний стан і варіанти для select (open + чотири арти)."""
     variants = [(OPEN, "Відкрито для всіх")] + [(k, v["chip"]) for k, v in VARIANTS.items()]
     roles = non_admin_roles(db)
+    people = db.scalars(
+        select(User).where(User.role != ADMIN_ROLE).order_by(User.full_name, User.username)
+    ).all()
     out = []
     for section, meta in SECTIONS.items():
         state = section_state(db, section)
         audience = section_audience(db, section)
         all_roles = audience == AUDIENCE_ALL
+        allowed = section_users(db, section)
         out.append({
             "section": section,
             "title": meta["title"],
@@ -171,6 +199,11 @@ def sections_admin(db: Session) -> list[dict]:
             # Ролі з відміткою «під блокатором»: за «*» — усі; інакше за переліком.
             "roles": [{"role": r, "on": all_roles or r in audience} for r in roles],
             "audience_all": all_roles,
+            # Кому відкрито поіменно, попри закриття для ролі.
+            "users": [
+                {"id": u.id, "name": u.full_name or u.username, "on": u.id in allowed}
+                for u in people
+            ],
         })
     return out
 
@@ -189,6 +222,10 @@ def blocked_for(db: Session, user, section: str) -> str | None:
         return None
     audience = section_audience(db, section)
     if audience == AUDIENCE_ALL or getattr(user, "role", None) in audience:
+        # Поіменний виняток сильніший за роль: розділ закрито для операторів,
+        # але цьому оператору відкрито.
+        if getattr(user, "id", None) in section_users(db, section):
+            return None
         return state
     return None
 

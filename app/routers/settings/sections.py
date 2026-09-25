@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
-from app.services.section_gate import AUDIENCE_ALL, set_section_audience, set_section_state
+from app.services.section_gate import (
+    AUDIENCE_ALL,
+    set_section_audience,
+    set_section_state,
+    set_section_users,
+)
 from app.auth import hash_password
 from app.routers.deps import get_db
 from app.settings_store import set_setting
@@ -54,6 +59,11 @@ async def save_section_state(section: str, request: Request, db: Session = Depen
             set_section_audience(db, section, AUDIENCE_ALL)
         elif "role" in form:
             set_section_audience(db, section, form.getlist("role"))
+        # Поіменний доступ: маркер `users_sent` шле лише картка Налаштувань.
+        # Без нього «жодної галочки» не відрізнити від «поля не було» (банер
+        # над розділом цих полів не має) — §14, «порожнє поле = поля не було».
+        if form.get("users_sent"):
+            set_section_users(db, section, form.getlist("user"))
     except (KeyError, ValueError):
         raise HTTPException(status_code=422, detail="невідомий розділ або стан")
     db.commit()

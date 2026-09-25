@@ -382,7 +382,7 @@ def get_all_settings(session: Session) -> dict[str, Optional[str]]:
 # чужим реєстром — і рівно про це забувають. Тому ключ пізнається за
 # префіксом, а справжня перевірка «чи існує такий розділ» лишається там, де їй
 # і місце: `set_section_state`/`set_section_audience` звіряються з `SECTIONS`.
-_SECTION_KEY_PREFIXES = ("section_state:", "section_audience:")
+_SECTION_KEY_PREFIXES = ("section_state:", "section_audience:", "section_users:")
 
 
 def _is_section_key(key: str) -> bool:

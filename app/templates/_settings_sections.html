@@ -39,6 +39,18 @@
                         <label><input type="checkbox" name="role" value="{{ r.role }}" {% if r.on %}checked{% endif %}> {{ r.role }}</label>
                         {% endfor %}
                     </div>
+                    {# Поіменний виняток (власник 25.09.26): розділ закрито для ролі,
+                       але відмічений тут бачить його як відкритий. Адмінів у
+                       переліку немає — їх блокатор не чіпає ніколи. #}
+                    {% if sec.users %}
+                    <div class="secmgr-aud">
+                        <input type="hidden" name="users_sent" value="1">
+                        <span class="secmgr-aud-lbl">Відкрито для:</span>
+                        {% for u in sec.users %}
+                        <label><input type="checkbox" name="user" value="{{ u.id }}" {% if u.on %}checked{% endif %}> {{ u.name }}</label>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </form>
                 {% endfor %}
             </div>
