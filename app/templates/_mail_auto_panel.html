@@ -22,7 +22,9 @@
             {% for m in sender_memories %}
             <div class="senderrow {% if m.auto_accept %}is-auto{% endif %}">
                 <div class="sr-main">
-                    <span class="sr-name">{{ m.client_name }}</span>
+                    {# Імʼя з картки клієнта / памʼяті / підпису листа (sender_display_names),
+                       адреса — дрібно поруч. #}
+                    <span class="sr-name">{{ (sender_names or {}).get(m.id) or m.client_name }}</span>
                     <span class="sr-key mono">{{ m.sender_key }}</span>
                 </div>
                 <div class="sr-meta mono">

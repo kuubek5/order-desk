@@ -1,0 +1,11 @@
+{# Перемикач «Авто-скачування» відправника прямо з картки листа (власник
+   25.09.26: «маленька кнопочка, яка додає клієнта до автоскачування»).
+   Перемальовує лише себе (hx-target="this"), а не картку: інакше
+   зникли б поля, які оператор уже заповнив. Потребує email, auto_on. #}
+<form class="mc-auto" hx-post="/mail/{{ email.id }}/auto-download" hx-target="this" hx-swap="outerHTML">
+    <button type="submit" class="autotoggle mini {% if auto_on %}on{% endif %}" aria-pressed="{{ 'true' if auto_on else 'false' }}"
+            title="{% if auto_on %}Файли листів цього відправника качаються автоматично — вимкнути{% else %}Качати файли листів цього відправника автоматично (нові листи){% endif %}">
+        <span class="at-track"><span class="at-knob"></span></span>
+        <span class="at-label">Авто</span>
+    </button>
+</form>

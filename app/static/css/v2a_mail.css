@@ -671,6 +671,14 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
 .mailv2 .mc-addr{font-size:var(--fs-0);color:var(--ink-3);margin-top:3px}
 .mailv2 .mc-subj{font-size:var(--fs-1);color:var(--ink-2);margin-top:5px;line-height:1.4}
 .mailv2 .mc-subj-label{color:var(--ink-3)}
+/* Пігулка «постійний…» + перемикач «Авто» відправника (власник 25.09.26). */
+.mailv2 .mc-hintbox{flex:0 1 auto;display:flex;align-items:center;gap:8px;min-width:0;max-width:52%}
+.mailv2 .mc-hintbox .mc-hint{max-width:none;min-width:0}
+.mailv2 .mc-auto{flex:0 0 auto;margin:0}
+.mailv2 .autotoggle.mini{gap:6px;font-size:var(--fs-0)}
+.mailv2 .autotoggle.mini .at-track{width:30px;height:17px}
+.mailv2 .autotoggle.mini .at-knob{width:11px;height:11px}
+.mailv2 .autotoggle.mini.on .at-knob{transform:translateX(13px)}
 .mailv2 .mc-hint{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;max-width:46%;font-size:var(--fs-0);color:var(--accent-c);background:rgba(var(--accent-base-rgb), .1);border:1px solid rgba(var(--accent-rgb), .32);border-radius:999px;padding:4px 11px}
 .mailv2 .mc-hint svg{width:13px;height:13px;flex:0 0 13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .mc-hint>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

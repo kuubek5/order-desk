@@ -56,6 +56,7 @@ GET /discs/all
 POST /settings/materials/add
 POST /settings/machines/{machine_id}/delete
 POST /mail/{email_id}/accept
+POST /mail/{email_id}/auto-download
 POST /mail/accept-batch
 POST /mail/bulk
 GET /mail/move-folders
@@ -162,6 +163,7 @@ GET /shift
 GET /machines/diag
 POST /orders/{order_id}/operator
 POST /clients/{client_id}/folder
+POST /clients/{client_id}/open-folder
 POST /settings/mail-spool/open-folder
 POST /settings/mail-spool/prune
 GET /archive/day

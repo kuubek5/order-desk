@@ -52,11 +52,16 @@
             <div class="mc-subj"><span class="mc-subj-label">Тема:</span> {{ _subj }}</div>
             {% endif %}
         </div>
+        {% if sender_hint or can_auto %}
+        <div class="mc-hintbox">
         {% if sender_hint %}
-        <span class="mc-hint" title="Постійний клієнт — вкладення качаються автоматично">
+        <span class="mc-hint" title="Постійний клієнт — уже приймали його листи">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
             <span>постійний · {{ sender_hint.orders_count }} {% if sender_hint.orders_count == 1 %}робота{% elif sender_hint.orders_count < 5 %}роботи{% else %}робіт{% endif %}{% set _hint_folder = client_folder or sender_hint.export_folder %}{% if _hint_folder %} · <span class="mono">export/{{ _hint_folder }}</span>{% endif %}</span>
         </span>
+        {% endif %}
+        {% if can_auto %}{% include "_mail_auto_toggle.html" %}{% endif %}
+        </div>
         {% endif %}
     </div>
 

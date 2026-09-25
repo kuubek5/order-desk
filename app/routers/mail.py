@@ -36,7 +36,7 @@ from app.link_attachments import (
     undownloaded_links,
 )
 from app import perf
-from app.client_folder import preferred_client_folder, seed_client_name
+from app.client_folder import preferred_client_folder, seed_client_name, sender_display_names
 from app.mail_export import (
     _contained_child,
     CARD_FOLDER_LIST_MAX_AGE,
@@ -115,7 +115,7 @@ from app.routers.deps import (
     open_folder_response,
     templates,
 )
-from app.sender_memory import list_sender_memories, lookup_sender
+from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, sender_key_for
 from app.services.mail_accept import accept_letter, resolve_wizard_overrides
 from app.services.mail_mirror import mail_mirror_orders
 from app.services.focus import focused_ids
@@ -499,6 +499,7 @@ def get_mail(
         ) or 0
         folder_today_count = processed_count if view == "processed" else milled_count
     sender_memories = list_sender_memories(db) if view == "auto" else []
+    sender_names = sender_display_names(db, sender_memories) if sender_memories else {}
     auto_count = db.scalar(
         select(func.count()).select_from(ClientSenderMemory).where(
             ClientSenderMemory.auto_accept.is_(True)
@@ -636,6 +637,7 @@ def get_mail(
             "pending_count": pending_count,
             "filtered_count": filtered_count,
             "sender_memories": sender_memories,
+            "sender_names": sender_names,
             "auto_count": auto_count,
             "archive_count": archive_count,
             "processed_count": processed_count,
@@ -1034,6 +1036,10 @@ def _mail_panel_context(
         # клієнта (пам'ять/показне ім'я), не за адресою. None → шаблон веде на пошук.
         "client_card_id": _client_card_id(db, client_name),
         "sender_hint": sender_hint,
+        # Перемикач «Авто» в шапці картки (власник 25.09.26): стан і чи можна
+        # його показати (права + відомий відправник).
+        "auto_on": is_auto_sender(db, email),
+        "can_auto": can_edit(user, "mail-filters") and sender_key_for(email) is not None,
         "material_color": material_color,
         "kind": kind,
         "quantity": quantity,
@@ -1722,6 +1728,54 @@ def toggle_sender_auto(
     row.auto_accept = not row.auto_accept
     db.commit()
     return RedirectResponse("/mail?view=auto", status_code=303)
+
+
+@router.post("/mail/{email_id}/auto-download", response_class=HTMLResponse)
+def toggle_letter_sender_auto(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    """Перемикач «Авто» в картці листа (власник 25.09.26): увімкнути чи вимкнути
+    автоскачування для відправника ЦЬОГО листа, не йдучи у вкладку «Авто».
+
+    Вмикає рядок памʼяті за ключем відправника (для пересланого — з оригінальним
+    From:), а новий рядок заводить одразу зі справжнім імʼям (`seed_client_name`),
+    не з адресою-заглушкою. Вимикає — усі рядки, що роблять цей лист довіреним
+    (`is_auto_sender` дивиться й на голу адресу). Той самий гейт, що в решти
+    роутів відправників: це рішення про запис чужих файлів на диск."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    key = sender_key_for(email)
+    if key is None:
+        raise HTTPException(status_code=400, detail="відправника не визначено")
+    if is_auto_sender(db, email):
+        base = (email.from_address or "").strip().lower()
+        for trusted in db.scalars(
+            select(ClientSenderMemory).where(ClientSenderMemory.sender_key.in_({key, base}))
+        ):
+            trusted.auto_accept = False
+    else:
+        row = db.scalar(select(ClientSenderMemory).where(ClientSenderMemory.sender_key == key))
+        if row is None:
+            name = seed_client_name(db, email, None) or (email.from_address or key)
+            db.add(ClientSenderMemory(
+                sender_key=key, client_name=name, export_folder=None,
+                orders_count=0, auto_accept=True, last_seen_at=datetime.now(),
+            ))
+        else:
+            row.auto_accept = True
+    db.commit()
+    return templates.TemplateResponse(
+        request, "_mail_auto_toggle.html",
+        {"email": email, "auto_on": is_auto_sender(db, email)},
+    )
 
 
 @router.post("/mail/{email_id}/accept", response_class=HTMLResponse)

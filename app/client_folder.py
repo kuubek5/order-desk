@@ -22,7 +22,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Client, ClientNameAlias
+from app.models import Client, ClientNameAlias, EmailMessage
 
 _EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _ADDRESS_SPLIT = re.compile(r"[\s,;]+")
@@ -116,3 +116,41 @@ def seed_client_name(db: Session, email, sender_hint) -> str:
     if getattr(email, "from_name", None):
         return email.from_name
     return getattr(email, "client_name_guess", None) or ""
+
+
+def sender_display_names(db: Session, memories) -> dict[int, str]:
+    """Імʼя для рядка вкладки «Авто-скачування» (власник 25.09.26: «щоб тут
+    було імʼя клієнта, не тільки емейл»). Порядок той самий, що в картці листа:
+    картка клієнта з цією адресою в контактах → справжнє імʼя з памʼяті (не
+    адреса-заглушка) → підпис з останнього листа цієї адреси → адреса.
+    Для пересланих ключів (`адреса|оригінал`) — за оригіналом."""
+    cards: dict[str, set[str]] = {}
+    for name, emails in db.execute(
+        select(Client.canonical_name, Client.email).where(Client.email.is_not(None))
+    ).all():
+        for address in _ADDRESS_SPLIT.split(emails or ""):
+            if address and (name or "").strip():
+                cards.setdefault(address.casefold(), set()).add(name.strip())
+    signed: dict[str, str] = {}
+    for address, from_name in db.execute(
+        select(EmailMessage.from_address, EmailMessage.from_name)
+        .where(EmailMessage.from_name.is_not(None), EmailMessage.from_name != "")
+        .order_by(EmailMessage.id)
+    ).all():
+        if address:
+            signed[address.strip().casefold()] = from_name.strip()
+    names: dict[int, str] = {}
+    for memory in memories:
+        key = (memory.sender_key or "").strip().casefold()
+        address = key.split("|", 1)[1] if "|" in key else key
+        on_card = cards.get(address, set())
+        stored = (memory.client_name or "").strip()
+        if len(on_card) == 1:
+            names[memory.id] = next(iter(on_card))
+        elif stored and not is_placeholder_name(stored):
+            names[memory.id] = stored
+        elif "|" not in key and signed.get(address) and not is_placeholder_name(signed[address]):
+            names[memory.id] = signed[address]
+        else:
+            names[memory.id] = stored or address
+    return names
