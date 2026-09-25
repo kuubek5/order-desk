@@ -331,6 +331,7 @@ def get_settings(
         # /settings) — його тягне кнопка «Зчитати папки». Порожній список = ще не
         # читали; шаблон покаже поточну збережену назву й підказку.
         "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
+        "mail_milled_folder": get_setting(db, "mail_milled_folder") or "",
         "mail_folders": [],
         # Пічки: рядки таблиці як є, паролі — НІКОЛИ. Назад у поле секрет
         # не підставляється, у шаблон іде лише ознака «збережено».

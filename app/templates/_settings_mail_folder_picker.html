@@ -1,23 +1,30 @@
-{# Селект вибору папки «оброблено». Рендериться при відкритті вкладки з порожнім
+{# Селекти вибору папок «оброблено». Рендериться при відкритті вкладки з порожнім
    mail_folders (список ще не читали — щоб не робити IMAP-запит на кожному
    відкритті /settings) і замінюється відповіддю GET /settings/mail/folders після
-   кнопки «Зчитати папки». Потребує mail_folders, mail_processed_folder;
-   folders_error — лише у відповіді на зчитування. #}
+   кнопки «Зчитати папки». Потребує mail_folders, mail_processed_folder,
+   mail_milled_folder; folders_error — лише у відповіді на зчитування.
+   «Немає етапу» шле власне слово `none`, а не порожнє: сервер читає порожнє
+   поле як відсутнє (Form(None)), і вимкнути етап було б неможливо (§14). #}
+{% macro folder_select(name, current, label, empty_label, empty_value="") %}
+    <select name="{{ name }}" class="suminput" aria-label="{{ label }}">
+        <option value="{{ empty_value }}">{{ empty_label }}</option>
+        {% for f in mail_folders %}
+        <option value="{{ f }}" {% if f == current %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+        {# Збережена папка, якої немає в зчитаному списку (список ще не читали або
+           папку прибрали зі скриньки) — показуємо, щоб не загубити вибір. #}
+        {% if current and current not in mail_folders %}
+        <option value="{{ current }}" selected>{{ current }} (збережено)</option>
+        {% endif %}
+    </select>
+{% endmacro %}
 <div id="mail-folder-picker">
     {% if folders_error %}
     <p class="settings-help settings-error-text">{{ folders_error }}</p>
     {% endif %}
-    <select name="folder" class="suminput" aria-label="Папка для оброблених листів">
-        <option value="">— не переносити (вимкнено) —</option>
-        {% for f in mail_folders %}
-        <option value="{{ f }}" {% if f == mail_processed_folder %}selected{% endif %}>{{ f }}</option>
-        {% endfor %}
-        {# Збережена папка, якої немає в зчитаному списку (список ще не читали або
-           папку прибрали зі скриньки) — показуємо, щоб не загубити вибір. #}
-        {% if mail_processed_folder and mail_processed_folder not in mail_folders %}
-        <option value="{{ mail_processed_folder }}" selected>{{ mail_processed_folder }} (збережено)</option>
-        {% endif %}
-    </select>
+    {{ folder_select("folder", mail_processed_folder, "Папка для оброблених листів", "— не переносити (вимкнено) —") }}
+    <p class="settings-help">Коли роботу відправлено замовнику, логіст переносить лист далі — у папку (лист там теж вважається обробленим):</p>
+    {{ folder_select("milled_folder", mail_milled_folder, "Папка для відфрезерованих листів", "— немає такого етапу —", "none") }}
     {% if not mail_folders %}
     <p class="settings-help">Натисни «Зчитати папки скриньки», щоб вибрати зі списку.</p>
     {% endif %}

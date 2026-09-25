@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
@@ -395,6 +396,7 @@ def mail_folders_picker(request: Request, db: Session = Depends(get_db)):
         {
             "mail_folders": folders,
             "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
+            "mail_milled_folder": get_setting(db, "mail_milled_folder") or "",
             "folders_error": error,
         },
     )
@@ -402,20 +404,30 @@ def mail_folders_picker(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/settings/mail/processed-folder")
 def save_mail_processed_folder(
-    request: Request, folder: str = Form(""), db: Session = Depends(get_db)
+    request: Request,
+    folder: str = Form(""),
+    milled_folder: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
 ):
     """Зберегти вибрану папку «оброблено» — куди сторінка пошти переносить листи
-    робіт, що пішли в цех. Порожнє значення дозволене (вимкнути функцію)."""
+    робіт, що пішли в цех. Порожнє значення дозволене (вимкнути функцію).
+
+    `milled_folder` — друга папка, куди лист іде після фрезерування. `None`
+    (поля у формі не було) — не чіпаємо; `none` — вимкнути етап. Власне слово,
+    бо порожнє поле FastAPI читає так само, як відсутнє (§14)."""
     require_settings_edit(request, db, "mail-download")
     set_setting(db, "mail_processed_folder", folder.strip())
+    if milled_folder is not None:
+        milled = milled_folder.strip()
+        set_setting(db, "mail_milled_folder", "" if milled == "none" else milled)
     db.commit()
-    request.session["settings_flash"] = {
-        "kind": "success",
-        "message": (
-            f"Папка «оброблено»: {folder.strip()}." if folder.strip()
-            else "Папку «оброблено» очищено — кнопка переміщення на пошті сховається."
-        ),
-    }
+    message = (
+        f"Папка «оброблено»: {folder.strip()}." if folder.strip()
+        else "Папку «оброблено» очищено — кнопка переміщення на пошті сховається."
+    )
+    if milled_folder is not None and milled_folder.strip() not in ("", "none"):
+        message += f" Після фрезерування: {milled_folder.strip()}."
+    request.session["settings_flash"] = {"kind": "success", "message": message}
     return RedirectResponse("/settings#mail-download", status_code=303)
 
 

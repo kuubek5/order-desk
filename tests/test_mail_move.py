@@ -190,3 +190,24 @@ class TestSaveProcessedFolder:
         assert status in (200, 303)
         with session_factory() as db:
             assert get_setting(db, "mail_processed_folder") == "Готово"
+
+    def test_milled_folder_saved_and_kept_when_field_absent(self, app_db):  # noqa: F811
+        """Друга папка («Відфрезеровано») зберігається тією ж формою; запит без
+        поля (стара форма) її НЕ стирає — порожнє поле ≠ поля не було (§14)."""
+        app, session_factory = app_db
+        client = MiniClient(app)
+        client.login(*ADMIN)
+        client.post(
+            "/settings/mail/processed-folder",
+            {"folder": "Скачено", "milled_folder": "Відфрезеровано"},
+        )
+        with session_factory() as db:
+            assert get_setting(db, "mail_milled_folder") == "Відфрезеровано"
+        client.post("/settings/mail/processed-folder", {"folder": "Скачено"})
+        with session_factory() as db:
+            assert get_setting(db, "mail_milled_folder") == "Відфрезеровано"
+        client.post(
+            "/settings/mail/processed-folder", {"folder": "Скачено", "milled_folder": "none"}
+        )
+        with session_factory() as db:
+            assert not get_setting(db, "mail_milled_folder")

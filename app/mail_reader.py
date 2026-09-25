@@ -801,29 +801,64 @@ def move_message_back_to_inbox(session: Session, email_message: EmailMessage) ->
     email_message.inbox_gone_at = None
 
 
-def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) -> int:
-    """Дзеркалити папку «оброблено» в ОБИДВА боки за фізичним станом скриньки.
+def _folder_message_ids(mailbox, folder: str, cutoff) -> tuple[set[str] | None, bool]:
+    """Message-ID листів папки у вікні синку й чи прочитано її ПОВНІСТЮ.
+
+    Читаємо з найсвіжіше перенесених (`reverse` — UID у папці росте з моментом
+    переносу): коли в папці більше за ліміт, відкидаються ті, що лежать там
+    найдовше, а не щойно перенесені. `None` — папку прочитати не вдалося.
+    Друге значення False — упердись у ліміт: «листа немає в папці» тоді НЕ
+    доведено, і знімати на цьому мітку не можна."""
+    try:
+        mailbox.folder.set(folder)
+        msgs = list(
+            mailbox.fetch(
+                AND(date_gte=cutoff), mark_seen=False, headers_only=True,
+                limit=IMAP_MAX_MESSAGES, reverse=True, bulk=50,
+            )
+        )
+    except Exception:
+        logger.exception("Синк: не вдалося прочитати папку '%s' для звірки", folder)
+        return None, False
+    mids = {mid for m in msgs if (mid := message_id_of(m))}
+    return mids, len(msgs) < IMAP_MAX_MESSAGES
+
+
+def _reflect_processed_folder(
+    session: Session, mailbox, folder: str, cutoff, milled_folder: str = ""
+) -> int:
+    """Дзеркалити папки «оброблено» в ОБИДВА боки за фізичним станом скриньки.
 
     Модель (рішення власника 24.09.26): місце листа визначає, у якій він вкладці.
     У папці «Скачано-прошитано» → «Оброблено»; десь інде (інша папка / видалено) →
     «Покинули Вхідні»; у Вхідних → тріаж. Рівно ОДИН стан, і папка «оброблено»
     перемагає «покинули»: лист у ній опрацьований, а не загублений.
 
+    ДВА ЕТАПИ (власник 25.09.26): після фрезерування оператори переносять лист
+    далі — у `milled_folder` («Відфрезеровано»), і так щодня чистять першу папку.
+    Лист на другому етапі — теж оброблений: мітка папки міняється на другу, час
+    обробки (`mailbox_moved_at`) лишається. Без цього в перший же синк 0.21.1 72
+    листи минулих днів, які фізично лежали у «Відфрезеровано», злетіли в
+    «Покинули Вхідні», і так злітали б щодня. Друга папка — кінцева: лист, що
+    зник і з неї, лишається обробленим (далі його архівують, це не загуба).
+
     ВПЕРЕД (щось → папка): лист, перенесений у папку прямо в пошті (або кнопкою
     «оброблено»), стає перенесеним і в базі. Заразом ЗНІМАЄ `inbox_gone_at`:
     `_reconcile_inbox_gone` біжить РАНІШЕ в цьому ж синку й міг помітити його
     «покинув Вхідні» (він фізично зник з Inbox), а лист насправді опрацьований —
     без цього рядка він двоївся б у вкладках «Оброблено» і «Покинули Вхідні»
-    водночас.
+    водночас. Час обробки — момент, коли лист покинув Вхідні, якщо синк його
+    вже помітив, інакше «зараз».
 
-    НАЗАД (папка → десь інде): лист, який база вважає в папці, а фізично його там
-    уже НЕМА, — знімаємо мітку папки. Повернення саме в Inbox обробляє фаза 1 за
-    Message-ID (оновлює UID); сюди доходять лише ті, кого фаза 1 не всиновила,
-    тобто перенесені в ІНШУ папку чи видалені → у «Покинули Вхідні». Робимо це
-    ЛИШЕ для листів у вікні синку (`received_at >= cutoff`): фетч папки теж
-    обмежений `date_gte`, тож для старішого листа «немає в папці» довести не
-    можна — його не чіпаємо (лишається «оброблено»), інакше він злітав би сам
-    щойно постаріє за 30 днів.
+    НАЗАД (перша папка → десь інде): лист, який база вважає в першій папці, а
+    фізично його там уже НЕМА й немає в другій, — знімаємо мітку папки.
+    Повернення саме в Inbox обробляє фаза 1 за Message-ID (оновлює UID); сюди
+    доходять лише ті, кого фаза 1 не всиновила, тобто перенесені в ІНШУ папку чи
+    видалені → у «Покинули Вхідні». Робимо це ЛИШЕ для листів у вікні синку
+    (`received_at >= cutoff`): фетч папки теж обмежений `date_gte`, тож для
+    старішого листа «немає в папці» довести не можна — його не чіпаємо (лишається
+    «оброблено»), інакше він злітав би сам щойно постаріє за 30 днів. І лише коли
+    першу папку прочитано повністю (не вперлись у ліміт), а друга прочиталась.
 
     Зіставлення — за Message-ID (стабільний між папками; UID у папці інший). Без
     Message-ID пропускаємо: беккфіл (фаза 1) проставляє його всім листам, поки
@@ -831,22 +866,29 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
     скільки листів змінено.
     """
     folder = (folder or "").strip()
-    if not folder:
+    milled = (milled_folder or "").strip()
+    if milled == folder:
+        milled = ""
+    stages = [f for f in (folder, milled) if f]
+    if not stages:
         return 0
-    try:
-        mailbox.folder.set(folder)
-        folder_msgs = list(
-            mailbox.fetch(
-                AND(date_gte=cutoff), mark_seen=False, headers_only=True,
-                limit=IMAP_MAX_MESSAGES,
-            )
-        )
-    except Exception:
-        logger.exception("Синк: не вдалося прочитати папку '%s' для звірки", folder)
-        return 0
-    mids_in_folder = {
-        mid for m in folder_msgs if (mid := message_id_of(m))
-    }
+    found: dict[str, set[str]] = {}
+    complete: dict[str, bool] = {}
+    unread: set[str] = set()
+    for stage in stages:
+        mids, whole = _folder_message_ids(mailbox, stage, cutoff)
+        if mids is None:
+            unread.add(stage)
+            mids = set()
+        found[stage] = mids
+        complete[stage] = whole
+
+    def where(mid: str) -> str | None:
+        for stage in stages:
+            if mid in found[stage]:
+                return stage
+        return None
+
     now = datetime.now()
     cutoff_dt = datetime.combine(cutoff, datetime.min.time())
     changed = 0
@@ -861,28 +903,44 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
         )
     )
     for row in forward:
-        if (row.message_id or "").strip() in mids_in_folder:
-            row.mailbox_folder = folder
-            row.mailbox_moved_at = now  # для вкладки «Оброблено за сьогодні»
-            row.inbox_gone_at = None  # у папці «оброблено» ⇒ не «покинув»
-            changed += 1
+        physical = where((row.message_id or "").strip())
+        if physical is None:
+            continue
+        row.mailbox_folder = physical
+        # для вкладки «Оброблено за сьогодні»
+        row.mailbox_moved_at = row.inbox_gone_at or now
+        row.inbox_gone_at = None  # у папці «оброблено» ⇒ не «покинув»
+        changed += 1
 
-    # НАЗАД: рядки, позначені цією папкою, яких фізично в ній уже немає.
+    # МІЖ ЕТАПАМИ й НАЗАД: рядки, позначені однією з папок.
     marked_rows = list(
         session.scalars(
             select(EmailMessage).where(
-                EmailMessage.mailbox_folder == folder,
+                EmailMessage.mailbox_folder.in_(stages),
                 EmailMessage.message_id.is_not(None),
             )
         )
     )
     for row in marked_rows:
-        if (row.message_id or "").strip() in mids_in_folder:
-            continue  # усе ще в папці
+        mid = (row.message_id or "").strip()
+        if mid in found.get(row.mailbox_folder or "", set()):
+            continue  # усе ще там, де база й думає
+        physical = where(mid)
+        if physical is not None:
+            # Перейшов на інший етап («Скачено» → «Відфрезеровано»): лишається
+            # обробленим, час обробки не чіпаємо — інакше вчорашні листи
+            # поверталися б у «Оброблено сьогодні».
+            row.mailbox_folder = physical
+            changed += 1
+            continue
+        if row.mailbox_folder != folder:
+            continue  # зник із кінцевої папки — архівували, лишається обробленим
+        if not complete[folder] or unread:
+            continue  # відсутність не доведено (ліміт або папка не прочиталась)
         received = row.received_at
         if received is None or received < cutoff_dt:
             continue  # поза вікном — відсутність у папці не довести
-        # У вікні, але в папці немає, і фаза 1 не всиновила назад у Inbox →
+        # У вікні, але в папках немає, і фаза 1 не всиновила назад у Inbox →
         # перенесений в іншу папку або видалений: «Покинули Вхідні».
         row.mailbox_folder = None
         row.mailbox_moved_at = None
@@ -891,7 +949,10 @@ def _reflect_processed_folder(session: Session, mailbox, folder: str, cutoff) ->
 
     if changed:
         session.commit()
-        logger.info("Синк: дзеркало папки '%s' змінило листів: %d", folder, changed)
+        logger.info(
+            "Синк: дзеркало папок %s змінило листів: %d",
+            ", ".join(f"'{s}'" for s in stages), changed,
+        )
     return changed
 
 
@@ -1323,7 +1384,8 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         # активну папку скриньки з Inbox (далі в блоці нічого не читає Inbox).
         # Листи, перенесені в папку прямо в пошті, стають перенесеними й у базі.
         _reflect_processed_folder(
-            session, mailbox, get_setting(session, "mail_processed_folder") or "", cutoff
+            session, mailbox, get_setting(session, "mail_processed_folder") or "", cutoff,
+            milled_folder=get_setting(session, "mail_milled_folder") or "",
         )
 
     return created

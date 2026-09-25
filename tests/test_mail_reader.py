@@ -1045,6 +1045,155 @@ def test_reflect_processed_folder_reverse_marks_departed_letter_gone():
         assert still.mailbox_folder == "Оброблено" and still.inbox_gone_at is None
 
 
+# ── Два етапи: «Скачено, просчитано» → «Відфрезеровано» (власник 25.09.26) ──────
+
+
+class _TwoFolderFake:
+    """Mailbox, що віддає ВМІСТ ТІЄЇ папки, на яку перемкнули. None замість
+    списку — читання цієї папки падає."""
+
+    def __init__(self, by_folder):
+        self._by_folder = by_folder
+        self._current = None
+        self.folder = SimpleNamespace(set=self._set)
+
+    def _set(self, name):
+        self._current = name
+
+    def fetch(self, criteria=None, **kwargs):
+        msgs = self._by_folder.get(self._current, [])
+        if msgs is None:
+            raise OSError("imap down")
+        return iter(msgs)
+
+
+def _staged_row(uid, mid, folder, **kw):
+    kw.setdefault("received_at", _dt.combine(business_today(), _dt.min.time()))
+    return EmailMessage(uid=uid, from_address="a@x", message_id=mid, subject="s",
+                        status="прийнято", attachments_status="ready",
+                        mailbox_folder=folder, **kw)
+
+
+def test_letter_moved_to_milled_folder_stays_processed_with_its_time():
+    """Лист перейшов «Скачено» → «Відфрезеровано»: мітка папки міняється, час
+    обробки лишається (інакше вчорашній лист повертався б у «сьогодні»), у
+    «Покинули Вхідні» НЕ йде."""
+    from app.mail_reader import _reflect_processed_folder
+
+    moved_at = _dt.combine(business_today(), _dt.min.time()) - timedelta(days=1)
+    with _engine_session() as session:
+        row = _staged_row("1", "<s1@x>", "Скачено", mailbox_moved_at=moved_at)
+        session.add(row)
+        session.commit()
+
+        fake = _TwoFolderFake({"Скачено": [], "Відфрезеровано": [_folder_msg("<s1@x>")]})
+        changed = _reflect_processed_folder(
+            session, fake, "Скачено", business_today(), milled_folder="Відфрезеровано"
+        )
+
+        session.refresh(row)
+        assert changed == 1
+        assert row.mailbox_folder == "Відфрезеровано"
+        assert row.mailbox_moved_at == moved_at
+        assert row.inbox_gone_at is None
+
+
+def test_letter_wrongly_flagged_gone_returns_from_milled_folder():
+    """Інцидент 0.21.1: 72 листи, що лежали у «Відфрезеровано», синк записав у
+    «Покинули Вхідні». Щойно друга папка налаштована — вони повертаються самі."""
+    from app.mail_reader import _reflect_processed_folder
+
+    gone_at = _dt.now()
+    with _engine_session() as session:
+        row = _staged_row("1", "<g1@x>", None, inbox_gone_at=gone_at)
+        session.add(row)
+        session.commit()
+
+        fake = _TwoFolderFake({"Скачено": [], "Відфрезеровано": [_folder_msg("<g1@x>")]})
+        _reflect_processed_folder(
+            session, fake, "Скачено", business_today(), milled_folder="Відфрезеровано"
+        )
+
+        session.refresh(row)
+        assert row.mailbox_folder == "Відфрезеровано"
+        assert row.inbox_gone_at is None
+        assert row.mailbox_moved_at == gone_at  # коли покинув Вхідні, не «зараз»
+
+
+def test_letter_gone_from_both_folders_is_gone_but_milled_is_final():
+    """Зник із першої папки й немає в другій → «Покинули Вхідні», як і досі.
+    Зник із ДРУГОЇ (кінцевої) → лишається обробленим: далі його архівують."""
+    from app.mail_reader import _reflect_processed_folder
+
+    with _engine_session() as session:
+        first = _staged_row("1", "<b1@x>", "Скачено")
+        final = _staged_row("2", "<b2@x>", "Відфрезеровано")
+        session.add_all([first, final])
+        session.commit()
+
+        fake = _TwoFolderFake({"Скачено": [], "Відфрезеровано": []})
+        _reflect_processed_folder(
+            session, fake, "Скачено", business_today(), milled_folder="Відфрезеровано"
+        )
+
+        session.refresh(first)
+        session.refresh(final)
+        assert first.mailbox_folder is None and first.inbox_gone_at is not None
+        assert final.mailbox_folder == "Відфрезеровано" and final.inbox_gone_at is None
+
+
+def test_unreadable_milled_folder_never_flags_gone():
+    """Друга папка не прочиталась — «немає ніде» не доведено, мітку не знімаємо."""
+    from app.mail_reader import _reflect_processed_folder
+
+    with _engine_session() as session:
+        row = _staged_row("1", "<u1@x>", "Скачено")
+        session.add(row)
+        session.commit()
+
+        fake = _TwoFolderFake({"Скачено": [], "Відфрезеровано": None})
+        _reflect_processed_folder(
+            session, fake, "Скачено", business_today(), milled_folder="Відфрезеровано"
+        )
+
+        session.refresh(row)
+        assert row.mailbox_folder == "Скачено" and row.inbox_gone_at is None
+
+
+def test_folder_read_at_limit_never_flags_gone(monkeypatch):
+    """Папку прочитано рівно по ліміту — решта листів могла лишитись за ним,
+    тож відсутність не доведено: жодних «Покинули Вхідні»."""
+    import app.mail_reader as mr
+
+    monkeypatch.setattr(mr, "IMAP_MAX_MESSAGES", 2)
+    with _engine_session() as session:
+        row = _staged_row("1", "<l1@x>", "Скачено")
+        session.add(row)
+        session.commit()
+
+        fake = _TwoFolderFake({"Скачено": [_folder_msg("<x1@x>"), _folder_msg("<x2@x>")]})
+        mr._reflect_processed_folder(session, fake, "Скачено", business_today())
+
+        session.refresh(row)
+        assert row.mailbox_folder == "Скачено" and row.inbox_gone_at is None
+
+
+def test_milled_folder_reads_newest_first():
+    """Друга папка велика (десятки листів на день) — читаємо з найсвіжіше
+    перенесених, щоб ліміт відкидав давні, а не щойно перенесені."""
+    from app.mail_reader import _folder_message_ids
+
+    seen = {}
+
+    class _Spy(_TwoFolderFake):
+        def fetch(self, criteria=None, **kwargs):
+            seen.update(kwargs)
+            return super().fetch(criteria, **kwargs)
+
+    _folder_message_ids(_Spy({"В": []}), "В", business_today())
+    assert seen.get("reverse") is True
+
+
 # ── CRM дзеркалить Вхідні: лист покинув Вхідні → з черги (inbox_gone_at) ────────
 
 from datetime import datetime as _dt  # noqa: E402
