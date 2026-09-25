@@ -563,7 +563,17 @@
       return;
     }
     renderFileList();
-    selectFile(0);
+    // Якщо тригер попросив конкретний файл (data-stl-preview-file) — відкрити на
+    // ньому; інакше перший. Ім'я звіряємо як є, далі за суфіксом (у рядку картки
+    // ім'я вкладення, у папці може бути з підпапкою).
+    let startIdx = 0;
+    if (state.wantFile) {
+      let i = files.indexOf(state.wantFile);
+      if (i < 0) i = files.findIndex((f) => f === state.wantFile || f.endsWith("/" + state.wantFile) || f.split("/").pop() === state.wantFile);
+      if (i >= 0) startIdx = i;
+      state.wantFile = null;
+    }
+    selectFile(startIdx);
   }
 
   // Вікно, збережене під інший розмір екрана (інший монітор, згорнуте
@@ -755,6 +765,9 @@
     state.folderUri = folderUri;
     state.files = [];
     state.activeIndex = -1;
+    // Опційно: відкрити панель ОДРАЗУ на конкретному файлі (іконка прев'ю біля
+    // окремого вкладення в картці пошти). Без атрибута — поведінка стара (файл 0).
+    state.wantFile = triggerEl.dataset.stlPreviewFile || null;
     applyTitle(triggerEl);
 
     if (state.folderBtnEl) {

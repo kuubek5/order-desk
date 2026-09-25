@@ -526,6 +526,34 @@ def feedback_open_count_uncached() -> int:
         return 0
 
 
+def pending_mail_count_uncached() -> int:
+    """Скільки листів у черзі тріажу («нове», без фільтра, у Вхідних) — для бейджа
+    «Нові з пошти» в рейці. Раніше число ставив ЛИШЕ роут черги, тож бейдж бачили
+    тільки на черзі; тепер це Jinja-глобал і він на кожній сторінці. Той самий
+    патерн, що feedback_open_count: власна сесія, широкий except, бейдж не сміє
+    завалити рендер. Рахунок збігається з вкладкою «Усі листи» на /mail."""
+    try:
+        from sqlalchemy import func, select
+
+        from app.models import EmailMessage
+
+        db = SessionLocal()
+        try:
+            return db.scalar(
+                select(func.count()).select_from(EmailMessage).where(
+                    EmailMessage.status == "нове",
+                    EmailMessage.filter_category.is_(None),
+                    EmailMessage.mailbox_folder.is_(None),
+                    EmailMessage.inbox_gone_at.is_(None),
+                )
+            ) or 0
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("pending_mail_count fell back to 0", exc_info=True)
+        return 0
+
+
 #: Ключ дзеркала візуального набору в сесії — див. коментар усередині ui_prefs.
 UI_SESSION_KEY = "ui"
 
@@ -752,6 +780,10 @@ def feedback_open_count() -> int:
     return _cached_global("feedback_open_count", feedback_open_count_uncached)
 
 
+def pending_mail_count() -> int:
+    return _cached_global("pending_mail_count", pending_mail_count_uncached)
+
+
 def closed_sections_titles() -> list[str]:
     return _cached_global("closed_sections", closed_sections_uncached)
 
@@ -845,6 +877,7 @@ templates.env.globals["nav_payload"] = nav_payload
 templates.env.globals["notify_prefs"] = _timed_global("notify_prefs", notify_prefs)
 templates.env.globals["shift_pending"] = _timed_global("shift_pending", shift_pending)
 templates.env.globals["feedback_open_count"] = _timed_global("feedback_open_count", feedback_open_count)
+templates.env.globals["mail_pending_count"] = _timed_global("mail_pending_count", pending_mail_count)
 templates.env.globals["busy_operators"] = _timed_global("busy_operators", busy_operators)
 templates.env.globals["sync_state"] = _timed_global("sync_state", sync_state)
 templates.env.globals["ui_prefs"] = _timed_global("ui_prefs", ui_prefs)

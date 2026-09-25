@@ -37,6 +37,7 @@ from app.link_attachments import (
     undownloaded_links,
 )
 from app.mail_export import (
+    _contained_child,
     list_client_folders,
     preview_export_target,
     restore_attachments_to_spool,
@@ -60,8 +61,10 @@ from app.mail_sync_service import (
     zombie_fetch_blocks_files,
 )
 from app.mail_spool import spool_folder_name
+from app.client_matcher import match_client_name
 from app.models import (
     Attachment,
+    Client,
     ClientSenderMemory,
     EmailMessage,
     MailFilterCategory,
@@ -532,10 +535,120 @@ def _email_partial_state(
     }
 
 
-def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict:
-    """Shared render context for the triage detail panel — wizard step 1 seed,
-    material candidates and the whitelisted download links detected in the body.
-    Reused by get_mail_detail (the fetch-link route renders just one row)."""
+def _client_card_id(db: Session, name: str) -> int | None:
+    """id картки клієнта за іменем — щоб ім'я в картці листа вело на «Клієнти».
+
+    Те саме зіставлення, що на видачі (`handout._client_id_for`): точний
+    casefold, далі нечіткий матчер (той самий лаб пишеться кількома написаннями,
+    усі мусять вести на одну картку). Картки НЕ створюємо тут (це робить черга/
+    видача) — якщо клієнта ще немає, повертаємо None, і шаблон веде на пошук.
+    """
+    folded = (name or "").strip().casefold()
+    if not folded:
+        return None
+    by_name = {
+        c.canonical_name.strip().casefold(): c.id
+        for c in db.scalars(select(Client)).all()
+        if c.canonical_name
+    }
+    if folded in by_name:
+        return by_name[folded]
+    hit = match_client_name(folded, list(by_name), {}).matched_folder_name
+    return by_name.get(hit) if hit else None
+
+
+def _card_dir_context(
+    db: Session,
+    email: EmailMessage,
+    partial_state: dict,
+    sender_hint,
+    *,
+    client_name: str,
+    material_color: str,
+    folder_pick: str,
+    folder_new: str,
+    material_folder: str,
+    attachment_ids: set[int] | None,
+) -> dict:
+    """Куди ляжуть файли (превʼю export) + скільки файлів у цій партії й скільки
+    ще не скачано — контекст рядка шляху картки (блок A, «Стрічка»).
+
+    Той самий розрахунок, що робив `_wizard_context` для кроків 2/3 майстра: тека
+    рахується вже на КАРТЦІ (за іменем клієнта), як просив власник. Виведено сюди,
+    бо картка більше не проходить через кроки майстра, але шле ту саму форму в
+    `/mail/{id}/accept`, і мусить показати той самий шлях.
+
+    Повертає й `folder_pick` — для постійного клієнта дефолтом підставляється його
+    наявна тека (як робив крок 2 майстра), інакше файли постійного клієнта пішли б
+    у НОВУ теку за (можливо брудним) іменем замість відомої export/<клієнт>.
+    """
+    export_root = Path(get_export_folder_path(db))
+    existing_folders = list_client_folders(export_root)
+    # Постійний клієнт: якщо оператор не задав теку вручну, дефолт — його наявна
+    # export-тека (дзеркало кроку 2 майстра). Лише коли вона реально існує.
+    if (
+        not folder_pick.strip() and not folder_new.strip()
+        and sender_hint and sender_hint.export_folder
+        and sender_hint.export_folder in existing_folders
+    ):
+        folder_pick = sender_hint.export_folder
+    client_override, material_override = resolve_wizard_overrides(
+        folder_pick, folder_new, material_folder
+    )
+    preview = preview_export_target(
+        export_root, client_name, material_color, client_override, material_override
+    )
+    unclaimed = partial_state["unclaimed_attachments"]
+    # Файли, що поїдуть саме цією партією: позначені оператором, або всі
+    # нерозібрані, коли нічого не позначено (типовий одноколірний лист).
+    batch = (
+        [a for a in unclaimed if a.id in attachment_ids]
+        if attachment_ids
+        else unclaimed
+    )
+    # Нерозібрані вкладення, яких ще НЕ на диску (гейт «не всі файли скачані»,
+    # власник 24.09.26). unclaimed_attachments уже відфільтроване до on_disk, тож
+    # різниця з усіма нерозібраними = не скачані — БЕЗ ще одного проходу по шарі.
+    undownloaded_files = (
+        sum(1 for a in email.attachments if a.order_id is None)
+        - partial_state["unclaimed_count"]
+    )
+    return {
+        "preview": preview,
+        "existing_folders": existing_folders,
+        "attachment_count": len(batch),
+        "undownloaded_files": undownloaded_files,
+        # Ефективна тека (з дефолтом постійного клієнта) — щоб select у dir_editor
+        # показав саме її обраною, а не «авто-визначення».
+        "folder_pick": folder_pick,
+    }
+
+
+def _mail_panel_context(
+    db: Session,
+    email: EmailMessage,
+    user,
+    *,
+    client_name: str | None = None,
+    material_color: str | None = None,
+    kind: str | None = None,
+    quantity: str | None = None,
+    folder_pick: str = "",
+    folder_new: str = "",
+    material_folder: str = "",
+    attachment_ids: list[int] | None = None,
+    error: str | None = None,
+) -> dict:
+    """Shared render context for the triage detail CARD (блок A, «Стрічка»):
+    seeded work fields, material candidates, whitelisted download links and the
+    export-path preview — everything the one-screen card needs to accept a letter
+    without the old three-step wizard. Reused by get_mail_detail, the file
+    actions (archive/download re-render the whole card) and `_accept_failed`,
+    which re-renders the card with the submitted values kept and an error banner.
+
+    Значення полів: `None` → семена (постійний клієнт / показне ім'я / здогади);
+    непорожні (невдале прийняття) підставляються, щоб оператор не втратив введене.
+    """
     attach_email_preview_tokens([email], mail_trusted_roots(db), mail_preview_roots(db))
     # ОДИН прохід по диску на весь рендер панелі: далі і «зниклі файли», і
     # стан часткового прийняття рахуються з цього набору.
@@ -543,19 +656,49 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
     seed = (email.material_color_guess or "") or (email.subject or "")
     # Recurring client? Sender memory beats every guess for the name prefill.
     sender_hint = lookup_sender(db, email)
+    # Семена полів: постійний клієнт (пам'ять) → показне ім'я → здогад. НЕ адреса —
+    # адреса лишається крайнім запасом уже в шаблоні (скарга власника 24.09.26).
+    if client_name is None:
+        if sender_hint and sender_hint.client_name:
+            client_name = sender_hint.client_name
+        elif email.from_name:
+            client_name = email.from_name
+        else:
+            client_name = email.client_name_guess or ""
+    if material_color is None:
+        material_color = email.material_color_guess or ""
+    if kind is None:
+        kind = email.kind_guess or ""
+    if quantity is None:
+        quantity = email.quantity_guess or ""
+    selected_ids = set(attachment_ids) if attachment_ids else None
+    partial_state = _email_partial_state(db, email, on_disk)
+    dir_ctx = _card_dir_context(
+        db, email, partial_state, sender_hint,
+        client_name=client_name, material_color=material_color,
+        folder_pick=folder_pick, folder_new=folder_new,
+        material_folder=material_folder, attachment_ids=selected_ids,
+    )
+    # Ефективна тека (з дефолтом постійного клієнта) перекриває вхідний folder_pick.
+    folder_pick = dir_ctx.pop("folder_pick")
     context = {
         "email": email,
         "user": user,
-        "error": None,
-        "wizard_step": 1,
-        "client_name": sender_hint.client_name if sender_hint else "",
+        "error": error,
+        "client_name": client_name,
+        # id картки клієнта (для кліку по імені в шапці) — за РЕЗОЛЬВНУТИМ іменем
+        # клієнта (пам'ять/показне ім'я), не за адресою. None → шаблон веде на пошук.
+        "client_card_id": _client_card_id(db, client_name),
         "sender_hint": sender_hint,
-        "material_color": "",
-        "kind": "",
-        "quantity": "",
-        "folder_pick": "",
-        "folder_new": "",
-        "material_folder": "",
+        "material_color": material_color,
+        "kind": kind,
+        "quantity": quantity,
+        "folder_pick": folder_pick,
+        "folder_new": folder_new,
+        "material_folder": material_folder,
+        # None → усі нерозібрані позначені (одноколірний дефолт); множина →
+        # вибір оператора (часткове прийняття кількох кольорів).
+        "attachment_ids": selected_ids,
         "material_cands": material_candidates(seed, _lab_material_colors(db)),
         "body_links": extract_download_links(email.body_text),
         # Один розрахунок на бейдж списку, панель і гейт прийняття —
@@ -579,9 +722,9 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         # Папка «оброблено» з налаштувань — картка показує кнопку переміщення лише
         # коли вона задана (інакше кнопці нема куди переносити).
         "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
-        **_email_partial_state(db, email, on_disk),
+        **partial_state,
+        **dir_ctx,
     }
-    context.update(extra)
     return context
 
 
@@ -833,12 +976,16 @@ def mail_wizard(
     folder_new: str = Form(""),
     material_folder: str = Form(""),
     attachment_ids: list[int] = Form(default=[]),
+    frag: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    """Render one step of the semi-automatic accept wizard (client+material →
-    directory → confirm). Each Next/Back re-renders the shared _mail_wizard.html
-    fragment with the accumulated values carried in hidden inputs; nothing is
-    written until the final step POSTs to /mail/{id}/accept."""
+    """Render one step of the semi-automatic accept wizard, OR just the card's
+    export-path preview line (`frag=path`, блок A «Стрічка»).
+
+    Картка «Стрічка» шле ту саму форму, що майстер, але оновлює лише рядок шляху
+    при зміні полів чи теки — тому `frag=path` повертає `_mail_path_preview.html`
+    (той самий розрахунок теки), а не весь майстер. Класичні кроки (frag порожній)
+    лишаються без змін: кожен Далі/Назад перемальовує `_mail_wizard.html`."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -853,6 +1000,8 @@ def mail_wizard(
         quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
         material_folder=material_folder, attachment_ids=attachment_ids,
     )
+    if frag == "path":
+        return templates.TemplateResponse(request, "_mail_path_preview.html", ctx)
     return templates.TemplateResponse(request, "_mail_wizard.html", ctx)
 
 
@@ -981,6 +1130,44 @@ def open_mail_folder(
 
     return open_folder_response(
         request, db, folder, opener=open_folder_in_explorer, log_label=f"mail {email_id}"
+    )
+
+
+@router.post("/mail/{email_id}/open-client-folder")
+def open_client_export_folder(
+    request: Request,
+    email_id: int,
+    folder: str = "",
+    db: Session = Depends(get_db),
+):
+    """Відкрити ТЕКУ КЛІЄНТА в export просто з картки (рядок шляху → «тека
+    клієнта»). На відміну від `/open-folder` (тека вкладень у спулі), це існуюча
+    тека `export/<клієнт>`, куди ляжуть файли — оператор хоче глянути, що там уже
+    є. `folder` приходить у query (кнопка `data-open-folder-url` шле порожнє тіло),
+    це поточна тека з рядка шляху. Той самий гейт адреси й та сама відповідь
+    (loopback → відкрити Провідник; мережа → віддати шлях для копіювання), що
+    в `/open-folder`. Шлях будується через `_contained_child` — захист від
+    виходу за корінь export."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
+    if db.get(EmailMessage, email_id) is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    name = (folder or "").strip()
+    if not name:
+        raise HTTPException(status_code=404, detail="теку клієнта не вказано")
+    export_root = Path(get_export_folder_path(db))
+    try:
+        client_dir = _contained_child(export_root, name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="небезпечне ім'я теки")
+    if not client_dir.is_dir():
+        raise HTTPException(status_code=404, detail="теки клієнта ще немає")
+    return open_folder_response(
+        request, db, client_dir, opener=open_folder_in_explorer,
+        log_label=f"mail {email_id} client-folder",
     )
 
 
@@ -1197,23 +1384,24 @@ def accept_email(
         raise HTTPException(status_code=409, detail="лист уже оброблено")
 
     def _accept_failed(message: str):
-        """Помилка прийняття — НАЗАД у крок 3, а не редіректом зі сторінки.
+        """Помилка прийняття — назад у ТУ САМУ картку з поясненням, а не редіректом
+        зі сторінки.
 
-        Візард живе у фрагменті `#mail-wizard`, і редірект на
+        Картка «Стрічка» живе у фрагменті `#mail-detail`, і редірект на
         `/mail/{id}?error=…` перезавантажував увесь екран: усе, що оператор
-        заповнив у трьох кроках, зникало, а лист доводилось відкривати заново
-        (аудит 05.09.26, UX 1.2). Тепер повертаємо той самий крок із тими ж
-        значеннями і поясненням угорі. Не-HTMX виклик (форма без JS) лишається
-        на старому редіректі — там фрагмент нікуди вставити.
+        заповнив, зникало, а лист доводилось відкривати заново (аудит 05.09.26,
+        UX 1.2). Тепер повертаємо ту саму картку з тими ж значеннями і банером
+        помилки вгорі. Не-HTMX виклик (форма без JS) лишається на старому
+        редіректі — там фрагмент нікуди вставити.
         """
         if not _is_htmx(request):
             return RedirectResponse(
                 f"/mail/{email.id}?error={quote(message)}", status_code=303
             )
         return templates.TemplateResponse(
-            request, "_mail_wizard.html",
-            _wizard_context(
-                db, user, email, 3,
+            request, "_mail_detail_panel.html",
+            _mail_panel_context(
+                db, email, user,
                 client_name=client_name, material_color=material_color, kind=kind,
                 quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
                 material_folder=material_folder, attachment_ids=attachment_ids,

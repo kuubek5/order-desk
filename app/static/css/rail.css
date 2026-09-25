@@ -529,7 +529,11 @@
    «Пошук», а без слова пояснювати нічого. */
 body.rail-collapsed .rail-kbd { display: none; }
 
-.mail-nav-count {
+/* ЛИШЕ у згорнутій рейці: компактний бейдж у кутку іконки. Раніше префікс
+   body.rail-collapsed загубився (коментар вище розірвав правило), тож воно діяло
+   й у розгорнутому стані — position:absolute перебивав inline-пігулку, а розмір
+   0.9rem перетирався назад на 1.3rem базовим .mail-nav-count. Тепер скоуповано. */
+  body.rail-collapsed .mail-nav-count {
     position: absolute;
     top: 2px;
     right: 6px;

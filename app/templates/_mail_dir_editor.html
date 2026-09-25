@@ -1,0 +1,50 @@
+{# Компактний редактор директорії export — СПІЛЬНИЙ для майстра (крок 2/3) і
+   картки «Стрічка» (блок A, рядок шляху → «змінити»). Тонкий рядок-превʼю шляху
+   + три поля в ОДИН ряд. Бекенд-контракт незмінний: folder_pick (select),
+   folder_new (вписана нова), material_folder — усі три несуться далі формою.
+
+   Виділено з `_mail_wizard.html` в окремий файл (25.09.26), бо картка імпортує
+   лише цей макрос: `{% from "_mail_wizard.html" import ... %}` ВИКОНУВАВ би все
+   тіло майстра (прогрес-кроки з `wizard_step`) і падав UndefinedError. Правити
+   ТУТ, не в двох місцях.
+
+   hx_target / hx_swap / frag керують, КУДИ лягає відповідь /wizard: майстер →
+   #mail-wizard (весь крок); картка → #mail-path-summary з frag=path (лише рядок
+   шляху). #}
+{% macro dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, step, include_target, idp, hx_target="#mail-wizard", hx_swap="innerHTML", frag="") %}
+<div class="wiz-pathhint" role="note">
+    <span class="wph-label">Файли ({{ attachment_count }}) ляжуть у:</span>
+    <span class="wph-path mono"><span class="wpb-root">export</span> / <span class="wpb-seg {% if preview.client_folder_existing %}exists{% else %}new{% endif %}">{{ preview.client_folder }}</span> / <span class="wpb-seg">{{ preview.batch_folder }}</span> / <span class="wpb-seg mat">{{ preview.material_folder }}</span></span>
+    {% if preview.client_folder_existing %}<span class="wph-flag ok">↺ наявна</span>{% else %}<span class="wph-flag new">＋ нова</span>{% endif %}
+    {% if preview.batch_reused %}<span class="wph-flag">партія дописується в наявну</span>{% endif %}
+</div>
+<div class="wiz-dirgrid">
+    <div class="field">
+        <label for="{{ idp }}-pick">Папка клієнта</label>
+        <select id="{{ idp }}-pick" name="folder_pick" class="suminput"
+                hx-post="/mail/{{ email.id }}/wizard" hx-include="{{ include_target }}"
+                hx-vals='{"step":"{{ step }}"{% if frag %},"frag":"{{ frag }}"{% endif %}}' hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}" hx-trigger="change">
+            <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
+            {% for folder in existing_folders %}
+            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if sender_hint and sender_hint.export_folder == folder %} · цього клієнта{% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="{{ idp }}-new">Нова папка</label>
+        <input type="text" id="{{ idp }}-new" name="folder_new" class="suminput"
+               value="{{ folder_new }}" placeholder="якщо нема в списку"
+               hx-post="/mail/{{ email.id }}/wizard" hx-include="{{ include_target }}"
+               hx-vals='{"step":"{{ step }}"{% if frag %},"frag":"{{ frag }}"{% endif %}}' hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}" hx-trigger="change">
+    </div>
+    <div class="field">
+        <label for="{{ idp }}-matfolder">Підпапка матеріалу</label>
+        <input type="text" id="{{ idp }}-matfolder" name="material_folder" class="suminput"
+               value="{{ material_folder or preview.material_folder }}"
+               placeholder="напр. моно а3"
+               hx-post="/mail/{{ email.id }}/wizard" hx-include="{{ include_target }}"
+               hx-vals='{"step":"{{ step }}"{% if frag %},"frag":"{{ frag }}"{% endif %}}' hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}" hx-trigger="change">
+    </div>
+</div>
+<div class="wiz-dirnote">«Нова папка» перекриває вибір зі списку.</div>
+{% endmacro %}

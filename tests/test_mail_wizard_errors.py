@@ -1,9 +1,10 @@
-"""Помилка прийняття не викидає оператора з візарда (аудит 05.09.26, UX 1.2).
+"""Помилка прийняття не викидає оператора з картки (аудит 05.09.26, UX 1.2).
 
-Візард живе у фрагменті `#mail-wizard`. Кожна невдача прийняття відповідала
-редіректом на `/mail/{id}?error=…`, htmx ішов за ним і перемальовував увесь
-екран — усе, що оператор заповнив у трьох кроках, зникало, а лист доводилось
-шукати заново. Тепер той самий крок повертається фрагментом із поясненням.
+Картка «Стрічка» живе у фрагменті `#mail-detail` (блок A замінив вкладки+майстер,
+25.09.26). Кожна невдача прийняття відповідала б редіректом на `/mail/{id}?error=…`,
+htmx ішов би за ним і перемальовував увесь екран — усе, що оператор заповнив,
+зникало б. Тепер та сама картка повертається фрагментом (`_mail_detail_panel.html`)
+із заповненими значеннями і банером помилки.
 
 Тут же — бейдж готовності тріажу (UX 1.4): він мусить рахувати нескачані
 файли за посиланням тим самим способом, що й серверний гейт прийняття,
@@ -89,9 +90,9 @@ class TestAcceptErrorStaysInTheWizard:
             response = _accept(db, user, email, _request(user.id, htmx=True))
 
             assert response.status_code == 200
-            assert captured["template"] == "_mail_wizard.html"
+            # Блок A «Стрічка»: помилка повертає ту саму КАРТКУ (не крок майстра).
+            assert captured["template"] == "_mail_detail_panel.html"
             ctx = captured["ctx"]
-            assert ctx["wizard_step"] == 3
             assert "за посиланням не скачано" in ctx["error"]
             # Найголовніше: введене НЕ загублено — оператор дотискає кнопку,
             # а не набирає три кроки заново.
@@ -121,7 +122,7 @@ class TestAcceptErrorStaysInTheWizard:
             _accept(db, user, email, _request(user.id, htmx=True))
 
             ctx = captured["ctx"]
-            assert ctx["wizard_step"] == 3
+            assert captured["template"] == "_mail_detail_panel.html"
             assert "не скачано на диск" in ctx["error"]
             assert email.status == "нове"
 
@@ -141,7 +142,7 @@ class TestAcceptErrorStaysInTheWizard:
             ))
             db.commit()
 
-            result = mail_router_mod.accept_email(
+            mail_router_mod.accept_email(
                 request=_request(user.id, htmx=True), email_id=email.id,
                 client_name="Люмі-Дент", material_color="моно а3", kind="",
                 quantity="7", folder_pick="", folder_new="", material_folder="",
@@ -163,7 +164,7 @@ class TestAcceptErrorStaysInTheWizard:
 
             _accept(db, user, email, _request(user.id, htmx=True))
 
-            assert captured["template"] == "_mail_wizard.html"
+            assert captured["template"] == "_mail_detail_panel.html"
             assert "завантажуються" in captured["ctx"]["error"]
 
     def test_without_htmx_the_old_redirect_is_kept(self, monkeypatch):

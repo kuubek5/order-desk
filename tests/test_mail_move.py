@@ -154,7 +154,7 @@ class TestProcessedTabFiltering:
         # Значок вкладки папки рахує саме перенесені.
         assert "скачано" in processed.lower() or "Оброблено" in processed
 
-    def test_return_action_matches_status(self, app_db):
+    def test_return_action_matches_status(self, app_db):  # noqa: F811
         """Повернення з папки веде САМЕ в «Усі листи» (власник 24.09.26). Прийнята
         робота — через ВІДКАТ (restore: видаляє роботу, лист → нове), ↦-перенесений
         нове-лист — через лёгкий move-to-inbox."""

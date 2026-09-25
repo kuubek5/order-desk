@@ -1,0 +1,13 @@
+{# Рядок шляху export для картки «Стрічка» (блок A). Свопається сам по собі
+   (`#mail-path-summary`) при зміні полів клієнта/матеріалу чи теки — сервер
+   рахує теку в /mail/{id}/wizard?frag=path тим самим кодом, що майстер. Редактор
+   теки (dir_editor) лишається СТАТИЧНИМ поза цим блоком, тож його розкриття
+   переживає своп. Потребує: preview, attachment_count. #}
+<span class="wph-label">Файли ({{ attachment_count }}) ляжуть у:</span>
+<span class="wph-path mono"><span class="wpb-root">export</span> / {% if preview.client_folder_existing %}{# Клік по імені теки клієнта відкриває її у Провіднику (власник 25.09.26) —
+   те саме, що робила окрема кнопка «тека клієнта» (тепер зайва, прибрана). #}<button type="button" class="wpb-seg exists wpb-open"
+        title="Відкрити теку клієнта у Провіднику"
+        data-open-folder-url="/mail/{{ email.id }}/open-client-folder?folder={{ preview.client_folder|urlencode }}">{{ preview.client_folder }}</button>{% else %}<span class="wpb-seg new">{{ preview.client_folder }}</span>{% endif %} / <span class="wpb-seg">{{ preview.batch_folder }}</span> / <span class="wpb-seg mat">{{ preview.material_folder }}</span></span>
+{# Явно словами, КУДИ підуть файли: у наявну теку клієнта чи в нову. Стару
+   криптичну «↺ наявна / партія дописується» власник відкинув (25.09.26). #}
+{% if preview.client_folder_existing %}<span class="wph-flag ok" title="Знайшлась тека цього клієнта в export — файли ляжуть у неї, нову не створюємо.">↺ додаємо у наявну теку клієнта · клік по імені теки відкриє її</span>{% else %}<span class="wph-flag new" title="Теки цього клієнта в export ще немає — при прийнятті створимо нову з цим ім'ям. Якщо клієнт постійний, але тека названа інакше (одруківка, регістр) — обери наявну через «змінити теку».">＋ створимо нову теку клієнта</span>{% endif %}

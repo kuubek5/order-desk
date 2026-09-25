@@ -1,370 +1,353 @@
-{# Triage detail panel (variant C — segments + sticky action bar). The letter,
-   files+STL and the accept wizard live in three tabs so the card never grows
-   into a long scroll; a sticky bar keeps the primary actions + a live mini
-   summary always in view. Shared by the full-page mail_detail.html and the
-   HTMX panel the triage list swaps into #mail-detail. Needs `email`.
+{# Triage detail — блок A «Стрічка»: ОДНА картка одного листа, без вкладок і без
+   майстра на 3 кроки. Один екран без вертикального скролу на 1280×800 (правило
+   жорстке, MAIL_STRIPE_BATCH_BRIEF.md): на видноті лише те, що потрібно, щоб
+   прийняти типовий лист (шапка, 2 рядки тексту, файли з чіпом статусу, 4 поля,
+   рядок шляху, одна залита кнопка). Вторинне — за розкриттям (`<details>`) чи в
+   меню «⋯». Спільна для повної сторінки mail_detail.html і HTMX-панелі, яку
+   список свопає в #mail-detail. Потребує контекст із `_mail_panel_context`.
 
-   Tab state (which segment is open) is remembered client-side in app.js across
-   full-panel re-renders (extract-archives / fetch-link swap all of #mail-detail)
-   and reset to the letter tab when a different letter is opened. #}
+   Бекенд не змінюється: картка шле ТУ САМУ форму, що майстер
+   (client_name, material_color, kind, quantity, folder_pick, folder_new,
+   material_folder, attachment_ids, accept_anyway) у POST /mail/{id}/accept. Рядок
+   шляху оновлюється окремо через POST /mail/{id}/wizard?frag=path. #}
+{% from "_mail_dir_editor.html" import dir_editor %}
 {% set is_new = email.status == 'нове' %}
 {% set att_count = email.attachments|length %}
-{# Файли, рядки яких є в базі, а на диску їх немає (теку прибрали після
-   скачування). Довгий час панель рахувала РЯДКИ і писала «Усі файли на
-   диску», хоча відкрити папку вже було нічим — глухий кут без жодної дії. #}
 {% set missing_count = missing_attachment_ids|length if missing_attachment_ids else 0 %}
 {% set on_disk_count = att_count - missing_count %}
-<div class="detail-head">
-    <div>
-        {# Ведемо показним іменем (як ukr.net); адреса — дрібним рядком під ним,
-           бо на ній тримаються фільтри й пам'ять відправників, тож ховати її
-           не можна. Без показного імені адреса стає головним написом, як було. #}
-        <div class="from">{{ email.from_name or email.from_address or 'Відправник не визначений' }}</div>
-        {% if email.from_name and email.from_address %}<div class="from-addr mono">{{ email.from_address }}</div>{% endif %}
-        <div class="subj">{{ email.subject or 'Без теми' }}</div>
-    </div>
-    <div class="when">{% if email.received_at %}{{ email.received_at.strftime('%d.%m.%y %H:%M') }}{% else %}—{% endif %}</div>
-</div>
+{% set multi = unclaimed_count and unclaimed_count > 1 %}
+<div class="mailcard" data-mail-id="{{ email.id }}">
 
-<div class="mail-seg" data-mail-id="{{ email.id }}">
-    <div class="seg-tabs" role="tablist">
-        <button type="button" class="seg-tab on" data-seg="letter" role="tab">Лист</button>
-        <button type="button" class="seg-tab" data-seg="files" role="tab" title="{{ att_count }} на диску{% if undownloaded_links %} + {{ undownloaded_links|length }} за посиланням (не скачано){% endif %}">
-            Файли + STL
-            <span class="seg-cnt">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }}{% if undownloaded_links %}+{{ undownloaded_links|length }}{% endif %}{% endif %}</span>
-            {% if undownloaded_links %}<span class="seg-dot" title="Є файли за посиланням — ще не скачані" aria-hidden="true"></span>{% endif %}
-        </button>
-        {% if is_new %}
-        <button type="button" class="seg-tab" data-seg="accept" role="tab">Прийняти</button>
-        {% else %}
-        <button type="button" class="seg-tab" data-seg="status" role="tab">Статус</button>
+    {# ---------- 1 · Шапка ---------- #}
+    <div class="mc-head">
+        <div class="mc-who">
+            <div class="mc-who-line">
+                {# Ведемо показним іменем (як ukr.net); адреса — дрібним рядком під
+                   ним, бо на ній тримаються фільтри й пам'ять відправників. Клік
+                   по імені відкриває картку клієнта (за резольвнутим клієнтом);
+                   якщо картки ще немає — веде на пошук у «Клієнти». #}
+                {% set _dispname = email.from_name or email.from_address or 'Відправник не визначений' %}
+                {% if client_card_id %}
+                <a class="mc-from mc-from-link" href="/clients/{{ client_card_id }}?return_to={{ ('/mail?open=' ~ email.id)|urlencode }}" title="Відкрити картку клієнта">{{ _dispname }}</a>
+                {% else %}
+                <a class="mc-from mc-from-link" href="/clients?q={{ (client_name or _dispname)|urlencode }}" title="Знайти клієнта у «Клієнти»">{{ _dispname }}</a>
+                {% endif %}
+                {% if material_color %}<span class="mc-matchip mono">{{ material_color }}</span>{% endif %}
+            </div>
+            <div class="mc-addr mono">{% if email.from_address %}{{ email.from_address }}{% endif %}{% if email.received_at %} · {{ email.received_at.strftime('%d.%m.%y %H:%M') }}{% endif %}</div>
+            {# Тема листа — часто замовник пише матеріал/колір саме в темі
+               (власник 25.09.26). Прибираємо голі префікси відповіді/пересилання. #}
+            {% set _subj = (email.subject or '')|trim %}
+            {% if _subj and _subj|lower not in ('fwd:', 're:', 'fw:', 'fwd', 're') %}
+            <div class="mc-subj"><span class="mc-subj-label">Тема:</span> {{ _subj }}</div>
+            {% endif %}
+        </div>
+        {% if sender_hint %}
+        <span class="mc-hint" title="Постійний клієнт — вкладення качаються автоматично">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+            <span>постійний · {{ sender_hint.orders_count }} {% if sender_hint.orders_count == 1 %}робота{% elif sender_hint.orders_count < 5 %}роботи{% else %}робіт{% endif %}{% if sender_hint.export_folder %} · <span class="mono">export/{{ sender_hint.export_folder }}</span>{% endif %}</span>
+        </span>
         {% endif %}
     </div>
 
-    <div class="seg-body">
-        {# ---------- Pane: Лист ---------- #}
-        <section class="seg-pane on" data-pane="letter" role="tabpanel">
-            {% if email.service_type_guess == '3d_print' %}
-            <div class="type-flag">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none" class="duo"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" class="duo"/><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
-                <span><strong>Схоже на запит 3D-друку, не фрезерування</strong><p>Автоматична підказка за ключовими словами — перевірте текст листа, перш ніж приймати в чергу.</p></span>
-            </div>
-            {% endif %}
+    {% if email.service_type_guess == '3d_print' %}
+    <div class="type-flag mc-flag">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" class="duo"/><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+        <span>Схоже на запит <b>3D-друку</b>, не фрезерування — перевірте текст перед прийняттям.</span>
+    </div>
+    {% endif %}
 
-{% if sender_hint %}
-<div class="sender-hint" role="note">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-    <span class="sh-text">
-        <b>Постійний клієнт: {{ sender_hint.client_name }}</b>
-        <span class="sh-meta mono">{{ sender_hint.orders_count }} {% if sender_hint.orders_count == 1 %}робота{% elif sender_hint.orders_count < 5 %}роботи{% else %}робіт{% endif %}{% if sender_hint.export_folder %} · export/{{ sender_hint.export_folder }}{% endif %} · останнє {{ sender_hint.last_seen_at.strftime('%d.%m') }}</span>
-    </span>
-</div>
-{% endif %}
-            <div class="mail-metabar">
-                {% if email.attachments_status == 'pending' %}
-                <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
-                {% elif email.attachments_status == 'skipped' %}
-                <span class="attachment-badge attachment-badge-warn" title="Відправник не в авто-списку — файли не качались автоматично">Файли не скачані</span>
-                {# Was a sentence giving turn-by-turn directions to a button
-                   («→ вкладка «Файли + STL», кнопка …»). Put the button under
-                   the operator's cursor instead of describing where it lives. #}
-                <button type="button" class="btn sm metabar-go" data-seg-go="files">Скачати вкладення →</button>
-                {% elif missing_count %}
-                {# Той самий обов'язок, що й у зведенні всередині вкладки: у
-                   шапці не має стояти «✓ Скачано», коли файлів на диску вже
-                   немає. Кнопка веде туди, де є дія. #}
-                <span class="attachment-badge attachment-badge-missing">✕ Немає на диску ({{ missing_count }})</span>
-                <button type="button" class="btn sm metabar-go" data-seg-go="files">Скачати наново →</button>
-                {% else %}
-                <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
-                {% endif %}
-                {% if undownloaded_links %}
-                <span class="attachment-badge attachment-badge-warn" title="Ці файли лежать за посиланням і НЕ скачуються автоматично. Скачайте їх у вкладці «Файли» перед прийняттям у чергу.">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
-                    +{{ undownloaded_links|length }} за посиланням
-                </span>
-                {% endif %}
-            </div>
+    {# ---------- 2 · Що пише замовник (2 рядки + розгорнути) ---------- #}
+    {% if email.body_text %}
+    <details class="mc-body">
+        <summary>
+            <span class="mc-body-label">Що пише замовник</span>
+            <span class="mc-body-clip">{{ email.body_text }}</span>
+            <span class="mc-body-more" aria-hidden="true">розгорнути ↓</span>
+        </summary>
+    </details>
+    {% endif %}
 
-            <div class="dsec">
-                <div class="dlabel">Текст листа</div>
-                <pre class="camtext">{{ email.body_text or '(порожньо)' }}</pre>
-            </div>
+    {% if is_new %}
+    {# ---------- Форма прийняття (усі контроли, крім меню «⋯») ---------- #}
+    <form id="mail-card-form" class="mc-form" hx-post="/mail/{{ email.id }}/accept"
+          hx-target="#mail-detail" hx-swap="innerHTML">
 
-            {% if is_new and user and user.role == 'адмін' %}
-            {# Teach-from-triage: turn "this kind of letter isn't ours" into a
-               standing keyword rule. Unlike «У фільтр» in the sticky bar (moves
-               THIS letter only), a rule auto-files every future letter carrying
-               the word — and applies retroactively to the queue right now. #}
-            <details class="dsec teach-filter">
-                <summary class="dlabel teach-filter-sum">Навчити фільтр за словом</summary>
-                {# Свапаємо весь блок «Навчити фільтр» на підтвердження — лист
-                   лишається відкритим (UX 1.3). Без JS форма працює як раніше. #}
-                <form method="post" action="/mail/filters" class="teach-filter-form"
-                      hx-post="/mail/filters" hx-target="closest .teach-filter" hx-swap="outerHTML">
-                    <input type="hidden" name="kind" value="keyword">
-                    <input type="hidden" name="return_to" value="letter">
-                    <input type="text" name="pattern" class="suminput sm mono" placeholder="слово, напр. моделювання" aria-label="Слово, за яким фільтрувати листи" required>
-                    <select name="category" class="suminput sm" aria-label="Категорія">
-                        {% for cat in filter_categories %}
-                        <option value="{{ cat }}">{{ cat }}</option>
-                        {% endfor %}
-                    </select>
-                    <button type="submit" class="btn sm" title="Створити правило: всі листи з цим словом → у «Відфільтровані». Діє і на ті, що вже в черзі.">Запам'ятати</button>
-                </form>
-                <div class="wiz-hint">Далі листи з цим словом фільтруються самі. Керувати правилами — Налаштування → Фільтри пошти.</div>
-            </details>
-            {% endif %}
-        </section>
+        {% if error %}<div class="wiz-error" role="alert">{{ error }}</div>{% endif %}
 
-        {# ---------- Pane: Файли + STL ---------- #}
-        <section class="seg-pane" data-pane="files" role="tabpanel">
-            {# Total-files summary so the operator knows whether everything is on
-               disk or some files still sit behind links. #}
-            {% if email.attachments_status != 'pending' %}
-            <div class="files-summary {% if missing_count or undownloaded_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
-                {% if missing_count %}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
-                <span>Немає на диску: <b>{{ missing_count }}</b> з <b>{{ att_count }}</b> — файли видалили після скачування. Скачайте наново кнопкою нижче.</span>
-                {% elif email.attachments_status == 'skipped' %}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
-                <span>Файли не скачані (відправник не в авто-списку){% if undownloaded_links %} + {{ undownloaded_links|length }} за посиланням{% endif %} — скачайте нижче.</span>
-                {% elif undownloaded_links %}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
-                <span>На диску <b>{{ att_count }}</b> файл(ів) · за посиланням ще <b>{{ undownloaded_links|length }}</b> не скачано — скачайте нижче, щоб було повністю.</span>
-                {% else %}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                <span>Усі файли на диску: <b>{{ att_count }}</b>.</span>
-                {% endif %}
-            </div>
-            {% endif %}
-            <div class="dsec">
-                <div class="dlabel">
-                    Вкладення ·
-                    {% if email.attachments_status == 'pending' %}
-                        <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
-                    {% else %}
-                        {% if missing_count %}
-                        <span class="attachment-badge attachment-badge-missing">✕ Немає на диску ({{ missing_count }})</span>
-                        {% else %}
-                        <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
-                        {% endif %}
-                    {% endif %}
-                </div>
+        {# ---------- 3 · Файли ---------- #}
+        {# Замість завжди-увімкненого 3D-полотна — іконка прев'ю біля КОЖНОГО .stl
+           (нижче в списку): клік відкриває плаваючу панель на цьому файлі. Так
+           картка лишається компактною (один екран), а прев'ю доступне й після
+           ручного скачування (власник 25.09.26). #}
+        <div class="mc-files">
+
+            <div class="mc-atts">
                 {% if email.attachments %}
-                <div class="attlist">
+                {% if multi %}<div class="mc-atts-hint">познач файли цього кольору — решта лишиться в листі</div>{% endif %}
+                <div class="mc-attlist">
                     {% for attachment in email.attachments %}
                     {% set is_missing = missing_attachment_ids and attachment.id in missing_attachment_ids %}
-                    <div class="attrow{% if is_missing %} is-missing{% endif %}"{% if is_missing %} title="Файла немає на диску — його видалили після скачування"{% endif %}>
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                        <span class="name">{{ attachment.filename }}</span>
-                        {% if is_missing %}<span class="attmissing">немає файлу</span>{% endif %}
-                        <span class="size">
-                            {% if attachment.size_bytes %}
-                                {% if attachment.size_bytes >= 1024 * 1024 %}{{ (attachment.size_bytes / (1024 * 1024))|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}
-                            {% else %}—{% endif %}
-                        </span>
-                    </div>
+                    {% set claimed = attachment.order_id is not none %}
+                    <label class="mc-attrow{% if is_missing %} is-missing{% endif %}{% if claimed %} is-claimed{% endif %}"{% if is_missing %} title="Файла немає на диску — скачай наново"{% elif claimed %} title="Файл уже прийнято в попередню партію"{% endif %}>
+                        {% if multi and not claimed and not is_missing %}
+                        <input type="checkbox" class="mc-attcb" name="attachment_ids" value="{{ attachment.id }}"
+                               {% if attachment_ids is none or attachment.id in attachment_ids %}checked{% endif %}>
+                        {% else %}
+                        <span class="mc-attico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+                        {% endif %}
+                        <span class="mc-attname mono">{{ attachment.filename }}</span>
+                        {% if is_missing %}<span class="mc-attmiss">немає</span>{% endif %}
+                        <span class="mc-attsize mono">{% if attachment.size_bytes %}{% if attachment.size_bytes >= 1048576 %}{{ (attachment.size_bytes / 1048576)|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}{% else %}—{% endif %}</span>
+                        {# Іконка STL-прев'ю для КОЖНОГО файлу (власник 25.09.26): клік
+                           відкриває плаваючу панель прев'ю ОДРАЗУ на цьому файлі
+                           (stl-preview.js, data-stl-preview-file). Лише для .stl, що є
+                           на диску, і коли є токен теки. preventDefault у хендлері не
+                           дає label перемкнути чекбокс. #}
+                        {% if not is_missing and email.stl_preview_token and attachment.filename.lower().endswith('.stl') %}
+                        <button type="button" class="mc-attprev" title="Переглянути STL"
+                                data-stl-preview-token="{{ email.stl_preview_token }}"
+                                data-stl-preview-file="{{ attachment.filename }}">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+                        </button>
+                        {% endif %}
+                    </label>
                     {% endfor %}
                 </div>
                 {% elif email.attachments_status == 'pending' %}
                 <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
                 {% elif email.attachments_status == 'skipped' %}
-                <div class="skipped-files">
-                    <p class="settings-hint">Файли цього листа не скачані — відправника немає в авто-списку. Скачайте вручну, щоб переглянути STL і прийняти в чергу.</p>
-                    <button type="button" class="btn sm dl-btn"
-                        hx-post="/mail/{{ email.id }}/download-attachments"
-                        hx-target="#mail-detail" hx-swap="innerHTML"
-                        hx-indicator="this" hx-disabled-elt="this">
-                    {# Paperclip glyph: these are the letter's own MIME
-                       attachments, distinct from «Скачати за посиланням» below
-                       and from the global «Скачувати все» setting. #}
-                    <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
-                    <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-                    <span class="dl-lbl-idle">Скачати вкладення</span>
-                    <span class="dl-lbl-busy">Скачую вкладення…</span>
-                </button>
-                </div>
+                <p class="settings-hint">Файли не скачані — відправника немає в авто-списку.</p>
                 {% else %}
                 <p class="settings-hint">Вкладень немає.</p>
                 {% endif %}
-                {% if email.attachments %}
-                <div class="att-actions">
-                    {% if missing_count %}
-                    {# Єдина дія, яка розв'язує цей стан. Стоїть першою і має
-                       трактування: решта кнопок тут — утиліти, а ця повертає
-                       листу працездатність. #}
-                    <button type="button" class="btn primary dl-btn"
-                            hx-post="/mail/{{ email.id }}/redownload"
-                            hx-target="#mail-detail" hx-swap="innerHTML"
-                            hx-indicator="this" hx-disabled-elt="this"
-                            title="Забрати з пошти ті файли, яких немає на диску. Наявні не чіпаються.">
-                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-                        <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-                        <span class="dl-lbl-idle">Скачати наново ({{ missing_count }})</span>
-                        <span class="dl-lbl-busy">Скачую наново…</span>
-                    </button>
-                    {% endif %}
-                    {% if has_archive %}
-                    <button type="button" class="btn dl-btn"
-                            hx-post="/mail/{{ email.id }}/extract-archives"
-                            hx-target="#mail-detail" hx-swap="innerHTML"
-                            hx-indicator="this" hx-disabled-elt="this">
-                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 3h22v5H1zM10 12h4" class="duo"/><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
-                        <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-                        <span class="dl-lbl-idle">Розпакувати архіви</span>
-                        <span class="dl-lbl-busy">Розпаковую…</span>
-                    </button>
-                    {% endif %}
-                    {% if on_disk_count %}
-                    {# Не htmx, а data-open-folder-url: обробник у app.js з іншого
-                       ПК цеху копіює шлях замість відкриття Провідника. #}
-                    <button type="button" class="btn accent-outline"
-                            data-open-folder-url="/mail/{{ email.id }}/open-folder">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
-                        Відкрити папку у Провіднику
-                    </button>
-                    {% endif %}
-                </div>
-                {% endif %}
-            </div>
 
-            {% if body_links %}
-            {# Files the client attached as SHARE LINKS (Gmail/Drive, ukr.net eDisk)
-               instead of MIME parts — downloadable on demand into the letter. #}
-            <div class="dsec">
-                {# Рахуємо ПОСИЛАННЯ, а не файли — і кажемо це прямо. Заголовок
-                   «Файли за посиланням · 1» біля «Вкладення · 4» читався як
-                   «4 + 1 = 5 файлів», хоча посилання цілком може вести на той
-                   самий файл, що вже лежить у вкладеннях (тоді воно
-                   пропускається, і п'ятого файлу не з'являється). #}
-                <div class="dlabel">Посилання в листі · {{ body_links|length }}</div>
-                <div class="linklist">
-                    {% for link in body_links %}
-                    {# 'handled' ≠ 'skip': перше означає «це посилання вже
-                       опрацьоване» (файл або скачався, або виявився дублем),
-                       друге — живу відповідь «саме зараз пропущено, бо такий
-                       файл уже є». Один підпис на два стани й давав рахунок
-                       «4 + 1», який не сходився з текою. #}
-                    {% set link_status = 'handled' if (link.file_id or link.url) in handled_link_refs else '' %}
-                    {% include "_mail_link_row.html" %}
+                {# Чіп статусу файлів → розкриває дії (скачати / наново / розпакувати
+                   / посилання). На видноті лишається сам стан; кнопки — за кліком. #}
+                <details class="mc-dl">
+                    <summary class="mc-filechip {% if missing_count or email.attachments_status == 'skipped' or undownloaded_links %}warn{% elif email.attachments_status == 'pending' %}pending{% else %}ok{% endif %}">
+                        {% if email.attachments_status == 'pending' %}<span class="attachment-badge-dot" aria-hidden="true"></span>завантаження…
+                        {% elif email.attachments_status == 'skipped' %}⬇ не скачано
+                        {% elif missing_count %}✕ немає на диску ({{ missing_count }})
+                        {% else %}✓ скачано {{ on_disk_count }}{% if att_count != on_disk_count %} з {{ att_count }}{% endif %}{% endif %}
+                        {% if undownloaded_links %} · 🔗 {{ undownloaded_links|length }} за посиланням{% endif %}
+                        <span class="mc-dl-caret" aria-hidden="true">▾</span>
+                    </summary>
+                    <div class="mc-dl-body">
+                        <div class="att-actions">
+                            {% if email.attachments_status == 'skipped' %}
+                            <button type="button" class="btn sm dl-btn"
+                                    hx-post="/mail/{{ email.id }}/download-attachments"
+                                    hx-target="#mail-detail" hx-swap="innerHTML" hx-indicator="this" hx-disabled-elt="this">
+                                <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
+                                <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+                                <span class="dl-lbl-idle">Скачати вкладення</span><span class="dl-lbl-busy">Скачую…</span>
+                            </button>
+                            {% endif %}
+                            {% if missing_count %}
+                            <button type="button" class="btn sm primary dl-btn"
+                                    hx-post="/mail/{{ email.id }}/redownload"
+                                    hx-target="#mail-detail" hx-swap="innerHTML" hx-indicator="this" hx-disabled-elt="this"
+                                    title="Забрати з пошти ті файли, яких немає на диску. Наявні не чіпаються.">
+                                <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                                <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+                                <span class="dl-lbl-idle">Скачати наново ({{ missing_count }})</span><span class="dl-lbl-busy">Скачую…</span>
+                            </button>
+                            {% endif %}
+                            {% if has_archive %}
+                            <button type="button" class="btn sm dl-btn"
+                                    hx-post="/mail/{{ email.id }}/extract-archives"
+                                    hx-target="#mail-detail" hx-swap="innerHTML" hx-indicator="this" hx-disabled-elt="this">
+                                <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 3h22v5H1zM10 12h4" class="duo"/><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
+                                <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+                                <span class="dl-lbl-idle">Розпакувати архіви</span><span class="dl-lbl-busy">Розпаковую…</span>
+                            </button>
+                            {% endif %}
+                            {% if on_disk_count %}
+                            <button type="button" class="btn sm accent-outline" data-open-folder-url="/mail/{{ email.id }}/open-folder">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
+                                Відкрити папку
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% if body_links %}
+                        <div class="mc-links">
+                            <div class="mc-links-head">Посилання в листі · {{ body_links|length }}
+                                <button type="button" class="btn sm" onclick="document.body.dispatchEvent(new Event('dl-all'))">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l2.9-2.9a5 5 0 0 0-7.1-7.1L11.5 4.4"/><path d="M14 11a5 5 0 0 0-7.1 0L4 13.9a5 5 0 0 0 7.1 7.1l1.4-1.4"/></svg>
+                                    Скачати за посиланням
+                                </button>
+                            </div>
+                            <div class="linklist">
+                                {% for link in body_links %}
+                                {% set link_status = 'handled' if (link.file_id or link.url) in handled_link_refs else '' %}
+                                {% include "_mail_link_row.html" %}
+                                {% endfor %}
+                            </div>
+                            <div class="wiz-hint">Клік по рядку — скачати один файл. Лише довірені джерела (Google Drive, ukr.net).</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        {# ---------- 4 · Поля в ряд ---------- #}
+        <div class="mc-fields">
+            <div class="field mc-f-client">
+                <label for="mc-client">Клієнт<span class="form-required">*</span></label>
+                <div class="ms-field" data-matsuggest data-suggest-url="/suggest/client">
+                    <input type="text" id="mc-client" name="client_name" class="suminput"
+                           role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input
+                           value="{{ client_name or email.from_address or '' }}" placeholder="ім’я клієнта" required
+                           hx-post="/mail/{{ email.id }}/wizard" hx-include="#mail-card-form"
+                           hx-vals='{"step":"1","frag":"path"}' hx-target="#mail-path-summary" hx-swap="innerHTML" hx-trigger="change">
+                    <ul class="ms-list" role="listbox" aria-label="Підказки клієнта" hidden data-matsuggest-list></ul>
+                </div>
+            </div>
+            <div class="field mc-f-mat">
+                <label for="mc-material">Матеріал · колір</label>
+                <div class="ms-field" data-matsuggest>
+                    <input type="text" id="mc-material" name="material_color" class="suminput"
+                           role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input
+                           value="{{ material_color }}" placeholder="напр. емо а3.5, титан"
+                           hx-post="/mail/{{ email.id }}/wizard" hx-include="#mail-card-form"
+                           hx-vals='{"step":"1","frag":"path"}' hx-target="#mail-path-summary" hx-swap="innerHTML" hx-trigger="change">
+                    <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
+                </div>
+                {% if material_cands %}
+                <div class="mc-cands">
+                    {% for cand in material_cands %}
+                    <button type="button" class="wc-chip" data-mat="{{ cand }}"
+                            onclick="document.getElementById('mc-material').value=this.dataset.mat">{{ cand }}</button>
                     {% endfor %}
                 </div>
-                <div class="link-actions">
-                    {# Link glyph, not the bare download arrow: this pulls files
-                       that live BEHIND A LINK, and must not read the same as
-                       «Скачати вкладення» (MIME parts) two sections above. #}
-                    <button type="button" class="btn"
-                            onclick="document.body.dispatchEvent(new Event('dl-all'))">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l2.9-2.9a5 5 0 0 0-7.1-7.1L11.5 4.4"/><path d="M14 11a5 5 0 0 0-7.1 0L4 13.9a5 5 0 0 0 7.1 7.1l1.4-1.4"/></svg>
-                        Скачати за посиланням
-                    </button>
-                </div>
-                <div class="wiz-hint">Клік по рядку — скачати один файл. Тягне лише з довірених джерел (Google Drive, ukr.net); скачане стає звичайними вкладеннями.</div>
-            </div>
-            {% endif %}
-
-            {% if email.stl_preview_token %}
-            <div class="dsec stl-gallery-sec">
-                <div class="dlabel">Перегляд STL</div>
-                <div class="stl-gallery" data-stl-gallery-token="{{ email.stl_preview_token }}">
-                    <div class="stl-gallery-stage">
-                        <canvas class="stl-gallery-canvas"></canvas>
-                        <div class="stl-gallery-status">Завантаження прев'ю…</div>
-                        {# Розгортання на весь екран: у тріажі модель звіряють
-                           поруч із формою, тож дефолт — вбудований вигляд, а
-                           вибір оператора запам'ятовується (stl-gallery.js). #}
-                        <button type="button" class="stl-gallery-max" aria-pressed="false"
-                                aria-label="Розгорнути на весь екран" title="Розгорнути на весь екран">
-                            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
-                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="stl-gallery-files" role="list" aria-label="STL-файли вкладення"></div>
-                </div>
-            </div>
-            {% endif %}
-        </section>
-
-        {# ---------- Pane: Прийняти (new) / Статус (archived) ---------- #}
-        {% if is_new %}
-        <section class="seg-pane" data-pane="accept" role="tabpanel">
-            <div id="mail-wizard" class="wizard">
-                {% include "_mail_wizard.html" %}
-            </div>
-        </section>
-        {% else %}
-        <section class="seg-pane" data-pane="status" role="tabpanel">
-            <div class="archive-state {% if email.status == 'прийнято' %}ok{% else %}muted{% endif %}">
-                {% if email.status == 'прийнято' %}
-                <span>Прийнято в чергу — робота вже створена.</span>
-                {% if email.order_id %}<a class="btn sm" href="/orders/{{ email.order_id }}">Відкрити роботу →</a>{% endif %}
-                <form method="post" action="/mail/{{ email.id }}/restore"
-                      onsubmit="return confirm('Відкотити прийняття? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
-                    <button type="submit" class="btn sm">↩ Відкотити прийняття</button>
-                </form>
-                {% else %}
-                <span>Лист відхилено. Файли лишились у поштовому спулі — можна повернути на тріаж.</span>
-                <form method="post" action="/mail/{{ email.id }}/restore">
-                    <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
-                </form>
                 {% endif %}
-                {# Робота пішла в цех — прибрати лист зі скриньки в папку
-                   «оброблено» (кнопка з'являється, коли папку задано). #}
+            </div>
+            <div class="field mc-f-qty">
+                <label for="mc-qty">К-сть</label>
+                <input type="text" id="mc-qty" name="quantity" class="suminput mono" value="{{ quantity }}" placeholder="—">
+            </div>
+        </div>
+
+        {# Наполегливе попередження про нескачані файли — завжди на видноті, НЕ за
+           розкриттям (власник). Той самий гейт продубльовано на сервері. #}
+        {% if undownloaded_links or undownloaded_files or attachment_count == 0 %}
+        <div class="files-summary warn mc-warn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
+            <span>
+                {% if attachment_count == 0 %}<b>Увага: жодного файлу</b> не переїде в export.{% else %}<b>Увага:</b>
+                    {% if undownloaded_files %}<b>{{ undownloaded_files }}</b> файл(ів) листа не скачано{% if undownloaded_links %}; {% endif %}{% endif %}{% if undownloaded_links %}<b>{{ undownloaded_links|length }}</b> файл(ів) за посиланням не скачано{% endif %}.
+                    Робота піде в чергу <b>без них</b>.{% endif %}
+                Скачайте вище (чіп статусу файлів) — або підтвердіть свідомо.
+            </span>
+        </div>
+        <label class="wiz-anyway mc-anyway">
+            <input type="checkbox" name="accept_anyway" value="1"><span>Так, прийняти без цих файлів</span>
+        </label>
+        {% endif %}
+
+        {# ---------- 5 · Рядок шляху + «змінити» ---------- #}
+        <div class="mc-pathrow">
+            <div class="wph-line" id="mail-path-summary">{% include "_mail_path_preview.html" %}</div>
+            <details class="mc-pathmore">
+                <summary class="mc-pathedit-toggle">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                    <span>змінити теку</span>
+                </summary>
+                {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "1", "#mail-card-form", "mc", hx_target="#mail-path-summary", hx_swap="innerHTML", frag="path") }}
+            </details>
+        </div>
+    </form>
+
+    {# ---------- 6 · Дії (поза формою прийняття, щоб не вкладати форми) ---------- #}
+    <div class="mc-foot">
+        <details class="mc-menu">
+            <summary class="mc-menu-trigger" title="Ще дії" aria-label="Ще дії">⋯</summary>
+            <div class="mc-menu-body">
+                {% if email.filter_category %}
+                <form method="post" action="/mail/{{ email.id }}/unfilter">
+                    <button type="submit" class="btn sm accent-outline">↩ Повернути з фільтра «{{ email.filter_category }}»</button>
+                </form>
+                {% elif user and user.role == 'адмін' %}
+                <form method="post" action="/mail/{{ email.id }}/filter" class="mc-menu-filter">
+                    <select name="category" class="suminput sm" aria-label="Категорія фільтра">
+                        {% for cat in filter_categories %}
+                        <option value="{{ cat }}" {% if cat == 'інше' or (loop.first and 'інше' not in filter_categories) %}selected{% endif %}>{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn sm" title="Перенести лист у «Відфільтровані» (без правила)">У фільтр</button>
+                </form>
+                <details class="mc-teach">
+                    <summary class="btn sm">Навчити фільтр за словом</summary>
+                    <form method="post" action="/mail/filters" class="mc-teach-form">
+                        <input type="hidden" name="kind" value="keyword">
+                        <input type="text" name="pattern" class="suminput sm mono" placeholder="слово, напр. моделювання" aria-label="Слово-фільтр" required>
+                        <select name="category" class="suminput sm" aria-label="Категорія">
+                            {% for cat in filter_categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+                        </select>
+                        <button type="submit" class="btn sm">Запам'ятати</button>
+                    </form>
+                </details>
+                {% endif %}
                 {% include "_mail_move_control.html" %}
             </div>
-        </section>
-        {% endif %}
+        </details>
+        <form method="post" action="/mail/{{ email.id }}/reject" class="mc-reject"
+              onsubmit="return confirm('Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється).')">
+            <button type="submit" class="btn danger">Відхилити</button>
+        </form>
+        <button type="submit" form="mail-card-form" class="btn apex"
+                {% if email.attachments_status == 'pending' %}disabled aria-disabled="true" title="Зачекайте, поки завантажаться вкладення"{% endif %}>
+            ✓ Прийняти в чергу
+        </button>
     </div>
 
-    {% if is_new %}
-    <div class="seg-stickybar">
-        <div class="ssum">
-            <span class="ssum-client mono">{{ email.client_name_guess or email.from_address or '—' }}</span>
-            <span class="ssum-sep" aria-hidden="true">·</span>
-            <span class="ssum-mat">{{ email.material_color_guess or '—' }}</span>
-            <span class="ssum-sep" aria-hidden="true">·</span>
-            <span class="ssum-files mono">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }} файл.{% endif %}</span>
-        </div>
-        {# Disposal actions (filter away / reject) sit in their own group,
-           separated from the apex by a divider — they are NOT what the
-           operator came here to do, and «Відхилити» used to sit 8px from
-           «Прийняти» at the same size with no confirmation, while the same
-           action in the list DID confirm. One verb, one safety contract. #}
-        <div class="ssum-actions">
-            {% if email.filter_category %}
-            {# The letter is currently filtered — the one action that makes
-               sense here is bringing it back (mis-filter recovery). #}
-            <form method="post" action="/mail/{{ email.id }}/unfilter">
-                <button type="submit" class="btn sm accent-outline" title="Повернути лист з «Відфільтровані» ({{ email.filter_category }}) у чергу">↩ Повернути з фільтра</button>
-            </form>
-            {% else %}
-            {# Manual filter: send just THIS letter to «Відфільтровані» (no rule
-               created). Category picked in the small select next to it. #}
-            <form method="post" action="/mail/{{ email.id }}/filter" class="manual-filter">
-                <select name="category" class="suminput sm" aria-label="Категорія фільтра">
-                    {% for cat in filter_categories %}
-                    {# Дефолт — «інше», а не loop.last: категорії сортуються за id, тож
-   останньою була найновіша («моделювання»), і кожна нова категорія
-   мовчки ставала дефолтом для КОЖНОГО листа. #}
-                    <option value="{{ cat }}" {% if cat == 'інше' or (loop.first and 'інше' not in filter_categories) %}selected{% endif %}>{{ cat }}</option>
-                    {% endfor %}
-                </select>
-                <button type="submit" class="btn sm" title="Перенести лист у «Відфільтровані» (без правила, «↩» повертає)">У фільтр</button>
-            </form>
+    {% else %}
+    {# ---------- Архівний лист: файли read-only + статус/відкат ---------- #}
+    <div class="mc-files mc-files-archived">
+        <div class="mc-atts">
+            {% if email.attachments %}
+            <div class="mc-attlist">
+                {% for attachment in email.attachments %}
+                {% set claimed = attachment.order_id is not none %}
+                <span class="mc-attrow">
+                    <span class="mc-attico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+                    <span class="mc-attname mono">{{ attachment.filename }}</span>
+                    {% if email.stl_preview_token and attachment.filename.lower().endswith('.stl') %}
+                    <button type="button" class="mc-attprev" title="Переглянути STL"
+                            data-stl-preview-token="{{ email.stl_preview_token }}"
+                            data-stl-preview-file="{{ attachment.filename }}">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+                    </button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
             {% endif %}
-            <form method="post" action="/mail/{{ email.id }}/reject"
-                  onsubmit="return confirm('Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється).')">
-                <button type="submit" class="btn danger sm">Відхилити</button>
-            </form>
-            {# «Перемістити в оброблені» доступне й на новому листі (рішення
-               власника 23.09.26) — оператор вирішує сам, коли робота пішла в цех. #}
-            {% include "_mail_move_control.html" %}
-            <span class="ssum-div" aria-hidden="true"></span>
-            <button type="button" class="btn primary seg-go" data-seg-go="accept">Прийняти →</button>
+            {% if on_disk_count %}
+            <div class="att-actions">
+                <button type="button" class="btn sm accent-outline" data-open-folder-url="/mail/{{ email.id }}/open-folder">Відкрити папку</button>
+            </div>
+            {% endif %}
         </div>
+    </div>
+
+    <div class="archive-state mc-archive {% if email.status == 'прийнято' %}ok{% else %}muted{% endif %}">
+        {% if email.status == 'прийнято' %}
+        <span>Прийнято в чергу — робота вже створена.</span>
+        {% if email.order_id %}<a class="btn sm" href="/orders/{{ email.order_id }}">Відкрити роботу →</a>{% endif %}
+        <form method="post" action="/mail/{{ email.id }}/restore"
+              onsubmit="return confirm('Відкотити прийняття? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
+            <button type="submit" class="btn sm">↩ Відкотити прийняття</button>
+        </form>
+        {% else %}
+        <span>Лист відхилено. Файли лишились у поштовому спулі — можна повернути на тріаж.</span>
+        <form method="post" action="/mail/{{ email.id }}/restore">
+            <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
+        </form>
+        {% endif %}
+        {% include "_mail_move_control.html" %}
     </div>
     {% endif %}
 </div>

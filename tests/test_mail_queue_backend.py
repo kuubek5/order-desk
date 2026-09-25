@@ -267,6 +267,82 @@ def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
     assert exc.value.status_code == 404
 
 
+# ── «Відкрити теку клієнта» з рядка шляху картки (open-client-folder) ──────────
+# Нова кнопка (власник 25.09.26): відкрити НАЯВНУ export/<клієнт> просто з картки.
+# Той самий open_folder_response, що й /open-folder, але тека — export, не спул.
+def _client_folder_letter(db) -> EmailMessage:
+    e = EmailMessage(uid="cf1", status="нове", from_address="c@x.ua", subject="s")
+    db.add(e)
+    db.commit()
+    return e
+
+
+def test_open_client_folder_opens_existing_export_dir(tmp_path, monkeypatch):
+    engine = _database()
+    export = tmp_path / "export"
+    (export / "Голій").mkdir(parents=True)
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export))
+    opened: list = []
+    monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", opened.append)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        e = _client_folder_letter(db)
+        resp = mail_router_mod.open_client_export_folder(
+            request=_request(user.id), email_id=e.id, folder="Голій", db=db
+        )
+    assert resp.status_code == 200
+    assert opened == [(export / "Голій").resolve()]
+
+
+def test_open_client_folder_missing_dir_is_404(tmp_path, monkeypatch):
+    engine = _database()
+    export = tmp_path / "export"
+    export.mkdir()
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export))
+    monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", lambda f: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        e = _client_folder_letter(db)
+        with pytest.raises(HTTPException) as exc:
+            mail_router_mod.open_client_export_folder(
+                request=_request(user.id), email_id=e.id, folder="НемаТакого", db=db
+            )
+    assert exc.value.status_code == 404
+
+
+def test_open_client_folder_rejects_traversal(tmp_path, monkeypatch):
+    engine = _database()
+    export = tmp_path / "export"
+    export.mkdir()
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export))
+    monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", lambda f: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        e = _client_folder_letter(db)
+        with pytest.raises(HTTPException) as exc:
+            mail_router_mod.open_client_export_folder(
+                request=_request(user.id), email_id=e.id, folder="../secret", db=db
+            )
+    # sanitize_folder_name знешкоджує «..» → тека не існує (404), виходу за корінь немає
+    assert exc.value.status_code in (400, 404)
+
+
+def test_open_client_folder_rejects_non_loopback(tmp_path, monkeypatch):
+    engine = _database()
+    export = tmp_path / "export"
+    (export / "Голій").mkdir(parents=True)
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export))
+    monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", lambda f: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        e = _client_folder_letter(db)
+        with pytest.raises(HTTPException) as exc:
+            mail_router_mod.open_client_export_folder(
+                request=_request(user.id, host="10.0.0.9"), email_id=e.id, folder="Голій", db=db
+            )
+    assert exc.value.status_code == 403
+
+
 def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     """Patch the batch sheet writer. Captures the works list / placement /
     paint_blue and returns sheet rows (defaults to a contiguous block from 60)."""
@@ -1518,7 +1594,7 @@ def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
         mail_router_mod.get_mail(request=_request(user.id), db=db, open=email.id)
         assert captured["ctx"]["open_id"] == email.id
         assert captured["ctx"]["open_panel_html"]  # panel rendered to HTML
-        assert "mail-seg" in captured["ctx"]["open_panel_html"]
+        assert "mailcard" in captured["ctx"]["open_panel_html"]
 
         # unknown id → no panel, plain list
         mail_router_mod.get_mail(request=_request(user.id), db=db, open=99999)
