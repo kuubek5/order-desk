@@ -168,9 +168,16 @@ def test_just_under_stale_threshold_still_reads_as_last_recorded_outcome():
 
 
 @pytest.fixture()
-def isolated_heartbeats(monkeypatch):
+def isolated_heartbeats(monkeypatch, tmp_path):
     fresh = {"mail": SyncHeartbeat(), "sheet": SyncHeartbeat()}
     monkeypatch.setattr(heartbeat_mod, "heartbeats", fresh)
+    # Тека спулу тепер з налаштувань (get_mail_attachments_path читає базу).
+    # Синк у цих тестах підмінено, тож і базу чіпати нема чого: без цього тест
+    # ліз у СПРАВЖНЮ базу — локально проходив на базі dev, а в CI (порожня
+    # база) падав «no such table: app_settings» (реліз 0.21.0).
+    import app.settings_store as settings_store_mod
+
+    monkeypatch.setattr(settings_store_mod, "get_mail_attachments_path", lambda db: str(tmp_path))
     return fresh
 
 
