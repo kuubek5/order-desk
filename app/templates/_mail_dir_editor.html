@@ -11,7 +11,7 @@
    hx_target / hx_swap / frag керують, КУДИ лягає відповідь /wizard: майстер →
    #mail-wizard (весь крок); картка → #mail-path-summary з frag=path (лише рядок
    шляху). #}
-{% macro dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, step, include_target, idp, hx_target="#mail-wizard", hx_swap="innerHTML", frag="", prefill_material=True) %}
+{% macro dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, step, include_target, idp, hx_target="#mail-wizard", hx_swap="innerHTML", frag="", prefill_material=True, client_folder=None) %}
 <div class="wiz-pathhint" role="note">
     <span class="wph-label">Файли ({{ attachment_count }}) ляжуть у:</span>
     <span class="wph-path mono"><span class="wpb-root">export</span> / <span class="wpb-seg {% if preview.client_folder_existing %}exists{% else %}new{% endif %}">{{ preview.client_folder }}</span> / <span class="wpb-seg">{{ preview.batch_folder }}</span> / <span class="wpb-seg mat">{{ preview.material_folder }}</span></span>
@@ -26,7 +26,7 @@
                 hx-vals='{"step":"{{ step }}"{% if frag %},"frag":"{{ frag }}"{% endif %}}' hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}" hx-trigger="change">
             <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
             {% for folder in existing_folders %}
-            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if sender_hint and sender_hint.export_folder == folder %} · цього клієнта{% endif %}</option>
+            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if client_folder and client_folder == folder %} · тека клієнта{% elif not client_folder and sender_hint and sender_hint.export_folder == folder %} · цього клієнта{% endif %}</option>
             {% endfor %}
         </select>
     </div>

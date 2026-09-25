@@ -35,6 +35,7 @@ from app.link_attachments import (
     extract_download_links,
     undownloaded_links,
 )
+from app.client_folder import preferred_client_folder
 from app.mail_export import (
     _contained_child,
     list_client_folders,
@@ -780,19 +781,19 @@ def _card_dir_context(
     """
     export_root = Path(get_export_folder_path(db))
     existing_folders = list_client_folders(export_root)
-    # Постійний клієнт: якщо оператор не задав теку вручну, дефолт — його наявна
-    # export-тека (дзеркало кроку 2 майстра). Лише коли вона реально існує.
-    if (
-        not folder_pick.strip() and not folder_new.strip()
-        and sender_hint and sender_hint.export_folder
-        and sender_hint.export_folder in existing_folders
-    ):
-        folder_pick = sender_hint.export_folder
+    # Тека клієнта (власник 25.09.26): спершу з КАРТКИ клієнта, без неї — з
+    # памʼяті відправника, і лише для того самого імені (app/client_folder.py).
+    # У список теки НЕ підставляємо: список лишається «авто», а рядок шляху
+    # показує, куди підуть файли. Підставлена в список тека пережила б зміну
+    # імені клієнта (список поза фрагментом, що перемальовується) і тихо
+    # відправила б файли в теку попереднього клієнта. Ручний вибір — перемагає.
+    client_folder = preferred_client_folder(db, client_name, sender_hint)
     client_override, material_override = resolve_wizard_overrides(
         folder_pick, folder_new, material_folder
     )
     preview = preview_export_target(
-        export_root, client_name, material_color, client_override, material_override
+        export_root, client_name, material_color, client_override, material_override,
+        preferred_client_folder=client_folder,
     )
     unclaimed = partial_state["unclaimed_attachments"]
     # Файли, що поїдуть саме цією партією: позначені оператором, або всі
@@ -814,9 +815,10 @@ def _card_dir_context(
         "existing_folders": existing_folders,
         "attachment_count": len(batch),
         "undownloaded_files": undownloaded_files,
-        # Ефективна тека (з дефолтом постійного клієнта) — щоб select у dir_editor
-        # показав саме її обраною, а не «авто-визначення».
+        # Вхідний вибір оператора як є (у список нічого не підставляємо — див.
+        # коментар вище); тека клієнта за правилом — окремо, для підказок.
         "folder_pick": folder_pick,
+        "client_folder": client_folder,
     }
 
 
@@ -1311,13 +1313,15 @@ def _wizard_context(
             client_name = email.from_name
         elif email.client_name_guess:
             client_name = email.client_name_guess
+    # Тека клієнта: картка клієнта → памʼять відправника (app/client_folder.py).
+    wizard_client_folder = preferred_client_folder(db, client_name, sender_hint)
     if (
-        step >= 2 and sender_hint and sender_hint.export_folder
+        step >= 2 and wizard_client_folder
         and not folder_pick.strip() and not folder_new.strip()
     ):
         export_root_probe = Path(get_export_folder_path(db))
-        if sender_hint.export_folder in list_client_folders(export_root_probe):
-            folder_pick = sender_hint.export_folder
+        if wizard_client_folder in list_client_folders(export_root_probe):
+            folder_pick = wizard_client_folder
 
     client_override, material_override = _resolve_wizard_overrides(
         folder_pick, folder_new, material_folder
@@ -1362,7 +1366,8 @@ def _wizard_context(
     # перекрити. preview_export_target нічого не пише на диск.
     export_root = Path(get_export_folder_path(db))
     ctx["preview"] = preview_export_target(
-        export_root, client_name, material_color, client_override, material_override
+        export_root, client_name, material_color, client_override, material_override,
+        preferred_client_folder=wizard_client_folder,
     )
     ctx["attachment_count"] = ctx["batch_count"]
     if step >= 2:

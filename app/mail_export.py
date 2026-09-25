@@ -106,7 +106,9 @@ def _contained_child(root: Path, name: str) -> Path:
     return child
 
 
-def _resolve_client_folder_name(export_root: Path, client_name: str) -> str:
+def _resolve_client_folder_name(
+    export_root: Path, client_name: str, preferred_folder: str | None = None
+) -> str:
     """Reuses an existing client folder if this client already has one.
 
     A client who sends a second (or fifth) request weeks later rarely types
@@ -125,6 +127,13 @@ def _resolve_client_folder_name(export_root: Path, client_name: str) -> str:
         existing_folders = sorted(p.name for p in export_root.iterdir() if p.is_dir())
     except (OSError, FileNotFoundError):
         existing_folders = []
+
+    # Тека клієнта з картки / памʼяті відправника (app/client_folder.py) — ПЕРШОЮ,
+    # але лише коли вона справді є на диску: перейменовану теку не вигадуємо,
+    # а падаємо на нечітке зіставлення нижче.
+    preferred = (preferred_folder or "").strip()
+    if preferred and preferred in existing_folders:
+        return preferred
 
     match = match_client_name(client_name, existing_folders, known_aliases={})
     if match.matched_folder_name:
@@ -178,6 +187,7 @@ def preview_export_target(
     client_folder_override: str | None = None,
     material_folder_override: str | None = None,
     today: date | None = None,
+    preferred_client_folder: str | None = None,
 ) -> dict:
     """Compute where save_attachments_to_export WOULD put this email's files,
     without touching the filesystem — drives the wizard's directory step so the
@@ -188,7 +198,9 @@ def preview_export_target(
     if override:
         client_folder = sanitize_folder_name(override)
     else:
-        client_folder = _resolve_client_folder_name(export_root, client_name)
+        client_folder = _resolve_client_folder_name(
+            export_root, client_name, preferred_client_folder
+        )
     client_dir = _contained_child(export_root, client_folder)
     client_folder_existing = client_dir.is_dir()
 
@@ -324,6 +336,7 @@ def save_attachments_to_export(
     material_folder_override: str | None = None,
     today: date | None = None,
     moved_out: list[tuple[Path, Path]] | None = None,
+    preferred_client_folder: str | None = None,
 ) -> list[Path]:
     """Moves each file in attachment_paths into export_root/<client>/<date>/<material>/.
 
@@ -368,7 +381,7 @@ def save_attachments_to_export(
     resolved_name = (
         sanitize_folder_name(override)
         if override
-        else _resolve_client_folder_name(export_root, client_name)
+        else _resolve_client_folder_name(export_root, client_name, preferred_client_folder)
     )
     client_dir = _contained_child(export_root, resolved_name)
     material_override = (material_folder_override or "").strip()

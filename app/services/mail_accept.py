@@ -40,7 +40,8 @@ from app.material_catalog import (
 from app.mail_reader import _file_is_missing, move_message_to_folder
 from app.models import EmailMessage, Order, StatusEvent, SyncLog
 from app.parser import HEADER_ROWS
-from app.sender_memory import remember_sender
+from app.client_folder import preferred_client_folder
+from app.sender_memory import lookup_sender, remember_sender
 from app.services.opak import format_opak, opak_units
 from app.settings_store import get_export_folder_path, get_setting
 from app.sheet_writer import append_mail_placeholder_row
@@ -523,6 +524,12 @@ def _move_attachments(
             client_folder_override=client_override,
             material_folder_override=material_override,
             moved_out=moved_out,
+            # Тека з картки клієнта, а без неї — з памʼяті відправника
+            # (app/client_folder.py); ручний вибір оператора вище все одно
+            # перемагає (client_override).
+            preferred_client_folder=preferred_client_folder(
+                db, new_order.client_name, lookup_sender(db, email)
+            ),
         )
         moved_pairs = list(zip(old_paths, new_paths))
         # Файли переїхали — кеш обходу export більше не відповідає диску.
