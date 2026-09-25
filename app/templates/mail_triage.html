@@ -140,10 +140,60 @@
                visible header repeated the same two facts and cost 45px of the
                scroller. Kept for screen readers via aria-labelledby. #}
             <h2 id="mail-list-title" class="sr-only">{% if view == 'archive' %}Архів{% elif view == 'filtered' %}Відфільтровані{% else %}Усі листи{% endif %} — {{ emails|length }}</h2>
+            {# Конвеєр (блок B): смуга вибору кількох листів. Поза #mail-list-rows,
+               тож переживає 15-секундний полл; стан вибору читається з DOM-галочок
+               (лише в браузері, mail.js). #}
+            {# Масові дії (25.09.26): та сама смуга в кожній вкладці, крім «Авто».
+               Кнопки — одна форма `/mail/bulk`; id обраних підставляє mail.js на
+               submit. Конвеєр (`data-conveyor`) — лише «Усі листи». #}
+            {% if view != 'auto' %}
+            <div class="mail-batchbar" id="mail-batchbar"{% if view == 'pending' %} data-conveyor="1"{% endif %}>
+                <label class="mb-selall">
+                    <input type="checkbox" id="mail-select-all"{% if view == 'pending' %} data-ready-only="1"{% endif %}
+                           aria-label="{% if view == 'pending' %}Обрати всі готові{% else %}Обрати всі{% endif %}">
+                    <span>{% if view == 'pending' %}Обрати всі готові{% else %}Обрати всі{% endif %}</span>
+                </label>
+                <span class="mb-selcount" id="mail-sel-count" hidden></span>
+                <form class="mb-actions" id="mail-bulk-form" method="post" action="/mail/bulk" hidden>
+                    <input type="hidden" name="ids" value="">
+                    <input type="hidden" name="folder" value="">
+                    {% if view == 'pending' or view == 'gone' %}
+                    {% if view == 'pending' %}
+                    {# «Перемістити» — меню папок скриньки (як у ukr.net). Список
+                       тягнеться з IMAP лише при першому відкритті. #}
+                    <details class="mb-move">
+                        <summary class="btn sm">↦ Перемістити</summary>
+                        <div class="mb-move-body" hx-get="/mail/move-folders" hx-trigger="toggle from:closest details once" hx-swap="innerHTML">
+                            <div class="mb-move-head">Зчитую папки скриньки…</div>
+                        </div>
+                    </details>
+                    {% endif %}
+                    {% if view == 'gone' %}
+                    <button type="submit" name="action" value="return_inbox" class="btn sm"
+                            data-bulk-confirm="Повернути обрані листи ({n}) у Вхідні скриньки й «Усі листи»? Лист, перекладений у папку, буде перенесено назад.">↩ У Вхідні</button>
+                    {% endif %}
+                    <button type="submit" name="action" value="reject" class="btn sm"
+                            data-bulk-confirm="Відхилити обрані листи ({n})? Поштова скринька не змінюється.">✕ Відхилити</button>
+                    {% elif view == 'filtered' %}
+                    <button type="submit" name="action" value="unfilter" class="btn sm"
+                            data-bulk-confirm="Повернути обрані листи ({n}) у чергу?">↩ У чергу</button>
+                    {% elif view == 'archive' %}
+                    <button type="submit" name="action" value="restore" class="btn sm"
+                            data-bulk-confirm="Повернути обрані листи ({n}) в «Усі листи»?">↩ Повернути</button>
+                    {% elif view == 'processed' %}
+                    <button type="submit" name="action" value="to_inbox" class="btn sm"
+                            data-bulk-confirm="Повернути обрані листи ({n}) у Вхідні скриньки й «Усі листи»?">↩ У Вхідні</button>
+                    {% endif %}
+                </form>
+            </div>
+            {% endif %}
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}
             </div>
-            <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. Повертаються в чергу самі, якщо знову зʼявляться у Вхідних{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}Клік по листу відкриває картку тріажу · «✕» відхиляє лист без видалення{% endif %}</div>
+            {# Сторінки по 15 листів + «Показати всі» (власник 25.09.26). Будує
+               mail.js із рядків, що вже в DOM (поза поллом — переживає своп). #}
+            <nav class="mail-pager" id="mail-pager" aria-label="Сторінки листів" hidden></nav>
+            <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. «↩» повертає лист у Вхідні скриньки й «Усі листи»{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}Клік по листу відкриває картку тріажу · галочка — обрати лист, щоб перемістити чи відхилити{% endif %}</div>
         </section>
 
         <section class="detail-panel" id="mail-detail">

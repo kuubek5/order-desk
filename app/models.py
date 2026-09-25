@@ -642,6 +642,14 @@ class EmailMessage(Base):
     inbox_gone_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True, index=True
     )
+    # Оператор СВІДОМО повернув лист із «Покинули Вхідні» у Вхідні (25.09.26).
+    # Синк мітить «покинув» кожен лист «нове», старший за вікно синку (30 днів),
+    # не питаючи скриньку, — без цієї позначки повернутий старий лист злітав би
+    # назад за 2 хвилини. Гілку «за віком» `_reconcile_inbox_gone` такий лист
+    # оминає; гілка «зник із повної вибірки» (доведена відсутність) — ні.
+    inbox_returned_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
     subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)

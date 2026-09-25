@@ -1031,16 +1031,46 @@ window.showToast = showToast;
 // active segment tab is preserved by the mail-seg afterSettle handler above.
 let mailFilesRefreshTimer = null;
 
-document.body.addEventListener("mailFilesChanged", () => {
+function scheduleMailFilesRefresh() {
   window.clearTimeout(mailFilesRefreshTimer);
   mailFilesRefreshTimer = window.setTimeout(() => {
-    const root = document.querySelector("#mail-detail .mail-seg");
+    // Ще качаються інші посилання («Скачати за посиланням» шле всі разом, і
+    // вони закінчуються в різний час) — НЕ перемальовувати: своп викинув би
+    // рядки, чий запит у дорозі, їхні відповіді вже не дійшли б до body (сигнал
+    // з відірваного елемента не спливає), і файли, скачані пізніше, та їхнє
+    // STL-прев'ю зʼявлялись би лише після F5 (власник 25.09.26). Чекаємо, поки
+    // допрацює останнє, — і оновлюємо картку ОДИН раз.
+    if (document.querySelector("#mail-detail .linkrow.htmx-request")) {
+      scheduleMailFilesRefresh();
+      return;
+    }
+    // Корінь картки «Стрічка» — .mailcard[data-mail-id]. Тут стояв селектор
+    // старої картки з вкладками (.mail-seg), і після переходу на «Стрічку»
+    // обробник мовчки нічого не робив: скачані за посиланням файли й прев'ю
+    // зʼявлялись лише після F5 (власник 25.09.26).
+    const root = document.querySelector("#mail-detail [data-mail-id]");
     if (!root || !window.htmx) return;
     const id = root.dataset.mailId;
     if (!id) return;
-    window.htmx.ajax("GET", `/mail/${id}?panel=1`, { target: "#mail-detail", swap: "innerHTML" });
+    // Змінене оператором (клієнт, матеріал, к-сть) не має злетіти від
+    // перемальовування: запамʼятати поля, чиє значення вже не те, що прийшло з
+    // сервера (defaultValue), і повернути їх у свіжу картку.
+    const edited = {};
+    root.querySelectorAll("input[id]:not([type=checkbox]):not([type=hidden]), textarea[id]").forEach((el) => {
+      if (el.value !== el.defaultValue) edited[el.id] = el.value;
+    });
+    window.htmx
+      .ajax("GET", `/mail/${id}?panel=1`, { target: "#mail-detail", swap: "innerHTML" })
+      .then(() => {
+        Object.keys(edited).forEach((key) => {
+          const el = document.getElementById(key);
+          if (el) el.value = edited[key];
+        });
+      });
   }, 450);
-});
+}
+
+document.body.addEventListener("mailFilesChanged", scheduleMailFilesRefresh);
 
 // Дедлайн на HTMX-запит.
 //

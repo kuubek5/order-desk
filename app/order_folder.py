@@ -260,6 +260,15 @@ def clear_email_preview_token_cache() -> None:
         _preview_token_cache.clear()
 
 
+def forget_email_preview_token(email_id: int) -> None:
+    """Забути токен ОДНОГО листа: у нього змінився склад файлів (скачування за
+    посиланням, повторне скачування, розпакування архіву). Лист без файлів
+    кешував «прев'ю немає» на 60 с, і автооновлена картка після скачування
+    показувала файли БЕЗ кнопки STL-прев'ю аж до F5 (власник 25.09.26)."""
+    with _preview_token_lock:
+        _preview_token_cache.pop(email_id, None)
+
+
 def attach_email_preview_tokens(
     emails: Sequence[EmailMessage], trusted_roots: list[Path], preview_roots: dict[str, str | None]
 ) -> None:

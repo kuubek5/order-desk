@@ -84,6 +84,15 @@ _HTML_BLOCK_TAGS = frozenset(
 _HTML_SKIP_TAGS = frozenset({"script", "style"})
 
 
+def _is_download_link(href: str) -> bool:
+    """Чи href — посилання на дозволений файлообмінник (Drive / ukr.net).
+
+    Імпорт усередині: link_attachments сам імпортує з цього модуля."""
+    from app.link_attachments import extract_download_links
+
+    return bool(extract_download_links(href))
+
+
 class _HTMLTextExtractor(HTMLParser):
     """Minimal HTML -> plain text extractor, stdlib-only.
 
@@ -99,12 +108,29 @@ class _HTMLTextExtractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._parts: list[str] = []
         self._skip_depth = 0
+        self._pending_href: str | None = None
 
     def handle_starttag(self, tag: str, attrs) -> None:
         if tag in _HTML_SKIP_TAGS:
             self._skip_depth += 1
         elif tag in _HTML_BLOCK_TAGS:
             self._parts.append("\n")
+        elif tag == "a":
+            # Посилання на файлообмінник живе ЛИШЕ в href: текст посилання — це
+            # ім'я файлу. Без href ukr.net-лист із великими файлами («буде
+            # видалено 09.10») приходив у тріаж з іменами файлів і без жодного
+            # способу їх скачати (бойовий лист 25.09.26, 9 файлів). Беремо лише
+            # те, що впізнає extract_download_links — підпис і mailto не
+            # засмічують текст. Безпеки це не міняє: сам фетч і далі за білим
+            # списком хостів у link_attachments.
+            href = dict(attrs).get("href") or ""
+            if href and _is_download_link(href):
+                self._pending_href = href
+
+    def _flush_href(self) -> None:
+        if self._pending_href:
+            self._parts.append(f" {self._pending_href} ")
+            self._pending_href = None
 
     def handle_startendtag(self, tag: str, attrs) -> None:
         if tag in _HTML_BLOCK_TAGS:
@@ -115,6 +141,8 @@ class _HTMLTextExtractor(HTMLParser):
             self._skip_depth = max(0, self._skip_depth - 1)
         elif tag in _HTML_BLOCK_TAGS:
             self._parts.append("\n")
+        elif tag == "a":
+            self._flush_href()
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
@@ -242,16 +270,16 @@ def extract_archive_attachments(
     extracted_total = 0
     errors: list[str] = []
     archives_to_unlink: list[Path] = []
-    # Імена, зайняті ДО розпакування — рахуються ОДИН раз, а не на кожен архів
-    # (у циклі це був той самий набір: нові рядки лише `session.add`-нуті й у
-    # колекції ще не зʼявляються).
-    #
-    # І вони свідомо НЕ поповнюються тим, що розпакували зараз. Цей набір існує
-    # проти повторного розпакування того самого архіву; два РІЗНІ архіви в
-    # одному листі законно несуть однакові імена («crown.stl» у part1 і part2),
-    # і пропустити другий означало б тихо втратити коронку. Колізію імен
-    # розводить `unique_destination` — обидва файли лишаються на диску.
-    existing = frozenset(a.filename for a in email_message.attachments)
+    # Ім'я, вже зайняте іншим вкладенням листа, НЕ пропускаємо (власник
+    # 25.09.26): клієнт буває шле ті самі файли і окремо, і в архіві. Пропуск
+    # лишав архів нерозпакованим («в архіві немає файлів для розпакування»), а
+    # оператор так і не дізнавався, що це дубль. Тепер файл лягає поруч як
+    # «ім'я (2)» (`unique_destination`), а картка порівнює вміст і каже, що
+    # клієнт, схоже, надіслав роботу двічі (`app/mail_duplicates.py`).
+    # Повторного розпакування ТОГО САМОГО архіву тут не буває: після вдалого
+    # розпакування рядок архіву видаляється, а після відкату відкочуються й
+    # рядки розпакованих файлів. Два різні архіви з «crown.stl» — так само
+    # обидва файли на диску.
     for attachment in list(email_message.attachments):
         if not is_archive(attachment.filename):
             continue
@@ -259,7 +287,7 @@ def extract_archive_attachments(
         if not archive_path.is_file():
             continue
         try:
-            written = extract_archive(archive_path, archive_path.parent, existing)
+            written = extract_archive(archive_path, archive_path.parent, skip_existing=False)
         except ArchiveExtractError as exc:
             errors.append(f"{attachment.filename}: {exc}")
             continue
@@ -591,6 +619,135 @@ def move_message_to_folder(session: Session, email_message: EmailMessage, folder
         mailbox.move(email_message.uid, folder)
 
 
+# Службові папки, куди лист з Вхідних «переміщувати» не треба: сама Inbox,
+# надіслані й чернетки. Спам/Видалені лишаємо — туди оператор і чистить.
+_NOT_MOVE_TARGET_FLAGS = {"\\sent", "\\drafts", "\\noselect", "\\nonexistent"}
+
+
+def list_move_target_folders(session: Session) -> list[str]:
+    """Папки скриньки для меню «Перемістити» масових дій (власник 25.09.26 —
+    як у ukr.net). Від `list_mailbox_folders` відрізняється лише тим, що
+    прибирає Inbox і службові папки за IMAP-прапорцями (назви ukr.net
+    локалізовані, прапорці — ні). Кидає на збої IMAP — роут покаже текст."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        out = []
+        for f in mailbox.folder.list():
+            flags = {str(flag).lower() for flag in (f.flags or ())}
+            if f.name.upper() == "INBOX" or flags & _NOT_MOVE_TARGET_FLAGS:
+                continue
+            out.append(f.name)
+        return out
+
+
+def move_messages_to_folder(
+    session: Session, emails: list[EmailMessage], folder: str
+) -> dict[int, str]:
+    """Масовий `move_message_to_folder`: ОДИН вхід в IMAP на всі листи замість
+    входу на кожен (20 листів = 20 логінів ≈ півхвилини очікування). Гейти ті
+    самі, для кожного листа окремо. Повертає {email.id: текст помилки} для
+    невдалих; поля бази не чіпає — це робить викликач для успішних."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    if not (folder or "").strip():
+        raise RuntimeError("Не вибрано папку для переміщення")
+    errors: dict[int, str] = {}
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        for email_message in emails:
+            try:
+                _refuse_stale_uid_namespace(mailbox, email_message)
+                if not email_message.message_id:
+                    got = list(
+                        mailbox.fetch(
+                            AND(uid=email_message.uid), mark_seen=False, headers_only=True
+                        )
+                    )
+                    if got:
+                        email_message.message_id = message_id_of(got[0])
+                mailbox.move(email_message.uid, folder)
+            except Exception as exc:  # noqa: BLE001 — помилку віддаємо рядком
+                errors[email_message.id] = str(exc)
+    return errors
+
+
+def return_messages_to_inbox(session: Session, emails: list[EmailMessage]) -> dict[int, str]:
+    """Повернути листи з «Покинули Вхідні» у Вхідні скриньки (власник 25.09.26).
+
+    Де лежить такий лист, база не знає: його переклали чи видалили прямо в
+    пошті, а синк мітить «покинув» ще й кожен лист, старший за вікно, — такі
+    часто досі лежать у Вхідних. Тому для кожного листа:
+      1. Вхідні (за Message-ID, без нього — за UID під тим самим UIDVALIDITY):
+         знайшли — переносити нічого, лише звіряємо UID;
+      2. інакше всі інші папки (крім надісланих і чернеток) за Message-ID:
+         знайшли — MOVE у Вхідні й новий UID з Вхідних (інакше наступний синк
+         прийняв би лист за новий і створив дубль — як у move_message_back_to_inbox);
+      3. ніде немає — помилка: лист видалено назавжди, повертати нічого.
+    ОДИН IMAP-вхід на всі листи. Поля бази, крім uid/uid_validity, не чіпає —
+    це робить викликач для успішних. Повертає {email.id: текст помилки}."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    errors: dict[int, str] = {}
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        others = []
+        for f in mailbox.folder.list():
+            flags = {str(flag).lower() for flag in (f.flags or ())}
+            if f.name.upper() == "INBOX" or flags & _NOT_MOVE_TARGET_FLAGS:
+                continue
+            others.append(f.name)
+        for email_message in emails:
+            try:
+                mid = (email_message.message_id or "").strip()
+                search = f'HEADER MESSAGE-ID "{_imap_quote(mid)}"' if mid else None
+                mailbox.folder.set("INBOX")
+                inbox_validity = _folder_uidvalidity(mailbox)
+                if search:
+                    found = list(mailbox.fetch(search, mark_seen=False, headers_only=True))
+                else:
+                    # Без Message-ID — лише UID у Вхідних, і лише коли нумерація
+                    # та сама (інакше під цим UID чужий лист).
+                    _refuse_stale_uid_namespace(mailbox, email_message)
+                    found = list(
+                        mailbox.fetch(
+                            AND(uid=email_message.uid), mark_seen=False, headers_only=True
+                        )
+                    )
+                if found:
+                    email_message.uid = str(found[0].uid)
+                    email_message.uid_validity = inbox_validity or email_message.uid_validity
+                    continue
+                if not search:
+                    raise RuntimeError(
+                        "листа немає у Вхідних, а без Message-ID в інших папках його не знайти"
+                    )
+                where = None
+                for folder in others:
+                    mailbox.folder.set(folder)
+                    hit = list(mailbox.fetch(search, mark_seen=False, headers_only=True))
+                    if hit and hit[0].uid:
+                        where = (folder, hit[0].uid)
+                        break
+                if where is None:
+                    raise RuntimeError("листа немає в жодній папці скриньки — видалено назавжди")
+                mailbox.move(where[1], "INBOX")
+                mailbox.folder.set("INBOX")
+                back = list(mailbox.fetch(search, mark_seen=False, headers_only=True))
+                if back:
+                    email_message.uid = str(back[0].uid)
+                    email_message.uid_validity = (
+                        _folder_uidvalidity(mailbox) or email_message.uid_validity
+                    )
+            except Exception as exc:  # noqa: BLE001 — помилку віддаємо рядком
+                errors[email_message.id] = str(exc)
+    return errors
+
+
 def _imap_quote(value: str) -> str:
     """Значення для IMAP-рядка в лапках: екрануємо \\ і ", решта — як є."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
@@ -789,8 +946,11 @@ def _reconcile_inbox_gone(
             if complete_fetch and str(row.uid) not in incoming_uids:
                 row.inbox_gone_at = now
                 marked += 1
-        else:
-            row.inbox_gone_at = now  # старший за вікно синку
+        elif row.inbox_returned_at is None:
+            # Старший за вікно синку. Лист, який оператор СВІДОМО повернув у
+            # Вхідні (`return_messages_to_inbox`), не чіпаємо: відсутність тут не
+            # доведена, а повернення — рішення людини.
+            row.inbox_gone_at = now
             marked += 1
     if marked or incoming_uids:
         session.commit()
@@ -814,8 +974,32 @@ def download_attachments_now(session: Session, email_message: EmailMessage, atta
         if not full:
             raise RuntimeError("Лист більше недоступний на сервері")
         saved = _save_message_attachments(session, email_message, full[0], attachments_dir)
+        _refresh_links_in_body(email_message, full[0])
     email_message.attachments_status = "ready"
     return saved
+
+
+def _refresh_links_in_body(email_message: EmailMessage, msg) -> None:
+    """Дописати в текст листа посилання, яких старий розбір HTML не зберіг.
+
+    До 25.09.26 HTML→текст викидав `href`, тож лист із великими файлами ukr.net
+    лежав у базі з іменами файлів і без посилань — скачати їх було нічим. Лист
+    уже в базі, синк його повторно не розбирає. Кнопка «Скачати вкладення» й так
+    тягне повний лист, тож тут текст і доповнюється.
+
+    Лише коли новий розбір знайшов посилання, яких у старому тексті немає, і
+    лише HTML-лист без текстової частини (для нього body й будувався з HTML).
+    Правок оператора в тексті не буває, але здогадів (матеріал, клієнт) не
+    чіпаємо — вони вже на картці й могли бути виправлені."""
+    from app.link_attachments import extract_download_links
+
+    if msg.text or not msg.html:
+        return
+    fresh = html_to_plain_text(msg.html)
+    old_refs = {link.file_id or link.url for link in extract_download_links(email_message.body_text)}
+    new_refs = {link.file_id or link.url for link in extract_download_links(fresh)}
+    if new_refs - old_refs:
+        email_message.body_text = fresh
 
 
 def _folder_uidvalidity(mailbox) -> str:

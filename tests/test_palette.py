@@ -182,6 +182,7 @@ global.document = {
   },
   querySelectorAll: (sel) => (sel === ".mailrow" ? rows : []),
   getElementById: () => null,
+  dispatchEvent: () => true,
   activeElement: null,
 };
 global.Node = { TEXT_NODE: 3 };

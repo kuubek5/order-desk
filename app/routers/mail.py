@@ -17,11 +17,11 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import and_ as sa_and, func, select, update as sa_update
+from sqlalchemy import and_ as sa_and, func, select, text, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
@@ -43,16 +43,27 @@ from app.mail_export import (
     restore_attachments_to_spool,
     undo_moves,
 )
+from app.mail_body_view import inline_parts, letter_segments, useful_text
+from app.mail_color_split import suggest_color_plan
+from app.mail_duplicates import find_duplicates
 from app.mail_filters import apply_rule_retroactively
-from app.mail_parser import material_candidates
+from app.services.material_suggest import (
+    best_material,
+    canonical_material,
+    canonical_suggestions,
+    row_label,
+)
 from app.material_catalog import load_alias_rows
 from app.material_class import mail_material_badge
 from app.mail_reader import (
     download_attachments_now,
     extract_archive_attachments,
+    list_move_target_folders,
     move_message_back_to_inbox,
     move_message_to_folder,
+    move_messages_to_folder,
     redownload_missing_attachments,
+    return_messages_to_inbox,
 )
 from app.mail_sync_service import (
     MailSyncBusyError,
@@ -76,6 +87,7 @@ from app.order_folder import (
     attach_email_preview_tokens,
     attach_export_folder_uris,
     attach_job_code_folder_uris,
+    forget_email_preview_token,
     resolve_email_attachment_folder,
 )
 from app.queue_filters import (
@@ -125,6 +137,73 @@ router = APIRouter()
 _ARCHIVE_STATUSES = ("прийнято", "відхилено")
 
 
+def _parse_id_list(raw: str | None) -> list[int]:
+    """Список id листів із коми-рядка (`?batch=3,7,12`). Порядок збережено, дублі
+    прибрано, нецифрове тихо ігнорується — сирий рядок приходить з браузера."""
+    seen: set[int] = set()
+    out: list[int] = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if part.isdigit():
+            n = int(part)
+            if n not in seen:
+                seen.add(n)
+                out.append(n)
+    return out
+
+
+def _material_context(email: EmailMessage, customer_text: str | None = None) -> str:
+    """Де шукати матеріал, коли здогад його не назвав: ТЕМА + слова замовника
+    (без пересилання й підпису). Тема — бо клієнт часто пише матеріал лише там
+    («емоутіонс а2» → `emo a2`)."""
+    if customer_text is None:
+        customer_text = useful_text(letter_segments(email.body_text))
+    return f"{email.subject or ''}\n{customer_text}"
+
+
+_BADGE_CLS = {"Zr": "mat-zr", "PMMA": "mat-pmma", "Ti": "mat-ti", "SLM": "mat-slm", "Wax": "mat-wax"}
+
+
+def _row_badge(label: dict, old: dict | None) -> dict:
+    """Чіп рядка з канону (`row_label`): символ категорії + `mono b1`. Клас
+    кольору — зі старого чіпа, а без нього — за символом категорії."""
+    symbol = label.get("badge") or (old or {}).get("symbol") or "?"
+    cls = (old or {}).get("cls") or _BADGE_CLS.get(symbol, "mat-other")
+    # title — лише категорія: шаблон сам дописує «· <колір>» до підказки.
+    return {
+        "symbol": symbol, "cls": cls, "color": label["text"],
+        "title": (old or {}).get("title") or symbol,
+    }
+
+
+_MAIL_VIEWS = ("pending", "filtered", "archive", "auto", "processed", "gone")
+
+
+def _mail_back_url(request: Request, open_id: int | None = None) -> str:
+    """Куди повернути оператора після «↩» (повернути лист у «Усі листи»): у ту
+    саму ВКЛАДКУ, з якої він натиснув, а не на «Усі листи» (власник 25.09.26 —
+    розбираючи папку, після кожного повернення доводилось клацати її знову).
+
+    Вкладку беремо з адреси сторінки: `HX-Current-URL` для htmx-кнопки картки,
+    `Referer` для звичайної форми (як `queue.back_to_queue`). З адреси береться
+    лише `view`/`service` із білого списку — відкритого редиректу немає.
+    Невідома вкладка чи «Усі листи» → `/mail` (з `open`, якщо картку треба
+    лишити відкритою: у «Усі листи» повернутий лист якраз і зʼявився)."""
+    headers = getattr(request, "headers", None) or {}
+    page = headers.get("HX-Current-URL") or headers.get("referer") or ""
+    query = parse_qs(urlsplit(page).query) if urlsplit(page).path == "/mail" else {}
+    view = (query.get("view") or ["pending"])[0]
+    service = (query.get("service") or ["all"])[0]
+    params: list[str] = []
+    if view in _MAIL_VIEWS and view != "pending":
+        params.append(f"view={view}")
+    elif open_id is not None:
+        params.append(f"open={open_id}")
+    if service in SERVICE_TYPE_FILTERS and service != "all":
+        params.append(f"service={quote(service)}")
+    return "/mail" + (f"?{'&'.join(params)}" if params else "")
+
+
 @router.get("/mail", response_class=HTMLResponse)
 def get_mail(
     request: Request,
@@ -136,6 +215,7 @@ def get_mail(
     partial: str | None = None,
     open: int | None = None,
     since: int | None = None,
+    batch: str | None = None,
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -152,11 +232,42 @@ def get_mail(
     # screen's source/ready filters.
     if service not in SERVICE_TYPE_FILTERS:
         service = "all"
-    if view not in ("pending", "filtered", "archive", "auto", "processed", "gone"):
+    if view not in _MAIL_VIEWS:
         view = "pending"
     # Pop the flash only on a full-page render — the 15s poll (partial="list")
     # would otherwise consume it before the real navigation shows it.
-    toast_flash = request.session.pop("toast_flash", None) if partial != "list" else None
+    toast_flash = request.session.pop("toast_flash", None) if partial not in ("list", "batch") else None
+
+    # Конвеєр (блок B): панель батчу — рядок на кожен ОБРАНИЙ лист. Той самий
+    # партіал `#mail-detail`, що й картка (стан вибору лише в JS, mail.js), тож
+    # НОВОГО роуту не заводимо — це `GET /mail` з `partial=batch`. Значення в
+    # клітинках — ті самі здогади, що пішли б у картку (`_mail_panel_context`),
+    # тож джерело правди одне. Рахуємо лише для обраних листів (їх кілька), не на
+    # кожному полі й не на 15-секундному поллі.
+    if partial == "batch":
+        picked_ids = _parse_id_list(batch)
+        by_id = {}
+        if picked_ids:
+            by_id = {
+                e.id: e
+                for e in db.scalars(
+                    select(EmailMessage)
+                    .where(EmailMessage.id.in_(picked_ids))
+                    .options(selectinload(EmailMessage.attachments))
+                ).all()
+            }
+        # Порядок — той, у якому клієнт надіслав id (порядок списку згори вниз),
+        # щоб рядки батчу читались так само, як список. Лише листи «нове»: батч —
+        # інструмент тріажу, уже оброблений лист сюди не потрапляє.
+        batch_rows = [
+            _mail_panel_context(db, by_id[eid], user)
+            for eid in picked_ids
+            if eid in by_id and by_id[eid].status == "нове"
+        ]
+        return templates.TemplateResponse(
+            request, "_mail_batch_table.html",
+            {"batch_rows": batch_rows, "user": user},
+        )
 
     # Views: pending = "нове" NOT stamped by a filter rule; filtered = "нове"
     # stamped (kept, never deleted — one click brings a letter back); archive =
@@ -224,6 +335,12 @@ def get_mail(
     _mat_aliases = load_alias_rows(db)
     for _email in emails:
         _email.mat_badge = mail_material_badge(_email.material_color_guess, _mat_aliases)
+        # Латинський канон у чіпі: «Zr mono b1» замість «Zr B1» (власник
+        # 25.09.26) — та сама відповідь, що підставиться в поле картки, з тим
+        # самим пошуком матеріалу в тексті замовника («B1» + «Monolight»).
+        _label = row_label(db, _email.material_color_guess, _material_context(_email))
+        if _label:
+            _email.mat_badge = _row_badge(_label, _email.mat_badge)
     # How many pending letters are being held back from the frozen list.
     held_back_count = 0
     if since is not None and view == "pending":
@@ -474,6 +591,30 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
     )
 
 
+# ВИЩЕ за `/mail/{email_id}`: інакше FastAPI бере «move-folders» за id і дає 422.
+@router.get("/mail/move-folders", response_class=HTMLResponse)
+def mail_move_folders(request: Request, db: Session = Depends(get_db)):
+    """Меню «Перемістити» масових дій: папки скриньки (як у ukr.net). Тягнеться
+    ЛИШЕ при відкритті меню (IMAP-логін ~1 с), не на кожному рендері списку.
+    Папка «оброблено» з Налаштувань — першою, з позначкою."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    processed = (get_setting(db, "mail_processed_folder") or "").strip()
+    error = ""
+    folders: list[str] = []
+    try:
+        folders = list_move_target_folders(db)
+    except Exception as exc:  # noqa: BLE001 — текст збою IMAP у меню
+        error = f"Не вдалося зчитати папки: {exc}"
+    if processed and processed in folders:
+        folders = [processed] + [f for f in folders if f != processed]
+    return templates.TemplateResponse(
+        request, "_mail_move_folders.html",
+        {"folders": folders, "processed_folder": processed, "error": error},
+    )
+
+
 @router.get("/mail/{email_id}", response_class=HTMLResponse)
 def get_mail_detail(
     request: Request,
@@ -666,14 +807,38 @@ def _mail_panel_context(
             client_name = email.from_name
         else:
             client_name = email.client_name_guess or ""
+    # Лише слова замовника (без пересилання, підпису, списку файлів) — з них і
+    # прев'ю, і розпізнавання матеріалу, коли здогад його не назвав.
+    body_segments = letter_segments(email.body_text)
+    customer_text = useful_text(body_segments)
+    material_ctx = _material_context(email, customer_text)
     if material_color is None:
-        material_color = email.material_color_guess or ""
+        # Поле — одразу латинський канон, коли здогад однозначний: матеріал
+        # упізнано й відтінок рівно один («ПММА а2» → `pmma a2`). Інакше в таблицю
+        # йшла б кирилиця, якщо оператор не клацне чіп (власник 25.09.26 —
+        # «уніфікувати, як у ручному додаванні»). Неоднозначний здогад
+        # («Monolith» без кольору) лишається як є: вгадувати колір не можна.
+        # Слово матеріалу шукаємо й у тексті замовника, коли здогад його не
+        # назвав («B1» + у тексті «Monolight» → `mono b1`).
+        guess = email.material_color_guess or ""
+        material_color = best_material(db, guess, material_ctx) or guess
     if kind is None:
         kind = email.kind_guess or ""
     if quantity is None:
         quantity = email.quantity_guess or ""
     selected_ids = set(attachment_ids) if attachment_ids else None
     partial_state = _email_partial_state(db, email, on_disk)
+    # Однакові файли в листі (клієнт надіслав роботу двічі — окремо й в архіві).
+    # Копії за замовчуванням НЕ позначені, щоб одну роботу не прийняли й не
+    # відфрезерували двічі; рішення лишається за оператором (власник 25.09.26).
+    dup_report = find_duplicates(
+        [a for a in partial_state["unclaimed_attachments"] if a.id in on_disk]
+    )
+    if selected_ids is None and dup_report.copy_of:
+        selected_ids = {
+            a.id for a in partial_state["unclaimed_attachments"]
+            if a.id in on_disk and a.id not in dup_report.copy_of
+        }
     dir_ctx = _card_dir_context(
         db, email, partial_state, sender_hint,
         client_name=client_name, material_color=material_color,
@@ -682,6 +847,35 @@ def _mail_panel_context(
     )
     # Ефективна тека (з дефолтом постійного клієнта) перекриває вхідний folder_pick.
     folder_pick = dir_ctx.pop("folder_pick")
+    # Підказка кольорів для багатокольорового листа (пацієнт у тексті біля
+    # кольору ↔ пацієнт в імені файлу). Лише підказка: групу обирає оператор,
+    # прийняття — звичайне часткове. Рахується по НЕРОЗІБРАНИХ файлах, тож
+    # після кожної прийнятої партії показує вже решту кольорів.
+    color_plan = (
+        suggest_color_plan(
+            email.body_text,
+            email.material_color_guess or material_color,
+            partial_state["unclaimed_attachments"],
+        )
+        if partial_state["unclaimed_count"] > 1
+        else None
+    )
+    # Матеріал — ЛАТИНСЬКИЙ канон, як у ручному додаванні (власник 25.09.26:
+    # «прибрати кирилицю — mono a2, emo a2»). Клік по групі кольору підставляє
+    # `mono a3,5`, а не сире «Monolith a3.5»; чіпи під полем — ті самі канони
+    # для відтінків листа. Одне правило — `material_suggest.canonical_*`.
+    material_guess = email.material_color_guess or material_color or seed
+    if color_plan:
+        for group in color_plan.groups:
+            group.material = (
+                canonical_material(db, material_guess, group.shade, material_ctx) or group.material
+            )
+    # Найімовірніший першим (kind="best", підсвічений), далі варіанти ("alt").
+    material_cands = canonical_suggestions(
+        db, material_guess,
+        [g.shade for g in color_plan.groups] if color_plan else None,
+        context=material_ctx,
+    )
     context = {
         "email": email,
         "user": user,
@@ -700,7 +894,8 @@ def _mail_panel_context(
         # None → усі нерозібрані позначені (одноколірний дефолт); множина →
         # вибір оператора (часткове прийняття кількох кольорів).
         "attachment_ids": selected_ids,
-        "material_cands": material_candidates(seed, _lab_material_colors(db)),
+        "dup_report": dup_report,
+        "material_cands": material_cands,
         "body_links": extract_download_links(email.body_text),
         # Один розрахунок на бейдж списку, панель і гейт прийняття —
         # link_attachments.undownloaded_links (аудит 05.09.26, UX 1.4).
@@ -723,6 +918,13 @@ def _mail_panel_context(
         # Папка «оброблено» з налаштувань — картка показує кнопку переміщення лише
         # коли вона задана (інакше кнопці нема куди переносити).
         "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
+        "color_plan": color_plan,
+        # Текст листа, розкладений на частини (app/mail_body_view.py): у картці
+        # — лише слова замовника (2 рядки), у режимі читання — усе, службове
+        # приглушено. `letter_inline` — для підсвічування відтінків у рядку.
+        "letter_segments": body_segments,
+        "letter_preview": customer_text,
+        "letter_inline": inline_parts,
         **partial_state,
         **dir_ctx,
     }
@@ -767,6 +969,10 @@ def _files_changed_response(
     губиться. Тому число їде окремим тригером, а клієнт вписує його в рядок.
     """
     triggers = dict(extra or {})
+    # Склад файлів змінився → закешований токен прев'ю (часто «немає», поки
+    # файлів не було) застарів. Картка, яку перемалює цей тригер, мусить
+    # порахувати його наново, інакше STL-прев'ю з'являлось лише після F5.
+    forget_email_preview_token(email.id)
     _rows_count, _on_disk_count = _attachment_counts(db, email)
     triggers["mailFilesChanged"] = {
         "id": email.id,
@@ -783,6 +989,24 @@ def _files_changed_response(
     # падає в 500 на кодуванні відповіді.
     response.headers["HX-Trigger"] = json.dumps(triggers)
     return response
+
+
+def _mark_link_handled(db: Session, email_id: int, ref: str) -> None:
+    """Додати посилання до `handled_link_refs` одним атомарним UPDATE.
+
+    Список відсортований і без дублів (як і раніше писався з Python), але
+    читається й пишеться всередині SQLite — паралельні запити не перетирають
+    позначки одне одного. Комітить викликач."""
+    db.execute(
+        text(
+            "UPDATE email_messages SET handled_link_refs = ("
+            " SELECT json_group_array(value) FROM ("
+            "  SELECT value FROM json_each(COALESCE(email_messages.handled_link_refs, '[]'))"
+            "  UNION SELECT :ref ORDER BY 1))"
+            " WHERE id = :id"
+        ),
+        {"ref": ref, "id": email_id},
+    )
 
 
 @router.post("/mail/{email_id}/fetch-link", response_class=HTMLResponse)
@@ -850,9 +1074,14 @@ def fetch_email_link(
             status, result_name = "done", path.name
     if status in ("done", "skip"):
         # Remember this link as handled so the «ще N за посиланням» count drops.
-        handled = set(json.loads(email.handled_link_refs) if email.handled_link_refs else [])
-        handled.add(ref)
-        email.handled_link_refs = json.dumps(sorted(handled))
+        # АТОМАРНО, одним UPDATE: «Скачати за посиланням» шле запит на КОЖНЕ
+        # посилання паралельно, і читання-зміна-запис у Python губив чужі
+        # позначки — останній запис перемагав. Бойовий лист 25.09.26: 9 файлів
+        # ukr.net скачано, «оброблених» записано 2, картка казала «🔗 7 не
+        # скачано», гейт прийняття блокував, а повторне скачування дало б
+        # дублі «(1)». Той самий принцип, що в лічильниках видачі (двоє
+        # операторів): список міняє сам SQLite під своїм локом запису.
+        _mark_link_handled(db, email.id, ref)
     try:
         db.commit()
     except Exception as commit_error:  # noqa: BLE001 — файл уже на диску
@@ -881,7 +1110,7 @@ def fetch_email_link(
             if extracted or extract_errors:
                 db.commit()
             if extracted:
-                toast = {"message": f"Розпаковано {extracted} файл(ів) з архіву — оновіть картку", "kind": "success"}
+                toast = {"message": f"Розпаковано {extracted} файл(ів) з архіву", "kind": "success"}
             elif extract_errors:
                 toast = {"message": "Архів: " + extract_errors[0], "kind": "error"}
         except Exception:  # noqa: BLE001 — extraction must not 500 the panel
@@ -939,23 +1168,6 @@ def extract_mail_archives(request: Request, email_id: int, db: Session = Depends
     # Розпакування міняє склад файлів найпомітніше: архів зникає, на його місці
     # з'являються кілька STL. Рядок у списку мусить дізнатись нове число.
     return _files_changed_response(response, email, {"toast": toast}, db=db)
-
-
-def _lab_material_colors(db: Session) -> list[str]:
-    """Distinct free-text material/colour strings the lab actually used in the
-    sheet (source=="lab") — the reference list the accept wizard matches a
-    client's mangled spelling against."""
-    return sorted(
-        {
-            m
-            for (m,) in db.execute(
-                select(Order.material_color).where(
-                    Order.source == "lab", Order.material_color.is_not(None)
-                )
-            ).all()
-            if m and m.strip()
-        }
-    )
 
 
 # Правило «яка тека перемагає» живе поруч із самим переносом файлів
@@ -1019,11 +1231,11 @@ def _wizard_context(
     стерти все введене (аудит 05.09.26, UX 1.2)."""
     attachment_ids = list(attachment_ids or [])
     step = max(1, min(3, step))
-    known = _lab_material_colors(db)
     # Candidates from the operator's current material text, or the recognised
-    # guess / subject on the very first render.
+    # guess / subject on the very first render. Латинський канон — те саме
+    # правило, що й картка (`canonical_suggestions`).
     seed = material_color.strip() or (email.material_color_guess or "") or (email.subject or "")
-    candidates = material_candidates(seed, known)
+    candidates = [s.text for s in canonical_suggestions(db, seed)]
 
     sender_hint = lookup_sender(db, email)
     # Step 1 opens with the remembered name when the operator hasn't typed one;
@@ -1172,6 +1384,27 @@ def open_client_export_folder(
     )
 
 
+def _extract_after_download(db: Session, email: EmailMessage, what: str) -> None:
+    """Розпакувати архіви листа після ручного скачування (спільне для «Скачати
+    вкладення» і «Скачати наново»). Не кидає: розпакування не має ламати панель —
+    архів тоді лишається, і кнопка «Розпакувати архіви» на видноті."""
+    if not any(is_archive(a.filename) for a in email.attachments):
+        return
+    try:
+        extracted, extract_errors = extract_archive_attachments(db, email)
+        if extracted or extract_errors:
+            db.commit()
+            # Перечитати ОБОВ'ЯЗКОВО: розпакування міняє склад вкладень
+            # (архів зникає, з нього з'являються файли), і без цього число
+            # у тригері рахувалось по застарілій колекції — список писав
+            # 5 файлів там, де панель уже показувала 4. Спіймано живим
+            # прогоном повного циклу, не тестом.
+            db.refresh(email)
+    except Exception:  # noqa: BLE001 — розпакування не має ламати панель
+        logger.exception("Розпакування після %s, лист %s", what, email.id)
+        db.rollback()
+
+
 @router.post("/mail/{email_id}/download-attachments", response_class=HTMLResponse)
 def download_email_attachments(
     request: Request,
@@ -1197,11 +1430,17 @@ def download_email_attachments(
     try:
         download_attachments_now(db, email, Path(MAIL_ATTACHMENTS_PATH))
         db.commit()
+        db.refresh(email)  # expire_on_commit=False: колекція вкладень інакше стара
     except Exception as exc:  # noqa: BLE001 — surface a friendly error, don't 500
         db.rollback()
         logger.exception("Manual attachment download failed for email %s", email.id)
         context = _mail_panel_context(db, email, user, error=f"Не вдалося скачати файли: {exc}")
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    # Архів у листі — розпакувати одразу, як це вже роблять скачування за
+    # посиланням і повторне скачування. Без цього «Скачати вкладення» лишало
+    # архів замість STL, а кнопка «Розпакувати» ховалась у меню чіпа (власник
+    # 25.09.26: «я не бачу, що там архів»).
+    _extract_after_download(db, email, "ручного скачування")
     context = _mail_panel_context(db, email, user)
     return _files_changed_response(
         templates.TemplateResponse(request, "_mail_detail_panel.html", context), email, db=db
@@ -1260,20 +1499,8 @@ def redownload_email_attachments(
     # кроку кнопка повертала б архів замість робочих STL, і оператору
     # довелось би окремо шукати «Розпакувати». Те саме вже робить скачування
     # за посиланням, тож поведінка збігається.
-    if saved and any(is_archive(a.filename) for a in email.attachments):
-        try:
-            extracted, extract_errors = extract_archive_attachments(db, email)
-            if extracted or extract_errors:
-                db.commit()
-                # Перечитати ОБОВ'ЯЗКОВО: розпакування міняє склад вкладень
-                # (архів зникає, з нього з'являються файли), і без цього число
-                # у тригері рахувалось по застарілій колекції — список писав
-                # 5 файлів там, де панель уже показувала 4. Спіймано живим
-                # прогоном повного циклу, не тестом.
-                db.refresh(email)
-        except Exception:  # noqa: BLE001 — розпакування не має ламати панель
-            logger.exception("Розпакування після повторного скачування, лист %s", email.id)
-            db.rollback()
+    if saved:
+        _extract_after_download(db, email, "повторного скачування")
 
     if removed and not saved:
         # Лист на сервері вже без вкладень (їх видалили і там) — сказати прямо,
@@ -1454,6 +1681,129 @@ def accept_email(
     return RedirectResponse(target, status_code=303)
 
 
+@router.post("/mail/accept-batch", response_class=HTMLResponse)
+def accept_email_batch(
+    request: Request,
+    payload: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Конвеєр (блок B): прийняти кілька листів одним натиском.
+
+    Тіло — JSON-масив рядків батч-таблиці; стан вибору живе ЛИШЕ в браузері
+    (mail.js їх збирає в `payload`). Кожен лист приймається СВОЇМ `accept_letter`
+    — під власним локом листа й у власній транзакції, тим самим кодом, що
+    поодиноке прийняття. Помилка одного НЕ відкочує решту: успішні комітяться
+    самі, невдалий лишається «нове» з текстом. Свідомий +1 роут (route_inventory).
+
+    Синхронний `def` (threadpool), як `accept_email`: `accept_letter` робить
+    блокуючі диск/таблицю, тож на event loop його пускати не можна (§14).
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    # Той самий гейт зомбі-фетчу, що на поодинокому прийнятті: покинутий фетч ще
+    # качає у теку листа — рухати ті самі файли зараз означає дублі й мертві шляхи.
+    busy = zombie_fetch_blocks_files()
+    if busy:
+        raise HTTPException(status_code=409, detail=busy)
+
+    try:
+        rows = json.loads(payload)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="некоректний payload батчу")
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=400, detail="порожній батч")
+
+    results: list[dict] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        raw_id = item.get("email_id")
+        if raw_id is None:
+            continue
+        try:
+            eid = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        email = db.get(EmailMessage, eid)
+        display = ""
+        if email is not None:
+            display = (item.get("client_name") or "").strip() or (
+                email.from_name or email.from_address or f"лист {eid}"
+            )
+        if email is None:
+            results.append({"email_id": eid, "label": f"лист {eid}", "ok": False,
+                            "error": "лист не знайдено"})
+            continue
+        if email.status != "нове":
+            results.append({"email_id": eid, "label": display, "ok": False,
+                            "error": "лист уже оброблено"})
+            continue
+        # Конвеєр бере ВСІ нерозібрані файли листа. Якщо серед них однакові
+        # (клієнт надіслав роботу двічі) чи тезки з різним вмістом — мовчки
+        # прийняти обидві копії означало б фрезерувати двічі, а мовчки викинути
+        # одну — вирішити за оператора. Тому такий лист — лише через картку.
+        dups = find_duplicates([
+            a for a in email.attachments
+            if a.order_id is None and Path(a.saved_path).exists()
+        ])
+        if dups:
+            results.append({
+                "email_id": eid, "label": display, "ok": False,
+                "error": "у листі однакові файли (схоже, клієнт надіслав роботу двічі) — "
+                         "відкрийте лист і оберіть, які брати",
+            })
+            continue
+        result = accept_letter(
+            db, user, email,
+            client_name=(item.get("client_name") or ""),
+            material_color=(item.get("material_color") or ""),
+            kind=(item.get("kind") or ""),
+            quantity=(item.get("quantity") or ""),
+            folder_pick=(item.get("folder_pick") or ""),
+            folder_new="", material_folder="",
+            attachment_ids=[],
+            accept_anyway=bool(item.get("accept_anyway")),
+        )
+        results.append({
+            "email_id": eid,
+            "label": display,
+            "ok": result.ok,
+            "error": result.error,
+            "material_label": result.material_label,
+            "saved_files": result.saved_files,
+            "partial": result.partial,
+        })
+
+    accepted = [r for r in results if r["ok"]]
+    failed = [r for r in results if not r["ok"]]
+
+    response = templates.TemplateResponse(
+        request, "_mail_batch_result.html",
+        {"results": results, "accepted": accepted, "failed": failed},
+    )
+    # Клієнт (mail.js) прибирає прийняті рядки зі списку, знімає їх галочки й
+    # оновлює дзеркало черги — за списком id у тригері.
+    triggers: dict = {
+        "mailBatchDone": {
+            "accepted": [r["email_id"] for r in accepted],
+            "failed": [r["email_id"] for r in failed],
+        }
+    }
+    if accepted:
+        n = len(accepted)
+        word = "роботу" if n == 1 else ("роботи" if n < 5 else "робіт")
+        msg = f"Прийнято {n} {word} в чергу"
+        if failed:
+            msg += f"; {len(failed)} не вдалося"
+        triggers["toast"] = {"kind": "success" if not failed else "warning", "message": msg}
+    # ensure_ascii=True (за замовчуванням): значення заголовка HTTP мусить бути
+    # latin-1, а тости українською — інакше 500 на кодуванні (як у
+    # _files_changed_response).
+    response.headers["HX-Trigger"] = json.dumps(triggers)
+    return response
+
+
 @router.post("/mail/{email_id}/move-processed", response_class=HTMLResponse)
 def move_email_processed(
     request: Request, email_id: int, row: str = Form(""), db: Session = Depends(get_db)
@@ -1547,7 +1897,7 @@ def move_email_to_inbox(
     request.session["toast_flash"] = {
         "kind": "success", "message": "Лист повернуто у «Усі листи».",
     }
-    target = f"/mail?open={email.id}"
+    target = _mail_back_url(request, open_id=email.id)
     if hx:
         return Response(status_code=204, headers={"HX-Redirect": target})
     return RedirectResponse(target, status_code=303)
@@ -1627,12 +1977,167 @@ def unfilter_email(
     db.commit()
 
     # HX = the «↩» on a filtered-list row (delete just that row); plain POST =
-    # the card's «Повернути з фільтра» → land on the pending list, where the
-    # returned letter now lives.
+    # the card's «Повернути з фільтра» → stay on the tab it was pressed from.
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
         return HTMLResponse("", status_code=200)
-    return RedirectResponse("/mail", status_code=303)
+    return RedirectResponse(_mail_back_url(request), status_code=303)
+
+
+# Масові дії вкладок (власник 25.09.26: «виділити всі й щось зробити з ними
+# всіма»). Кожна — та сама дія, що кнопка рядка, з ТИМИ САМИМИ гейтами, лише для
+# кількох листів. Прийнятий лист (чи лист, з якого вже створено роботу) масово НЕ
+# повертається і НЕ відхиляється: його «↩» видаляє живі роботи з черги — це лише
+# поштучно, з підтвердженням (рішення власника). Галочка на такому рядку
+# вимкнена, а сервер перевіряє ще раз — список міг застаріти.
+_BULK_LABELS = {
+    "reject": "Відхилено",
+    "move_processed": "Перенесено в папку",
+    "move_to": "Перенесено в папку",
+    "unfilter": "Повернуто в чергу",
+    "restore": "Повернуто в «Усі листи»",
+    "to_inbox": "Повернуто у Вхідні",
+    "return_inbox": "Повернуто у Вхідні й «Усі листи»",
+}
+
+
+@router.post("/mail/bulk")
+def bulk_mail_action(
+    request: Request,
+    action: str = Form(""),
+    ids: str = Form(""),
+    folder: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if action not in _BULK_LABELS:
+        raise HTTPException(status_code=400, detail="невідома дія")
+
+    picked = _parse_id_list(ids)
+    emails = db.scalars(select(EmailMessage).where(EmailMessage.id.in_(picked))).all() if picked else []
+    with_orders = set(
+        db.scalars(
+            select(Order.source_email_id).where(Order.source_email_id.in_(picked))
+        ).all()
+    ) if picked else set()
+
+    done = 0
+    skipped = 0
+    errors: list[str] = []
+
+    # Перенос у папку — ОДНИМ IMAP-входом на всі листи (move_messages_to_folder).
+    # `move_processed` = та сама дія в папку «оброблено» з Налаштувань.
+    if action in ("move_processed", "move_to"):
+        if action == "move_processed":
+            folder = get_setting(db, "mail_processed_folder") or ""
+        folder = folder.strip()
+        if not folder or folder.upper() == "INBOX":
+            raise HTTPException(status_code=400, detail="не вибрано папку")
+        movable = [e for e in emails if not e.mailbox_folder]
+        skipped = len(emails) - len(movable)
+        failed: dict[int, str] = {}
+        if movable:
+            try:
+                failed = move_messages_to_folder(db, movable, folder)
+            except Exception as exc:  # noqa: BLE001 — вхід в IMAP не вдався
+                db.rollback()
+                failed = {e.id: str(exc) for e in movable}
+        moved_at = datetime.now()
+        for email in movable:
+            if email.id in failed:
+                errors.append(failed[email.id])
+                continue
+            email.mailbox_folder = folder
+            email.mailbox_moved_at = moved_at
+            done += 1
+        db.commit()
+        emails = []  # решта циклу — для інших дій
+
+    # «Покинули Вхідні» → назад у Вхідні й «Усі листи» (власник 25.09.26). Лист
+    # шукається в скриньці (Вхідні або будь-яка папка) і, якщо треба,
+    # переноситься — ОДНИМ IMAP-входом. Відхилений повертається в тріаж
+    # («нове»), бо «Усі листи» показують лише нові. Прийнятий / з роботою —
+    # пропуск, як у решті масових повернень. `inbox_returned_at` не дає синку
+    # за віком одразу позначити лист «покинув» знову.
+    if action == "return_inbox":
+        returnable = [
+            e for e in emails
+            if not (e.status == "прийнято" or e.order_id or e.id in with_orders)
+        ]
+        skipped = len(emails) - len(returnable)
+        failed = {}
+        if returnable:
+            try:
+                failed = return_messages_to_inbox(db, returnable)
+            except Exception as exc:  # noqa: BLE001 — вхід в IMAP не вдався
+                db.rollback()
+                failed = {e.id: str(exc) for e in returnable}
+        now = datetime.now()
+        for email in returnable:
+            if email.id in failed:
+                errors.append(failed[email.id])
+                continue
+            email.inbox_gone_at = None
+            email.inbox_returned_at = now
+            email.mailbox_folder = None
+            email.mailbox_moved_at = None
+            if email.status == "відхилено":
+                email.status = "нове"
+            done += 1
+        db.commit()
+        emails = []
+
+    for email in emails:
+        has_work = email.status == "прийнято" or bool(email.order_id) or email.id in with_orders
+        if action == "reject":
+            if has_work or email.status != "нове":
+                skipped += 1
+                continue
+            email.status = "відхилено"
+        elif action == "unfilter":
+            if not email.filter_category:
+                skipped += 1
+                continue
+            email.filter_category = None
+            email.filter_rule_id = None
+        elif action == "restore":
+            if has_work or email.status != "відхилено":
+                skipped += 1
+                continue
+            email.status = "нове"
+        elif action == "to_inbox":
+            if has_work or not email.mailbox_folder:
+                skipped += 1
+                continue
+            try:
+                move_message_back_to_inbox(db, email)
+            except Exception as exc:  # noqa: BLE001
+                db.rollback()
+                errors.append(str(exc))
+                continue
+        # Комітимо ПО ОДНОМУ: IMAP-переніс уже відбувся в скриньці, і збій на
+        # наступному листі не має відкотити базу вже перенесених (інакше база
+        # розійдеться зі скринькою).
+        db.commit()
+        done += 1
+
+    label = f"Перенесено в «{folder}»" if action in ("move_processed", "move_to") else _BULK_LABELS[action]
+    parts = [f"{label}: {done}"]
+    if skipped:
+        parts.append(
+            f"пропущено {skipped} — прийняті або вже не в цьому стані"
+            if action in ("reject", "restore", "to_inbox", "return_inbox")
+            else f"пропущено {skipped}"
+        )
+    if errors:
+        parts.append(f"не вдалося {len(errors)}: {errors[0]}")
+    request.session["toast_flash"] = {
+        "kind": "error" if errors and not done else "success",
+        "message": " · ".join(parts),
+    }
+    return RedirectResponse(_mail_back_url(request), status_code=303)
 
 
 _DEFAULT_FILTER_CATEGORIES = ["3D-друк", "бухгалтерія", "спам", "інше"]
@@ -2195,4 +2700,4 @@ def restore_email(
             "message": "Прийняття відкочено: роботи видалено, файли повернуто в лист.",
         }
 
-    return RedirectResponse("/mail", status_code=303)
+    return RedirectResponse(_mail_back_url(request), status_code=303)

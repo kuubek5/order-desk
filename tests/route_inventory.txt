@@ -56,6 +56,9 @@ GET /discs/all
 POST /settings/materials/add
 POST /settings/machines/{machine_id}/delete
 POST /mail/{email_id}/accept
+POST /mail/accept-batch
+POST /mail/bulk
+GET /mail/move-folders
 POST /orders/{order_id}/sum3d-id
 GET /furnaces/cards
 POST /orders/{order_id}/unmark-found

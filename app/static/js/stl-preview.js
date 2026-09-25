@@ -771,8 +771,13 @@
     applyTitle(triggerEl);
 
     if (state.folderBtnEl) {
-      if (folderUri) {
-        state.folderBtnEl.href = folderUri;
+      // Кнопка відкриває теку за ТОКЕНОМ (/open-folder, обробник вище) — file://
+      // посилання їй не потрібне. Раніше вона вмикалась лише з folderUri, і в
+      // картці листа (іконка прев'ю біля файлу, без href) її не було взагалі
+      // (власник 25.09.26: «в STL-прев'ю кнопку відкрити папку»).
+      if (folderUri || token) {
+        if (folderUri) state.folderBtnEl.href = folderUri;
+        else state.folderBtnEl.removeAttribute("href");
         state.folderBtnEl.hidden = false;
       } else {
         state.folderBtnEl.hidden = true;

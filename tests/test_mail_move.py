@@ -148,7 +148,8 @@ class TestProcessedTabFiltering:
         _, _, processed = client.get("/mail?view=processed")
         # Перенесений лист не в «Усі листи», а у вкладці папки.
         assert "mailrow-" in pending
-        assert "↦ у папці" in processed
+        # Бейдж називає саму папку (25.09.26: «Перемістити» кладе в будь-яку).
+        assert "↦ Оброблено" in processed
         assert f"mailrow-{today_id}" in processed      # сьогоднішній показано
         assert f"mailrow-{yest_id}" not in processed   # вчорашній схований
         # Значок вкладки папки рахує саме перенесені.

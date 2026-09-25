@@ -1,0 +1,81 @@
+{# Режим читання листа — повний текст, розкладений на частини
+   (app/mail_body_view.py). Замовники пишуть багато, і не все корисне, але
+   прочитати треба ВСЕ (власник 25.09.26). Тому тут нічого не скорочено: слова
+   замовника — головним, службове (заголовок пересилання, список файлів ukr.net,
+   підпис) — приглушено, а «Оригінал» показує текст як є, дослівно.
+
+   Нативний <dialog> через showModal (mail.js, [data-letter-open]): верхній шар,
+   Esc і фокус «з коробки», і його не обрізає прокрутка панелі картки. Виїжджає
+   справа, як паспорт роботи в черзі (.detail-pane) — той самий жест у
+   застосунку. Включається з _mail_detail_panel.html; потребує контексту
+   `_mail_panel_context` (letter_segments, letter_inline). #}
+<dialog class="letter-reader" data-mode="clean" aria-labelledby="lr-title-{{ email.id }}">
+    <header class="lr-head">
+        <div class="lr-who">
+            <h2 class="lr-title" id="lr-title-{{ email.id }}">{{ email.from_name or email.from_address or 'Відправник не визначений' }}</h2>
+            <div class="lr-meta mono">{% if email.from_address %}{{ email.from_address }}{% endif %}{% if email.received_at %} · {{ email.received_at.strftime('%d.%m.%y %H:%M') }}{% endif %}</div>
+            {% set _subj = (email.subject or '')|trim %}
+            {% if _subj and _subj|lower not in ('fwd:', 're:', 'fw:', 'fwd', 're') %}
+            <div class="lr-subj"><span>Тема:</span> {{ _subj }}</div>
+            {% endif %}
+        </div>
+        <div class="lr-tools">
+            <div class="lr-seg" role="group" aria-label="Вигляд тексту">
+                <button type="button" data-lr-mode="clean" aria-pressed="true" title="Слова замовника окремо від службового">Чисто</button>
+                <button type="button" data-lr-mode="raw" aria-pressed="false" title="Текст листа дослівно, як прийшов">Оригінал</button>
+            </div>
+            <button type="button" class="lr-close" data-letter-close aria-label="Закрити (Esc)" title="Закрити (Esc)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="lr-scroll">
+        <article class="lr-clean">
+            {% for seg in letter_segments %}
+            {% if seg.kind == 'text' %}
+            <div class="lr-text">
+                {% for line in seg.lines %}
+                {% if line.strip() %}
+                <p>{% for kind, piece in letter_inline(line) %}{% if kind == 'shade' %}<mark class="lr-shade">{{ piece }}</mark>{% elif kind == 'link' %}<span class="lr-link" title="Повна адреса — у «Оригіналі»">{{ piece }}</span>{% else %}{{ piece }}{% endif %}{% endfor %}</p>
+                {% else %}
+                <p class="lr-gap" aria-hidden="true"></p>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% elif seg.kind == 'forward' %}
+            <div class="lr-forward">
+                <span class="lr-tag">Переслано</span>
+                <dl>
+                    {% for key, value in seg.fields %}
+                    {% if value and value != '.' %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endif %}
+                    {% endfor %}
+                </dl>
+            </div>
+            {% elif seg.kind == 'files' %}
+            <section class="lr-files">
+                <div class="lr-sec-head">
+                    <span class="lr-tag">Файли за посиланням · {{ seg.files|length }}</span>
+                    {% if seg.note %}<span class="lr-note">{{ seg.note }}</span>{% endif %}
+                </div>
+                <ul>
+                    {% for f in seg.files %}
+                    <li><span class="lr-fname mono">{{ f.name }}</span>{% if f.size %}<span class="lr-fsize mono">{{ f.size }}</span>{% endif %}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+            {% elif seg.kind == 'mailer' %}
+            <p class="lr-mailer" title="Рекламний рядок поштовика — не слова замовника">{{ seg.lines[0] }}</p>
+            {% elif seg.kind == 'signature' %}
+            <details class="lr-sign">
+                <summary>Підпис відправника</summary>
+                <div>{% for line in seg.lines %}{% if line.strip() %}<p>{{ line }}</p>{% endif %}{% endfor %}</div>
+            </details>
+            {% endif %}
+            {% else %}
+            <p class="lr-empty">Лист без тексту.</p>
+            {% endfor %}
+        </article>
+        <pre class="lr-raw">{{ email.body_text }}</pre>
+    </div>
+</dialog>

@@ -1,0 +1,115 @@
+{# Конвеєр (блок B, MAIL_STRIPE_BATCH_BRIEF.md) — таблиця батчу в панелі
+   #mail-detail замість картки, коли обрано ≥1 лист. Рядок на лист:
+   ▸ · Клієнт · Матеріал · К-сть · Файли · Ляже у. Клітинки клієнт/матеріал/к-сть
+   редаговані; ▸ розгортає текст листа + файли. Стан вибору живе ЛИШЕ в браузері
+   (mail.js) — це `GET /mail?partial=batch`, не новий роут. Значення — ті самі
+   здогади, що пішли б у картку (`_mail_panel_context` на сервері), тож джерело
+   правди одне.
+
+   Прийняття — `POST /mail/accept-batch`: mail.js збирає рядки в `payload` (JSON),
+   кожен лист приймається своїм `accept_letter`. Потребує: batch_rows (список
+   контекстів картки), user. #}
+{% set n = batch_rows|length %}
+{% set m = batch_rows|sum(attribute='attachment_count') %}
+<div class="mailbatch" id="mail-batch" data-batch-count="{{ n }}">
+    <div class="mb-head">
+        <span class="mb-title">Конвеєр — обрано <b>{{ n }}</b> {% if n == 1 %}лист{% elif n < 5 %}листи{% else %}листів{% endif %}</span>
+        <button type="button" class="btn sm mb-clear" data-batch-clear>Зняти вибір</button>
+    </div>
+
+    <form id="mail-batch-form" class="mb-form">
+        <div class="mb-tablewrap">
+            <table class="mb-table">
+                <thead>
+                    <tr>
+                        <th class="mb-c-exp" aria-label="Розгорнути"></th>
+                        <th class="mb-c-client">Клієнт</th>
+                        <th class="mb-c-mat">Матеріал · колір</th>
+                        <th class="mb-c-qty">К-сть</th>
+                        <th class="mb-c-files">Файли</th>
+                        <th class="mb-c-path">Ляже у</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in batch_rows %}
+                {% set e = r.email %}
+                <tr class="mb-row" data-batch-id="{{ e.id }}">
+                    <td class="mb-exp">
+                        <button type="button" class="mb-caret" data-batch-expand="{{ e.id }}"
+                                aria-expanded="false" aria-label="Розгорнути лист">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                        </button>
+                        {# Приховані поля, що їдуть у payload разом із видимими. kind у
+                           таблиці не показуємо (немає стовпця) — везеться здогадом;
+                           folder_pick — ефективна тека з картки (дефолт постійного
+                           клієнта), щоб батч клав файли туди ж, куди й картка. #}
+                        <input type="hidden" name="kind" value="{{ r.kind }}">
+                        <input type="hidden" name="folder_pick" value="{{ r.folder_pick }}">
+                    </td>
+                    <td class="mb-client">
+                        <input type="text" name="client_name" class="suminput" value="{{ r.client_name }}"
+                               placeholder="ім’я клієнта" aria-label="Клієнт"
+                               hx-post="/mail/{{ e.id }}/wizard" hx-vals='{"step":"1","frag":"path"}'
+                               hx-include="closest tr" hx-target="#bt-path-{{ e.id }}" hx-swap="innerHTML"
+                               hx-trigger="change">
+                    </td>
+                    <td class="mb-mat">
+                        <input type="text" name="material_color" class="suminput" value="{{ r.material_color }}"
+                               placeholder="напр. емо а3.5" aria-label="Матеріал і колір"
+                               hx-post="/mail/{{ e.id }}/wizard" hx-vals='{"step":"1","frag":"path"}'
+                               hx-include="closest tr" hx-target="#bt-path-{{ e.id }}" hx-swap="innerHTML"
+                               hx-trigger="change">
+                    </td>
+                    <td class="mb-qty">
+                        <input type="text" name="quantity" class="suminput mono" value="{{ r.quantity }}"
+                               placeholder="—" aria-label="Кількість">
+                    </td>
+                    <td class="mb-files">
+                        <span class="mb-filechip {% if r.undownloaded_files or r.undownloaded_links %}warn{% else %}ok{% endif %}">
+                            {{ r.attachment_count }} файл.{% if r.undownloaded_links %} · 🔗{{ r.undownloaded_links|length }}{% endif %}
+                        </span>
+                    </td>
+                    <td class="mb-path">
+                        <span class="wph-line" id="bt-path-{{ e.id }}">
+                            {% with email=e, preview=r.preview, attachment_count=r.attachment_count %}
+                            {% include "_mail_path_preview.html" %}
+                            {% endwith %}
+                        </span>
+                    </td>
+                </tr>
+                <tr class="mb-detailrow" data-detail-id="{{ e.id }}" hidden>
+                    <td colspan="6">
+                        <div class="mb-detail">
+                            {% if e.body_text %}
+                            <div class="mb-body">{{ e.body_text }}</div>
+                            {% endif %}
+                            {% if e.attachments %}
+                            {# Імена файлів — для звірки перед прийняттям. Повне STL-прев'ю
+                               лишається в одиночній картці (клік по листу); тут воно не
+                               ставиться свідомо: сторож STL бачить лише Jinja-include, а
+                               таблицю вантажить htmx у вже-STL-сторінку. #}
+                            <div class="mb-atts">
+                                {% for attachment in e.attachments %}
+                                <span class="mb-att mono"><span class="mb-attname">{{ attachment.filename }}</span></span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+
+    <div class="mb-foot">
+        <span class="mb-summary"><b>{{ n }}</b> {% if n == 1 %}робота{% elif n < 5 %}роботи{% else %}робіт{% endif %}, <b>{{ m }}</b> {% if m == 1 %}файл{% elif m % 10 in [2,3,4] and m % 100 not in [12,13,14] %}файли{% else %}файлів{% endif %} переїдуть</span>
+        <button type="button" class="btn apex mb-accept"
+                hx-post="/mail/accept-batch" hx-target="#mail-detail" hx-swap="innerHTML"
+                hx-vals='js:{payload: window.collectMailBatch()}'
+                hx-indicator="this" hx-disabled-elt="this">
+            ✓ Прийняти {{ n }} в чергу
+        </button>
+    </div>
+</div>

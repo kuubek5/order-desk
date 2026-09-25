@@ -27,6 +27,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -41,6 +42,7 @@ from app.material_catalog import (
     resolve_material_id,
 )
 from app.material_classifier import match_key, match_keys
+from app.material_match import _CYRILLIC_SHADE, _SHADE_RE, _tokens as _mm_tokens
 from app.models import Material, Order
 
 # Short badge per material category. Kept here (a display concern) rather than in
@@ -236,6 +238,268 @@ def autofill_shortcuts(
         if not placed:
             skipped += 1
     return added, skipped
+
+
+# ── Канонічні підказки для листа (власник 25.09.26) ───────────────────────────
+# Картка листа пропонувала чіпи з СИРИХ написань лабораторії («моноліт А2»,
+# «моноліт Д3», «Моноліт а 3») — кожен лист плодив би ще одне. Канон — ЛАТИНОЮ
+# (`mono a2`, `emo a2`; рішення власника 16.09.26), і він уже є в даних: це
+# представники frecency-кластерів без кирилиці. Тут — звести здогад листа
+# («Monolith», «моноліт а 3», «емо») до слова канону й підставити відтінки листа.
+
+_CYRILLIC = re.compile(r"[а-яіїєґё]", re.IGNORECASE)
+_MIN_PREFIX_WORD = 3
+"""Слово канону коротше за це збігається лише ЦІЛКОМ: інакше `z` (з `z nat a3`)
+ставав би «матеріалом» будь-якого здогаду на з-, наприклад «зуб»."""
+
+
+def _latin_entries(session: Session) -> list[_Entry]:
+    """Frecency-представники без кирилиці, найчастіші першими."""
+    return sorted(
+        (e for e in _frecency_entries(session) if not _CYRILLIC.search(e.text)),
+        key=lambda e: (-e.c90, e.text),
+    )
+
+
+def _word_of(entry: _Entry) -> str:
+    return entry.key.split(" ", 1)[0]
+
+
+def _colour_of(entry: _Entry) -> str:
+    parts = entry.key.split(" ", 1)
+    return parts[1].replace(" ", "") if len(parts) == 2 else ""
+
+
+def _shade_key(value: str) -> str:
+    """Відтінок для звіряння, як у `material_match`: `А 3,5` / `a3.5` → `a3.5`
+    (кирилична літера відтінку = латинська)."""
+    return "".join(_mm_tokens(value)).lower().translate(_CYRILLIC_SHADE)
+
+
+def shades_in(text: str | None) -> list[str]:
+    """Відтінки шкали Vita в рядку здогаду: «моноліт а 3» → [`a3`]. Решта слів
+    («корея», «репліка») відтінком не є — з них чіп не складаємо."""
+    out: list[str] = []
+    for token in _mm_tokens(text):
+        if _SHADE_RE.match(token):
+            key = _shade_key(token)
+            if key not in out:
+                out.append(key)
+    return out
+
+
+_MIN_WORD_USES = 5
+"""Лінія матеріалу — слово, яким цех написав щонайменше стільки робіт за 90
+днів. Одноразова описка в таблиці (`pmmma a3`, `monolith a3`) каноном не стає й
+у варіанти не лізе."""
+_FUZZY_WORD = 85.0
+"""Схожість слова з тексту листа на слово канону («капа» → `kappa`). Лише для
+слів ≥4 літер: короткі збігаються надто легко."""
+
+
+def _word_weights(session: Session) -> Counter[str]:
+    weight: Counter[str] = Counter()
+    for entry in _latin_entries(session):
+        weight[_word_of(entry)] += entry.c90
+    return Counter({w: n for w, n in weight.items() if n >= _MIN_WORD_USES})
+
+
+def _match_word(
+    token: str, weight: Counter[str], *, allow_short: bool, fuzzy: bool = False
+) -> str | None:
+    """Слово канону для одного згорнутого слова: канон — його початок або воно —
+    початок канону (обидва ≥3 літер; коротше — лише повний збіг, і то лише коли
+    `allow_short`). Кілька кандидатів (`mono` і рідкісне `monolith`) — вирішує
+    ЧАСТОТА: канон той, яким цех пише щодня."""
+    if not token:
+        return None
+    best: tuple[int, str] | None = None
+    for word, total in weight.items():
+        if not word:
+            continue
+        if len(word) < _MIN_PREFIX_WORD or len(token) < _MIN_PREFIX_WORD:
+            hit = allow_short and word == token
+        else:
+            hit = token.startswith(word) or word.startswith(token) or (
+                fuzzy and len(token) >= 4 and len(word) >= 4
+                and fuzz.ratio(token, word) >= _FUZZY_WORD
+            )
+        if hit and (best is None or (total, word) > best):
+            best = (total, word)
+    return best[1] if best else None
+
+
+def canonical_material_word(
+    session: Session, guess: str | None, context: str | None = None
+) -> str | None:
+    """Слово канону: «Monolith» / «моноліт» → `mono`, «емо» → `emo`, «титан» → `tit`.
+
+    Спершу ПЕРШЕ слово здогаду. Здогад матеріалу не назвав («B1») — шукаємо в
+    тексті замовника (`context`) перше слово, що зводиться до канону: клієнти
+    пишуть криво («Колір B1, циркон, Monolight…» → `mono`, власник 25.09.26).
+    У тексті пропускаємо числа, відтінки й короткі слова канону (`z`, `s1`) —
+    там вони збігались би з чим завгодно. None — впізнати нема з чим."""
+    weight = _word_weights(session)
+    key = match_key(guess or "")
+    word = _match_word(key.split(" ", 1)[0] if key else "", weight, allow_short=True)
+    return word or _context_word(session, context, weight)
+
+
+def _context_word(session: Session, context: str | None, weight: Counter[str]) -> str | None:
+    """Перше слово тексту замовника, що зводиться до канону (з нечітким збігом
+    для кривих написань: «Monolight» → `mono`, «капа» → `kappa`).
+
+    Вільний текст — не здогад: у ньому звичайні слова. Коротке слово канону
+    (`tit`, `emo`, `wax`) як ПОЧАТОК слова тексту приймаємо лише тоді, коли
+    бібліотека матеріалів сама впізнає це слово як матеріал: «титан» → так,
+    «тітка» → ні."""
+    alias_rows = None
+    names = None
+    for token in _mm_tokens(context):
+        if token.isdigit() or _SHADE_RE.match(token) or not any(ch.isalpha() for ch in token):
+            continue
+        key = match_key(token)
+        word = _match_word(key, weight, allow_short=False, fuzzy=True)
+        if not word:
+            continue
+        if len(word) <= _MIN_PREFIX_WORD and key != word:
+            if alias_rows is None:
+                ensure_seeded(session)
+                alias_rows = load_alias_rows(session)
+                names = material_id_by_name(session)
+            if resolve_material_id(token, alias_rows, names or {}) is None:
+                continue
+        return word
+    return None
+
+
+def canonical_material(
+    session: Session, guess: str | None, shade: str | None, context: str | None = None
+) -> str | None:
+    """Канонічний рядок «матеріал колір» для відтінку листа: наявне латинське
+    написання з даних (`mono a3,5` — як цех його пише найчастіше), або, якщо
+    такого ще не було, `слово відтінок`. None — слово матеріалу не впізнано."""
+    word = canonical_material_word(session, guess, context)
+    if not word:
+        return None
+    if not shade:
+        return word
+    want = _shade_key(shade)
+    for entry in _latin_entries(session):
+        if _word_of(entry) == word and _colour_of(entry) == want:
+            return entry.text
+    return f"{word} {want}"
+
+
+def _wanted_shades(guess: str | None, shades: list[str] | None, context: str | None) -> list[str]:
+    return [_shade_key(s) for s in (shades or [])] or shades_in(guess) or shades_in(context)
+
+
+def best_material(session: Session, guess: str | None, context: str | None = None) -> str | None:
+    """ОДНА впевнена відповідь для поля матеріалу: матеріал упізнано (у здогаді чи
+    в тексті) і відтінок рівно один. Інакше None — поле лишається як було,
+    вгадувати колір чи матеріал не можна."""
+    wanted = _wanted_shades(guess, None, context)
+    if len(wanted) != 1:
+        return None
+    if not canonical_material_word(session, guess, context):
+        return None
+    return canonical_material(session, guess, wanted[0], context)
+
+
+def row_label(session: Session, guess: str | None, context: str | None = None) -> dict | None:
+    """Підпис чіпа в РЯДКУ списку листів: `{"badge": "Zr", "text": "mono b1"}`
+    (власник 25.09.26: «в чіпах писати Zr mono b1»). Та сама відповідь, що
+    підставиться в поле картки (`best_material`); колір невідомий чи їх кілька —
+    лише лінія (`mono`). Матеріал не впізнано — None (чіп тоді будує старий
+    `mail_material_badge` зі здогаду, або його немає)."""
+    word = canonical_material_word(session, guess, context)
+    if not word:
+        return None
+    text = best_material(session, guess, context) or word
+    badge = next((e.badge for e in _latin_entries(session) if _word_of(e) == word and e.badge), None)
+    return {"badge": badge, "text": text}
+
+
+def canonical_suggestions(
+    session: Session,
+    guess: str | None,
+    shades: list[str] | None = None,
+    *,
+    context: str | None = None,
+    limit: int = 3,
+) -> list[Suggestion]:
+    """Чіпи матеріалу на картці листа — ЛИШЕ латинський канон, як у ручному
+    додаванні (`mono a2`, `emo a2`).
+
+    Спершу НАЙІМОВІРНІШЕ (`kind="best"`): упізнаний матеріал (здогад або текст
+    замовника) × відтінки листа (передані з `mail_color_split`, зі здогаду чи з
+    тексту). Далі ВАРІАНТИ (`kind="alt"`): той самий відтінок в інших лініях того
+    ж матеріалу (`emo b1` поряд із `mono b1`), або — без відтінку — найчастіші
+    написання. Матеріал словом не впізнано, але бібліотека знає його
+    («Цирконій», «циркон») — лише варіанти цього матеріалу. Інакше — нічого:
+    вгаданий чіп гірший за відсутній (власник 25.09.26: «тільки правильно
+    підказувало, а вже потім варіанти»)."""
+    entries = _latin_entries(session)
+    word = canonical_material_word(session, guess, context)
+    wanted = _wanted_shades(guess, shades, context)
+    out: list[Suggestion] = []
+    seen: set[str] = set()
+
+    def add(text: str, entry: _Entry | None, kind: str, badge: str | None = None) -> None:
+        k = match_key(text)
+        if k in seen or len(out) >= limit:
+            return
+        seen.add(k)
+        out.append(Suggestion(
+            kind=kind, text=text,
+            badge=entry.badge if entry else badge,
+            material_id=entry.material_id if entry else None,
+            count=entry.c90 if entry else 0,
+        ))
+
+    by_text = {e.text: e for e in entries}
+    mid: int | None = None
+    if word:
+        own = [e for e in entries if _word_of(e) == word]
+        badge = next((e.badge for e in own if e.badge), None)
+        mids = Counter(e.material_id for e in own if e.material_id is not None)
+        mid = mids.most_common(1)[0][0] if mids else None
+        if wanted:
+            for shade in wanted:
+                text = canonical_material(session, guess, shade, context)
+                if text:
+                    add(text, by_text.get(text), "best", badge)
+    else:
+        # Лише за ЗДОГАДОМ («Цирконій»), не за всім текстом: у тексті листа
+        # (службовий лист скриньки, підпис) бібліотека «знаходила» цирконій там,
+        # де про матеріал не було ні слова.
+        ensure_seeded(session)
+        mid = resolve_material_id(guess or "", load_alias_rows(session), material_id_by_name(session))
+        if mid is None:
+            return []
+    weight = _word_weights(session)
+    # Замовник у тексті назвав ІНШУ лінію, ніж здогад («ПММА» у темі, «капа» в
+    # тексті) — вона першим варіантом.
+    ctx_word = _context_word(session, context, weight)
+    if ctx_word and ctx_word != word:
+        for entry in entries:
+            if _word_of(entry) == ctx_word and (not wanted or _colour_of(entry) in wanted):
+                add(entry.text, entry, "alt")
+                break
+    # Відтінку немає — найчастіші написання впізнаної лінії.
+    if word and not wanted:
+        for entry in entries:
+            if _word_of(entry) == word:
+                add(entry.text, entry, "alt")
+    # Варіанти: той самий матеріал (Zr, PMMA…), інша РЕАЛЬНА лінія — з відтінком листа.
+    for entry in entries:
+        if (
+            mid is not None and entry.material_id == mid and _word_of(entry) in weight
+            and (not wanted or _colour_of(entry) in wanted)
+        ):
+            add(entry.text, entry, "alt")
+    return out
 
 
 def suggest_materials(

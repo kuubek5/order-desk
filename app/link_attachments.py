@@ -37,7 +37,11 @@ _ALLOWED_SUFFIXES = (".ukr.net",)  # dl.ukr.net and any eDisk subdomain
 _DRIVE_ID_RE = re.compile(
     r"drive\.google\.com/(?:file/d/|open\?id=|uc\?(?:[^\s\"'<>]*&)?id=)([A-Za-z0-9_-]{20,})"
 )
-_UKR_LINK_RE = re.compile(r"https?://(?:dl|edisk)\.ukr\.net/[^\s\"'<>\)]+")
+# `files.ukr.net/package/item/download?item=…&token=…` — файлообмінник ukr.net
+# для великих файлів («буде видалено автоматично 09.10»). Бойовий лист 25.09.26:
+# дев'ять STL саме так, а шаблон знав лише dl/edisk і не бачив жодного.
+_UKR_LINK_RE = re.compile(r"https?://(?:dl|edisk|files)\.ukr\.net/[^\s\"'<>\)]+")
+_UKR_ITEM_RE = re.compile(r"[?&]item=(\d+)")
 
 _MAX_BYTES = 300 * 1024 * 1024  # 300 MB — comfortably above real STL/CAD files
 _CHUNK = 65536
@@ -113,7 +117,11 @@ def extract_download_links(text: str | None) -> list[LinkAttachment]:
         if key in seen:
             continue
         seen.add(key)
-        links.append(LinkAttachment(kind="ukrnet", url=url, display=url))
+        # Посилання файлообмінника несе довгий токен — на екрані це стіна
+        # символів. Номер файлу коротший і так само відрізняє рядки.
+        item = _UKR_ITEM_RE.search(url)
+        display = f"ukr.net · файл {item.group(1)}" if item else url
+        links.append(LinkAttachment(kind="ukrnet", url=url, display=display))
 
     return links
 

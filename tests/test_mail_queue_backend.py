@@ -1705,6 +1705,39 @@ def test_restore_from_archive_sets_toast(monkeypatch):
         assert "Усі листи" in req.session["toast_flash"]["message"]
 
 
+def test_restore_stays_on_the_tab_it_was_pressed_from():
+    """«↩» у вкладці «Архів» лишає оператора в «Архіві», а не кидає на
+    «Усі листи» (власник 25.09.26 — розбирав папку й щоразу клацав її знову)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        rejected = EmailMessage(uid="r", status="відхилено")
+        db.add(rejected)
+        db.commit()
+        req = _request(user.id)
+        req.headers = {"referer": "http://127.0.0.1:8000/mail?view=archive&service=all"}
+        resp = mail_router_mod.restore_email(request=req, email_id=rejected.id, db=db)
+        assert resp.status_code == 303 and resp.headers["location"] == "/mail?view=archive"
+
+
+def test_mail_back_url_whitelists_the_page_address():
+    back = mail_router_mod._mail_back_url
+
+    def req(**headers):
+        return SimpleNamespace(headers=headers)
+
+    # htmx-кнопка картки: сторінка — у HX-Current-URL, він важливіший за Referer.
+    assert back(req(**{"HX-Current-URL": "http://h/mail?view=processed",
+                       "referer": "http://h/mail?view=archive"}), open_id=5) == "/mail?view=processed"
+    # «Усі листи»: картку лишаємо відкритою — повернутий лист якраз тут.
+    assert back(req(referer="http://h/mail?open=3"), open_id=5) == "/mail?open=5"
+    assert back(req(), open_id=5) == "/mail?open=5"
+    assert back(req()) == "/mail"
+    # Чуже чи вигадане не проходить: інша сторінка, невідома вкладка.
+    assert back(req(referer="http://h/orders/1?view=archive")) == "/mail"
+    assert back(req(referer="http://h/mail?view=evil")) == "/mail"
+
+
 def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
     """The 15s poll must not insert newly arrived letters into the list under
     the operator's cursor. With `since` echoed back, the refreshed list holds

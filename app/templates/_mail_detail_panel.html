@@ -1,3 +1,13 @@
+{# Розгорнути список файлів на весь зріст — «загальна картина» (власник
+   25.09.26). Лише коли файлів більше, ніж влазить (3). Стан памʼятає mail.js
+   ([data-attlist-toggle], KMStore) і переживає автооновлення картки. #}
+{% macro attlist_bar(n) %}{% if n > 3 %}<div class="mc-attlist-bar">
+    <span class="mc-attlist-count">Файли · {{ n }}</span>
+    <button type="button" class="mc-attlist-toggle" data-attlist-toggle aria-expanded="false" title="Показати всі файли листа одним списком">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></svg>
+        <span class="mc-attlist-label">Розгорнути</span>
+    </button>
+</div>{% endif %}{% endmacro %}
 {# Triage detail — блок A «Стрічка»: ОДНА картка одного листа, без вкладок і без
    майстра на 3 кроки. Один екран без вертикального скролу на 1280×800 (правило
    жорстке, MAIL_STRIPE_BATCH_BRIEF.md): на видноті лише те, що потрібно, щоб
@@ -58,14 +68,24 @@
     {% endif %}
 
     {# ---------- 2 · Що пише замовник (2 рядки + розгорнути) ---------- #}
+    {# Лише СЛОВА ЗАМОВНИКА (без заголовка пересилання, підпису, списку файлів
+       ukr.net з токенами) — 2 рядки. Клік по тексту розгортає його ТУТ ЖЕ, як
+       було до «Стрічки» (власник 25.09.26); повністю, з усім службовим, — лише
+       кнопкою «Читати лист» (_mail_letter_reader.html). Текст — не <button>:
+       телефон чи адресу з розгорнутого треба вміти виділити й скопіювати. #}
     {% if email.body_text %}
-    <details class="mc-body">
-        <summary>
+    <div class="mc-body">
+        <div class="mc-body-top">
             <span class="mc-body-label">Що пише замовник</span>
-            <span class="mc-body-clip">{{ email.body_text }}</span>
-            <span class="mc-body-more" aria-hidden="true">розгорнути ↓</span>
-        </summary>
-    </details>
+            <button type="button" class="mc-body-open" data-letter-open title="Прочитати лист повністю">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></svg>
+                <span>Читати лист</span>
+            </button>
+        </div>
+        <div class="mc-body-clip" data-body-toggle role="button" tabindex="0" aria-expanded="false" title="Розгорнути / згорнути текст">{% if letter_preview %}{% for line in letter_preview.split('\n') %}{% if line.strip() %}{% for kind, piece in letter_inline(line) %}{% if kind == 'shade' %}<mark class="lr-shade">{{ piece }}</mark>{% elif kind == 'link' %}<span class="lr-link">{{ piece }}</span>{% else %}{{ piece }}{% endif %}{% endfor %}{{ ' ' }}{% endif %}{% endfor %}{% else %}<span class="mc-body-empty">Лише службовий текст — відкрийте лист</span>{% endif %}</div>
+        <span class="mc-body-more" data-body-toggle aria-hidden="true"></span>
+    </div>
+    {% include "_mail_letter_reader.html" %}
     {% endif %}
 
     {% if is_new %}
@@ -84,7 +104,45 @@
 
             <div class="mc-atts">
                 {% if email.attachments %}
-                {% if multi %}<div class="mc-atts-hint">познач файли цього кольору — решта лишиться в листі</div>{% endif %}
+                {% if color_plan %}
+                {# Підказка кольорів (app/mail_color_split.py): пацієнт у тексті біля
+                   кольору ↔ пацієнт в імені файлу. Клік по групі позначає ЇЇ файли й
+                   підставляє матеріал — прийняття лишається звичайним частковим, по
+                   одному кольору (mail.js, [data-cp-ids]). Нічого не обирається саме:
+                   правило §2 «рішення за оператором». #}
+                <div class="mc-colorplan" role="group" aria-label="Кольори з листа">
+                    <span class="mc-cp-label">Кольори з листа:</span>
+                    {% for g in color_plan.groups %}
+                    <button type="button" class="mc-cp-chip"
+                            data-cp-ids="{{ g.attachment_ids|join(',') }}"
+                            data-cp-material="{{ g.material }}"
+                            title="Позначити файли {{ g.names|join(', ') }} і підставити «{{ g.material }}»">
+                        <b class="mono">{{ g.shade }}</b>
+                        <span class="mc-cp-who">{{ g.names|join(', ') }} · {{ g.attachment_ids|length }} файл.</span>
+                    </button>
+                    {% endfor %}
+                    {% if color_plan.unmatched_ids %}
+                    <span class="mc-cp-unk" title="Ім'я в назві файлу не збіглось з жодним пацієнтом у тексті — віднесіть вручну">? {{ color_plan.unmatched_ids|length }} файл. без кольору</span>
+                    {% endif %}
+                </div>
+                {% elif multi %}<div class="mc-atts-hint">познач файли цього кольору — решта лишиться в листі</div>{% endif %}
+                {# Однакові файли в листі (app/mail_duplicates.py): клієнт, схоже,
+                   надіслав роботу двічі — окремо й в архіві. Копії не позначені. #}
+                {% if dup_report and dup_report.copy_of %}
+                <div class="mc-dup-warn" role="status">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+                    <span><b>Схоже, клієнт надіслав ту саму роботу двічі:</b>
+                    {{ dup_report.copy_of|length }} {% if dup_report.copy_of|length == 1 %}файл повторює{% else %}файли повторюють{% endif %} інші байт-у-байт.
+                    Копії («дубль») не позначені — прийметься одна. Якщо справді потрібні дві — позначте вручну й уточніть у клієнта.</span>
+                </div>
+                {% endif %}
+                {% if dup_report and dup_report.name_conflicts %}
+                <div class="mc-dup-warn is-info" role="status">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg>
+                    <span><b>Однакова назва, різний вміст:</b> {{ dup_report.name_conflicts|join(', ') }} — можливо, клієнт надіслав виправлену версію. Перевірте, яку брати.</span>
+                </div>
+                {% endif %}
+                {{ attlist_bar(email.attachments|length) }}
                 <div class="mc-attlist">
                     {% for attachment in email.attachments %}
                     {% set is_missing = missing_attachment_ids and attachment.id in missing_attachment_ids %}
@@ -97,6 +155,18 @@
                         <span class="mc-attico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
                         {% endif %}
                         <span class="mc-attname mono">{{ attachment.filename }}</span>
+                        {% if attachment.filename.lower().endswith(('.zip', '.rar', '.7z')) and not is_missing %}
+                        <span class="mc-attarc" title="Архів ще не розпаковано — кнопка «Розпакувати архіви» під списком">архів · не розпаковано</span>
+                        {% endif %}
+                        {% if dup_report and attachment.id in dup_report.copy_of %}
+                        <span class="mc-attdup" title="Однаковий вміст з «{{ dup_report.copy_of[attachment.id] }}» — копія, не позначена">дубль</span>
+                        {% elif dup_report and attachment.id in dup_report.conflict_ids %}
+                        <span class="mc-attdup is-info" title="Така сама назва, але інший вміст — можливо, виправлена версія">інший вміст</span>
+                        {% endif %}
+                        {% if color_plan and not claimed and not is_missing %}
+                        {% set _sh = color_plan.by_attachment.get(attachment.id) %}
+                        <span class="mc-attshade mono{% if not _sh %} unk{% endif %}"{% if not _sh %} title="Колір не визначено — віднесіть вручну"{% endif %}>{{ _sh or '?' }}</span>
+                        {% endif %}
                         {% if is_missing %}<span class="mc-attmiss">немає</span>{% endif %}
                         <span class="mc-attsize mono">{% if attachment.size_bytes %}{% if attachment.size_bytes >= 1048576 %}{{ (attachment.size_bytes / 1048576)|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}{% else %}—{% endif %}</span>
                         {# Іконка STL-прев'ю для КОЖНОГО файлу (власник 25.09.26): клік
@@ -154,21 +224,6 @@
                                 <span class="dl-lbl-idle">Скачати наново ({{ missing_count }})</span><span class="dl-lbl-busy">Скачую…</span>
                             </button>
                             {% endif %}
-                            {% if has_archive %}
-                            <button type="button" class="btn sm dl-btn"
-                                    hx-post="/mail/{{ email.id }}/extract-archives"
-                                    hx-target="#mail-detail" hx-swap="innerHTML" hx-indicator="this" hx-disabled-elt="this">
-                                <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 3h22v5H1zM10 12h4" class="duo"/><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
-                                <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-                                <span class="dl-lbl-idle">Розпакувати архіви</span><span class="dl-lbl-busy">Розпаковую…</span>
-                            </button>
-                            {% endif %}
-                            {% if on_disk_count %}
-                            <button type="button" class="btn sm accent-outline" data-open-folder-url="/mail/{{ email.id }}/open-folder">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
-                                Відкрити папку
-                            </button>
-                            {% endif %}
                         </div>
                         {% if body_links %}
                         <div class="mc-links">
@@ -189,6 +244,29 @@
                         {% endif %}
                     </div>
                 </details>
+                {# «Розпакувати архіви» й «Відкрити папку» — НА ВИДНОТІ, не в меню
+                   чіпа: після скачування картка перемальовується, меню знову
+                   згорнуте, і кнопок не було видно, поки не клацнеш «✓ скачано»
+                   (власник 25.09.26). #}
+                {% if has_archive or on_disk_count %}
+                <div class="att-actions mc-quick">
+                    {% if has_archive %}
+                    <button type="button" class="btn sm dl-btn"
+                            hx-post="/mail/{{ email.id }}/extract-archives"
+                            hx-target="#mail-detail" hx-swap="innerHTML" hx-indicator="this" hx-disabled-elt="this">
+                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 3h22v5H1zM10 12h4" class="duo"/><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
+                        <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+                        <span class="dl-lbl-idle">Розпакувати архіви</span><span class="dl-lbl-busy">Розпаковую…</span>
+                    </button>
+                    {% endif %}
+                    {% if on_disk_count %}
+                    <button type="button" class="btn sm accent-outline" data-open-folder-url="/mail/{{ email.id }}/open-folder">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
+                        Відкрити папку
+                    </button>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -215,11 +293,15 @@
                            hx-vals='{"step":"1","frag":"path"}' hx-target="#mail-path-summary" hx-swap="innerHTML" hx-trigger="change">
                     <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
                 </div>
+                {# Латинський канон (material_suggest.canonical_suggestions): спершу
+                   НАЙІМОВІРНІШЕ — упізнаний матеріал × відтінок листа (підсвічене),
+                   далі варіанти. Клік підставляє й перераховує шлях теки. #}
                 {% if material_cands %}
                 <div class="mc-cands">
                     {% for cand in material_cands %}
-                    <button type="button" class="wc-chip" data-mat="{{ cand }}"
-                            onclick="document.getElementById('mc-material').value=this.dataset.mat">{{ cand }}</button>
+                    <button type="button" class="wc-chip mono{% if cand.kind == 'best' %} is-best{% endif %}" data-mat="{{ cand.text }}"
+                            title="{% if cand.kind == 'best' %}Найімовірніше з листа{% else %}Варіант{% endif %}: «{{ cand.text }}»{% if cand.count %} · {{ cand.count }} робіт за 90 днів{% endif %}"
+                            onclick="var m=document.getElementById('mc-material');m.value=this.dataset.mat;m.dispatchEvent(new Event('change',{bubbles:true}))">{{ cand.text }}{% if cand.badge %}<span class="wc-chip-badge">{{ cand.badge }}</span>{% endif %}</button>
                     {% endfor %}
                 </div>
                 {% endif %}
@@ -255,7 +337,7 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
                     <span>змінити теку</span>
                 </summary>
-                {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "1", "#mail-card-form", "mc", hx_target="#mail-path-summary", hx_swap="innerHTML", frag="path") }}
+                {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "1", "#mail-card-form", "mc", hx_target="#mail-path-summary", hx_swap="innerHTML", frag="path", prefill_material=False) }}
             </details>
         </div>
     </form>
@@ -308,6 +390,7 @@
     <div class="mc-files mc-files-archived">
         <div class="mc-atts">
             {% if email.attachments %}
+            {{ attlist_bar(email.attachments|length) }}
             <div class="mc-attlist">
                 {% for attachment in email.attachments %}
                 {% set claimed = attachment.order_id is not none %}

@@ -534,6 +534,30 @@ def test_moving_files_drops_the_cached_token(tmp_path, monkeypatch):
     order_folder.clear_email_preview_token_cache()
 
 
+def test_letter_that_gained_files_gets_a_preview_token(tmp_path):
+    """Лист без файлів кешує «прев'ю немає». Файл, скачаний за посиланням,
+    має дати кнопку STL-прев'ю одразу в автооновленій картці, а не після F5
+    (власник 25.09.26): `forget_email_preview_token` скидає кеш ЦЬОГО листа."""
+    from app import order_folder
+
+    order_folder.clear_email_preview_token_cache()
+    roots = [tmp_path / "spool"]
+    preview_roots = {"mail": str(tmp_path / "spool")}
+    email = _FakeEmail(7, [])
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+    assert email.stl_preview_token is None  # файлів ще немає — і це закешовано
+
+    folder = _mail_folder(tmp_path)
+    email.attachments = [_FakeAttachment(str(folder / "crown.stl"))]
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+    assert email.stl_preview_token is None, "без скидання кеш бреше — саме ця вада"
+
+    order_folder.forget_email_preview_token(7)
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+    assert email.stl_preview_token
+    order_folder.clear_email_preview_token_cache()
+
+
 # ── file:// будується без звернення до сховища ─────────────────────────────
 # Аудит 08.09.26. Раніше тут стояв `folder.resolve()` — тобто рядковий на вигляд
 # хелпер насправді ходив на диск. На екрані видачі його кличуть у циклі по

@@ -140,6 +140,16 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
 .mailv2 .mailrow.active{background:var(--card-2);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .45)}
 .mailv2 .mailrow.active .from{color:var(--accent-c)}
+/* Клік по листу «смикав» рядок (власник 25.09.26): глобальний індикатор
+   зайнятості (element-styles.css, .htmx-request) на [role=button] додає
+   крутилку ::after, а в СІТЦІ рядка вона ставала новою клітинкою — рядок ріс
+   37→53px і штовхав усі нижчі на 15px, ще й тьмянів до .55 на час
+   завантаження картки. Відгук на клік тут уже є — підсвітка .active ставиться
+   одразу (mail.js), тож рядок не тьмяніє й не росте. pointer-events лишаємо
+   від глобального правила: подвійний клік не шле другий запит.
+   Специфічність 6 класів — глобальне правило важить 5 (через :not()). */
+.mailv2 .list-panel .listwrap .mailrow[role="button"].htmx-request{opacity:1;cursor:pointer;transition:none}
+.mailv2 .list-panel .listwrap .mailrow[role="button"].htmx-request::after{content:none;display:none}
 /* The two text lines. 2px between them — tighter than the 8px of padding that
    separates one row from the next, so proximity now groups correctly. */
 .mailv2 .mailrow .rowmain{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -273,6 +283,13 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .wc-label{font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .wc-chip{height:24px;padding:0 10px;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .34);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);font:inherit;font-size:var(--fs-1);cursor:pointer;transition:background var(--ui-speed) ease}
 .mailv2 .wc-chip:hover{background:rgba(var(--accent-base-rgb), .22)}
+/* Чіп матеріалу картки: латинський канон + бейдж категорії, як у ручному
+   додаванні. Найімовірніший (is-best) — залитий і з сильнішим контуром:
+   спершу правильна відповідь, а вже потім варіанти (власник 25.09.26). */
+.mailv2 .mc-cands .wc-chip{display:inline-flex;align-items:center;gap:6px;line-height:1}
+.mailv2 .mc-cands .wc-chip.is-best{background:rgba(var(--accent-base-rgb), .26);border-color:rgba(var(--accent-rgb), .8);color:var(--ink);font-weight:600}
+.mailv2 .mc-cands .wc-chip:not(.is-best){color:var(--ink-2)}
+.mailv2 .wc-chip-badge{font-size:var(--fs-0);font-weight:600;color:var(--ink-3);font-family:var(--font-mono)}
 .mailv2 .wpb-root{color:var(--ink-3)}
 .mailv2 .wpb-seg{padding:1px 6px;border-radius:5px;background:var(--raise);border:1px solid var(--line-2);color:var(--ink)}
 .mailv2 .wpb-seg.exists{border-color:rgba(var(--accent-rgb), .4);color:var(--accent-c)}
@@ -326,6 +343,12 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .linkrow.htmx-request{cursor:progress}
 .mailv2 .linkrow.htmx-request .link-spin1{display:inline-flex}
 .mailv2 .linkrow.htmx-request .link-ic{display:none}
+/* Крутилка стає НА МІСЦЕ іконки (зліва, та сама ширина 15px), а не в кінець
+   рядка: інакше ім'я файлу зʼїжджало вліво на час скачування. Глобальне кільце
+   [role=button].htmx-request::after (element-styles.css) тут друге — прибрати
+   (власник 25.09.26: дві крутилки поспіль, «відступи»). */
+.mailv2 .linkrow.htmx-request .link-spin1{order:-1;width:15px;justify-content:center}
+.mailv2 .linkrow[role="button"].htmx-request::after{content:none;display:none}
 .mailv2 .link-spin1 svg{width:15px;height:15px;stroke:var(--accent-c);fill:none;stroke-width:2;stroke-linecap:round;animation:link-spin 0.9s linear infinite}
 @keyframes link-spin{to{transform:rotate(360deg)}}
 .mailv2 .link-actions{display:flex;align-items:center;gap:10px;margin-top:4px}
@@ -639,21 +662,55 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mc-hint svg{width:13px;height:13px;flex:0 0 13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .mc-hint>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mailv2 .mc-flag{margin:0}
-/* 2 · Що пише замовник (2 рядки, далі розгорнути) */
-.mailv2 .mc-body{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.mailv2 .mc-body>summary{list-style:none;cursor:pointer;display:block}
-.mailv2 .mc-body>summary::-webkit-details-marker{display:none}
-.mailv2 .mc-body-label{display:block;font-size:var(--fs-0);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:4px}
-.mailv2 .mc-body-clip{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--fs-2);line-height:1.5;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
-.mailv2 .mc-body[open] .mc-body-clip{-webkit-line-clamp:unset;line-clamp:unset;overflow-y:auto;max-height:170px;scrollbar-width:thin}
-.mailv2 .mc-body-more{font-size:var(--fs-0);color:var(--accent-c);margin-top:4px;display:inline-block}
-.mailv2 .mc-body[open] .mc-body-more{display:none}
+/* 2 · Що пише замовник — 2 рядки слів замовника; повністю — у режимі читання */
+.mailv2 .mc-body{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:8px 12px 10px}
+.mailv2 .mc-body-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.mailv2 .mc-body-label{display:block;font-size:var(--fs-0);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.mailv2 .mc-body-open{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;border:1px solid transparent;background:none;color:var(--accent-c);font:inherit;font-size:var(--fs-0);cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.mailv2 .mc-body-open svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .mc-body-open:hover{background:rgba(var(--accent-base-rgb), .12);border-color:rgba(var(--accent-rgb), .3)}
+.mailv2 .mc-body-clip{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;width:100%;padding:0;border:0;background:none;text-align:left;cursor:pointer;font:inherit;font-size:var(--fs-2);line-height:1.5;color:var(--ink-2);word-break:break-word}
+.mailv2 .mc-body-clip:hover{color:var(--ink)}
+.mailv2 .mc-body-clip:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px;border-radius:4px}
+/* Розгорнуто на місці (клік по тексту, mail.js) — як старий <details>: повний
+   текст, довгий — скролом усередині блоку, картка не роздувається. */
+.mailv2 .mc-body.is-open .mc-body-clip{display:block;-webkit-line-clamp:unset;line-clamp:unset;max-height:170px;overflow-y:auto;scrollbar-width:thin;cursor:text;user-select:text}
+.mailv2 .mc-body-more{display:inline-block;margin-top:4px;font-size:var(--fs-0);color:var(--accent-c);cursor:pointer}
+.mailv2 .mc-body-more::after{content:"розгорнути ↓"}
+.mailv2 .mc-body.is-open .mc-body-more::after{content:"згорнути ↑"}
+/* Текст влазить у 2 рядки — розгортати нічого, підказку ховаємо (mail.js). */
+.mailv2 .mc-body.fits .mc-body-more{display:none}
+.mailv2 .mc-body.fits .mc-body-clip{cursor:default}
+.mailv2 .mc-body-empty{color:var(--ink-3);font-style:italic}
 /* 3 · Файли */
 .mailv2 .mc-files{display:flex;gap:14px;align-items:flex-start}
 .mailv2 .mc-atts{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
 .mailv2 .mc-atts .settings-hint{margin:0}
 .mailv2 .mc-atts-hint{font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .mc-attlist{display:flex;flex-direction:column;gap:5px;max-height:132px;overflow-y:auto;scrollbar-width:thin}
+/* Розгорнутий список файлів (кнопка «Розгорнути», mail.js): усі файли одним
+   поглядом; 60vh — стеля, щоб 40 файлів не виштовхнули форму за екран. */
+.mailv2 .mc-attlist.is-wide,.mailv2 .mc-files-archived .mc-attlist.is-wide{max-height:60vh}
+/* Однакові файли в листі (app/mail_duplicates.py) — попередження над списком і
+   бейдж на рядку копії. Бурштин — «зверни увагу», не аварія: нічого не втрачено. */
+.mailv2 .mc-dup-warn{display:flex;align-items:flex-start;gap:9px;padding:9px 12px;border-radius:10px;border:1px solid rgba(var(--warn-rgb, 230,160,60), .45);background:rgba(var(--warn-rgb, 230,160,60), .09);color:var(--ink-2);font-size:var(--fs-1);line-height:1.45}
+.mailv2 .mc-dup-warn b{color:var(--warn)}
+.mailv2 .mc-dup-warn svg{flex:0 0 16px;width:16px;height:16px;margin-top:1px;stroke:var(--warn);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .mc-dup-warn.is-info{border-color:var(--line-2);background:var(--field)}
+.mailv2 .mc-dup-warn.is-info b{color:var(--ink)}
+.mailv2 .mc-dup-warn.is-info svg{stroke:var(--ink-3)}
+.mailv2 .mc-attdup{flex:0 0 auto;padding:1px 7px;border-radius:5px;border:1px solid rgba(var(--warn-rgb, 230,160,60), .5);color:var(--warn);font-size:var(--fs-0);font-weight:600}
+/* Архів у списку файлів — ще не розпакований: інакше «Desktop.rar» читався як
+   звичайний файл роботи (власник 25.09.26). */
+.mailv2 .mc-attarc{flex:0 0 auto;padding:1px 7px;border-radius:5px;border:1px dashed rgba(var(--warn-rgb, 230,160,60), .6);color:var(--warn);font-size:var(--fs-0);font-weight:600}
+/* Дії з файлами на видноті — під чіпом, не в його меню */
+.mailv2 .att-actions.mc-quick{margin-top:0}
+.mailv2 .mc-attdup.is-info{border-color:var(--line-2);color:var(--ink-2)}
+.mailv2 .mc-attlist-bar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mailv2 .mc-attlist-count{font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.mailv2 .mc-attlist-toggle{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:6px;border:1px solid var(--line-2);background:none;color:var(--accent-c);font:inherit;font-size:var(--fs-0);cursor:pointer;transition:background var(--ui-speed) ease}
+.mailv2 .mc-attlist-toggle:hover{background:rgba(var(--accent-base-rgb), .12)}
+.mailv2 .mc-attlist-toggle svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .mc-attrow{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:8px;background:var(--field);border:1px solid var(--line);cursor:default}
 .mailv2 label.mc-attrow{cursor:pointer}
 .mailv2 .mc-attcb{width:15px;height:15px;flex:0 0 15px;accent-color:var(--accent-c);cursor:pointer;margin:0}
@@ -678,7 +735,7 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mc-dl-caret{font-size:var(--fs-0);transition:transform var(--ui-speed) ease}
 .mailv2 .mc-dl[open] .mc-dl-caret{transform:rotate(180deg)}
 .mailv2 .mc-dl-body{margin-top:8px;display:flex;flex-direction:column;gap:9px}
-.mailv2 .mc-links-head{display:flex;align-items:center;gap:10px;font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.mailv2 .mc-links-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .mailv2 .mc-links-head .btn{margin-left:auto;text-transform:none;letter-spacing:0}
 /* STL, компактне прев'ю в картці */
 .mailv2 .mc-stl{flex:0 0 300px;min-width:0}
@@ -743,3 +800,182 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
   .mailv2 .mc-stl .stl-gallery-files{flex:0 0 auto;width:100%;max-height:none;flex-direction:row;flex-wrap:wrap}
   .mailv2 .mc-fields{grid-template-columns:1fr 1fr}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Конвеєр (блок B) — вибір кількох листів + таблиця батчу.
+   Чекбокс у рядку списку, смуга «обрати всі готові», таблиця батчу в панелі.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Рядок списку з провідним чекбоксом: третя колонка ЗЛІВА (auto), решта як була.
+   .has-cb — усі вкладки, крім «Авто» (масові дії, 25.09.26). */
+.mailv2 .mailrow.has-cb{grid-template-columns:auto minmax(0,1fr) minmax(146px,max-content)}
+/* «Усі листи»: у правій колонці лише іконка готовності (кнопки ↦/✕ прибрано
+   25.09.26 — дії йдуть через галочки), тож підлога 146px лишала б порожнечу. */
+.mailv2 .mailrow.has-cb.row-slim{grid-template-columns:auto minmax(0,1fr) max-content}
+/* Сторінки списку (по 15, mail.js): рядок поза сторінкою ховається атрибутом
+   hidden — його треба явно перебити, бо .mailrow сам ставить display:grid. */
+.mailv2 .mailrow[hidden]{display:none}
+.mailv2 .mail-pager{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:7px 12px;border-top:1px solid var(--line)}
+.mailv2 .mail-pager[hidden]{display:none}
+.mailv2 .mail-pager button{min-width:30px;height:28px;padding:0 8px;border:1px solid transparent;border-radius:7px;background:none;color:var(--ink-2);font:inherit;font-size:var(--fs-1);font-family:var(--font-mono);cursor:pointer}
+.mailv2 .mail-pager button:hover:not(:disabled){background:var(--card-2);color:var(--ink)}
+.mailv2 .mail-pager button:disabled{opacity:.35;cursor:default}
+.mailv2 .mail-pager button[aria-current="page"]{border-color:var(--accent-b);color:var(--accent-c)}
+.mailv2 .mail-pager .mp-range{margin:0 6px;font-size:var(--fs-0);color:var(--ink-3);font-family:var(--font-mono)}
+.mailv2 .mail-pager .mp-all{margin-left:auto;font-family:inherit;border-color:var(--line-2)}
+.mailv2 .mailcb-wrap{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.mailv2 .mailcb{width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--accent-c)}
+.mailv2 .mailcb:disabled{cursor:not-allowed;opacity:.35}
+
+/* Смуга вибору над списком (поза поллом) */
+.mailv2 .mail-batchbar{display:flex;align-items:center;gap:12px;padding:7px 14px;border-bottom:1px solid var(--line);background:var(--bg-rail)}
+.mailv2 .mb-selall{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-1);color:var(--ink-2);cursor:pointer;user-select:none}
+.mailv2 .mb-selall input{width:15px;height:15px;margin:0;cursor:pointer;accent-color:var(--accent-c)}
+.mailv2 .mb-selcount{font-size:var(--fs-0);color:var(--accent-c);font-family:var(--font-mono)}
+/* Масові дії обраних — праворуч у смузі, лише коли щось обрано. Висота смуги
+   НЕЗМІННА (під кнопку), і вона ніколи не переноситься: перша ж галочка
+   розтягувала її з 34 до 72px (кнопки падали на другий рядок), і весь список
+   під курсором зʼїжджав на 38px (власник 25.09.26: «смикається весь модуль»).
+   Місце на кнопки звільняє підпис «Обрати всі…» — з вибором його заміняє
+   лічильник (`.has-sel`, mail.js); задовгий лічильник обрізається трикрапкою.
+   Власний шар (z-index), бо рядки списку нижче малюються пізніше й лягали
+   поверх меню «Перемістити». */
+.mailv2 .mail-batchbar{position:relative;z-index:3;flex-wrap:nowrap;box-sizing:border-box;min-height:42px;padding-top:4px;padding-bottom:4px}
+.mailv2 .mb-selall,.mailv2 .mb-selcount,.mailv2 .mb-actions .btn{white-space:nowrap}
+.mailv2 .mail-batchbar.has-sel .mb-selall span{display:none}
+.mailv2 .mb-selcount{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mailv2 .mb-actions{display:inline-flex;align-items:center;gap:6px;margin:0 0 0 auto;flex:0 0 auto}
+.mailv2 .mb-actions[hidden]{display:none}
+/* Меню «Перемістити»: папки скриньки під кнопкою (як у ukr.net) */
+.mailv2 .mb-move{position:relative}
+.mailv2 .mb-move>summary{list-style:none}
+.mailv2 .mb-move>summary::-webkit-details-marker{display:none}
+.mailv2 .mb-move[open]>summary{border-color:var(--accent-b);color:var(--ink)}
+.mailv2 .mb-move-body{position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-lightbox);min-width:280px;max-height:360px;overflow:auto;display:flex;flex-direction:column;padding:6px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);box-shadow:0 20px 60px -24px rgba(0,0,0,.9)}
+.mailv2 .mb-move-head{padding:8px 10px 6px;font-size:var(--fs-0);color:var(--ink-3)}
+.mailv2 .mb-move-err{padding:8px 10px;font-size:var(--fs-1);color:var(--warn)}
+.mailv2 .mb-move-opt{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:8px;background:none;color:var(--ink);font:inherit;font-size:var(--fs-1);text-align:left;cursor:pointer}
+.mailv2 .mb-move-opt:hover,.mailv2 .mb-move-opt:focus-visible{background:var(--bg-rail)}
+.mailv2 .mb-move-opt svg{width:17px;height:17px;flex:0 0 auto;fill:none;stroke:var(--ink-3);stroke-width:1.7;stroke-linejoin:round}
+.mailv2 .mb-move-opt span:first-of-type{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .mb-move-tag{font-size:var(--fs-0);color:var(--accent-c);font-family:var(--font-mono)}
+
+/* Таблиця батчу в панелі #mail-detail */
+.mailv2 .mailbatch{display:flex;flex-direction:column;gap:12px;padding:14px 16px;min-height:0}
+.mailv2 .mb-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mailv2 .mb-title{font-size:var(--fs-2);font-weight:600;color:var(--ink)}
+.mailv2 .mb-title b{color:var(--accent-c)}
+.mailv2 .mb-tablewrap{overflow:auto;border:1px solid var(--line);border-radius:var(--r-card);background:var(--bg-rail)}
+.mailv2 .mb-table{width:100%;border-collapse:collapse;font-size:var(--fs-1)}
+.mailv2 .mb-table thead th{position:sticky;top:0;z-index:1;text-align:left;padding:8px 10px;font-size:var(--fs-0);font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.03em;background:var(--card-2);border-bottom:1px solid var(--line);white-space:nowrap}
+.mailv2 .mb-table td{padding:5px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.mailv2 .mb-table tbody tr.mb-row:hover{background:var(--card-2)}
+.mailv2 .mb-c-exp,.mailv2 .mb-exp{width:28px;text-align:center;padding-left:6px;padding-right:2px}
+.mailv2 .mb-c-qty{width:64px}
+.mailv2 .mb-c-files{width:96px}
+.mailv2 .mb-table .suminput{height:30px;font-size:var(--fs-1);padding:0 8px}
+.mailv2 .mb-caret{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;background:none;color:var(--ink-3);cursor:pointer;border-radius:6px;transition:transform var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .mb-caret svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .mb-caret:hover{color:var(--ink)}
+.mailv2 .mb-caret.on{transform:rotate(90deg);color:var(--accent-c)}
+.mailv2 .mb-filechip{display:inline-block;padding:2px 8px;border-radius:999px;font-family:var(--font-mono);font-size:var(--fs-0);white-space:nowrap;border:1px solid var(--line);background:var(--card-2);color:var(--ink-2)}
+.mailv2 .mb-filechip.warn{border-color:rgba(var(--warn-rgb,230 160 60),.4);color:var(--warn,#e6a03c)}
+.mailv2 .mb-path .wph-line{display:block;font-size:var(--fs-0)}
+.mailv2 .mb-detailrow td{background:var(--bg-rail);padding:8px 12px}
+.mailv2 .mb-detail{display:flex;flex-direction:column;gap:8px}
+.mailv2 .mb-body{font-size:var(--fs-1);color:var(--ink-2);line-height:1.4;white-space:pre-wrap;max-height:3.2em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mailv2 .mb-atts{display:flex;flex-wrap:wrap;gap:6px}
+.mailv2 .mb-att{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card-2);font-size:var(--fs-0);color:var(--ink-2)}
+.mailv2 .mb-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.mailv2 .mb-summary{font-size:var(--fs-1);color:var(--ink-2)}
+.mailv2 .mb-summary b{color:var(--ink)}
+.mailv2 .mb-hint{font-size:var(--fs-1);color:var(--ink-3)}
+.mailv2 .mb-foot .btn.apex{height:40px;padding:0 20px;font-size:var(--fs-2)}
+
+/* Результат батчу */
+.mailv2 .mb-result{gap:14px}
+.mailv2 .mb-res-block{border:1px solid var(--line);border-radius:var(--r-card);padding:10px 12px;background:var(--bg-rail)}
+.mailv2 .mb-res-block.ok{border-color:rgba(var(--ok-rgb,80 190 120),.4)}
+.mailv2 .mb-res-block.err{border-color:rgba(var(--danger-rgb,220 90 90),.4)}
+.mailv2 .mb-res-head{display:flex;align-items:center;gap:8px;font-size:var(--fs-1);font-weight:600;color:var(--ink);margin-bottom:6px}
+.mailv2 .mb-res-head svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.mailv2 .mb-res-block.ok .mb-res-head svg{color:var(--ok,#50be78)}
+.mailv2 .mb-res-block.err .mb-res-head svg{color:var(--danger,#dc5a5a)}
+.mailv2 .mb-res-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.mailv2 .mb-res-list li{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:var(--fs-1)}
+.mailv2 .mb-res-name{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .mb-res-note{color:var(--ink-3);font-size:var(--fs-0);flex:0 0 auto}
+.mailv2 .mb-res-err{color:var(--danger,#dc5a5a);font-size:var(--fs-0);text-align:right}
+
+/* Підказка кольорів у картці багатокольорового листа (app/mail_color_split.py):
+   смуга груп над файлами + позначка кольору біля кожного файлу. */
+.mailv2 .mc-colorplan{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px}
+.mailv2 .mc-cp-label{font-size:var(--fs-0);color:var(--ink-3)}
+/* align-items:center, не baseline: при фіксованій висоті baseline притискав текст
+   до верхнього краю чіпа (власник 25.09.26 — «відступи»). line-height:1 — щоб
+   моно-відтінок і дрібний підпис стояли на одній середній лінії. */
+.mailv2 .mc-cp-chip{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;line-height:1;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .34);background:rgba(var(--accent-base-rgb), .08);color:var(--ink-2);font:inherit;font-size:var(--fs-1);cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.mailv2 .mc-cp-chip b{color:var(--accent-c);font-weight:700}
+.mailv2 .mc-cp-chip:hover{background:rgba(var(--accent-base-rgb), .18)}
+.mailv2 .mc-cp-chip.on{background:rgba(var(--accent-base-rgb), .26);border-color:rgba(var(--accent-rgb), .7);color:var(--ink)}
+.mailv2 .mc-cp-who{font-size:var(--fs-0);color:var(--ink-3)}
+.mailv2 .mc-cp-chip.on .mc-cp-who{color:var(--ink-2)}
+.mailv2 .mc-cp-unk{font-size:var(--fs-0);color:var(--warn,#e6a03c)}
+.mailv2 .mc-attshade{flex:0 0 auto;padding:1px 6px;border-radius:5px;font-size:var(--fs-0);border:1px solid rgba(var(--accent-rgb), .34);color:var(--accent-c)}
+.mailv2 .mc-attshade.unk{border-color:rgba(230,160,60,.4);color:var(--warn,#e6a03c)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Режим читання листа (_mail_letter_reader.html). Виїзна панель справа — той
+   самий жест, що паспорт роботи в черзі (.detail-pane), але на <dialog>.
+   Шрифт більший за картку: це екран саме для читання.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.mailv2 dialog.letter-reader{position:fixed;inset:0 0 0 auto;margin:0;padding:0;width:min(860px,94vw);max-width:none;height:100vh;max-height:100vh;border:0;border-left:1px solid var(--line-2);background:var(--card);color:var(--ink);box-shadow:-30px 0 80px -30px rgba(0,0,0,.9)}
+.mailv2 dialog.letter-reader[open]{display:flex;flex-direction:column;animation:lr-in .22s ease-out}
+.mailv2 dialog.letter-reader::backdrop{background:rgba(5,8,12,.6)}
+@keyframes lr-in{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.mailv2 dialog.letter-reader[open]{animation:none}}
+.mailv2 .lr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 22px 14px;border-bottom:1px solid var(--line)}
+.mailv2 .lr-who{min-width:0}
+.mailv2 .lr-title{margin:0;font-family:var(--font-display);font-size:var(--fs-6);font-weight:700;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .lr-meta{margin-top:4px;font-size:var(--fs-1);color:var(--ink-3)}
+.mailv2 .lr-subj{margin-top:6px;font-size:var(--fs-3);color:var(--ink-2)}
+.mailv2 .lr-subj span{color:var(--ink-3)}
+.mailv2 .lr-tools{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.mailv2 .lr-seg{display:inline-flex;padding:3px;border-radius:9px;border:1px solid var(--line);background:var(--field)}
+.mailv2 .lr-seg button{height:28px;padding:0 12px;border:0;border-radius:6px;background:none;color:var(--ink-3);font:inherit;font-size:var(--fs-1);cursor:pointer;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .lr-seg button[aria-pressed="true"]{background:var(--card-2);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .35)}
+.mailv2 .lr-close{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:none;color:var(--ink-2);cursor:pointer}
+.mailv2 .lr-close:hover{color:var(--ink);border-color:var(--line-2)}
+.mailv2 .lr-close svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.mailv2 .lr-scroll{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;padding:22px 26px 40px}
+.mailv2 .lr-clean,.mailv2 .lr-raw{max-width:74ch}
+.mailv2 dialog.letter-reader[data-mode="clean"] .lr-raw{display:none}
+.mailv2 dialog.letter-reader[data-mode="raw"] .lr-clean{display:none}
+.mailv2 .lr-raw{margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:var(--fs-2);line-height:1.6;color:var(--ink-2)}
+.mailv2 .lr-clean{display:flex;flex-direction:column;gap:18px}
+.mailv2 .lr-text p{margin:0 0 6px;font-size:var(--fs-4);line-height:1.65;color:var(--ink);word-break:break-word}
+.mailv2 .lr-text p.lr-gap{height:10px;margin:0}
+.mailv2 .lr-shade{padding:0 5px;border-radius:5px;background:rgba(var(--accent-base-rgb), .18);color:var(--accent-c);font-family:var(--font-mono);font-size:.92em;font-weight:600}
+.mailv2 .lr-link{display:inline-block;padding:0 6px;border-radius:5px;border:1px solid var(--line);font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);vertical-align:1px}
+.mailv2 .lr-tag{font-size:var(--fs-0);letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+.mailv2 .lr-forward{padding:10px 14px;border:1px dashed var(--line);border-radius:var(--r-card);background:var(--bg-rail)}
+.mailv2 .lr-forward dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 12px;margin:6px 0 0;font-size:var(--fs-2)}
+.mailv2 .lr-forward dt{color:var(--ink-3)}
+.mailv2 .lr-forward dd{margin:0;color:var(--ink-2);word-break:break-word}
+.mailv2 .lr-files{padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--bg-rail)}
+.mailv2 .lr-sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin-bottom:6px}
+.mailv2 .lr-note{font-size:var(--fs-1);color:var(--warn,#e6a03c)}
+.mailv2 .lr-files ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.mailv2 .lr-files li{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid var(--line);font-size:var(--fs-2)}
+.mailv2 .lr-files li:first-child{border-top:0}
+.mailv2 .lr-fname{color:var(--ink-2);word-break:break-all}
+.mailv2 .lr-fsize{flex:0 0 auto;color:var(--ink-3)}
+.mailv2 .lr-sign{font-size:var(--fs-2);color:var(--ink-3)}
+.mailv2 .lr-sign summary{cursor:pointer;width:max-content;font-size:var(--fs-1)}
+.mailv2 .lr-sign p{margin:4px 0 0}
+.mailv2 .lr-empty{color:var(--ink-3);font-style:italic}
+@media (max-width:700px){
+  .mailv2 .lr-head{flex-direction:column}
+  .mailv2 .lr-scroll{padding:16px}
+}
+.mailv2 .lr-mailer{margin:0;font-size:var(--fs-1);color:var(--ink-3);font-style:italic}

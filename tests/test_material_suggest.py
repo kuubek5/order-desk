@@ -337,3 +337,100 @@ def test_suggest_finds_cyrillic_material_typed_in_latin_layout():
         items = suggest_materials(session, "nbnfy")
         assert items and any("титан" in it.text or it.text == "титан" for it in items)
         assert items[0].kind == "frecency"
+
+
+# ── канонічні чіпи для листа (власник 25.09.26: «прибрати кирилицю — mono a2») ─
+
+
+def _canon_session():
+    session = make_session()
+    add_orders(session, {
+        "mono a3": 20, "mono a2": 12, "mono a3,5": 9, "monolith a3": 1,
+        "моноліт а 3": 8, "моноліт а 2": 6,
+        "emo a2": 7, "emo a3.5": 5, "pmma a3": 5, "pmma a2": 5, "kappa": 6,
+        "tit": 5, "z nat a3": 2, "pmmma a3": 2,
+    })
+    invalidate_cache()
+    return session
+
+
+def test_canonical_chips_are_latin_only_and_follow_the_letter_shades():
+    from app.services.material_suggest import canonical_suggestions
+
+    with _canon_session() as session:
+        # «Monolith» з листа → `mono` (частота б'є рідкісне `monolith`), відтінки
+        # листа — у каноні цеху (`a3,5` з комою, як пишуть найчастіше).
+        chips = canonical_suggestions(session, "Monolith", ["a3.5", "a3"])
+        assert [(c.kind, c.text) for c in chips[:2]] == [("best", "mono a3,5"), ("best", "mono a3")]
+        # Далі — варіант тієї ж категорії з відтінком листа.
+        assert [(c.kind, c.text) for c in chips[2:]] == [("alt", "emo a3.5")]
+        # Без відтінків — найчастіші написання матеріалу, жодної кирилиці.
+        assert [s.text for s in canonical_suggestions(session, "моноліт")] == [
+            "mono a3", "mono a2", "mono a3,5"
+        ]
+        # Відтінок із самого здогаду, кирилична «А» = латинська.
+        # Першим — найімовірніше, далі варіанти тієї ж категорії (mono a2…).
+        first = canonical_suggestions(session, "Емо А2")[0]
+        assert (first.kind, first.text) == ("best", "emo a2")
+        first = canonical_suggestions(session, "Emotions A 3,5")[0]
+        assert (first.kind, first.text) == ("best", "emo a3.5")
+
+
+def test_canonical_chips_never_invent_colour_or_material():
+    from app.services.material_suggest import canonical_suggestions
+
+    with _canon_session() as session:
+        # «корея» — не відтінок: чіп не «tit корея», а сам канон матеріалу.
+        texts = [s.text for s in canonical_suggestions(session, "титан корея")]
+        assert texts[0] == "tit" and not any("kopeя" in t or "корея" in t for t in texts)
+        # Однолітерне `z` (з `z nat a3`) не ловить будь-яке слово на з-.
+        assert canonical_suggestions(session, "зуб") == []
+        assert canonical_suggestions(session, "") == []
+
+
+def test_canonical_material_builds_missing_spelling_in_latin():
+    from app.services.material_suggest import canonical_material
+
+    with _canon_session() as session:
+        assert canonical_material(session, "моноліт", "а 2") == "mono a2"
+        # Такого відтінку в даних ще не було — складаємо, але латиною.
+        assert canonical_material(session, "Monolith", "д3") == "mono d3"
+        assert canonical_material(session, "невідомо", "a3") is None
+
+
+def test_material_word_found_in_customer_text_when_guess_names_only_colour():
+    """Бойовий лист 25.09.26: здогад — лише «B1», а в тексті «Колір B1, циркон,
+    Monolight…». Першим — `mono b1` (і він же в поле), далі варіанти."""
+    from app.services.material_suggest import best_material, canonical_suggestions
+
+    text = "Колір B1, циркон, Monolight Покритий опаком Якібчук Олександр"
+    with _canon_session() as session:
+        add_orders(session, {"mono b1": 6, "emo b1": 5})
+        invalidate_cache()
+        chips = canonical_suggestions(session, "B1", context=text)
+        assert chips[0].text == "mono b1" and chips[0].kind == "best"
+        assert all(c.kind == "alt" for c in chips[1:])
+        assert best_material(session, "B1", text) == "mono b1"
+        # Криве «капа» в тексті — `kappa` (нечіткий збіг слова).
+        assert best_material(session, "", "капа а2") == "kappa a2"
+
+
+def test_customer_text_does_not_invent_material_from_ordinary_words():
+    from app.services.material_suggest import best_material, canonical_suggestions
+
+    with _canon_session() as session:
+        # «тітка» починається на `tit`, але це не титан — бібліотека не впізнає.
+        assert canonical_suggestions(session, "", context="тітка передасть, зуби 11 21") == []
+        # Службовий лист без жодного матеріалу — жодного чіпа.
+        assert canonical_suggestions(session, "", context="Вам видано доступ до IMAP") == []
+        # Відтінку немає — поле не заповнюємо (вгадувати колір не можна).
+        assert best_material(session, "Monolith", "Monolith, дякую") is None
+
+
+def test_alternatives_skip_one_off_typos_in_the_sheet():
+    """Описка з таблиці (`pmmma a3`, 2 роботи) — не лінія, у варіанти не лізе."""
+    from app.services.material_suggest import canonical_suggestions
+
+    with _canon_session() as session:
+        texts = [c.text for c in canonical_suggestions(session, "пмма а3")]
+        assert texts[0] == "pmma a3" and "pmmma a3" not in texts

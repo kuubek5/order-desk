@@ -31,13 +31,33 @@
     {% if emails %}
         {% for email in emails %}
         {% set is_unread = view == 'pending' and email.seen_at is none %}
-        <div class="mailrow{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
+        {# Готовність рахуємо ОДИН раз на рядок (сканує файли на диску) — далі її
+           беруть і чекбокс конвеєра, і бейдж праворуч. Два виклики = подвійний
+           скан на кожному рядку й на 15-секундному поллі. #}
+        {% set rd = triage_readiness(email) if view == 'pending' else none %}
+        {# Масові дії: галочка в кожній вкладці, крім «Авто» (там налаштування).
+           Прийнятий лист / лист з роботою масово не повертається й не
+           відхиляється (видалило б живі роботи) — галочка вимкнена; сервер
+           (`/mail/bulk`) перевіряє ще раз. У «Усі листи» галочка активна для
+           всіх: конвеєр бере з обраних лише готові (`data-ready`). #}
+        {% set has_cb = view != 'auto' %}
+        {% set cb_locked = view in ('archive', 'processed', 'gone') and (email.status == 'прийнято' or email.order_id) %}
+        <div class="mailrow{% if has_cb %} has-cb{% endif %}{% if view == 'pending' %} row-slim{% endif %}{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
              id="mailrow-{{ email.id }}"
              {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
              hx-get="/mail/{{ email.id }}?panel=1"
              hx-target="#mail-detail" hx-swap="innerHTML"
              hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']"
              data-mail-id="{{ email.id }}">
+            {% if has_cb %}
+            {# stopPropagation, бо рядок сам відкривається на click/keyup. #}
+            <span class="mailcb-wrap" onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                <input type="checkbox" class="mailcb" data-cb-id="{{ email.id }}"
+                       aria-label="Обрати лист"
+                       {% if view == 'pending' %}{% if rd.state == 'ready' %}data-ready="1"{% else %}title="Не готовий для конвеєра{% if rd.missing %} — {{ rd.missing|join(', ') }}{% elif rd.state == '3d' %} — схоже на 3D-друк{% endif %}; можна відхилити чи перенести"{% endif %}{% endif %}
+                       {% if cb_locked %}disabled title="Лист прийнято в роботу — повернення видалило б роботи, лише поштучно кнопкою ↩"{% endif %}>
+            </span>
+            {% endif %}
             {# Two lines, not three. Line 1 carries what the operator scans for
                (client + readiness badge, badge in a fixed right column so it
                reads as a column down the list); line 2 carries the supporting
@@ -101,10 +121,34 @@
                     <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/unfilter" hx-target="closest .mailrow" hx-swap="delete" onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
                         <button type="submit" class="list-reject" title="Повернути в чергу" aria-label="Повернути лист у чергу"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-2"/></svg></button>
                     </form>
+                {% elif view == 'gone' %}
+                    {# «Покинули Вхідні» (25.09.26): стан листа + «↩» назад у Вхідні
+                       скриньки й «Усі листи». Лист шукається в скриньці й, якщо
+                       його переклали в папку, переноситься назад. Прийнятий — без
+                       кнопки: повернення в тріаж видалило б його роботи. #}
+                    {% if email.status == 'прийнято' %}
+                    <span class="reco ok">✓ прийнято</span>
+                    {% elif email.status == 'відхилено' %}
+                    <span class="reco muted">✕ відхилено</span>
+                    {% else %}
+                    <span class="reco warn" title="Лист зник зі Вхідних пошти">покинув</span>
+                    {% endif %}
+                    {% if email.status != 'прийнято' and not email.order_id %}
+                    <form class="mail-reject-form" method="post" action="/mail/bulk"
+                          onsubmit="return confirm('Повернути лист у Вхідні скриньки й «Усі листи»?')"
+                          onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                        <input type="hidden" name="action" value="return_inbox">
+                        <input type="hidden" name="ids" value="{{ email.id }}">
+                        <button type="submit" class="list-move" title="Повернути у Вхідні й «Усі листи»" aria-label="Повернути лист у вхідні"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-2"/></svg></button>
+                    </form>
+                    {% endif %}
                 {% elif view == 'processed' %}
                     {# Перенесений лист + зворотна дія «↩ у Усі листи». Обидві
                        гілки повертають лист САМЕ у «Усі листи» (власник 24.09.26). #}
-                    <span class="reco ok" title="Перенесено в папку «{{ email.mailbox_folder }}»">↦ у папці</span>
+                    {# Назва папки, а не «у папці»: з меню «Перемістити» (25.09.26)
+                       лист може лежати в будь-якій папці скриньки, не лише в
+                       «оброблено». #}
+                    <span class="reco ok" title="Перенесено в папку «{{ email.mailbox_folder }}»">↦ {{ email.mailbox_folder }}</span>
                     {% if email.status == 'прийнято' %}
                     {# Прийнята робота: повернути = ВІДКАТ прийняття (видаляє
                        створену роботу, файли назад у лист, лист → «Усі листи»).
@@ -126,7 +170,6 @@
                        інформація (клієнт/матеріал/колір/файли), знак оклику —
                        коли чогось бракує. Причина лишається в title + для
                        читача екрана. #}
-                    {% set rd = triage_readiness(email) %}
                     {% if rd.state == 'ready' %}
                     <span class="reco ok reco-ic" title="Уся інформація є — можна приймати в чергу.">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -143,6 +186,11 @@
                        пішла в цех) — біля ✕, як у справжній пошті. Лише коли папку
                        задано. `row=1` каже роуту прибрати рядок, а не вести на
                        картку. #}
+                    {# У «Усі листи» кнопок ↦/✕ у рядку НЕМАЄ (власник 25.09.26): те
+                       саме робить галочка + смуга масових дій («Перемістити»,
+                       «Відхилити») — і для одного листа, і для кількох. Лишаються
+                       там, де галочок немає («Авто-скачування»). #}
+                    {% if view != 'pending' %}
                     {% if mail_processed_folder %}
                     <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/move-processed" hx-vals='{"row":"1"}' hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Перенести лист у «{{ mail_processed_folder }}»? Він зникне з «Усі листи» й перейде у вкладку папки." onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
                         <button type="submit" class="list-move" title="Перенести в «{{ mail_processed_folder }}» — робота пішла в цех" aria-label="Перенести лист у папку оброблених">
@@ -159,6 +207,7 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
                         </button>
                     </form>
+                    {% endif %}
                 {% endif %}
             </span>
         </div>

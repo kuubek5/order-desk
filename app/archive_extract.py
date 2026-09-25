@@ -113,11 +113,19 @@ def extract_archive(
     archive_path: Path,
     dest_dir: Path,
     existing_names: frozenset[str] = frozenset(),
+    *,
+    skip_existing: bool = True,
 ) -> list[Path]:
     """Extract every file in `archive_path` into `dest_dir`, flattened to safe
     basenames, and return the written paths. Skips an entry whose sanitized name
     is already attached (``existing_names``) so a repeat extraction doesn't pile
-    up duplicates. Raises ArchiveExtractError on any failure (and cleans up)."""
+    up duplicates. Raises ArchiveExtractError on any failure (and cleans up).
+
+    ``skip_existing=False`` — не пропускати зайняте ім'я, а покласти поруч як
+    «ім'я (2)» (`unique_destination`). Так розпаковує вкладення листа: клієнт
+    буває шле ТІ САМІ файли і окремо, і в архіві (власник 25.09.26) — пропуск
+    лишав архів «без файлів для розпакування», а оператор не бачив, що це дубль.
+    Про однаковий вміст картці каже `app/mail_duplicates.py`."""
     archive, entries = _open_archive(archive_path)
     if len(entries) > _MAX_ENTRIES:
         archive.close()
@@ -135,7 +143,7 @@ def extract_archive(
                 raise ArchiveExtractError("розпакований архів завеликий")
             base = Path(str(member_name).replace("\\", "/")).name
             safe = safe_attachment_filename(base, 1, "file")
-            if safe in existing_names:
+            if skip_existing and safe in existing_names:
                 continue
             destination = unique_destination(dest_dir, safe)
             # Registered BEFORE the first byte, so a mid-write abort leaves no

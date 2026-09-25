@@ -1062,6 +1062,32 @@ def test_inbox_gone_marks_letter_older_than_window():
         assert n == 1 and e.inbox_gone_at is not None
 
 
+def test_inbox_gone_age_branch_spares_letter_returned_by_operator():
+    """Старий лист, який оператор свідомо повернув із «Покинули Вхідні»
+    (`inbox_returned_at`), гілка «за віком» не мітить знову — інакше він злітав
+    би назад за 2 хвилини (25.09.26)."""
+    with _engine_session() as db:
+        old = _dt.combine(_bt() - timedelta(days=_LB + 5), _dt.min.time())
+        e = _msg(db, "10", received=old)
+        e.inbox_returned_at = _dt.now()
+        db.commit()
+        n = _reconcile_inbox_gone(db, {"20"}, _cutoff(), complete_fetch=False)
+        db.refresh(e)
+        assert n == 0 and e.inbox_gone_at is None
+
+
+def test_inbox_gone_proven_absence_still_marks_returned_letter():
+    """Позначка повернення не глушить ДОВЕДЕНУ відсутність: лист у вікні, якого
+    немає в повній вибірці Вхідних, мітиться як і раніше."""
+    with _engine_session() as db:
+        e = _msg(db, "10", received=_dt.combine(_bt(), _dt.min.time()))
+        e.inbox_returned_at = _dt.now()
+        db.commit()
+        n = _reconcile_inbox_gone(db, {"20"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert n == 1 and e.inbox_gone_at is not None
+
+
 def test_inbox_gone_self_corrects_when_letter_returns():
     with _engine_session() as db:
         e = _msg(db, "10", received=_dt.combine(_bt(), _dt.min.time()),

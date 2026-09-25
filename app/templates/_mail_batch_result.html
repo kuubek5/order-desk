@@ -1,0 +1,47 @@
+{# Результат конвеєра (блок B): що сталося з кожним листом батчу. Свопається в
+   #mail-detail після POST /mail/accept-batch. Прийняті рядки прибирає зі списку
+   mail.js за подією mailBatchDone (заголовок HX-Trigger); тут — лише зведення.
+   Потребує: results (усі), accepted, failed. #}
+<div class="mailbatch mb-result">
+    <div class="mb-head">
+        <span class="mb-title">Конвеєр — результат</span>
+    </div>
+
+    {% if accepted %}
+    <div class="mb-res-block ok">
+        <div class="mb-res-head">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Прийнято в чергу — <b>{{ accepted|length }}</b>
+        </div>
+        <ul class="mb-res-list">
+            {% for r in accepted %}
+            <li>
+                <span class="mb-res-name">{{ r.label }}</span>
+                <span class="mb-res-note mono">{{ r.material_label }}{% if r.saved_files %} · {{ r.saved_files }} файл.{% endif %}{% if r.partial %} · частково{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if failed %}
+    <div class="mb-res-block err">
+        <div class="mb-res-head">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
+            Не вдалося — <b>{{ failed|length }}</b> (лишились у списку)
+        </div>
+        <ul class="mb-res-list">
+            {% for r in failed %}
+            <li>
+                <span class="mb-res-name">{{ r.label }}</span>
+                <span class="mb-res-err">{{ r.error }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="mb-foot">
+        <span class="mb-hint">{% if failed %}Невдалі листи лишились у списку — виправте й спробуйте ще раз.{% else %}Усі листи прийнято. Роботи внизу, у «Прийняте з пошти».{% endif %}</span>
+    </div>
+</div>
