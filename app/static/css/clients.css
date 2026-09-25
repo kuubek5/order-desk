@@ -119,6 +119,11 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
   transition:border-color var(--ui-speed) ease,color var(--ui-speed) ease;
 }
 .clientsv2 .fp-open:hover,.clientsv2 .fp[open]>.fp-open{border-color:rgba(var(--accent-rgb), .45);color:var(--accent-c)}
+/* «Відкрити папку з роботами» — та сама кнопка, що й «Обрати теку»; кнопка, а
+   не summary, тож фон і svg задаємо самі (власник 25.09.26). */
+.clientsv2 .cp-openfolder{margin-top:9px;margin-right:8px;background:none}
+.clientsv2 .cp-openfolder svg{width:15px;height:15px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.clientsv2 .cp-openfolder.is-opening{opacity:.6;cursor:progress}
 .clientsv2 .fp svg{width:15px;height:15px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .clientsv2 .fp-body{margin-top:8px;display:flex;flex-direction:column;gap:8px}
 .clientsv2 .fp-search{width:100%;box-sizing:border-box}

@@ -43,6 +43,16 @@
            назви 1-го рівня, що в datalist (сервер їх уже має); пошук — у
            браузері. Клік по теці розгортає її вміст (свіжі підтеки-дати, один
            scandir), «Обрати» вписує назву й зберігає. Обробник — app.js. #}
+        {# «Відкрити папку з роботами» (власник 25.09.26) — лише для прив'язаної
+           теки. Той самий обробник, що в пошті (`data-open-folder-url`, app.js):
+           на цьому ПК — Провідник, з мережі — шлях у буфер. #}
+        {% if bound_folder %}
+        <button type="button" class="fp-open cp-openfolder" data-open-folder-url="/clients/{{ client.id }}/open-folder"
+                title="Відкрити export/{{ bound_folder }} у Провіднику">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5 12 16l2.5-2.5"/></svg>
+            Відкрити папку з роботами
+        </button>
+        {% endif %}
         {% if folder_names %}
         <details class="fp" data-fp>
             <summary class="fp-open">

@@ -27,7 +27,15 @@ from app.client_profile import (
 )
 from app.models import Client, ClientNameAlias, Order
 from app.routers.section_gate import blocked_response
-from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.routers.deps import (
+    TRUSTED_ONLY_DETAIL,
+    get_current_user,
+    get_db,
+    is_trusted_request,
+    login_redirect,
+    open_folder_response,
+    templates,
+)
 from app.services.clients import (
     CLIENT_STATE_FILTERS,
     client_folder_options,
@@ -38,6 +46,9 @@ from app.services.client_merge import find_candidates, record_merge, record_skip
 from app.services import folder_merge as folder_merge_svc
 from app.export_scanner import list_export_client_names_cached, peek_export_client
 from app.settings_store import get_export_folder_path
+from app.client_folder import card_folder_for
+from app.mail_export import _contained_child
+from app.platform_windows import open_folder_in_explorer
 
 logger = logging.getLogger(__name__)
 
@@ -521,3 +532,33 @@ def update_client(
             {"user": user, "client": client, "contacts_saved": True},
         )
     return RedirectResponse(f"/clients/{client_id}?saved=1", status_code=303)
+
+
+@router.post("/clients/{client_id}/open-folder")
+def open_client_folder(request: Request, client_id: int, db: Session = Depends(get_db)):
+    """«Відкрити папку з роботами цього клієнта» з картки клієнта (власник
+    25.09.26). Тека — прив'язана в картці (`card_folder_for`, та сама, що бере
+    пошта й видача). Той самий гейт і відповідь, що в решти «Відкрити теку»:
+    на цьому ПК — Провідник, з мережі — шлях для копіювання (`openFolderOrCopy`).
+    Шлях — через `_contained_child`, за межі export не вийти."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="клієнта не знайдено")
+    folder = card_folder_for(db, client.canonical_name)
+    if not folder:
+        raise HTTPException(status_code=404, detail="папку не прив'язано")
+    try:
+        client_dir = _contained_child(Path(get_export_folder_path(db)), folder)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="небезпечне ім'я теки")
+    if not client_dir.is_dir():
+        raise HTTPException(status_code=404, detail="теки клієнта немає в export")
+    return open_folder_response(
+        request, db, client_dir, opener=open_folder_in_explorer,
+        log_label=f"client {client_id} folder",
+    )
