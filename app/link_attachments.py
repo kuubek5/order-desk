@@ -17,6 +17,8 @@ Security posture (this is the server fetching a URL taken from email content):
 """
 
 from dataclasses import dataclass
+from html.parser import HTMLParser
+import logging
 import re
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit, unquote
@@ -24,6 +26,8 @@ from urllib.parse import urljoin, urlsplit, unquote
 import requests
 
 from app.mail_reader import safe_attachment_filename, unique_destination
+
+logger = logging.getLogger(__name__)
 
 # Hosts we are willing to fetch from. Google Drive redirects downloads to
 # drive.usercontent.google.com, so that must be allowed for the final hop.
@@ -241,6 +245,54 @@ def _finish(
     return _stream_to_file(response, dest_dir, safe)
 
 
+class _DownloadForm(HTMLParser):
+    """Форма «Download anyway» зі сторінки попередження Google Drive.
+
+    З 2024 р. для файлу, який Google не може перевірити на віруси (великий
+    архів сканів), `uc?export=download` віддає HTML з
+    `<form id="download-form" action="https://drive.usercontent.google.com/download">`
+    і прихованими полями `id`, `export`, `confirm=t`, `uuid`. Ні cookie
+    `download_warning`, ні `confirm=…` у тексті там немає — старий пошук токена
+    нічого не знаходив, і справжній великий файл звітувався як «не розшарено»
+    (власник 25.09.26, лист VILIDA «СКАН Руд М.М.zip»)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.action: str | None = None
+        self.fields: dict[str, str] = {}
+        self._inside = False
+
+    def handle_starttag(self, tag, attrs):
+        attr = {k: (v or "") for k, v in attrs}
+        if tag == "form" and attr.get("id") == "download-form":
+            self.action = attr.get("action") or None
+            self._inside = True
+        elif tag == "input" and self._inside and attr.get("type") == "hidden" and attr.get("name"):
+            self.fields[attr["name"]] = attr.get("value", "")
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self._inside = False
+
+
+def _download_form(html: str) -> tuple[str, dict[str, str]] | None:
+    parser = _DownloadForm()
+    try:
+        parser.feed(html)
+    except Exception:  # noqa: BLE001 — кривий HTML = «форми немає»
+        return None
+    if not parser.action or not parser.fields:
+        return None
+    return parser.action, parser.fields
+
+
+_ACCESS_PAGE_RE = re.compile(
+    r"accounts\.google\.com|ServiceLogin|You need access|Request access|"
+    r"Потрібен доступ|Запросити доступ|Нужен доступ",
+    re.IGNORECASE,
+)
+
+
 def _download_drive(
     file_id: str, dest_dir: Path, session: requests.Session, timeout: int,
     existing_names: frozenset[str],
@@ -249,13 +301,30 @@ def _download_drive(
     response = _get_checked(session, base, params={"id": file_id}, timeout=timeout)
     if "text/html" in (response.headers.get("content-type") or "").lower():
         token = _confirm_token(response, session)
+        page = "" if token else response.text
         response.close()
-        if not token:
+        form = None if token else _download_form(page)
+        if token:
+            response = _get_checked(
+                session, base, params={"id": file_id, "confirm": token}, timeout=timeout
+            )
+        elif form is not None:
+            # Нова сторінка «не можу перевірити на віруси»: адреса з форми
+            # (хост звіряє _get_checked), поля — як є.
+            action, fields = form
+            response = _get_checked(session, urljoin(base, action), params=fields, timeout=timeout)
+        elif _ACCESS_PAGE_RE.search(page):
+            logger.warning("Drive %s: сторінка доступу — файл не відкрито за посиланням", file_id)
+            raise LinkDownloadError(
+                "файл закритий: відправник не відкрив його «всім, у кого є посилання» "
+                "(у браузері відкривається, бо там вхід у Google-акаунт з доступом)"
+            )
+        else:
+            logger.warning("Drive %s: сторінка без файлу й без форми скачування", file_id)
             raise LinkDownloadError("файл не розшарено «всім за посиланням» або недоступний")
-        response = _get_checked(
-            session, base, params={"id": file_id, "confirm": token}, timeout=timeout
-        )
         if "text/html" in (response.headers.get("content-type") or "").lower():
+            response.close()
+            logger.warning("Drive %s: після підтвердження знову сторінка, не файл", file_id)
             raise LinkDownloadError("Google повернув сторінку, не файл (доступ закритий?)")
     filename = _filename_from_content_disposition(
         response.headers.get("content-disposition")

@@ -277,3 +277,64 @@ def test_direct_download_refuses_a_web_page(tmp_path):
     assert "сторінка" in str(err.value).lower()
     # І головне: на диску нічого не лишилось, тож рядок вкладення не зʼявиться.
     assert not list(tmp_path.iterdir())
+
+
+def test_drive_new_virus_scan_form_is_followed(tmp_path):
+    """З 2024 р. Google для великого файлу (архів сканів) віддає форму
+    «Download anyway» без cookie й без `confirm=…` у тексті. Раніше це
+    звітувалось як «не розшарено» (власник 25.09.26, VILIDA «СКАН…zip»)."""
+    warn = _Resp(
+        "https://drive.google.com/uc?export=download&id=ID",
+        headers={"content-type": "text/html; charset=utf-8"},
+        text=(
+            '<html><body><p>Google Drive can\'t scan this file for viruses.</p>'
+            '<form id="download-form" action="https://drive.usercontent.google.com/download" method="get">'
+            '<input type="submit" id="uc-download-link" value="Download anyway"/>'
+            '<input type="hidden" name="id" value="ID">'
+            '<input type="hidden" name="export" value="download">'
+            '<input type="hidden" name="confirm" value="t">'
+            '<input type="hidden" name="uuid" value="u-1">'
+            '</form></body></html>'
+        ),
+    )
+    real = _Resp(
+        "https://drive.usercontent.google.com/download",
+        headers={"content-type": "application/zip",
+                 "content-disposition": 'attachment; filename="scan.zip"'},
+        chunks=[b"PK-ZIP"],
+    )
+    link = LinkAttachment(kind="drive", file_id="ID",
+                          url="https://drive.google.com/file/d/ID/view", display="…")
+    session = _Session([warn, real])
+    path = download_link(link, tmp_path, session=session)
+    assert path.name == "scan.zip" and path.read_bytes() == b"PK-ZIP"
+    url, params, _ = session.calls[1]
+    assert url == "https://drive.usercontent.google.com/download"
+    assert params == {"id": "ID", "export": "download", "confirm": "t", "uuid": "u-1"}
+
+
+def test_drive_form_pointing_elsewhere_is_refused(tmp_path):
+    """Форма веде на чужий хост — не йдемо (білий список, як для редиректів)."""
+    warn = _Resp(
+        "https://drive.google.com/uc?export=download&id=ID",
+        headers={"content-type": "text/html"},
+        text='<form id="download-form" action="https://evil.example/x"><input type="hidden" name="id" value="ID"></form>',
+    )
+    link = LinkAttachment(kind="drive", file_id="ID",
+                          url="https://drive.google.com/file/d/ID/view", display="…")
+    session = _Session([warn])
+    with pytest.raises(LinkDownloadError):
+        download_link(link, tmp_path, session=session)
+    assert len(session.calls) == 1
+
+
+def test_drive_access_page_says_file_is_private(tmp_path):
+    page = _Resp(
+        "https://drive.google.com/uc?export=download&id=ID",
+        headers={"content-type": "text/html"},
+        text="<html><h1>You need access</h1>Request access</html>",
+    )
+    link = LinkAttachment(kind="drive", file_id="ID",
+                          url="https://drive.google.com/file/d/ID/view", display="…")
+    with pytest.raises(LinkDownloadError, match="файл закритий"):
+        download_link(link, tmp_path, session=_Session([page]))
