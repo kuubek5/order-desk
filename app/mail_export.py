@@ -9,6 +9,7 @@ operator-confirmed client name/material, not an unreviewed guess.
 
 from datetime import date
 import hashlib
+import os
 import re
 import shutil
 from pathlib import Path
@@ -123,10 +124,7 @@ def _resolve_client_folder_name(
     when there's no confident existing match, which is also what creates the
     very first folder for a brand-new client.
     """
-    try:
-        existing_folders = sorted(p.name for p in export_root.iterdir() if p.is_dir())
-    except (OSError, FileNotFoundError):
-        existing_folders = []
+    existing_folders = list_client_folders(export_root)
 
     # Тека клієнта з картки / памʼяті відправника (app/client_folder.py) — ПЕРШОЮ,
     # але лише коли вона справді є на диску: перейменовану теку не вигадуємо,
@@ -171,12 +169,26 @@ def _unique_material_folder(batch_dir: Path, material_name: str) -> Path:
         n += 1
 
 
+def _entry_is_dir(entry: os.DirEntry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
 def list_client_folders(export_root: Path) -> list[str]:
     """Existing top-level client folder names under the export root, sorted.
-    Feeds the accept wizard's "or pick an existing folder" override list."""
+    Feeds the accept wizard's "or pick an existing folder" override list.
+
+    `os.scandir`, НЕ `iterdir()` + `is_dir()`: export на проді — мережева шара
+    («Systems/Export») із сотнями тек клієнтів, і `is_dir()` на кожен
+    елемент — окремий мережевий `stat`. Картка листа питала так двічі на кожен
+    клік — 1.7–4.5 с (прод 25.09.26). На Windows `DirEntry.is_dir()` бере
+    ознаку з самого переліку, без звернення до диска."""
     try:
-        return sorted(p.name for p in export_root.iterdir() if p.is_dir())
-    except (OSError, FileNotFoundError):
+        with os.scandir(export_root) as entries:
+            return sorted(e.name for e in entries if _entry_is_dir(e))
+    except OSError:
         return []
 
 

@@ -267,6 +267,24 @@ def test_list_client_folders(tmp_path):
     assert list_client_folders(tmp_path) == ["Альфа", "Бета"]
 
 
+def test_list_client_folders_no_stat_per_entry(tmp_path, monkeypatch):
+    """Export на проді — мережева шара з сотнями тек клієнтів: `is_dir()` на
+    кожен елемент = мережевий stat, і картка листа відкривалась 1.7–4.5 с
+    (25.09.26). Перелік має йти одним scandir, без Path.is_dir/stat на елемент."""
+    from pathlib import Path
+
+    from app.mail_export import list_client_folders
+
+    for i in range(20):
+        (tmp_path / f"Клієнт {i:02d}").mkdir()
+    calls = []
+    real = Path.is_dir
+    monkeypatch.setattr(Path, "is_dir", lambda self, *a, **k: calls.append(self) or real(self))
+    assert len(list_client_folders(tmp_path)) == 20
+    assert calls == []
+    assert list_client_folders(tmp_path / "немає") == []
+
+
 def test_save_attachments_override_targets_named_folder(tmp_path):
     src = _touch(tmp_path / "spool" / "a.stl")
     (tmp_path / "export").mkdir()
