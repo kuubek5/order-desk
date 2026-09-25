@@ -237,6 +237,11 @@
             <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. «↩» повертає лист у «Вхідні»{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% elif view == 'hold' %}Листи на паузі, поки уточнюють у замовника. Скринька не змінюється · «↩» повертає лист у «Вхідні»{% else %}Клік по листу відкриває картку тріажу · галочка — обрати лист, щоб перемістити чи відхилити{% endif %}</div>
         </section>
 
+        {# Роздільник: тягни — ширина списку, подвійний клік — «авто»
+           (lookgear.js, той самий стан, що «Ширина списку» в шестерні). #}
+        <div class="mail-split" data-look-split="mail" role="separator" aria-orientation="vertical"
+             aria-label="Ширина списку листів" tabindex="0"
+             title="Потягніть, щоб змінити ширину списку · подвійний клік — як було"></div>
         <section class="detail-panel" id="mail-detail">
             {% if open_panel_html %}{{ open_panel_html|safe }}{% else %}
             {% if view == 'auto' %}

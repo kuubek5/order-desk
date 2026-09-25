@@ -318,6 +318,10 @@
       }
     });
 
+    function initSplit() {
+      initSplitFor(root, scope, state, apply, save, hasWidth);
+    }
+
     function setOpen(open) {
       panel.hidden = !open;
       toggle.setAttribute("aria-expanded", String(open));
@@ -330,7 +334,61 @@
     // (ревʼю 07.09.26, U2.4).
     gears.push({ root: root, panel: panel, toggle: toggle, setOpen: setOpen });
 
+    initSplit();
     render();
+  }
+
+  // ---- роздільник між панелями (власник 25.09.26) -------------------------
+  // «Ширше список листів» мишею: межу тягнуть, як у Провіднику, і ширина
+  // пишеться в ТОЙ САМИЙ стан шестерні (`state.width` → /account/look), тож
+  // панель шестерні показує те саме число, а вигляд переживає перезавантаження
+  // й інший ПК. Подвійний клік — «авто» (як «Скинути»), стрілки — по 20 px.
+  // Поки тягнуть — лише apply(); зберігаємо один раз, коли відпустили.
+  function initSplitFor(root, scope, state, apply, save, hasWidth) {
+    if (!hasWidth) return;
+    var split = document.querySelector('[data-look-split="' + scope + '"]');
+    var target = document.querySelector(root.dataset.lookWidthTarget || "");
+    if (!split || !target) return;
+
+    split.addEventListener("pointerdown", function (event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      var startX = event.clientX;
+      var startWidth = target.getBoundingClientRect().width;
+      try { split.setPointerCapture(event.pointerId); } catch (e) { /* без захоплення теж тягнеться */ }
+      document.body.classList.add("is-look-splitting");
+      function move(ev) {
+        state.width = clamp(Math.round(startWidth + ev.clientX - startX), LIMITS.width);
+        apply();
+      }
+      function up(ev) {
+        try { split.releasePointerCapture(ev.pointerId); } catch (e) { /* уже відпущено */ }
+        split.removeEventListener("pointermove", move);
+        split.removeEventListener("pointerup", up);
+        split.removeEventListener("pointercancel", up);
+        document.body.classList.remove("is-look-splitting");
+        save();
+      }
+      split.addEventListener("pointermove", move);
+      split.addEventListener("pointerup", up);
+      split.addEventListener("pointercancel", up);
+    });
+
+    split.addEventListener("dblclick", function () {
+      state.width = 0;
+      apply();
+      save();
+    });
+
+    split.addEventListener("keydown", function (event) {
+      var direction = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+      if (!direction) return;
+      event.preventDefault();
+      var base = state.width || Math.round(target.getBoundingClientRect().width);
+      state.width = clamp(base + direction * 20, LIMITS.width);
+      apply();
+      save();
+    });
   }
 
   var gears = [];

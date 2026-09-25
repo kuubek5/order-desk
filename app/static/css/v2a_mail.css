@@ -383,6 +383,13 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
    sticky action bar ended up pinned to the bottom of a card below the fold, so
    the "actions always in view" promise failed on exactly the long, wordy
    letters where the operator scrolls to read the spec. */
+/* Роздільник списку й картки (власник 25.09.26): смуга в проміжку між
+   панелями (від'ємні поля — проміжок лишається 16px), лінія видна на
+   наведенні й під час перетягування. */
+.mailv2 .mail-split{flex:0 0 16px;align-self:stretch;margin:0 -16px;position:relative;cursor:col-resize;touch-action:none;z-index:1;outline:none}
+.mailv2 .mail-split::before{content:"";position:absolute;top:12px;bottom:12px;left:50%;width:2px;margin-left:-1px;border-radius:2px;background:var(--line-2);opacity:0;transition:opacity var(--ui-speed) ease,background var(--ui-speed) ease}
+.mailv2 .mail-split:hover::before,.mailv2 .mail-split:focus-visible::before,body.is-look-splitting .mailv2 .mail-split::before{opacity:1;background:var(--accent-b)}
+body.is-look-splitting{cursor:col-resize;user-select:none}
 .mailv2 .detail-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:thin;max-height:calc(100vh - 190px);background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 26px 64px -34px rgba(0,0,0,.92),0 8px 22px -16px rgba(0,0,0,.66)}
 .mailv2 .detail-head{display:flex;align-items:flex-start;gap:10px;padding:16px 20px 14px;border-bottom:1px solid var(--line)}
 .mailv2 .detail-head .from{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600}
@@ -531,6 +538,7 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 
 @media (max-width:940px){
   .mailv2 .worklayout{flex-direction:column}
+  .mailv2 .mail-split{display:none}
   .mailv2 .list-panel{flex:0 0 auto;width:100%;max-height:52vh}
   .mailv2 .fieldgrid{grid-template-columns:1fr}
   .mailv2 .stl-gallery{flex-direction:column}
