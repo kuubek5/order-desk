@@ -176,6 +176,28 @@ def test_move_folders_menu_puts_processed_folder_first(app_db, monkeypatch):  # 
     assert body.index('data-folder="Скачано"') < body.index('data-folder="Спам"')
 
 
+def test_move_folders_menu_work_folders_on_top_rest_folded(app_db, monkeypatch):  # noqa: F811
+    """Власник 25.09.26: зверху робочі папки («оброблено», «Відфрезеровано»),
+    решта скриньки — згорнуто під «Інші папки»."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        set_setting(db, "mail_processed_folder", "Скачано")
+        set_setting(db, "mail_milled_folder", "Відфрезеровано")
+        db.commit()
+    monkeypatch.setattr(
+        mail_router_mod, "list_move_target_folders",
+        lambda db: ["Medit", "Відфрезеровано", "Спам", "Скачано", "паролі"],
+    )
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    _, _, body = client.get("/mail/move-folders")
+    more = body.index('class="mb-move-more"')
+    assert body.index('data-folder="Скачано"') < body.index('data-folder="Відфрезеровано"') < more
+    for other in ("Medit", "Спам", "паролі"):
+        assert body.index(f'data-folder="{other}"') > more
+    assert 'class="mb-move-more" open' not in body  # згорнуто
+
+
 def test_move_folders_menu_shows_imap_error_instead_of_500(app_db, monkeypatch):  # noqa: F811
     app, _ = app_db
 

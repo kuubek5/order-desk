@@ -71,10 +71,33 @@ def _size(attachment) -> int | None:
         return None
 
 
+# Кеш звіту для КАРТКИ: вона кличе find_duplicates на кожне відкриття, а читання
+# вмісту однакових за розміром файлів на мережевому спулі — секунди. Ключ той
+# самий, що в `_LIST_CACHE` (id, шлях, розмір, імʼя): інший набір файлів — інший
+# ключ. Звіт не змінюють після побудови, тож віддавати той самий обʼєкт безпечно.
+_REPORT_CACHE: dict[tuple, DuplicateReport] = {}
+_REPORT_CACHE_MAX = 256
+
+
 def find_duplicates(attachments: list) -> DuplicateReport:
     """`attachments` — нерозібрані файли листа, що є на диску (обʼєкти з `id`,
     `filename`, `saved_path`, `size_bytes`). Оригінал групи — найменший `id`
     (вкладене окремо приходить раніше за розпаковане з архіву)."""
+    key = tuple(sorted(
+        (a.id, a.saved_path or "", a.size_bytes or 0, a.filename or "")
+        for a in attachments
+    ))
+    cached = _REPORT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    report = _build_report(attachments)
+    if len(_REPORT_CACHE) >= _REPORT_CACHE_MAX:
+        _REPORT_CACHE.clear()
+    _REPORT_CACHE[key] = report
+    return report
+
+
+def _build_report(attachments: list) -> DuplicateReport:
     report = DuplicateReport()
     ordered = sorted(attachments, key=lambda a: a.id)
 

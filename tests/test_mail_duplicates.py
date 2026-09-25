@@ -97,3 +97,20 @@ def test_archive_with_the_same_names_as_loose_attachments_extracts(tmp_path):
         # Картка побачить: копії з архіву — дублі вкладених окремо.
         report = find_duplicates(rows)
         assert set(report.copy_of.values()) == {"crown.stl", "bridge.stl"}
+
+
+def test_card_reopen_does_not_reread_files(tmp_path, monkeypatch):
+    """Картка кличе find_duplicates на кожне відкриття; вміст на мережевому
+    спулі читається секундами (прод 25.09.26) — той самий набір файлів удруге
+    не читаємо."""
+    import app.mail_duplicates as md
+
+    atts = [_att(tmp_path, 1, "a.stl", b"SAME"), _att(tmp_path, 2, "b.stl", b"SAME")]
+    reads = []
+    real = md._digest
+    monkeypatch.setattr(md, "_digest", lambda p: reads.append(p) or real(p))
+    first = find_duplicates(atts)
+    n = len(reads)
+    assert n == 2
+    assert find_duplicates(atts).copy_of == first.copy_of == {2: "a.stl"}
+    assert len(reads) == n

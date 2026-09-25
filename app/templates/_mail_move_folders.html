@@ -1,7 +1,11 @@
 {# Меню «Перемістити» масових дій (25.09.26): папки скриньки, як у ukr.net.
    Вантажиться в .mb-move-folders (усередині .mb-move-body) при першому відкритті (GET /mail/move-folders).
    Кнопки сабмітять #mail-bulk-form з action=move_to; назву папки mail.js кладе
-   в приховане поле `folder` з data-folder кнопки. #}
+   в приховане поле `folder` з data-folder кнопки.
+   Зверху — робочі папки з Налаштувань, далі статичний пункт «На уточненні»
+   (у mail_triage.html), решта скриньки — згорнуто під «Інші папки». Порядок між
+   цим фрагментом і статичним пунктом тримає CSS (`order`, .mb-move-folders —
+   display:contents). #}
 <div class="mb-move-head">Виберіть папку для переміщення листів</div>
 {% if error %}
 <div class="mb-move-err" role="alert">{{ error }}</div>
@@ -11,12 +15,25 @@
 {# IMAP віддає службові папки англійською; підписуємо як ukr.net у вебі.
    Значення (data-folder) — завжди справжня IMAP-назва. #}
 {% set _ua = {'Spam': 'Спам', 'Junk': 'Спам', 'Trash': 'Видалені'} %}
-{% for f in folders %}
+{% macro move_opt(f) %}
 <button type="submit" name="action" value="move_to" class="mb-move-opt" data-folder="{{ f }}"
         data-bulk-confirm="Перемістити обрані листи ({n}) у «{{ _ua.get(f, f) }}»?">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
     <span>{{ _ua.get(f, f) }}</span>
-    {% if f == processed_folder %}<span class="mb-move-tag">оброблені</span>{% endif %}
+    {% if f == processed_folder %}<span class="mb-move-tag">оброблені</span>
+    {% elif f == milled_folder %}<span class="mb-move-tag">відправлені</span>{% endif %}
 </button>
-{% endfor %}
+{% endmacro %}
+{% for f in main_folders %}{{ move_opt(f) }}{% endfor %}
+{% if other_folders %}
+{# Без робочих папок у Налаштуваннях показувати нема що — список відкритий. #}
+<details class="mb-move-more"{% if not main_folders %} open{% endif %}>
+    <summary class="mb-move-opt">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        <span>Інші папки</span>
+        <span class="mb-move-tag">{{ other_folders|length }}</span>
+    </summary>
+    {% for f in other_folders %}{{ move_opt(f) }}{% endfor %}
+</details>
+{% endif %}
 {% endif %}

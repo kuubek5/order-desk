@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import and_ as sa_and, func, select, text, update as sa_update
+from sqlalchemy import ColumnElement, and_ as sa_and, false as sa_false, func, select, text, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
@@ -35,9 +35,11 @@ from app.link_attachments import (
     extract_download_links,
     undownloaded_links,
 )
+from app import perf
 from app.client_folder import preferred_client_folder
 from app.mail_export import (
     _contained_child,
+    CARD_FOLDER_LIST_MAX_AGE,
     list_client_folders,
     preview_export_target,
     restore_attachments_to_spool,
@@ -189,7 +191,10 @@ def _row_badge(label: dict, old: dict | None) -> dict:
     }
 
 
-_MAIL_VIEWS = ("pending", "filtered", "archive", "auto", "processed", "gone", "hold")
+_MAIL_VIEWS = ("pending", "filtered", "archive", "auto", "processed", "milled", "gone", "hold")
+# Вкладки папок скриньки: «оброблено» і «Відфрезеровано» (власник 25.09.26) —
+# однакові правила (сьогодні / усі в папці), різний фільтр за папкою.
+_FOLDER_VIEWS = ("processed", "milled")
 
 
 def _mail_back_url(request: Request, open_id: int | None = None) -> str:
@@ -211,7 +216,7 @@ def _mail_back_url(request: Request, open_id: int | None = None) -> str:
     if view in _MAIL_VIEWS and view != "pending":
         params.append(f"view={view}")
         # «Усі в папці» (period=all) — лишитись у тому ж режимі вкладки.
-        if view == "processed" and (query.get("period") or [""])[0] == "all":
+        if view in _FOLDER_VIEWS and (query.get("period") or [""])[0] == "all":
             params.append("period=all")
     elif open_id is not None:
         params.append(f"open={open_id}")
@@ -240,7 +245,7 @@ def get_mail(
     # Вкладка папки: типово — лише сьогоднішні переноси; `period=all` — УСІ листи
     # в папках скриньки за весь час (власник 25.09.26: вчорашній перенесений лист
     # і перенесені до появи `mailbox_moved_at` не було видно ніде).
-    processed_all = view == "processed" and period == "all"
+    processed_all = view in _FOLDER_VIEWS and period == "all"
 
     # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
     # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
@@ -308,11 +313,23 @@ def get_mail(
     # робоча доба (07:30), як усюди в §14: день D покриває [D 07:30, D+1 07:30).
     # Листи, перенесені до появи поля (mailbox_moved_at IS NULL), не сьогоднішні —
     # у вкладці не показуються, але фізично лишаються в папці й у базі.
-    processed_today = sa_and(
-        EmailMessage.mailbox_folder.is_not(None),
+    moved_today = sa_and(
         EmailMessage.mailbox_moved_at.is_not(None),
         EmailMessage.mailbox_moved_at >= datetime.combine(business_today(), get_rollover()),
     )
+    # «Відфрезеровано» — окрема вкладка (власник 25.09.26: у вкладці «Скачено,
+    # просчитано» не мають лежати листи з іншої папки, інакше нічого не знайти).
+    # Вкладка «оброблено» — усе перенесене, КРІМ другої папки: листи, перенесені
+    # меню «Перемістити» в інші папки скриньки, лишаються тут, як і були.
+    milled_folder = (get_setting(db, "mail_milled_folder") or "").strip()
+    in_milled = (
+        EmailMessage.mailbox_folder == milled_folder if milled_folder else sa_false()
+    )
+    processed_any: ColumnElement[bool] = EmailMessage.mailbox_folder.is_not(None)
+    if milled_folder:
+        processed_any = sa_and(processed_any, EmailMessage.mailbox_folder != milled_folder)
+    processed_today = sa_and(processed_any, moved_today)
+    milled_today = sa_and(in_milled, moved_today)
     if view == "gone":
         status_clause = sa_and(EmailMessage.inbox_gone_at.is_not(None), not_on_hold)
     elif view == "hold":
@@ -320,9 +337,9 @@ def get_mail(
         # на паузі, хоч би що сталося з ним у скриньці — пауза сильніша.
         status_clause = sa_and(EmailMessage.status == "нове", on_hold)
     elif view == "processed":
-        status_clause = (
-            EmailMessage.mailbox_folder.is_not(None) if processed_all else processed_today
-        )
+        status_clause = processed_any if processed_all else processed_today
+    elif view == "milled":
+        status_clause = in_milled if processed_all else milled_today
     elif view == "archive":
         status_clause = sa_and(EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved)
     elif view == "filtered":
@@ -421,13 +438,20 @@ def get_mail(
         select(func.count()).select_from(EmailMessage).where(processed_today)
     ) or 0
     # Усі листи в папках за весь час — для посилання «Показати всі в папці».
+    milled_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(milled_today)
+    ) or 0 if milled_folder else 0
+    # Усі листи в ЦІЙ папці за весь час — для посилання «Показати всі в папці»;
+    # `folder_today_count` — сьогоднішні саме цієї вкладки.
     processed_all_count = 0
-    if view == "processed":
+    folder_today_count = 0
+    if view in _FOLDER_VIEWS:
         processed_all_count = db.scalar(
             select(func.count()).select_from(EmailMessage).where(
-                EmailMessage.mailbox_folder.is_not(None)
+                processed_any if view == "processed" else in_milled
             )
         ) or 0
+        folder_today_count = processed_count if view == "processed" else milled_count
     sender_memories = list_sender_memories(db) if view == "auto" else []
     auto_count = db.scalar(
         select(func.count()).select_from(ClientSenderMemory).where(
@@ -520,6 +544,7 @@ def get_mail(
                 # Потрібне рядку для кнопки «↦ у папку»: без нього полл кожні 15с
                 # перемальовував би рядки без кнопки.
                 "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
+                "mail_milled_folder": milled_folder,
             },
         )
 
@@ -559,6 +584,9 @@ def get_mail(
             "processed_count": processed_count,
             "processed_all": processed_all,
             "processed_all_count": processed_all_count,
+            "folder_today_count": folder_today_count,
+            "milled_count": milled_count,
+            "mail_milled_folder": milled_folder,
             # «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (папка або
             # видалення). CRM дзеркалить Вхідні; вкладка показується лише коли є
             # такі листи.
@@ -651,22 +679,29 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
 def mail_move_folders(request: Request, db: Session = Depends(get_db)):
     """Меню «Перемістити» масових дій: папки скриньки (як у ukr.net). Тягнеться
     ЛИШЕ при відкритті меню (IMAP-логін ~1 с), не на кожному рендері списку.
-    Папка «оброблено» з Налаштувань — першою, з позначкою."""
+
+    Робочі папки з Налаштувань («оброблено», потім «Відфрезеровано») — зверху,
+    решта скриньки — згорнуто під «Інші папки» (власник 25.09.26: список став
+    завеликим, службові папки заважають)."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     processed = (get_setting(db, "mail_processed_folder") or "").strip()
+    milled = (get_setting(db, "mail_milled_folder") or "").strip()
     error = ""
     folders: list[str] = []
     try:
         folders = list_move_target_folders(db)
     except Exception as exc:  # noqa: BLE001 — текст збою IMAP у меню
         error = f"Не вдалося зчитати папки: {exc}"
-    if processed and processed in folders:
-        folders = [processed] + [f for f in folders if f != processed]
+    main = [f for f in (processed, milled) if f and f in folders]
+    others = [f for f in folders if f not in main]
     return templates.TemplateResponse(
         request, "_mail_move_folders.html",
-        {"folders": folders, "processed_folder": processed, "error": error},
+        {
+            "folders": folders, "main_folders": main, "other_folders": others,
+            "processed_folder": processed, "milled_folder": milled, "error": error,
+        },
     )
 
 
@@ -780,7 +815,7 @@ def _card_dir_context(
     у НОВУ теку за (можливо брудним) іменем замість відомої export/<клієнт>.
     """
     export_root = Path(get_export_folder_path(db))
-    existing_folders = list_client_folders(export_root)
+    existing_folders = list_client_folders(export_root, max_age=CARD_FOLDER_LIST_MAX_AGE)
     # Тека клієнта (власник 25.09.26): спершу з КАРТКИ клієнта, без неї — з
     # памʼяті відправника, і лише для того самого імені (app/client_folder.py).
     # У список теки НЕ підставляємо: список лишається «авто», а рядок шляху
@@ -847,10 +882,13 @@ def _mail_panel_context(
     Значення полів: `None` → семена (постійний клієнт / показне ім'я / здогади);
     непорожні (невдале прийняття) підставляються, щоб оператор не втратив введене.
     """
-    attach_email_preview_tokens([email], mail_trusted_roots(db), mail_preview_roots(db))
-    # ОДИН прохід по диску на весь рендер панелі: далі і «зниклі файли», і
-    # стан часткового прийняття рахуються з цього набору.
-    on_disk = {a.id for a in email.attachments if Path(a.saved_path).exists()}
+    # Фази в «Slow request»/`/diag/perf`: спул вкладень і export — мережеві
+    # шари, і саме там картка губила секунди (прод 25.09.26).
+    with perf.span("share:spool"):
+        attach_email_preview_tokens([email], mail_trusted_roots(db), mail_preview_roots(db))
+        # ОДИН прохід по диску на весь рендер панелі: далі і «зниклі файли», і
+        # стан часткового прийняття рахуються з цього набору.
+        on_disk = {a.id for a in email.attachments if Path(a.saved_path).exists()}
     seed = (email.material_color_guess or "") or (email.subject or "")
     # Recurring client? Sender memory beats every guess for the name prefill.
     sender_hint = lookup_sender(db, email)
@@ -895,12 +933,13 @@ def _mail_panel_context(
             a.id for a in partial_state["unclaimed_attachments"]
             if a.id in on_disk and a.id not in dup_report.copy_of
         }
-    dir_ctx = _card_dir_context(
-        db, email, partial_state, sender_hint,
-        client_name=client_name, material_color=material_color,
-        folder_pick=folder_pick, folder_new=folder_new,
-        material_folder=material_folder, attachment_ids=selected_ids,
-    )
+    with perf.span("share:export"):
+        dir_ctx = _card_dir_context(
+            db, email, partial_state, sender_hint,
+            client_name=client_name, material_color=material_color,
+            folder_pick=folder_pick, folder_new=folder_new,
+            material_folder=material_folder, attachment_ids=selected_ids,
+        )
     # Ефективна тека (з дефолтом постійного клієнта) перекриває вхідний folder_pick.
     folder_pick = dir_ctx.pop("folder_pick")
     # Підказка кольорів для багатокольорового листа (пацієнт у тексті біля
@@ -1371,7 +1410,9 @@ def _wizard_context(
     )
     ctx["attachment_count"] = ctx["batch_count"]
     if step >= 2:
-        ctx["existing_folders"] = list_client_folders(export_root)
+        ctx["existing_folders"] = list_client_folders(
+            export_root, max_age=CARD_FOLDER_LIST_MAX_AGE
+        )
 
     return ctx
 

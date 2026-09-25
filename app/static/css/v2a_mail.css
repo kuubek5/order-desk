@@ -876,10 +876,18 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mb-move>summary::-webkit-details-marker{display:none}
 .mailv2 .mb-move[open]>summary{border-color:var(--accent-b);color:var(--ink)}
 .mailv2 .mb-move-body{position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-lightbox);min-width:280px;max-height:360px;overflow:auto;display:flex;flex-direction:column;padding:6px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);box-shadow:0 20px 60px -24px rgba(0,0,0,.9)}
-/* «На уточненні» в меню «Перемістити» — рядок-папка під папками скриньки
-   (order), відділений лінією. */
-.mailv2 .mb-move-folders{order:1;display:flex;flex-direction:column}
-.mailv2 .mb-hold-opt{order:2;margin-top:4px;border-top:1px solid var(--line);border-radius:0 0 8px 8px;padding-top:11px}
+/* Меню «Перемістити» (власник 25.09.26): заголовок і робочі папки → «На
+   уточненні» → згорнуті «Інші папки». Фрагмент IMAP (.mb-move-folders) —
+   display:contents, щоб його діти ставали в той самий порядок, що й статичний
+   пункт «На уточненні». */
+.mailv2 .mb-move-folders{display:contents}
+.mailv2 .mb-move-folders>*{order:1}
+.mailv2 .mb-hold-opt{order:2}
+.mailv2 .mb-move-folders>.mb-move-more{order:3;margin-top:4px;border-top:1px solid var(--line);padding-top:4px}
+.mailv2 .mb-move-more>summary{list-style:none;color:var(--ink-3)}
+.mailv2 .mb-move-more>summary::-webkit-details-marker{display:none}
+.mailv2 .mb-move-more>summary svg{transition:transform .15s ease}
+.mailv2 .mb-move-more[open]>summary svg{transform:rotate(90deg)}
 .mailv2 .mb-hold-opt svg{stroke:var(--warn)}
 .mailv2 .mb-move-head{padding:8px 10px 6px;font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .mb-move-err{padding:8px 10px;font-size:var(--fs-1);color:var(--warn)}

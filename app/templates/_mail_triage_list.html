@@ -41,7 +41,7 @@
            (`/mail/bulk`) перевіряє ще раз. У «Вхідні» галочка активна для
            всіх: конвеєр бере з обраних лише готові (`data-ready`). #}
         {% set has_cb = view != 'auto' %}
-        {% set cb_locked = view in ('archive', 'processed', 'gone') and (email.status == 'прийнято' or email.order_id) %}
+        {% set cb_locked = view in ('archive', 'processed', 'milled', 'gone') and (email.status == 'прийнято' or email.order_id) %}
         <div class="mailrow{% if has_cb %} has-cb{% endif %}{% if view == 'pending' %} row-slim{% endif %}{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
              id="mailrow-{{ email.id }}"
              {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
@@ -149,7 +149,7 @@
                         <button type="submit" class="list-move" title="Повернути у «Вхідні»" aria-label="Повернути лист у вхідні"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-2"/></svg></button>
                     </form>
                     {% endif %}
-                {% elif view == 'processed' %}
+                {% elif view in ('processed', 'milled') %}
                     {# Перенесений лист + зворотна дія «↩ У Вхідні». Обидві
                        гілки повертають лист САМЕ у «Вхідні» (власник 24.09.26). #}
                     {# Назва папки, а не «у папці»: з меню «Перемістити» (25.09.26)
@@ -227,6 +227,9 @@
             {% if view == 'archive' %}
             <h3>Архів порожній</h3>
             <p>Тут з’являться листи після прийняття в чергу або відхилення.</p>
+            {% elif view == 'milled' %}
+            <h3>За сьогодні порожньо</h3>
+            <p>Тут — листи, які сьогодні перенесли в «{{ mail_milled_folder }}» (робота відправлена замовнику). Решта — за посиланням «Показати всі в папці».</p>
             {% elif view == 'processed' %}
             <h3>За сьогодні порожньо</h3>
             <p>Тут — лише листи, оброблені <b>сьогодні</b> (перенесені в «{{ mail_processed_folder }}» прийняттям, кнопкою «↦» чи прямо в пошті). Учорашні лишаються в папці скриньки.</p>

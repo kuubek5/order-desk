@@ -12,6 +12,8 @@ import hashlib
 import os
 import re
 import shutil
+import threading
+import time
 from pathlib import Path
 
 from app.business_day import business_today
@@ -108,7 +110,11 @@ def _contained_child(root: Path, name: str) -> Path:
 
 
 def _resolve_client_folder_name(
-    export_root: Path, client_name: str, preferred_folder: str | None = None
+    export_root: Path,
+    client_name: str,
+    preferred_folder: str | None = None,
+    *,
+    max_age: float = 0.0,
 ) -> str:
     """Reuses an existing client folder if this client already has one.
 
@@ -124,7 +130,7 @@ def _resolve_client_folder_name(
     when there's no confident existing match, which is also what creates the
     very first folder for a brand-new client.
     """
-    existing_folders = list_client_folders(export_root)
+    existing_folders = list_client_folders(export_root, max_age=max_age)
 
     # Тека клієнта з картки / памʼяті відправника (app/client_folder.py) — ПЕРШОЮ,
     # але лише коли вона справді є на диску: перейменовану теку не вигадуємо,
@@ -176,7 +182,23 @@ def _entry_is_dir(entry: os.DirEntry) -> bool:
         return False
 
 
-def list_client_folders(export_root: Path) -> list[str]:
+# Кеш переліку тек клієнтів: {корінь: (monotonic, імена)}. Лише для ПОКАЗУ
+# (картка, превʼю, «Конвеєр» — там перелік повторюється на кожен клік і на кожен
+# лист батчу); прийняття листа читає свіжий (`max_age=0`) і оновлює кеш.
+_FOLDER_CACHE: dict[str, tuple[float, list[str]]] = {}
+_FOLDER_CACHE_LOCK = threading.Lock()
+# Скільки секунд картка довіряє переліку. Тека, створена руками в Провіднику
+# щойно, у підказці з'явиться із цим запізненням; прийняття бачить її одразу.
+CARD_FOLDER_LIST_MAX_AGE = 30.0
+
+
+def forget_client_folders() -> None:
+    """Скинути кеш переліку — після того, як застосунок сам створив теку."""
+    with _FOLDER_CACHE_LOCK:
+        _FOLDER_CACHE.clear()
+
+
+def list_client_folders(export_root: Path, *, max_age: float = 0.0) -> list[str]:
     """Existing top-level client folder names under the export root, sorted.
     Feeds the accept wizard's "or pick an existing folder" override list.
 
@@ -185,11 +207,20 @@ def list_client_folders(export_root: Path) -> list[str]:
     елемент — окремий мережевий `stat`. Картка листа питала так двічі на кожен
     клік — 1.7–4.5 с (прод 25.09.26). На Windows `DirEntry.is_dir()` бере
     ознаку з самого переліку, без звернення до диска."""
+    key = str(export_root)
+    if max_age > 0:
+        with _FOLDER_CACHE_LOCK:
+            hit = _FOLDER_CACHE.get(key)
+        if hit is not None and time.monotonic() - hit[0] < max_age:
+            return list(hit[1])
     try:
         with os.scandir(export_root) as entries:
-            return sorted(e.name for e in entries if _entry_is_dir(e))
+            names = sorted(e.name for e in entries if _entry_is_dir(e))
     except OSError:
         return []
+    with _FOLDER_CACHE_LOCK:
+        _FOLDER_CACHE[key] = (time.monotonic(), names)
+    return list(names)
 
 
 def preview_export_target(
@@ -211,7 +242,8 @@ def preview_export_target(
         client_folder = sanitize_folder_name(override)
     else:
         client_folder = _resolve_client_folder_name(
-            export_root, client_name, preferred_client_folder
+            export_root, client_name, preferred_client_folder,
+            max_age=CARD_FOLDER_LIST_MAX_AGE,
         )
     client_dir = _contained_child(export_root, client_folder)
     client_folder_existing = client_dir.is_dir()
@@ -411,6 +443,8 @@ def save_attachments_to_export(
         raise FileNotFoundError(f"вкладення не знайдено: {missing[0]}")
 
     material_dir.mkdir(parents=True, exist_ok=True)
+    # Могла зʼявитись нова тека клієнта — картка має побачити її одразу.
+    forget_client_folders()
     reserved: set[Path] = set()
     moves = [
         (source, _unique_destination(material_dir, source.name, reserved))

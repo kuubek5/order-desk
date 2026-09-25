@@ -72,6 +72,10 @@
             {% if mail_processed_folder or processed_count %}
             <a href="/mail?view=processed" class="tab-link {% if view == 'processed' %}active{% endif %}"{% if view == 'processed' %} aria-current="page"{% endif %} title="Листи, перенесені в папку «{{ mail_processed_folder }}» — робота пішла в цех">{{ mail_processed_folder or 'Перенесені' }}{% if processed_count %} <span class="tab-badge">{{ processed_count }}</span>{% endif %}</a>
             {% endif %}
+            {# Друга папка — окрема вкладка (власник 25.09.26), лише коли задана. #}
+            {% if mail_milled_folder %}
+            <a href="/mail?view=milled" class="tab-link {% if view == 'milled' %}active{% endif %}"{% if view == 'milled' %} aria-current="page"{% endif %} title="Листи в папці «{{ mail_milled_folder }}» — робота відправлена замовнику">{{ mail_milled_folder }}{% if milled_count %} <span class="tab-badge">{{ milled_count }}</span>{% endif %}</a>
+            {% endif %}
             {# «На уточненні» (власник 25.09.26): листи на паузі, поки адміністратори
                уточнюють у замовника. Лише стан CRM. Видно завжди — це місце, куди
                оператор кладе лист сам. #}
@@ -203,7 +207,7 @@
                             data-bulk-confirm="Повернути обрані листи ({n}) у «Вхідні»?">↩ У Вхідні</button>
                     <button type="submit" name="action" value="reject" class="btn sm"
                             data-bulk-confirm="Відхилити обрані листи ({n})? Поштова скринька не змінюється.">✕ Відхилити</button>
-                    {% elif view == 'processed' %}
+                    {% elif view in ('processed', 'milled') %}
                     <button type="submit" name="action" value="to_inbox" class="btn sm"
                             data-bulk-confirm="Повернути обрані листи ({n}) у «Вхідні»?">↩ У Вхідні</button>
                     {% endif %}
@@ -219,14 +223,14 @@
             {# Вкладка папки: типово — сьогоднішні переноси; посилання показує
                УСІ листи в папках за весь час (вчорашні й перенесені до появи
                часу переносу), і навпаки. #}
-            {% if view == 'processed' %}
+            {% if view in ('processed', 'milled') %}
             <div class="list-period">
                 {% if processed_all %}
-                <span>Усі листи в папках · {{ processed_all_count }}</span>
-                <a href="/mail?view=processed">Лише сьогоднішні</a>
+                <span>Усі листи в папці · {{ processed_all_count }}</span>
+                <a href="/mail?view={{ view }}">Лише сьогоднішні</a>
                 {% else %}
                 <span>Перенесені сьогодні</span>
-                {% if processed_all_count > processed_count %}<a href="/mail?view=processed&amp;period=all">Показати всі в папці ({{ processed_all_count }})</a>{% endif %}
+                {% if processed_all_count > folder_today_count %}<a href="/mail?view={{ view }}&amp;period=all">Показати всі в папці ({{ processed_all_count }})</a>{% endif %}
                 {% endif %}
             </div>
             {% endif %}

@@ -1074,9 +1074,9 @@ def _staged_row(uid, mid, folder, **kw):
                         mailbox_folder=folder, **kw)
 
 
-def test_letter_moved_to_milled_folder_stays_processed_with_its_time():
-    """Лист перейшов «Скачено» → «Відфрезеровано»: мітка папки міняється, час
-    обробки лишається (інакше вчорашній лист повертався б у «сьогодні»), у
+def test_letter_moved_to_milled_folder_stays_processed_stamped_now():
+    """Лист перейшов «Скачено» → «Відфрезеровано»: мітка папки міняється, час —
+    момент переходу (вкладка «Відфрезеровано» показує сьогоднішні переноси), у
     «Покинули Вхідні» НЕ йде."""
     from app.mail_reader import _reflect_processed_folder
 
@@ -1094,7 +1094,7 @@ def test_letter_moved_to_milled_folder_stays_processed_with_its_time():
         session.refresh(row)
         assert changed == 1
         assert row.mailbox_folder == "Відфрезеровано"
-        assert row.mailbox_moved_at == moved_at
+        assert row.mailbox_moved_at > moved_at  # час переходу, не вчорашній
         assert row.inbox_gone_at is None
 
 

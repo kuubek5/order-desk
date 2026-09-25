@@ -211,3 +211,47 @@ class TestSaveProcessedFolder:
         )
         with session_factory() as db:
             assert not get_setting(db, "mail_milled_folder")
+
+
+class TestMilledFolderTab:
+    """«Відфрезеровано» — окрема вкладка (власник 25.09.26): у вкладці першої
+    папки листів із другої бути не повинно, інакше нічого не знайти."""
+
+    def test_milled_letters_live_only_in_their_tab(self, app_db):  # noqa: F811
+        app, session_factory = app_db
+        today_moved = datetime.combine(business_today(), get_rollover()) + timedelta(hours=1)
+        with session_factory() as db:
+            _set_folder(db, "Скачено")
+            set_setting(db, "mail_milled_folder", "Відфрезеровано")
+            db.commit()
+            taken = _letter(db, uid="401", folder="Скачено", mailbox_moved_at=today_moved)
+            milled = _letter(db, uid="402", folder="Відфрезеровано",
+                             mailbox_moved_at=today_moved)
+            old_milled = _letter(db, uid="403", folder="Відфрезеровано",
+                                 mailbox_moved_at=today_moved - timedelta(days=3))
+            # Перенесений меню «Перемістити» в іншу папку — лишається в першій вкладці.
+            other = _letter(db, uid="404", folder="Рахунки", mailbox_moved_at=today_moved)
+            ids = (taken.id, milled.id, old_milled.id, other.id)
+
+        client = MiniClient(app)
+        client.login(*OPERATOR)
+        _, _, processed = client.get("/mail?view=processed")
+        _, _, milled_tab = client.get("/mail?view=milled")
+        _, _, milled_all = client.get("/mail?view=milled&period=all")
+
+        assert f"mailrow-{ids[0]}" in processed and f"mailrow-{ids[3]}" in processed
+        assert f"mailrow-{ids[1]}" not in processed and f"mailrow-{ids[2]}" not in processed
+        assert f"mailrow-{ids[1]}" in milled_tab
+        assert f"mailrow-{ids[2]}" not in milled_tab          # не сьогодні
+        assert f"mailrow-{ids[0]}" not in milled_tab
+        assert f"mailrow-{ids[2]}" in milled_all              # «Показати всі в папці»
+        assert 'href="/mail?view=milled"' in processed        # вкладка є
+
+    def test_no_milled_tab_without_setting(self, app_db):  # noqa: F811
+        app, session_factory = app_db
+        with session_factory() as db:
+            _set_folder(db, "Скачено")
+        client = MiniClient(app)
+        client.login(*OPERATOR)
+        _, _, page = client.get("/mail?view=processed")
+        assert 'href="/mail?view=milled"' not in page
