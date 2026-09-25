@@ -56,10 +56,14 @@ def put_on_hold(email: EmailMessage, reason: str, note: str, actor: str) -> str 
         return "Невідома причина"
     if email.status != "нове":
         return "На уточнення можна поставити лише необроблений лист"
-    email.hold_at = business_now().replace(tzinfo=None)
+    # Лист уже на паузі — це ЗМІНА причини (банер картки): час і автор паузи
+    # лишаються первісними, інакше «з 09:12 · Рома» перетворювалось би на час
+    # і імʼя того, хто лише дописав причину.
+    if email.hold_at is None:
+        email.hold_at = business_now().replace(tzinfo=None)
+        email.hold_by = actor or None
     email.hold_reason = reason or None
     email.hold_note = note or None
-    email.hold_by = actor or None
     return None
 
 

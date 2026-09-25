@@ -60,11 +60,37 @@
         {% endif %}
     </div>
 
-    {# «На уточненні» (власник 25.09.26): лист на паузі — хто, коли й чому. #}
+    {# Форма причини «На уточнення» — одна на кнопку в підвалі й «змінити
+       причину» в банері. «Інше» ПЕРШИМ у розмітці: Enter у полі тексту шле
+       форму першою submit-кнопкою, і це мусить бути «Інше» з текстом, а не
+       «Немає файлів». На екрані чіпи вище (CSS order). #}
+    {% macro hold_form(email, head) %}
+            <form method="post" action="/mail/{{ email.id }}/hold" class="mc-hold-body">
+                <div class="mc-hold-head">{{ head }}</div>
+                <div class="mc-hold-other">
+                    <input type="text" name="note" class="suminput sm" maxlength="300" autocomplete="off"
+                           value="{{ email.hold_note or '' }}"
+                           placeholder="що уточнити (необовʼязково)" aria-label="Що уточнити">
+                    <button type="submit" name="reason" value="other" class="btn sm">Інше</button>
+                </div>
+                <div class="mc-hold-chips">
+                    {% for key, label in hold_reasons.items() if key != 'other' %}
+                    <button type="submit" name="reason" value="{{ key }}" class="wc-chip{% if email.hold_reason == key %} is-best{% endif %}">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            </form>
+    {% endmacro %}
+
+    {# «На уточненні» (власник 25.09.26): лист на паузі — хто, коли й чому.
+       Причину можна змінити тут же (та сама форма; час і автор паузи лишаються). #}
     {% if email.hold_at and is_new %}
     <div class="mc-hold-banner">
         <span class="mc-hold-ico" aria-hidden="true">⏸</span>
-        <span class="mc-hold-text"><b>На уточненні</b> з {{ email.hold_at.strftime('%d.%m %H:%M') }} · {{ hold_label(email) }}{% if email.hold_by %} · {{ email.hold_by }}{% endif %}</span>
+        <span class="mc-hold-text"><b>На уточненні</b> з {{ email.hold_at.strftime('%d.%m %H:%M') }}{% if email.hold_reason or email.hold_note %} · {{ hold_label(email) }}{% endif %}{% if email.hold_by %} · {{ email.hold_by }}{% endif %}</span>
+        <details class="mc-hold mc-hold-down">
+            <summary class="btn sm" title="Змінити або дописати причину">змінити причину</summary>
+            {{ hold_form(email, 'Нова причина') }}
+        </details>
         <form method="post" action="/mail/{{ email.id }}/unhold">
             <button type="submit" class="btn sm accent-outline">↩ У Вхідні</button>
         </form>
@@ -403,22 +429,7 @@
         {% if not email.hold_at %}
         <details class="mc-hold">
             <summary class="btn" title="Поставити лист на паузу, поки адміністратори уточнюють у замовника">⏸ На уточнення</summary>
-            <form method="post" action="/mail/{{ email.id }}/hold" class="mc-hold-body">
-                <div class="mc-hold-head">Що уточнити в замовника?</div>
-                {# «Інше» ПЕРШИМ у розмітці: Enter у полі тексту шле форму першою
-                   submit-кнопкою, і це мусить бути «Інше» з текстом, а не
-                   «Немає файлів». На екрані чіпи вище (CSS order). #}
-                <div class="mc-hold-other">
-                    <input type="text" name="note" class="suminput sm" maxlength="300" autocomplete="off"
-                           placeholder="що уточнити (необовʼязково)" aria-label="Що уточнити">
-                    <button type="submit" name="reason" value="other" class="btn sm">Інше</button>
-                </div>
-                <div class="mc-hold-chips">
-                    {% for key, label in hold_reasons.items() if key != 'other' %}
-                    <button type="submit" name="reason" value="{{ key }}" class="wc-chip">{{ label }}</button>
-                    {% endfor %}
-                </div>
-            </form>
+            {{ hold_form(email, 'Що уточнити в замовника?') }}
         </details>
         {% endif %}
         <form method="post" action="/mail/{{ email.id }}/reject" class="mc-reject"

@@ -578,6 +578,8 @@ window.collectMailBatch = function () {
       client_name: val("client_name"),
       material_color: val("material_color"),
       quantity: val("quantity"),
+      opak: val("opak"),
+      sum3d_id: val("sum3d_id"),
       kind: val("kind"),
       folder_pick: val("folder_pick"),
     });

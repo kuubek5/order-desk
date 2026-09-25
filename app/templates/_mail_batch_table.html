@@ -26,6 +26,10 @@
                         <th class="mb-c-client">Клієнт</th>
                         <th class="mb-c-mat">Матеріал · колір</th>
                         <th class="mb-c-qty">К-сть</th>
+                        {# Опак і Sum3D — як у картці листа й ручному додаванні
+                           (власник 25.09.26); обидва необовʼязкові. #}
+                        <th class="mb-c-opak">Опак</th>
+                        <th class="mb-c-sum3d">Sum3D</th>
                         <th class="mb-c-files">Файли</th>
                         <th class="mb-c-path">Ляже у</th>
                     </tr>
@@ -64,6 +68,14 @@
                         <input type="text" name="quantity" class="suminput mono" value="{{ r.quantity }}"
                                placeholder="—" aria-label="Кількість">
                     </td>
+                    <td class="mb-opak">
+                        <input type="text" name="opak" class="suminput mono" inputmode="numeric"
+                               placeholder="—" aria-label="Кількість опаків" autocomplete="off">
+                    </td>
+                    <td class="mb-sum3d">
+                        <input type="text" name="sum3d_id" class="suminput mono"
+                               placeholder="—" title="Sum3D ID (напр. 12-01-45), якщо вже прораховано" aria-label="Sum3D ID" autocomplete="off">
+                    </td>
                     <td class="mb-files">
                         <span class="mb-filechip {% if r.undownloaded_files or r.undownloaded_links %}warn{% else %}ok{% endif %}">
                             {{ r.attachment_count }} файл.{% if r.undownloaded_links %} · 🔗{{ r.undownloaded_links|length }}{% endif %}
@@ -78,7 +90,7 @@
                     </td>
                 </tr>
                 <tr class="mb-detailrow" data-detail-id="{{ e.id }}" hidden>
-                    <td colspan="6">
+                    <td colspan="8">
                         <div class="mb-detail">
                             {% if e.body_text %}
                             <div class="mb-body">{{ e.body_text }}</div>

@@ -68,6 +68,15 @@ def triage_readiness(email) -> dict:
     if pending_files:
         missing.append(f"{pending_files} файл(ів) листа")
 
+    # Клієнт надіслав ту саму роботу двічі (однаковий вміст). `has_duplicates`
+    # ставить роутер списку (mail_duplicates.has_duplicate_files, з кешем).
+    # Зелена галочка тут обманювала: конвеєр такий лист і так не приймає, а
+    # в картці — попередження (власник 25.09.26).
+    if getattr(email, "has_duplicates", False):
+        if not missing:
+            return {"state": "dups", "missing": ["дублі файлів"]}
+        missing.append("дублі файлів")
+
     return {"state": "ready" if not missing else "incomplete", "missing": missing}
 
 

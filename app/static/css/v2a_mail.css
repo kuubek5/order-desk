@@ -781,6 +781,8 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mc-hold>summary::-webkit-details-marker{display:none}
 .mailv2 .mc-hold[open]>summary{border-color:rgba(var(--warn-rgb),.7);color:var(--warn)}
 .mailv2 .mc-hold-body{position:absolute;bottom:calc(100% + 6px);right:0;z-index:var(--z-lightbox);width:320px;display:flex;flex-direction:column;gap:9px;padding:12px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);box-shadow:0 20px 60px -24px rgba(0,0,0,.9)}
+/* Поповер «змінити причину» в банері — вниз (банер угорі картки). */
+.mailv2 .mc-hold-down .mc-hold-body{bottom:auto;top:calc(100% + 6px)}
 .mailv2 .mc-hold-head{order:0;font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .mc-hold-chips{order:1;display:flex;flex-wrap:wrap;gap:6px}
 .mailv2 .mc-hold-other{order:2;display:flex;gap:8px;padding-right:2px}
@@ -899,6 +901,10 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mb-table tbody tr.mb-row:hover{background:var(--card-2)}
 .mailv2 .mb-c-exp,.mailv2 .mb-exp{width:28px;text-align:center;padding-left:6px;padding-right:2px}
 .mailv2 .mb-c-qty{width:64px}
+.mailv2 .mb-c-client{min-width:150px}
+.mailv2 .mb-c-mat{min-width:130px}
+.mailv2 .mb-c-opak{width:58px}
+.mailv2 .mb-c-sum3d{width:96px}
 .mailv2 .mb-c-files{width:96px}
 .mailv2 .mb-table .suminput{height:30px;font-size:var(--fs-1);padding:0 8px}
 .mailv2 .mb-caret{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;background:none;color:var(--ink-3);cursor:pointer;border-radius:6px;transition:transform var(--ui-speed) ease,color var(--ui-speed) ease}

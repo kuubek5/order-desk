@@ -45,7 +45,7 @@ from app.mail_export import (
 )
 from app.mail_body_view import inline_parts, letter_segments, useful_text
 from app.mail_color_split import suggest_color_plan
-from app.mail_duplicates import find_duplicates
+from app.mail_duplicates import find_duplicates, has_duplicate_files
 from app.mail_filters import apply_rule_retroactively
 from app.mail_hold import (
     hold_label,
@@ -176,9 +176,14 @@ def _row_badge(label: dict, old: dict | None) -> dict:
     кольору — зі старого чіпа, а без нього — за символом категорії."""
     symbol = label.get("badge") or (old or {}).get("symbol") or "?"
     cls = (old or {}).get("cls") or _BADGE_CLS.get(symbol, "mat-other")
+    # Колір невідомий і лінія зветься як сама категорія («pmma» під «PMMA») —
+    # не дублювати: просто «PMMA» (власник 25.09.26). «Zr mono» лишається.
+    text = label["text"]
+    if text.strip().lower() == symbol.strip().lower():
+        text = ""
     # title — лише категорія: шаблон сам дописує «· <колір>» до підказки.
     return {
-        "symbol": symbol, "cls": cls, "color": label["text"],
+        "symbol": symbol, "cls": cls, "color": text,
         "title": (old or {}).get("title") or symbol,
     }
 
@@ -356,6 +361,10 @@ def get_mail(
     _mat_aliases = load_alias_rows(db)
     for _email in emails:
         _email.mat_badge = mail_material_badge(_email.material_color_guess, _mat_aliases)
+        # Бейдж готовності знає про дублі (triage_readiness): лише «Вхідні»,
+        # де цей бейдж і малюється; вміст читається раз на набір файлів.
+        if view == "pending":
+            _email.has_duplicates = has_duplicate_files(_email.attachments)
         # Латинський канон у чіпі: «Zr mono b1» замість «Zr B1» (власник
         # 25.09.26) — та сама відповідь, що підставиться в поле картки, з тим
         # самим пошуком матеріалу в тексті замовника («B1» + «Monolight»).
@@ -1819,6 +1828,8 @@ def accept_email_batch(
             folder_new="", material_folder="",
             attachment_ids=[],
             accept_anyway=bool(item.get("accept_anyway")),
+            sum3d_id=str(item.get("sum3d_id") or ""),
+            opak=str(item.get("opak") or ""),
         )
         results.append({
             "email_id": eid,

@@ -119,3 +119,28 @@ def find_duplicates(attachments: list) -> DuplicateReport:
         report.name_conflicts.append(group[0].filename)
         report.conflict_ids.update(a.id for a in different)
     return report
+
+
+# Кеш для СПИСКУ листів (полл кожні 15 с): ключ — набір файлів (id, шлях,
+# розмір), тож новий/розпакований файл дає новий ключ. Вміст читається лише
+# там, де є файли однакового розміру, і лише раз на набір.
+_LIST_CACHE: dict[tuple, bool] = {}
+_LIST_CACHE_MAX = 512
+
+
+def has_duplicate_files(attachments: list) -> bool:
+    """Чи надіслав клієнт ту саму роботу двічі — для бейджа в списку листів
+    (власник 25.09.26: зелена галочка на такому листі вводила в оману).
+    Лише однаковий ВМІСТ (`copy_of`); тезки з різним вмістом — у картці."""
+    pending = [a for a in attachments if getattr(a, "order_id", None) is None]
+    if len(pending) < 2:
+        return False
+    key = tuple(sorted((a.id, a.saved_path or "", a.size_bytes or 0) for a in pending))
+    cached = _LIST_CACHE.get(key)
+    if cached is not None:
+        return cached
+    result = bool(find_duplicates(pending).copy_of)
+    if len(_LIST_CACHE) >= _LIST_CACHE_MAX:
+        _LIST_CACHE.clear()
+    _LIST_CACHE[key] = result
+    return result
