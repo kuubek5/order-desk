@@ -63,6 +63,7 @@ from app.mail_sync_service import (
 from app.mail_spool import spool_folder_name
 from app.client_matcher import match_client_name
 from app.models import (
+    ActionLog,
     Attachment,
     Client,
     ClientSenderMemory,
@@ -2009,7 +2010,11 @@ def delete_mail_filter(
 UNACCEPT_ALLOWED_STATUSES = frozenset({"нове", "прийнято", "прораховано"})
 
 
-def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]:
+def _unaccept_email(
+    db: Session,
+    email: EmailMessage,
+    moved_out: list[tuple[Path, Path]] | None = None,
+) -> list[tuple[Path, Path]]:
     """Fully undo EVERY order accepted from this letter (a multi-colour letter
     can have several), returning it to the pre-accept "нове" state: move all
     claimed attachments from export back to the mail spool, blank each order's
@@ -2053,6 +2058,12 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
             old_paths,
         )
         moved_pairs = list(zip(old_paths, new_paths))
+        # Викликачу — ОДРАЗУ після переносу, не лише з поверненням: помилка
+        # бази нижче (FK, коміт) інакше лишала йому порожній список, і файли,
+        # уже повернуті в спул, не верталися назад, хоча база відкотилась у
+        # «файли в export» (той самий урок, що `moved_out` у прийнятті).
+        if moved_out is not None:
+            moved_out.extend(moved_pairs)
         # Файли переїхали — кеш обходу export більше не відповідає диску.
         clear_export_cache()
         for attachment, new_path in zip(attachments, new_paths):
@@ -2083,9 +2094,29 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
             except Exception:  # noqa: BLE001 — sheet cleanup must not block the undo
                 logger.exception("Could not blank sheet placeholder row for email %s", email.id)
 
+    # Спершу ЗНЯТИ всі посилання на роботи й зафіксувати це, лише потім
+    # видаляти. `email.order_id` — голий FK без relationship, тож порядку
+    # «UPDATE листа → DELETE роботи» unit-of-work не знає, а `db.delete` другої
+    # роботи ліниво вантажить звʼязки й автофлашить DELETE першої, поки лист
+    # ще на неї посилається → FOREIGN KEY constraint failed. З однією роботою
+    # проскакувало; багатокольоровий лист (дві партії — дві роботи) не
+    # відкочувався взагалі (бойовий прогін 25.09.26).
+    email.order_id = None
+    # Журнал дій (`ActionLog`) посилається на роботу без каскаду, і
+    # `order_id` там nullable навмисно: рядок журналу «хто що зробив» мусить
+    # пережити видалену роботу. Без цього відкат роботи, з якою оператор уже
+    # щось робив (статус, Sum3D), падав на FK — і «↩» з папки «Скачано-
+    # прошитано» не повертав лист у «Усі листи» (бойовий випадок 25.09.26).
+    order_ids = [o.id for o in orders]
+    if order_ids:
+        db.execute(
+            sa_update(ActionLog)
+            .where(ActionLog.order_id.in_(order_ids))
+            .values(order_id=None)
+        )
+    db.flush()
     for order in orders:
         db.delete(order)
-    email.order_id = None
     email.status = "нове"
     email.attachments_status = "ready"
     # Симетрія до прийняття: якщо accept переніс лист у папку «оброблено»,
@@ -2136,7 +2167,7 @@ def restore_email(
         # order and put all files back — a clean restart of the whole letter.
         moved_pairs: list[tuple[Path, Path]] = []
         try:
-            moved_pairs = _unaccept_email(db, email)
+            _unaccept_email(db, email, moved_out=moved_pairs)
             db.commit()
         except Exception as exc:  # noqa: BLE001 — mirror image of accept (C-2)
             # Two kinds of failure, one compensation. A filesystem error leaves

@@ -2108,6 +2108,34 @@ def test_a_revived_mail_work_keeps_its_source():
         assert order.source == "email"
 
 
+def test_a_live_mail_work_stays_mail_when_sync_reads_its_note_row():
+    """Прийняття листа пише рядок-нотатку тієї ж форми, що наряд-less
+    клієнтський, і привʼязує до нього поштову роботу. Синк читав цей рядок як
+    «клієнтський», бачив `source != source` і «перевтілював» поштову роботу:
+    вона зникала з «Прийняте з пошти» (фільтр source == "email"), видача
+    втрачала точну теку (order_folder бере export_folder_path лише для email),
+    а вид роботи з листа стирався, бо в нотатці колонка «Вид» — це клієнт.
+    Бойовий прогін 25.09.26: 4 роботи з 4 — за хвилину після прийняття."""
+    with make_session() as session:
+        session.add(Order(
+            source="email", sheet_tab="25.09.26", row_number=5,
+            client_name="Басараб", material_color="mono a3", quantity="1",
+            kind="коронка", status="нове", source_email_id=46,
+            export_folder_path="Басараб/25.09.26/mono a3",
+        ))
+        session.commit()
+
+        sync_tab(session, "25.09.26", [make_client_row(row_number=5)])
+        session.commit()
+
+        order = session.scalar(select(Order))
+        assert order.source == "email"
+        assert order.kind == "коронка"
+        assert order.source_email_id == 46
+        assert order.export_folder_path == "Басараб/25.09.26/mono a3"
+        assert order.archived_at is None
+
+
 def test_a_live_order_whose_row_changed_kind_is_still_reset():
     """Скидання при зміні типу лишилось для ЖИВИХ робіт: воно й далі лікує
     гібрид «клієнтська робота з нарядом» на наступному синку.

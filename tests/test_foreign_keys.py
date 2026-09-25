@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app import db as db_module
 from app.db import Base
-from app.models import Attachment, Comment, EmailMessage, Order, StatusEvent
+from app.models import ActionLog, Attachment, Comment, EmailMessage, Order, StatusEvent
 
 
 @pytest.fixture(autouse=True)
@@ -101,6 +101,44 @@ def test_unaccepting_a_letter_does_not_break_on_enforcement(tmp_path):
 
         assert db.scalar(select(EmailMessage)).order_id is None
         assert db.scalars(select(Order)).all() == []
+
+
+def test_route_unaccepts_a_two_colour_letter_under_enforcement(tmp_path):
+    """Тест вище відтворює порядок САМ, тож був зелений, поки роут робив
+    навпаки: видаляв роботи, а `email.order_id` знімав потім. З однією роботою
+    це проскакувало; багатокольоровий лист (дві партії — дві роботи) падав
+    `FOREIGN KEY constraint failed` (бойовий прогін 25.09.26). Тут — справжня
+    функція роуту."""
+    from app.routers.mail import _unaccept_email
+
+    engine = _fk_engine(tmp_path / "k.db")
+    with Session(engine) as db:
+        email = EmailMessage(uid="u2", status="нове")
+        db.add(email)
+        db.flush()
+        first = Order(source="email", sheet_tab="25.09.26", client_name="Iris",
+                      material_color="monolith a3", status="нове", source_email_id=email.id)
+        second = Order(source="email", sheet_tab="25.09.26", client_name="Iris",
+                       material_color="monolith a3.5", status="нове", source_email_id=email.id)
+        db.add_all([first, second])
+        db.flush()
+        email.order_id = first.id
+        db.add(StatusEvent(order_id=first.id, status="нове", actor="t"))
+        db.add(StatusEvent(order_id=second.id, status="нове", actor="t"))
+        # Оператор уже щось зробив із роботою (статус, Sum3D) — рядок журналу
+        # посилається на неї. Бойовий випадок 25.09.26: «↩» з папки «Скачано-
+        # прошитано» падав саме на цьому, і лист не повертався в «Усі листи».
+        db.add(ActionLog(order_id=first.id, action_type="status", note="нове → прораховано"))
+        db.commit()
+
+        _unaccept_email(db, email)
+        db.commit()
+
+        assert db.scalars(select(Order)).all() == []
+        assert db.scalar(select(EmailMessage)).order_id is None
+        # Рядок журналу живе далі (order_id nullable саме для цього), без роботи.
+        entry = db.scalar(select(ActionLog))
+        assert entry is not None and entry.order_id is None
 
 
 def test_dirty_database_turns_enforcement_off_instead_of_breaking(tmp_path, caplog):

@@ -902,9 +902,24 @@ def sync_tab(
         # після 0.13.5, де ключ уже вмів обходитись без імені. Архівну роботу
         # приводить до нового вигляду сама гілка воскресіння, коли бачить, що
         # в рядку справді інша робота.
-        if existing.archived_at is None and existing.source != source:
+        # Поштова робота в СВОЄМУ рядку-нотатці — не «інший тип роботи». Нотатку
+        # пише саме прийняття листа (append_mail_placeholder_row), і формою вона
+        # як наряд-less клієнтський рядок, тож для синку `source` рядка —
+        # "sheet_client". Без цього винятку кожен синк «перевтілював» поштову
+        # роботу: вона зникала з «Прийняте з пошти» (фільтр source == "email"),
+        # видача втрачала точну теку (order_folder бере export_folder_path лише
+        # для email), а вид роботи з листа стирався. Бойовий прогін 25.09.26 —
+        # 4 роботи з 4 за хвилину після прийняття. Гілка воскресіння нижче це
+        # правило вже мала; лабораторний наряд у такому рядку й далі скидає.
+        own_mail_note = existing.source == "email" and source == "sheet_client"
+        if existing.archived_at is None and existing.source != source and not own_mail_note:
             _reset_order_for_new_work(existing, source=source, status=status)
             changed = True
+        if own_mail_note:
+            # У нотатці колонка «Вид» — це ім'я клієнта (`_client_fields` кладе
+            # туди None), а вид роботи прийшов із листа. Порожнє з рядка не
+            # мусить його стирати.
+            fields = {k: v for k, v in fields.items() if k != "kind"}
 
         # A row holding a DIFFERENT work than the archived order brings that row
         # back into the queue: technicians reuse a row that was cleared, and
