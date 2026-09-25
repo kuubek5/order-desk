@@ -17,13 +17,13 @@
    The «+N нових» button below is a real navigation: it mints a new watermark
    and is the ONLY thing that grows this list. #}
 <div id="mail-list-rows"
-     {% if view == 'pending' %}hx-get="/mail?view=pending&service={{ service }}&partial=list&since={{ list_watermark }}"
+     {% if view == 'pending' %}hx-get="/mail?view=pending&service={{ service }}{% if fam %}&fam={{ fam }}{% endif %}&partial=list&since={{ list_watermark }}"
      hx-trigger="every 15s[!document.hidden]"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"{% endif %}>
     {% if view == 'pending' and held_back_count %}
-    <a class="newmail-bar" href="/mail?view=pending&service={{ service }}">
+    <a class="newmail-bar" href="/mail?view=pending&service={{ service }}{% if fam %}&fam={{ fam }}{% endif %}">
         <span class="newmail-dot" aria-hidden="true"></span>
         +{{ held_back_count }} {% if held_back_count == 1 %}новий лист{% elif held_back_count < 5 %}нові листи{% else %}нових листів{% endif %} — показати
     </a>

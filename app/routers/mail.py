@@ -172,6 +172,47 @@ def _material_context(email: EmailMessage, customer_text: str | None = None) -> 
 
 
 _BADGE_CLS = {"Zr": "mat-zr", "PMMA": "mat-pmma", "Ti": "mat-ti", "SLM": "mat-slm", "Wax": "mat-wax"}
+# Ярлики-фільтри родини матеріалу над списком (власник 25.09.26: «весь день
+# фрезеруємо цирконій, пластмасу лишаємо на потім — щоб не мелькала»). Ключ —
+# символ чіпа рядка в нижньому регістрі; `none` — лист без упізнаного матеріалу.
+_FAMILY_ORDER = ("zr", "pmma", "ti", "wax", "slm")
+_NO_FAMILY = "none"
+
+
+def _family_of(email) -> str:
+    badge = getattr(email, "mat_badge", None) or {}
+    return (badge.get("symbol") or "").strip().lower() or _NO_FAMILY
+
+
+def _family_chips(emails, active: str) -> list[dict]:
+    """Ярлики з лічильниками — лише коли в списку щонайменше дві родини (або
+    ярлик уже вибрано, щоб його можна було зняти)."""
+    counts: dict[str, int] = {}
+    labels: dict[str, str] = {}
+    classes: dict[str, str] = {}
+    for email in emails:
+        key = _family_of(email)
+        counts[key] = counts.get(key, 0) + 1
+        badge = getattr(email, "mat_badge", None) or {}
+        if key != _NO_FAMILY:
+            labels.setdefault(key, badge.get("symbol") or key)
+            classes.setdefault(key, badge.get("cls") or "mat-other")
+    if len(counts) < 2 and not active:
+        return []
+    order = [k for k in _FAMILY_ORDER if k in counts]
+    order += sorted(k for k in counts if k not in _FAMILY_ORDER and k != _NO_FAMILY)
+    if _NO_FAMILY in counts:
+        order.append(_NO_FAMILY)
+    return [
+        {
+            "key": key,
+            "label": "без матеріалу" if key == _NO_FAMILY else labels.get(key, key),
+            "cls": "" if key == _NO_FAMILY else classes.get(key, "mat-other"),
+            "count": counts[key],
+            "on": key == active,
+        }
+        for key in order
+    ]
 
 
 def _row_badge(label: dict, old: dict | None) -> dict:
@@ -222,6 +263,10 @@ def _mail_back_url(request: Request, open_id: int | None = None) -> str:
         params.append(f"open={open_id}")
     if service in SERVICE_TYPE_FILTERS and service != "all":
         params.append(f"service={quote(service)}")
+    # Ярлик родини матеріалу — лишається після дії (лише слова з білого списку).
+    fam = (query.get("fam") or [""])[0]
+    if fam in _FAMILY_ORDER or fam == _NO_FAMILY:
+        params.append(f"fam={fam}")
     return "/mail" + (f"?{'&'.join(params)}" if params else "")
 
 
@@ -238,6 +283,7 @@ def get_mail(
     since: int | None = None,
     batch: str | None = None,
     period: str = "",
+    fam: str = "",
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -481,6 +527,14 @@ def get_mail(
     service_counts = count_by_service_type(emails) if view == "pending" else None
     if view == "pending":
         emails = filter_emails_by_service_type(emails, service)
+    # Ярлики родини матеріалу: лічильники — з усього списку вкладки, фільтр —
+    # після них (власник 25.09.26). Невідоме значення = «усі».
+    fam = (fam or "").strip().lower()
+    family_chips = _family_chips(emails, fam)
+    if fam and any(chip["key"] == fam for chip in family_chips):
+        emails = [e for e in emails if _family_of(e) == fam]
+    else:
+        fam = ""
     attach_email_preview_tokens(emails, mail_trusted_roots(db), mail_preview_roots(db))
 
     # Filter rules — listed (and managed by the admin) on the filtered tab.
@@ -539,6 +593,7 @@ def get_mail(
                 "emails": emails,
                 "view": view,
                 "service": service,
+                "fam": fam,
                 "list_watermark": list_watermark,
                 "held_back_count": held_back_count,
                 # Потрібне рядку для кнопки «↦ у папку»: без нього полл кожні 15с
@@ -575,6 +630,8 @@ def get_mail(
             "error": error,
             "service": service,
             "service_counts": service_counts,
+            "fam": fam,
+            "family_chips": family_chips,
             "view": view,
             "pending_count": pending_count,
             "filtered_count": filtered_count,

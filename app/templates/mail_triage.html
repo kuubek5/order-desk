@@ -214,6 +214,23 @@
                 </form>
             </div>
             {% endif %}
+            {# Ярлики родини матеріалу (власник 25.09.26): «весь день цирконій,
+               пластмаса на потім» — клік лишає в списку одну родину, повторний
+               знімає. Фільтрує сервер (`fam`), тож полл, сторінки й «+N нових»
+               тримають вибір. Лічильники — з усього списку вкладки. #}
+            {% if family_chips %}
+            {% set _fam_base = '/mail?view=' ~ view ~ ('&period=all' if processed_all else '') ~ ('&service=' ~ service if service and service != 'all' else '') %}
+            <nav class="famchips" aria-label="Фільтр за матеріалом">
+                <a href="{{ _fam_base }}" class="famchip{% if not fam %} is-on{% endif %}"{% if not fam %} aria-current="true"{% endif %}>Усі</a>
+                {% for chip in family_chips %}
+                <a href="{{ _fam_base }}{% if not chip.on %}&amp;fam={{ chip.key }}{% endif %}"
+                   class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
+                   title="{% if chip.on %}Показати всі листи{% else %}Лише {{ chip.label }}{% endif %}">
+                    <b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
+                </a>
+                {% endfor %}
+            </nav>
+            {% endif %}
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}
             </div>

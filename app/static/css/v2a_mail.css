@@ -198,6 +198,25 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mailrow .matmini.mat-ti b{color:var(--mat-ti)}
 .mailv2 .mailrow .matmini.mat-wax b{color:var(--mat-wax)}
 .mailv2 .mailrow .matmini.mat-slm b{color:var(--mat-slm)}
+/* Ярлики родини матеріалу над списком (власник 25.09.26). Колір символу —
+   той самий, що в чіпі рядка; вибраний ярлик — заливка й рамка його кольору. */
+.mailv2 .famchips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.mailv2 .famchip{display:inline-flex;align-items:baseline;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--card-2);color:var(--ink-2);font-size:var(--fs-1);text-decoration:none;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.mailv2 .famchip b{font-family:var(--font-mono);font-size:var(--fs-0);font-weight:700;letter-spacing:.02em;color:var(--ink)}
+.mailv2 .famchip .famchip-n{font-size:var(--fs-0);color:var(--ink-3)}
+.mailv2 .famchip:hover,.mailv2 .famchip:focus-visible{border-color:var(--line-2);color:var(--ink)}
+.mailv2 .famchip.mat-zr b{color:var(--mat-zr)}
+.mailv2 .famchip.mat-pmma b{color:var(--mat-pmma)}
+.mailv2 .famchip.mat-ti b{color:var(--mat-ti)}
+.mailv2 .famchip.mat-wax b{color:var(--mat-wax)}
+.mailv2 .famchip.mat-slm b{color:var(--mat-slm)}
+.mailv2 .famchip.is-on{border-color:var(--accent-b);background:color-mix(in srgb,var(--accent-b) 14%,var(--card-2));color:var(--ink)}
+.mailv2 .famchip.is-on.mat-zr{border-color:var(--mat-zr);background:color-mix(in srgb,var(--mat-zr) 16%,var(--card-2))}
+.mailv2 .famchip.is-on.mat-pmma{border-color:var(--mat-pmma);background:color-mix(in srgb,var(--mat-pmma) 16%,var(--card-2))}
+.mailv2 .famchip.is-on.mat-ti{border-color:var(--mat-ti);background:color-mix(in srgb,var(--mat-ti) 16%,var(--card-2))}
+.mailv2 .famchip.is-on.mat-wax{border-color:var(--mat-wax);background:color-mix(in srgb,var(--mat-wax) 16%,var(--card-2))}
+.mailv2 .famchip.is-on.mat-slm{border-color:var(--mat-slm);background:color-mix(in srgb,var(--mat-slm) 16%,var(--card-2))}
+.mailv2 .famchip.is-on .famchip-n{color:var(--ink-2)}
 .mailv2 .reco{font-size:var(--fs-0);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .mailv2 .reco.ok{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .3)}
 .mailv2 .reco.warn{background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .3)}
