@@ -575,7 +575,7 @@ def tool_mail_material(db: Session, args: dict) -> dict[str, Any]:
     замовника), той самий ланцюг `best_material`, покроково."""
     raw = args.get("email_id")
     try:
-        email_id = int(raw)
+        email_id = int(str(raw))
     except (TypeError, ValueError):
         raise ToolError("потрібен `email_id` — номер листа (з адреси /mail?open=N)")
     from app.mail_body_view import letter_segments, useful_text
