@@ -1439,3 +1439,55 @@ document.body.addEventListener("toast", (event) => {
     if (event.target.closest("[data-rail-collapse]")) hideTip();
   });
 })();
+
+// ── Вибір теки клієнта в export (картка клієнта, власник 25.09.26) ──────────
+// Вікно тек у CRM замість системного Провідника: працює з другого ПК по мережі
+// й не випускає за межі export. Список і пошук — у браузері (назви вже в
+// розмітці); вміст теки — htmx `/clients/export-peek` на першому розгортанні;
+// «Обрати» вписує назву в поле форми й зберігає ту саму формою (htmx чи ні —
+// як і кнопка «Зберегти»). Делеговано: картка приходить і фрагментом, і сторінкою.
+document.addEventListener("input", (event) => {
+  const search = event.target.closest && event.target.closest("[data-fp-search]");
+  if (!search) return;
+  const body = search.closest(".fp-body");
+  const q = search.value.trim().toLowerCase();
+  let shown = 0;
+  body.querySelectorAll(".fp-item").forEach((item) => {
+    const hit = !q || (item.dataset.fpName || "").includes(q);
+    item.hidden = !hit;
+    if (hit) shown += 1;
+  });
+  const none = body.querySelector("[data-fp-none]");
+  if (none) none.hidden = shown > 0;
+});
+
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest && event.target.closest("[data-fp-toggle]");
+  if (toggle) {
+    const item = toggle.closest(".fp-item");
+    const peek = item && item.querySelector(".fp-peek");
+    if (peek) {
+      peek.hidden = !peek.hidden;
+      item.classList.toggle("is-open", !peek.hidden);
+    }
+    return;
+  }
+  const choose = event.target.closest && event.target.closest("[data-fp-choose]");
+  if (!choose) return;
+  const sec = choose.closest(".cp-sec");
+  const form = sec && sec.querySelector("form.cp-folder");
+  const input = form && form.querySelector('[name="export_folder_name"]');
+  if (!input) return;
+  input.value = choose.dataset.fpChoose || "";
+  choose.textContent = "Зберігаю…";
+  if (form.requestSubmit) form.requestSubmit();
+  else form.submit();
+});
+
+// Відкрили вікно тек — курсор одразу в пошук (toggle не спливає — перехоплення).
+document.addEventListener("toggle", (event) => {
+  const box = event.target;
+  if (!box.matches || !box.matches("details[data-fp]") || !box.open) return;
+  const search = box.querySelector("[data-fp-search]");
+  if (search) search.focus();
+}, true);

@@ -74,6 +74,7 @@ GET /sheets/state
 POST /settings/materials/shortcut/{shortcut_id}/delete
 POST /settings/network/folder-open
 POST /discs/orders/{order_id}/cancel
+GET /clients/export-peek
 GET /clients/duplicates
 POST /settings/handout-qc
 POST /settings/google-oauth/disconnect

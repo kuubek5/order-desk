@@ -36,7 +36,7 @@ from app.services.clients import (
 )
 from app.services.client_merge import find_candidates, record_merge, record_skip
 from app.services import folder_merge as folder_merge_svc
-from app.export_scanner import list_export_client_names_cached
+from app.export_scanner import list_export_client_names_cached, peek_export_client
 from app.settings_store import get_export_folder_path
 
 logger = logging.getLogger(__name__)
@@ -214,6 +214,27 @@ def get_clients(
             "selected_id": selected_id,
             **pane,
         },
+    )
+
+
+# ВИЩЕ за `/clients/{client_id}`: інакше FastAPI бере «export-peek» за id.
+@router.get("/clients/export-peek", response_class=HTMLResponse)
+def client_export_peek(request: Request, name: str = "", db: Session = Depends(get_db)):
+    """Вміст теки клієнта для вікна вибору теки (власник 25.09.26): свіжі
+    підтеки-дати, щоб упізнати потрібну. Лише назва теки 1-го рівня з export —
+    сервіс відкидає будь-що інше (див. `peek_export_client`)."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    blocked = blocked_response(request, db, user, "clients")
+    if blocked is not None:
+        return blocked
+    try:
+        peek = peek_export_client(Path(get_export_folder_path(db)), name)
+    except OSError:
+        peek = None
+    return templates.TemplateResponse(
+        request, "_client_folder_peek.html", {"peek": peek, "name": name},
     )
 
 

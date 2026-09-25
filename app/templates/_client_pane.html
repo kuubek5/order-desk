@@ -37,6 +37,43 @@
             </datalist>
             <button type="submit" class="cp-save">Зберегти</button>
         </form>
+        {# Вибір теки мишею (власник 25.09.26): «щоб провідник провів до потрібної
+           папки», а не лише вписати текстом. Вікно тек у самій CRM — працює і з
+           другого ПК по мережі, і за межі export не випускає. Список — ті самі
+           назви 1-го рівня, що в datalist (сервер їх уже має); пошук — у
+           браузері. Клік по теці розгортає її вміст (свіжі підтеки-дати, один
+           scandir), «Обрати» вписує назву й зберігає. Обробник — app.js. #}
+        {% if folder_names %}
+        <details class="fp" data-fp>
+            <summary class="fp-open">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                Обрати теку в export…
+            </summary>
+            <div class="fp-body">
+                <input type="search" class="cp-input fp-search" placeholder="пошук теки — {{ folder_names|length }} у export" aria-label="Пошук теки" autocomplete="off" data-fp-search>
+                <ul class="fp-list" data-fp-list>
+                    {% for name in folder_names %}
+                    <li class="fp-item{% if name == bound_folder %} is-bound{% endif %}{% if name in folder_suggestions %} is-sug{% endif %}" data-fp-name="{{ name|lower }}">
+                        <div class="fp-line">
+                            <button type="button" class="fp-row" data-fp-toggle
+                                    hx-get="/clients/export-peek?name={{ name|urlencode }}" hx-trigger="click once"
+                                    hx-target="next .fp-peek" hx-swap="innerHTML"
+                                    title="Показати, що в теці">
+                                <svg class="fp-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                <span class="mono">{{ name }}</span>
+                                {% if name == bound_folder %}<span class="fp-tag">прив'язано</span>{% elif name in folder_suggestions %}<span class="fp-tag sug">схоже</span>{% endif %}
+                            </button>
+                            <button type="button" class="fp-choose" data-fp-choose="{{ name }}">Обрати</button>
+                        </div>
+                        <div class="fp-peek" hidden><div class="fp-peek-empty">Зчитую…</div></div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <p class="fp-none" hidden data-fp-none>Нічого не знайдено.</p>
+            </div>
+        </details>
+        {% endif %}
         {% if folder_suggestions %}
         {# Одноклікові кандидати — ті самі нечіткі здогади, що рахує видача.
            Прив'язати правильну папку = один клік, а не пошук серед сотень назв. #}

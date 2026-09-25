@@ -115,6 +115,38 @@ def list_export_client_names(root: Path) -> list[str]:
     return sorted(names)
 
 
+def peek_export_client(root: Path, name: str, limit: int = 8) -> dict | None:
+    """Що лежить у теці клієнта — ОДИН scandir, без обходу вглиб.
+
+    Для вікна вибору теки в картці клієнта (власник 25.09.26): оператор
+    розгортає теку й бачить свіжі підтеки-дати, щоб упізнати «ту саму»
+    («Тест» чи «BatchTest»). `name` мусить бути точною назвою теки 1-го рівня
+    — інакше None (жодних шляхів із «..» чи підтек у запиті). Найсвіжіші
+    підтеки першими: саме за ними впізнають клієнта."""
+    root = Path(root)
+    if not name or name not in list_export_client_names_cached(root):
+        return None
+    dirs: list[tuple[str, float]] = []
+    files = 0
+    for entry in _dir_entries(root / name):
+        try:
+            if entry.is_dir():
+                dirs.append((entry.name, entry.stat().st_mtime))
+            else:
+                files += 1
+        except OSError:
+            continue
+    dirs.sort(key=lambda d: d[1], reverse=True)
+    return {
+        "name": name,
+        "dirs": [
+            {"name": n, "modified": datetime.fromtimestamp(m)} for n, m in dirs[:limit]
+        ],
+        "more": max(0, len(dirs) - limit),
+        "files": files,
+    }
+
+
 def scan_export_client(
     root: Path, client_folder_name: str, not_before: datetime | None = None
 ) -> list[ExportEntry]:

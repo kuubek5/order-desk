@@ -1,0 +1,16 @@
+{# Вміст теки клієнта у вікні вибору теки (GET /clients/export-peek). Один
+   рівень: свіжі підтеки-дати — щоб упізнати потрібну теку. #}
+{% if peek is none %}
+<div class="fp-peek-empty">Теку «{{ name }}» не знайдено в export.</div>
+{% elif not peek.dirs and not peek.files %}
+<div class="fp-peek-empty">Тека порожня.</div>
+{% else %}
+<ul class="fp-peek-list">
+    {% for d in peek.dirs %}
+    <li><span class="mono">{{ d.name }}</span><span class="fp-peek-date mono">{{ d.modified.strftime('%d.%m.%y %H:%M') }}</span></li>
+    {% endfor %}
+</ul>
+{% if peek.more or peek.files %}
+<div class="fp-peek-more">{% if peek.more %}ще {{ peek.more }} тек{% endif %}{% if peek.more and peek.files %} · {% endif %}{% if peek.files %}{{ peek.files }} файл(ів) у корені{% endif %}</div>
+{% endif %}
+{% endif %}
