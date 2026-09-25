@@ -15,8 +15,8 @@ import gspread
 
 from sqlalchemy.orm import Session
 
-from app.config import MAIL_ATTACHMENTS_PATH
 from app.settings_store import (
+    mail_spool_root_map,
     get_service_account_email,
     get_export_folder_path,
     get_google_auth_mode,
@@ -45,18 +45,17 @@ def imap_configured(db: Session) -> bool:
 
 
 def mail_trusted_roots(db: Session) -> list[Path]:
-    roots: list[Path] = []
-    mail_root = str(MAIL_ATTACHMENTS_PATH).strip()
+    # Усі корені спулу: поточний і ті, де лежать файли листів, скачаних до
+    # зміни теки в налаштуваннях (settings_store.mail_spool_root_map).
+    roots: list[Path] = [Path(p) for p in mail_spool_root_map(db).values() if p.strip()]
     export_root = (get_export_folder_path(db) or "").strip()
-    if mail_root:
-        roots.append(Path(mail_root))
     if export_root:
         roots.append(Path(export_root))
     return roots
 
 
 def mail_preview_roots(db: Session) -> dict[str, str | None]:
-    return {"mail": str(MAIL_ATTACHMENTS_PATH), "export": get_export_folder_path(db)}
+    return {**mail_spool_root_map(db), "export": get_export_folder_path(db)}
 
 def sheets_access_error_message(db: Session, exc: BaseException) -> str:
     """Turn a failed spreadsheet open into the one sentence that says what to

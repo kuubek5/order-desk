@@ -289,7 +289,7 @@ def run_sync_owned_session(*, trigger: str) -> int:
     it (sessions aren't thread-safe). In that case the session is deliberately
     leaked to the zombie (daemon thread; a single SQLite connection) and the
     error propagates so the caller can log/heartbeat/toast it."""
-    from app.config import MAIL_ATTACHMENTS_PATH
+    from app.settings_store import get_mail_attachments_path
     from app.db import SessionLocal
 
     sync_db = SessionLocal()
@@ -298,8 +298,8 @@ def run_sync_owned_session(*, trigger: str) -> int:
         # Background goes through sync_mail_background (the module-level name
         # the heartbeat tests monkeypatch); manual through sync_mailbox.
         if trigger == "background":
-            return sync_mail_background(sync_db, Path(MAIL_ATTACHMENTS_PATH))
-        return sync_mailbox(sync_db, Path(MAIL_ATTACHMENTS_PATH), trigger=trigger)
+            return sync_mail_background(sync_db, Path(get_mail_attachments_path(sync_db)))
+        return sync_mailbox(sync_db, Path(get_mail_attachments_path(sync_db)), trigger=trigger)
     except MailSyncTimeoutError:
         timed_out = True
         raise

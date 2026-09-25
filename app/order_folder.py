@@ -23,9 +23,12 @@ from pathlib import Path, PureWindowsPath
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.config import MAIL_ATTACHMENTS_PATH
 from app.models import Attachment, EmailMessage, Order
-from app.settings_store import get_export_folder_path, get_technician_files_path
+from app.settings_store import (
+    get_export_folder_path,
+    get_technician_files_path,
+    mail_spool_root_map,
+)
 from app.stl_preview import (
     build_preview_token,
     build_preview_token_for_known_child,
@@ -384,7 +387,7 @@ def attach_export_folder_uris(db: Session, orders: list[Order]) -> None:
 
     preview_roots = {
         "export": get_export_folder_path(db),
-        "mail": str(MAIL_ATTACHMENTS_PATH),
+        **mail_spool_root_map(db),
     }
 
     # Корені перевіряються ОДИН раз на пакет, а не на кожну роботу: це та сама

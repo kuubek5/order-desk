@@ -18,7 +18,7 @@ from app.business_day import set_rollover
 from app.changelog import load_changelog
 from app.services.handout_qc import qc_checklist_enabled
 from app.services.health_snapshot import last_report
-from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
+from app.config import DB_PATH
 from app.mail_spool import analyze_spool_cached
 from app.backup_parts import PARTS as BACKUP_PARTS
 from app.migration_files import summarize as migration_files_summary
@@ -44,12 +44,14 @@ from app.services import machines as machines_service
 from app.services.config_state import imap_configured, sheets_configured
 from app.settings_store import (
     CLEARABLE_SETTING_KEYS,
+    MAIL_SPOOL_PREV_KEY,
     OPERATOR_EDITABLE_KEYS,
     SECRET_SETTING_KEYS,
     SETTING_FIELDS,
     NOTIFY_EVENTS,
     extract_sheet_id,
     get_all_settings,
+    get_mail_attachments_path,
     get_day_rollover_time,
     get_export_folder_path,
     get_furnace_background,
@@ -351,7 +353,10 @@ def get_settings(
         "machine_portrait_version": {m.id: portrait_version(m.id) for m in _machines},
         # Кешовано: обхід спулу з stat() на кожен файл по мережевій шарі не
         # має повторюватись на кожному відкритті /settings (M.5).
-        "spool_report": (_spool_report := analyze_spool_cached(db, Path(MAIL_ATTACHMENTS_PATH))),
+        # Тека файлів з листів, куди вони лягають ЗАРАЗ (налаштування або
+        # стандартна) — підпис під полем у «Скачування вкладень».
+        "mail_spool_current": get_mail_attachments_path(db),
+        "spool_report": (_spool_report := analyze_spool_cached(db, Path(get_mail_attachments_path(db)))),
         # "Стан системи" flow map — honest, cheap counts (one scalar each).
         # No export-folder scan here; that's the heavy walk we keep off page load.
         # Звіт звірки після останнього оновлення (порожньо, поки оновлень не було).
@@ -495,6 +500,12 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         # зняти — а тост при цьому рапортував «Збережено». Очищення лишається
         # можливим саме тому, що поле в формі Є — просто його стерли руками.
         if value or field.key in CLEARABLE_SETTING_KEYS:
+            if field.key == "mail_attachments_path":
+                # Стара тека спулу лишається довіреною для файлів, скачаних до
+                # зміни (settings_store.mail_spool_root_map).
+                old = (get_setting(db, field.key) or "").strip()
+                if old and old != value:
+                    set_setting(db, MAIL_SPOOL_PREV_KEY, old)
             set_setting(db, field.key, value)
             touched.append(field.key)
     if touched:
@@ -563,6 +574,7 @@ def check_settings_path(
     export_folder_path: str | None = Form(None),
     technician_files_path: str | None = Form(None),
     sum3d_projects_path: str | None = Form(None),
+    mail_attachments_path: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Live, per-machine reachability/writability check for A3 (CLAUDE.md
@@ -588,6 +600,10 @@ def check_settings_path(
         raw_path = sum3d_projects_path
     elif kind == "export":
         raw_path = export_folder_path
+    elif kind == "spool":
+        # Тека файлів з листів: порожнє поле = стандартна тека програми —
+        # її й перевіряємо, щоб «Перевірити» не казало «шлях не задано».
+        raw_path = (mail_attachments_path or "").strip() or get_mail_attachments_path(db)
     else:
         raw_path = technician_files_path
     result = check_path_status(raw_path or "", write_probe=user.role == "адмін")

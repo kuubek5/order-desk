@@ -14,7 +14,12 @@ from typing import Optional
 from cryptography.fernet import InvalidToken
 from sqlalchemy.orm import Session
 
-from app.config import EXPORT_FOLDER_PATH, GOOGLE_SHEET_ID, MACHINE_CALIBRATION_PATH
+from app.config import (
+    EXPORT_FOLDER_PATH,
+    GOOGLE_SHEET_ID,
+    MACHINE_CALIBRATION_PATH,
+    MAIL_ATTACHMENTS_PATH,
+)
 from app.crypto import decrypt_value, encrypt_value
 from app.models import AppSetting
 
@@ -173,6 +178,16 @@ SETTING_FIELDS = [
         help_text="Усередині — тека матеріалу, в ній тека висоти, у ній файли .blk",
         operator_editable=True,
     ),
+    # Тека спулу пошти (власник 25.09.26): куди скачуються вкладення листів до
+    # прийняття. Порожньо = стандартна тека програми (config.MAIL_ATTACHMENTS_PATH).
+    # Розділ «Скачування вкладень» — адмінський: це сховище, куди ПИШЕ сервер.
+    # У КІНЦІ списку свідомо: `_settings_paths.html` бере поля за індексом.
+    SettingField(
+        key="mail_attachments_path",
+        section="mail-download",
+        label="Тека для файлів з листів",
+        help_text="Куди скачуються вкладення листів до прийняття. Порожньо — стандартна тека програми",
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -204,6 +219,7 @@ CLEARABLE_SETTING_KEYS = {
     "machine_calibration_path",
     "backup_mirror_dir",
     "cam_blanks_path",
+    "mail_attachments_path",
 }
 
 # Non-secret preference keys stored in the same AppSetting table but NOT part of
@@ -226,6 +242,9 @@ PREFERENCE_KEYS = {
     # Тека калібрувальних кадрів верстатів (Налаштування → Верстати). Порожнє
     # значення = типова тека застосунку, тому ключ ще й у CLEARABLE.
     "machine_calibration_path",
+    # Попередня тека спулу пошти (MAIL_SPOOL_PREV_KEY): пишеться сама при зміні
+    # «Тека для файлів з листів», щоб файли, скачані до зміни, лишались довіреними.
+    "mail_attachments_path_prev",
     "mail_default_material",
     "mail_download_all",
     # Папка скриньки, куди сторінка пошти переносить листи оброблених робіт
@@ -427,6 +446,33 @@ def get_google_service_account_json(session: Session) -> Optional[str]:
 
 def get_export_folder_path(session: Session) -> str:
     return get_setting(session, "export_folder_path") or EXPORT_FOLDER_PATH
+
+
+# Попередня тека спулу — пишеться сама, коли адмін міняє налаштування
+# (routers/settings/overview.post_settings). Файли, скачані ДО зміни, лишаються
+# там, де були (їхні шляхи збережені у вкладеннях), тож стара тека мусить
+# лишатися ДОВІРЕНОЮ для прев'ю STL і «Відкрити папку».
+MAIL_SPOOL_PREV_KEY = "mail_attachments_path_prev"
+
+
+def get_mail_attachments_path(session: Session) -> str:
+    """Тека спулу пошти: з налаштувань або стандартна тека програми."""
+    return (get_setting(session, "mail_attachments_path") or "").strip() or str(MAIL_ATTACHMENTS_PATH)
+
+
+def mail_spool_root_map(session: Session) -> dict[str, str]:
+    """Корені спулу для перевірок доступу: {ключ: шлях}. `mail` — поточна тека;
+    `mail_default` — стандартна, `mail_prev` — попередня налаштована (лише коли
+    відрізняються від поточної): у них лежать файли листів, скачаних до зміни."""
+    current = get_mail_attachments_path(session)
+    roots = {"mail": current}
+    default = str(MAIL_ATTACHMENTS_PATH)
+    if default and default != current:
+        roots["mail_default"] = default
+    prev = (get_setting(session, MAIL_SPOOL_PREV_KEY) or "").strip()
+    if prev and prev not in (current, default):
+        roots["mail_prev"] = prev
+    return roots
 
 
 def get_machine_calibration_path(session: Session) -> str:

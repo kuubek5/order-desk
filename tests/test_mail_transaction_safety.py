@@ -21,8 +21,8 @@ import app.web as web
 from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
 from app.routers import mail as mail_router_mod
+import app.settings_store as settings_store_mod
 from app.services import mail_accept as mail_accept_svc
-from app.services import config_state
 
 
 def _database():
@@ -50,8 +50,7 @@ def _wire(monkeypatch, tmp_path):
     export_root.mkdir()
     mail_root = tmp_path / "spool"
     (mail_root / "u1").mkdir(parents=True)
-    for module in (mail_router_mod, config_state):
-        monkeypatch.setattr(module, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа переїхало в сервіс (аудит, крок 2.8), а відкат прийняття
     # лишився в роуті — тож підміняємо в ОБОХ модулях. Якби ми лишили тільки
     # роутер, тест став би зеленим і порожнім: сервіс читав би справжні

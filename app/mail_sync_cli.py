@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from app.config import MAIL_ATTACHMENTS_PATH
+from app.settings_store import get_mail_attachments_path
 from app.db import Base, engine, get_session
 from app.mail_sync_service import sync_mailbox
 
@@ -15,7 +15,7 @@ def main() -> None:
     Base.metadata.create_all(engine)
 
     with get_session() as session:
-        count = sync_mailbox(session, Path(MAIL_ATTACHMENTS_PATH), trigger="manual")
+        count = sync_mailbox(session, Path(get_mail_attachments_path(session)), trigger="manual")
 
     print(f"Нових листів: {count}")
 

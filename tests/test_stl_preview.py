@@ -55,7 +55,7 @@ def test_round_trip_picks_matching_root_among_several(tmp_path, monkeypatch):
     folder.mkdir()
 
     monkeypatch.setattr(stl_preview, "get_export_folder_path", lambda db: str(export_root))
-    monkeypatch.setattr(stl_preview, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(stl_preview, "mail_spool_root_map", lambda db: {"mail": str(mail_root)})
 
     token = build_preview_token(folder, {"export": str(export_root), "mail": str(mail_root)})
     assert token is not None

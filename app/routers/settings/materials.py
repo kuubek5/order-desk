@@ -10,7 +10,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
-from app.config import MAIL_ATTACHMENTS_PATH
 from app.mail_spool import prune_spool
 from app.material_catalog import (
     MaterialCatalogError,
@@ -42,8 +41,16 @@ from app.services.materials_console import (
     unresolved_breakdown,
 )
 from app.models import MaterialAlias, Order
-from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.platform_windows import open_folder_in_explorer
+from app.routers.deps import (
+    get_current_user,
+    get_db,
+    login_redirect,
+    open_folder_response,
+    templates,
+)
 from app.settings_store import (
+    get_mail_attachments_path,
     get_mail_default_material,
     get_mail_download_all,
     get_setting,
@@ -309,6 +316,20 @@ def reclassify_materials(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/settings/materials", status_code=303)
 
 
+@router.post("/settings/mail-spool/open-folder")
+def open_mail_spool_folder(request: Request, db: Session = Depends(get_db)):
+    """«Відкрити папку» для теки файлів з листів (власник 25.09.26). З цього
+    ПК — Провідник; з іншого ПК цеху — шлях у буфер (`open_folder_response`)."""
+    # Гейт розділу (права з реєстру меню + довірена адреса — як у прибирання).
+    require_settings_edit(request, db, "mail-download")
+    folder = Path(get_mail_attachments_path(db))
+    if not folder.is_dir():
+        raise HTTPException(status_code=404, detail="теку не знайдено — перевірте шлях")
+    return open_folder_response(
+        request, db, folder, opener=open_folder_in_explorer, log_label="mail spool"
+    )
+
+
 @router.post("/settings/mail-spool/prune")
 def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
     """Delete the mail-spool folders analyze_spool considers safe (empty ones,
@@ -316,7 +337,7 @@ def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
     window). Operator-triggered only — never a background job, see
     app/mail_spool.py."""
     require_settings_edit(request, db, "mail-download")
-    removed, freed = prune_spool(db, Path(MAIL_ATTACHMENTS_PATH))
+    removed, freed = prune_spool(db, Path(get_mail_attachments_path(db)))
     mb = round(freed / (1024 * 1024), 1)
     request.session["settings_flash"] = {
         "kind": "success",

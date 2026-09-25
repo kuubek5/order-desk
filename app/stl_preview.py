@@ -34,15 +34,23 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.config import MAIL_ATTACHMENTS_PATH
-from app.settings_store import get_export_folder_path, get_technician_files_path
+from app.settings_store import (
+    get_export_folder_path,
+    get_technician_files_path,
+    mail_spool_root_map,
+)
 
 STL_EXTENSION = ".stl"
 
 # root_key -> resolver(db) -> current absolute root path (str) or None/"" if unset.
 _ROOT_RESOLVERS = {
     "export": lambda db: get_export_folder_path(db),
-    "mail": lambda db: str(MAIL_ATTACHMENTS_PATH),
+    # Спул пошти: поточна тека й ті, що лишились після зміни налаштування
+    # (settings_store.mail_spool_root_map) — корінь береться з налаштувань
+    # заново при кожному відкритті, не з токена.
+    "mail": lambda db: mail_spool_root_map(db).get("mail"),
+    "mail_default": lambda db: mail_spool_root_map(db).get("mail_default"),
+    "mail_prev": lambda db: mail_spool_root_map(db).get("mail_prev"),
     "tech": lambda db: get_technician_files_path(db),
 }
 
@@ -135,7 +143,7 @@ def build_preview_token(
     """Return an opaque preview token for `folder` if it sits under one of `roots`.
 
     `roots` maps root_key -> current absolute root path (as configured), e.g.
-    {"export": get_export_folder_path(db), "mail": str(MAIL_ATTACHMENTS_PATH)}.
+    {"export": get_export_folder_path(db), **mail_spool_root_map(db)}.
     Tries each root in order and returns the first match; returns None if the
     folder does not resolve safely under any of them (silent degradation,
     matching the rest of this codebase's folder-link helpers — no preview

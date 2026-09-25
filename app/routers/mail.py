@@ -27,7 +27,6 @@ from starlette.requests import Request
 
 from app.archive_extract import is_archive
 from app.business_day import business_today, get_rollover
-from app.config import MAIL_ATTACHMENTS_PATH
 from app.export_scanner import clear_export_cache
 from app.link_attachments import (
     LinkAttachment,
@@ -126,6 +125,7 @@ from app.services.settings_nav import can_edit
 from app.settings_store import (
     get_export_folder_path,
     get_imap_login,
+    get_mail_attachments_path,
     get_mail_download_all,
     get_setting,
 )
@@ -1109,7 +1109,7 @@ def fetch_email_link(
         # Та сама тека спулу, що й у вкладень листа (`<uidvalidity>_<uid>`,
         # mail_spool.spool_folder_name). Тут стояв голий `email.uid`, і файли
         # за посиланням лягали в ІНШУ теку, ніж вкладення того самого листа.
-        spool_dir = Path(MAIL_ATTACHMENTS_PATH) / spool_folder_name(email.uid, email.uid_validity)
+        spool_dir = Path(get_mail_attachments_path(db)) / spool_folder_name(email.uid, email.uid_validity)
         path = download_link(link, spool_dir, existing_names=existing)
     except LinkDownloadError as exc:
         status, message = "error", str(exc)
@@ -1486,7 +1486,7 @@ def download_email_attachments(
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
     try:
-        download_attachments_now(db, email, Path(MAIL_ATTACHMENTS_PATH))
+        download_attachments_now(db, email, Path(get_mail_attachments_path(db)))
         db.commit()
         db.refresh(email)  # expire_on_commit=False: колекція вкладень інакше стара
     except Exception as exc:  # noqa: BLE001 — surface a friendly error, don't 500
@@ -1532,7 +1532,7 @@ def redownload_email_attachments(
         raise HTTPException(status_code=404, detail="email not found")
     try:
         removed, saved = redownload_missing_attachments(
-            db, email, Path(MAIL_ATTACHMENTS_PATH)
+            db, email, Path(get_mail_attachments_path(db))
         )
         db.commit()
         # БЕЗУМОВНО, одразу після коміту. Видалення йде через session.delete(),
@@ -2701,7 +2701,7 @@ def _unaccept_email(
     if attachments:
         old_paths = [Path(a.saved_path) for a in attachments]
         new_paths = restore_attachments_to_spool(
-            Path(MAIL_ATTACHMENTS_PATH),
+            Path(get_mail_attachments_path(db)),
             spool_folder_name(email.uid, email.uid_validity),
             old_paths,
         )

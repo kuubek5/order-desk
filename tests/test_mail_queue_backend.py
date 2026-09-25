@@ -12,13 +12,13 @@ import app.web as web
 from app.link_attachments import LinkDownloadError
 from app.services.queue import known_order_dates
 from app.routers import mail as mail_router_mod
+import app.settings_store as settings_store_mod
 from app.services import mail_accept as mail_accept_svc
 from app.routers import orders as orders_router_mod
 from app.services import manual_add as manual_add_svc
 from app.routers import queue as queue_router_mod
 from app.services import queue_view
 from app import sync_control
-from app.services import config_state
 from app.routers import stl as stl_router_mod
 from app.services import sheet_writeback as writeback_service
 from app.db import Base
@@ -75,8 +75,7 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
     mail_root.mkdir()
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -115,8 +114,7 @@ def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
     mail_root.mkdir(exist_ok=True)
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -139,8 +137,7 @@ def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
     mail_root.mkdir()
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -918,8 +915,7 @@ def test_open_mail_folder_opens_safe_db_path_and_returns_no_content(tmp_path, mo
     file.write_bytes(b"mesh")
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -960,8 +956,7 @@ def test_open_mail_folder_rejects_db_path_outside_roots(tmp_path, monkeypatch):
     file.write_bytes(b"mesh")
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -1099,8 +1094,7 @@ def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
     file.write_bytes(b"mesh")
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -1190,8 +1184,7 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
     """/mail/{id}/fetch-link downloads a single whitelisted link and returns its
     row marked done, with a new Attachment created."""
     engine = _database()
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
     saved = tmp_path / "model.stl"
     saved.write_bytes(b"STL")
     monkeypatch.setattr(mail_router_mod, "download_link", lambda link, dest, existing_names=frozenset(): saved)
@@ -1236,8 +1229,7 @@ def test_fetch_email_link_uses_the_same_spool_folder_as_attachments(monkeypatch,
     (`<uidvalidity>_<uid>`, mail_spool.spool_folder_name). Доти роут брав голий
     uid, і файли одного листа розходились по двох теках (хендоф 25.09.26)."""
     engine = _database()
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
     dests = []
     saved = tmp_path / "model.stl"
     saved.write_bytes(b"STL")
@@ -1267,8 +1259,7 @@ def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
     """A LinkDownloadError (e.g. file not shared) comes back as an error row, no
     attachment created."""
     engine = _database()
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
 
     def boom(link, dest, existing_names=frozenset()):
         raise LinkDownloadError("файл не розшарено")
@@ -1478,8 +1469,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
         monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: str(export_root))
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
     for _mod in (mail_router_mod, mail_accept_svc):
         monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
@@ -1779,8 +1769,7 @@ def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
     mail_root.mkdir()
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -1831,8 +1820,7 @@ def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypat
     mail_root.mkdir()
     # Корінь спула читають два боки: сам web (синк, спул) і предикати
     # config_state (довірені корені для «Відкрити папку»).
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -2071,8 +2059,7 @@ def test_full_render_skips_network_scans_partial_does_them(tmp_path, monkeypatch
     engine = _database()
     mail_root = tmp_path / "mail"
     mail_root.mkdir()
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):
@@ -2109,8 +2096,7 @@ def test_full_render_does_not_scan_sum3d(tmp_path, monkeypatch):
     engine = _database()
     mail_root = tmp_path / "mail"
     mail_root.mkdir()
-    for _mod in (mail_router_mod, config_state):
-        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
     # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
     for _mod in (mail_router_mod, mail_accept_svc):

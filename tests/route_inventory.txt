@@ -162,6 +162,7 @@ GET /shift
 GET /machines/diag
 POST /orders/{order_id}/operator
 POST /clients/{client_id}/folder
+POST /settings/mail-spool/open-folder
 POST /settings/mail-spool/prune
 GET /archive/day
 GET /handout/pulse
