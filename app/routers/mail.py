@@ -36,7 +36,7 @@ from app.link_attachments import (
     undownloaded_links,
 )
 from app import perf
-from app.client_folder import preferred_client_folder
+from app.client_folder import preferred_client_folder, seed_client_name
 from app.mail_export import (
     _contained_child,
     CARD_FOLDER_LIST_MAX_AGE,
@@ -894,13 +894,10 @@ def _mail_panel_context(
     sender_hint = lookup_sender(db, email)
     # Семена полів: постійний клієнт (пам'ять) → показне ім'я → здогад. НЕ адреса —
     # адреса лишається крайнім запасом уже в шаблоні (скарга власника 24.09.26).
+    # Порядок і причини — `seed_client_name` (app/client_folder.py): картка
+    # клієнта з цією адресою → памʼять (не заглушка-адреса) → from_name → здогад.
     if client_name is None:
-        if sender_hint and sender_hint.client_name:
-            client_name = sender_hint.client_name
-        elif email.from_name:
-            client_name = email.from_name
-        else:
-            client_name = email.client_name_guess or ""
+        client_name = seed_client_name(db, email, sender_hint)
     # Лише слова замовника (без пересилання, підпису, списку файлів) — з них і
     # прев'ю, і розпізнавання матеріалу, коли здогад його не назвав.
     body_segments = letter_segments(email.body_text)
@@ -1346,12 +1343,7 @@ def _wizard_context(
     # замість імені, а тека потім рахувалась від адреси (скарга власника
     # 24.09.26). Адреса лишається крайнім запасом уже в шаблоні.
     if step == 1 and not client_name.strip():
-        if sender_hint and sender_hint.client_name:
-            client_name = sender_hint.client_name
-        elif email.from_name:
-            client_name = email.from_name
-        elif email.client_name_guess:
-            client_name = email.client_name_guess
+        client_name = seed_client_name(db, email, sender_hint)
     # Тека клієнта: картка клієнта → памʼять відправника (app/client_folder.py).
     wizard_client_folder = preferred_client_folder(db, client_name, sender_hint)
     if (

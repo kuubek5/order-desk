@@ -17,10 +17,15 @@
 
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ClientNameAlias
+from app.models import Client, ClientNameAlias
+
+_EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_ADDRESS_SPLIT = re.compile(r"[\s,;]+")
 
 
 def card_folder_for(db: Session, client_name: str | None) -> str | None:
@@ -53,3 +58,61 @@ def preferred_client_folder(db: Session, client_name: str | None, sender_hint) -
         if not name or not hint_name or name == hint_name:
             return sender_hint.export_folder
     return None
+
+
+def _sender_address(email) -> str | None:
+    """Адреса справжнього відправника. Для пересланого листа — лише адреса з
+    цитованого «From:»: адреса того, хто пересилав (адміністратор, що пересилає
+    листи багатьох клієнтів), вела б на чужу картку."""
+    from app.sender_memory import _is_forwarded
+    from app.mail_parser import guess_client_from_forward
+
+    if _is_forwarded(email):
+        original = (guess_client_from_forward(getattr(email, "body_text", None)) or "").strip()
+        return original.casefold() if _EMAIL_LIKE.match(original) else None
+    address = (getattr(email, "from_address", None) or "").strip().casefold()
+    return address or None
+
+
+def client_for_sender(db: Session, email) -> str | None:
+    """Імʼя картки клієнта, в контактах якої вписано адресу відправника
+    (власник 25.09.26: вписав пошту в картку «Oleksandr» — а лист однаково
+    пропонував теку з назвою адреси). В полі може стояти кілька адрес через кому
+    чи пробіл. Дві картки з тією самою адресою — не вгадуємо, None."""
+    address = _sender_address(email)
+    if not address:
+        return None
+    hits = {
+        (name or "").strip()
+        for name, emails in db.execute(
+            select(Client.canonical_name, Client.email).where(Client.email.is_not(None))
+        ).all()
+        if address in {a.casefold() for a in _ADDRESS_SPLIT.split(emails or "") if a}
+    }
+    hits.discard("")
+    return hits.pop() if len(hits) == 1 else None
+
+
+def is_placeholder_name(name: str | None) -> bool:
+    """Імʼя, яке насправді адреса: так «Автоскачування» записує відправника до
+    першого прийняття (`client_name` = адреса). Імʼям клієнта його не вважаємо —
+    з нього виходила б тека `export/ipad.galiy@gmail.com`."""
+    return bool(_EMAIL_LIKE.match((name or "").strip()))
+
+
+def seed_client_name(db: Session, email, sender_hint) -> str:
+    """Імʼя клієнта, яким картка листа відкривається. Порядок:
+      1. картка клієнта з цією адресою в контактах — головне джерело;
+      2. памʼять відправника — якщо там справжнє імʼя, не адреса-заглушка;
+      3. показне імʼя відправника (from_name);
+      4. здогад із тексту листа.
+    Адреса ніколи не стає імʼям: вона лишається крайнім запасом у шаблоні."""
+    card = client_for_sender(db, email)
+    if card:
+        return card
+    hint_name = (getattr(sender_hint, "client_name", None) or "").strip()
+    if hint_name and not is_placeholder_name(hint_name):
+        return hint_name
+    if getattr(email, "from_name", None):
+        return email.from_name
+    return getattr(email, "client_name_guess", None) or ""
