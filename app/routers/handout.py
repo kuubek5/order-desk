@@ -60,6 +60,7 @@ from app.services.handout import (
     HANDOUT_ALL_DAYS,
     bump_found_units,
     entries_for_material,
+    start_stl_for,
     found_units,
     handout_client_matches,
     handout_day_options,
@@ -363,6 +364,13 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                         order.material_color, export_entries, work_day, client_claims, order.id
                     )
                 )
+            # З якого STL відкривати прев'ю, коли в теці кольору кілька партій
+            # за день (Середюк 24.09): своя підпартія за часом Sum3D.
+            order.stl_start = {
+                str(entry.folder_path): start
+                for entry in order.export_matches
+                if (start := start_stl_for(entry, order.sum3d_id))
+            }
             order.export_client_uri = client_folder_uri
             order.export_client_token = client_folder_token
         # Теки, чий матеріал не збігся з жодним рядком, раніше показувались

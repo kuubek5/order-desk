@@ -18,6 +18,21 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SubBatch:
+    """Одна партія ВСЕРЕДИНІ теки кольору (власник 25.09.26, Середюк).
+
+    Оператор за день кладе кілька листів того самого кольору в одну теку
+    кольору: перший — просто в неї, наступні — у підтеки `Новая папка`,
+    `Новая папка (2)`… Для видачі це різні роботи, і кожна має відкривати
+    СВОЇ STL. `created_at` — час створення підтеки (для файлів кореня —
+    найраніший із них), `first_stl` — шлях першого STL відносно теки кольору,
+    як його віддає `stl_preview.list_stl_files` (`Новая папка (3)/x.stl`)."""
+
+    created_at: datetime
+    first_stl: str
+
+
 @dataclass
 class ExportEntry:
     """Represents a single material-color folder with its files and metadata."""
@@ -50,6 +65,64 @@ class ExportEntry:
     підтека — ще один round-trip на шару), але прев'ю їх показує (до 2
     рівнів, `stl_preview.list_stl_files`) — тож «0 файл.» на теці з
     підтеками брехало б. Береться з того самого scandir, що й files."""
+
+    parts: tuple = ()
+    """Партії всередині теки кольору (`SubBatch`), за часом; порожньо, коли
+    партія одна. Лише для теки з підтеками: один scandir на підтеку."""
+
+
+_STL = ".stl"
+
+
+def _entry_ctime(entry: "os.DirEntry") -> datetime | None:
+    """Час створення з самого переліку теки (на Windows `DirEntry.stat()` не
+    ходить на диск удруге)."""
+    try:
+        return datetime.fromtimestamp(entry.stat().st_ctime)
+    except (OSError, ValueError, OverflowError):
+        return None
+
+
+def _first_stl(folder: str, prefix: str, depth: int = 0) -> str | None:
+    """Перший STL підтеки в тому ж порядку, що й `list_stl_files`: спершу
+    файли самої теки (за абеткою), далі один рівень глибше."""
+    files: list[str] = []
+    dirs: list[tuple[str, str]] = []
+    for item in _dir_entries(folder):
+        try:
+            if item.is_file() and item.name.lower().endswith(_STL):
+                files.append(item.name)
+            elif depth < 1 and item.is_dir(follow_symlinks=False):
+                dirs.append((item.name, item.path))
+        except OSError:
+            continue
+    if files:
+        return prefix + sorted(files)[0]
+    for name, path in sorted(dirs):
+        found = _first_stl(path, f"{prefix}{name}/", depth + 1)
+        if found:
+            return found
+    return None
+
+
+def _material_parts(root_stls: list, subdirs: list) -> tuple:
+    """Партії теки кольору: файли кореня (якщо є STL) + кожна підтека зі STL.
+    Менше двох партій — порожньо: вибирати нема з чого."""
+    if not subdirs or len(subdirs) + (1 if root_stls else 0) < 2:
+        return ()  # одна партія — вибирати нема з чого, підтеки не читаємо
+    parts: list[SubBatch] = []
+    if root_stls:
+        times = [t for t in (_entry_ctime(e) for e in root_stls) if t is not None]
+        if times:
+            parts.append(SubBatch(min(times), sorted(e.name for e in root_stls)[0]))
+    for sub in sorted(subdirs, key=lambda e: e.name):
+        created = _entry_ctime(sub)
+        first = _first_stl(sub.path, sub.name + "/") if created is not None else None
+        if created is not None and first:
+            parts.append(SubBatch(created, first))
+    if len(parts) < 2:
+        return ()
+    return tuple(sorted(parts, key=lambda part: part.created_at))
 
 
 def scan_export_folder(root: Path, not_before: datetime | None = None) -> list[ExportEntry]:
@@ -204,12 +277,17 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
 
         files_list = []
         subfolders = 0
+        root_stls = []
+        subdirs = []
         for f in _dir_entries(material.path):
             try:
                 if f.is_file():
                     files_list.append(f.name)
+                    if f.name.lower().endswith(_STL):
+                        root_stls.append(f)
                 elif f.is_dir():
                     subfolders += 1
+                    subdirs.append(f)
             except OSError:
                 continue
 
@@ -222,6 +300,7 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
                 files=files_list,
                 folder_path=Path(material.path),
                 subfolders=subfolders,
+                parts=_material_parts(root_stls, subdirs),
             )
         )
     # Лише коли підтек немає зовсім: файл поруч із теками матеріалу — це

@@ -305,6 +305,46 @@ def night_claims_of(orders) -> list[NightClaim]:
     return claims
 
 
+# Підпартія створюється ДО прорахунку (файли скачали → поклали в теку → Sum3D),
+# але годинник файлового сервера й ПК з Sum3D можуть розходитись на хвилину.
+_SUBBATCH_SLACK = timedelta(minutes=2)
+
+
+def start_stl_for(entry, sum3d_id: str | None) -> str | None:
+    """З якого STL відкривати прев'ю цієї роботи в теці з кількома партіями.
+
+    Бойовий випадок (власник 25.09.26, Середюк 24.09): у теці `mono a3.5` за
+    день чотири листи — корінь 10:02, `Новая папка` 21:46, `(2)` 23:04,
+    `(3)` 00:24; роботи з Sum3D 10-08-17, 21-46-36, 23-05-13, 00-24-43. Прев'ю
+    завжди відкривалось на першому файлі кореня, і на трьох роботах із
+    чотирьох оператор бачив чужу коронку.
+
+    Правило: остання партія, створена не пізніше за Sum3D (+2 хв на різницю
+    годинників). Дата Sum3D — робочий день САМОЇ партії (теки рівня 2), а
+    нічний час (до межі доби) — наступна календарна дата; так однаково
+    виходить і для нічних, і для вихідних партій. Лише вибір, з якого файлу
+    почати: список у прев'ю лишається повним, рішення за оператором (§2,
+    правило 3). None — партія одна, Sum3D немає або жодна партія не раніша."""
+    parts = getattr(entry, "parts", ()) or ()
+    if len(parts) < 2:
+        return None
+    day = business_date_of(entry.created_at)
+    rollover = get_rollover()
+    moments = []
+    for h, m, s in _SUM3D_TIME.findall(sum3d_id or ""):
+        try:
+            taken = time(int(h), int(m), int(s))
+        except ValueError:
+            continue
+        on = day + timedelta(days=1) if taken < rollover else day
+        moments.append(datetime.combine(on, taken))
+    if not moments:
+        return None
+    moment = min(moments)
+    fitting = [part for part in parts if part.created_at <= moment + _SUBBATCH_SLACK]
+    return fitting[-1].first_stl if fitting else None
+
+
 # Ключ групи для робіт БЕЗ імені клієнта.
 #
 # Навіщо сигнальний рядок, а не порожній/None. Група на цьому екрані

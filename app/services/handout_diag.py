@@ -33,6 +33,7 @@ from app.services.handout import (
     handout_not_before,
     night_claims_of,
     stale_folder_day,
+    start_stl_for,
 )
 from app.services.order_dates import parse_sheet_tab
 from app.settings_store import get_export_folder_path
@@ -115,6 +116,11 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
             "файлів": len(e.files),
             "підпапок": e.subfolders,
             "stl": _stl_count(e.folder_path),
+            # Кілька партій в одній теці кольору (Середюк 24.09): час + перший STL.
+            "підпартії": [
+                f"{part.created_at.strftime('%d.%m %H:%M:%S')} → {part.first_stl}"
+                for part in (getattr(e, "parts", ()) or ())
+            ],
         }
         for e in entries
     ]
@@ -129,6 +135,13 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
             result = "зіставлено з текою: " + ", ".join(
                 f"{e.batch_folder_name}/{e.material_color_folder_name}" for e in matched
             )
+            starts = [
+                f"{e.batch_folder_name}/{e.material_color_folder_name}/{start}"
+                for e in matched
+                if (start := start_stl_for(e, order.sum3d_id))
+            ]
+            if starts:
+                result += "; прев'ю відкриє: " + ", ".join(starts)
         elif not matched_folder:
             result = "тека клієнта НЕ зіставлена (ім'я не знайшло теки в export)"
         else:
