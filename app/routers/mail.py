@@ -204,6 +204,9 @@ def _mail_back_url(request: Request, open_id: int | None = None) -> str:
     params: list[str] = []
     if view in _MAIL_VIEWS and view != "pending":
         params.append(f"view={view}")
+        # «Усі в папці» (period=all) — лишитись у тому ж режимі вкладки.
+        if view == "processed" and (query.get("period") or [""])[0] == "all":
+            params.append("period=all")
     elif open_id is not None:
         params.append(f"open={open_id}")
     if service in SERVICE_TYPE_FILTERS and service != "all":
@@ -223,10 +226,15 @@ def get_mail(
     open: int | None = None,
     since: int | None = None,
     batch: str | None = None,
+    period: str = "",
 ):
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+    # Вкладка папки: типово — лише сьогоднішні переноси; `period=all` — УСІ листи
+    # в папках скриньки за весь час (власник 25.09.26: вчорашній перенесений лист
+    # і перенесені до появи `mailbox_moved_at` не було видно ніде).
+    processed_all = view == "processed" and period == "all"
 
     # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
     # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
@@ -306,7 +314,9 @@ def get_mail(
         # на паузі, хоч би що сталося з ним у скриньці — пауза сильніша.
         status_clause = sa_and(EmailMessage.status == "нове", on_hold)
     elif view == "processed":
-        status_clause = processed_today
+        status_clause = (
+            EmailMessage.mailbox_folder.is_not(None) if processed_all else processed_today
+        )
     elif view == "archive":
         status_clause = sa_and(EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved)
     elif view == "filtered":
@@ -400,6 +410,14 @@ def get_mail(
     processed_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(processed_today)
     ) or 0
+    # Усі листи в папках за весь час — для посилання «Показати всі в папці».
+    processed_all_count = 0
+    if view == "processed":
+        processed_all_count = db.scalar(
+            select(func.count()).select_from(EmailMessage).where(
+                EmailMessage.mailbox_folder.is_not(None)
+            )
+        ) or 0
     sender_memories = list_sender_memories(db) if view == "auto" else []
     auto_count = db.scalar(
         select(func.count()).select_from(ClientSenderMemory).where(
@@ -529,6 +547,8 @@ def get_mail(
             "auto_count": auto_count,
             "archive_count": archive_count,
             "processed_count": processed_count,
+            "processed_all": processed_all,
+            "processed_all_count": processed_all_count,
             # «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (папка або
             # видалення). CRM дзеркалить Вхідні; вкладка показується лише коли є
             # такі листи.
@@ -1077,7 +1097,11 @@ def fetch_email_link(
     existing = frozenset(a.filename for a in email.attachments)
     status = message = result_name = None
     try:
-        path = download_link(link, Path(MAIL_ATTACHMENTS_PATH) / email.uid, existing_names=existing)
+        # Та сама тека спулу, що й у вкладень листа (`<uidvalidity>_<uid>`,
+        # mail_spool.spool_folder_name). Тут стояв голий `email.uid`, і файли
+        # за посиланням лягали в ІНШУ теку, ніж вкладення того самого листа.
+        spool_dir = Path(MAIL_ATTACHMENTS_PATH) / spool_folder_name(email.uid, email.uid_validity)
+        path = download_link(link, spool_dir, existing_names=existing)
     except LinkDownloadError as exc:
         status, message = "error", str(exc)
     except Exception:  # noqa: BLE001 — one bad link mustn't 500 the panel

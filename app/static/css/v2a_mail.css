@@ -432,43 +432,6 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .detail-foot{display:flex;gap:10px;padding:14px 20px;border-top:1px solid var(--line)}
 .mailv2 .detail-foot .btn{height:38px;padding:0 18px}
 
-/* ---- Segmented triage detail (variant C): tabs + sticky action bar. The
-   letter / files+STL / accept wizard each live in one pane so the card never
-   grows into a long scroll; #mail-detail is the scroll container, the tab strip
-   sticks to its top and the action bar to its bottom. ---- */
-.mailv2 .mail-seg{display:flex;flex-direction:column}
-.mailv2 .seg-tabs{display:flex;gap:4px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card-2);z-index:var(--z-raised)}
-.mailv2 .seg-tab{position:relative;appearance:none;-webkit-appearance:none;font-family:var(--font-head);font-size:var(--fs-2);font-weight:500;color:var(--ink-3);background:transparent;border:1px solid transparent;border-radius:9px;padding:7px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
-.mailv2 .seg-tab:hover{background:rgba(255,255,255,.04);color:var(--ink-2)}
-.mailv2 .seg-tab.on{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .34);box-shadow:inset 0 0 14px -9px rgba(var(--accent-rgb), .95)}
-.mailv2 .seg-tab:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
-.mailv2 .seg-cnt{font-family:var(--font-mono);font-size:var(--fs-0);background:var(--card-3);color:var(--ink-2);border-radius:5px;padding:1px 6px;line-height:1.5;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
-.mailv2 .seg-tab.on .seg-cnt{background:rgba(var(--accent-base-rgb), .22);color:var(--accent-c)}
-.mailv2 .seg-dot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:0 0 auto}
-.mailv2 .seg-body{padding:16px 20px 20px}
-.mailv2 .seg-pane{display:none;animation:segPaneIn .2s ease}
-.mailv2 .seg-pane.on{display:block}
-@keyframes segPaneIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
-.mailv2 .mail-metabar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
-/* flex-wrap: коли кнопок у смузі багато (додався перенос у папку), вони мусять
-   ПЕРЕНЕСТИСЬ на новий рядок, а не чавити підсумок у вузький стовпчик, де ім'я
-   й матеріал з'їжджали по літері (баг 23.09.26). Підсумок тримає власну ширину
-   (flex:1 1 auto), дії з margin-left:auto самі стають праворуч свого рядка. */
-.mailv2 .seg-stickybar{position:sticky;bottom:0;z-index:var(--z-raised);display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:11px 16px 11px 20px;background:var(--card-3);border-top:1px solid var(--line-2)}
-.mailv2 .ssum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 1 auto;font-size:var(--fs-2);color:var(--ink-2);min-width:0}
-.mailv2 .ssum .ssum-client{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
-.mailv2 .ssum .ssum-sep{color:var(--ink-3)}
-.mailv2 .ssum-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:8px;flex:0 1 auto;align-items:center;justify-content:flex-end}
-.mailv2 .ssum-actions form{margin:0}
-/* Hairline between the disposal group and the apex, so a misclick has to
-   cross a visible boundary rather than 8px of nothing. */
-.mailv2 .ssum-div{width:1px;align-self:stretch;margin:0 8px;background:var(--line-2)}
-/* Jump straight to the Files tab instead of a sentence describing where the
-   button lives. Sits inline in the metabar, so it stays visually secondary. */
-.mailv2 .metabar-go{height:26px;padding:0 10px;font-size:var(--fs-1)}
-.mailv2 .manual-filter{display:inline-flex;gap:6px;align-items:center}
-.mailv2 .manual-filter .suminput.sm{height:30px;width:auto;padding:0 7px;font-size:var(--fs-1)}
-
 /* Teach-from-triage: fold-out keyword→category rule inside the letter pane. */
 .mailv2 .teach-filter{margin-top:12px}
 .mailv2 .teach-filter-sum{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:6px}
@@ -524,7 +487,6 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .filter-suggest b{color:var(--ink)}
 .mailv2 .filter-suggest form{margin:0;margin-left:auto}
 .mailv2 .filter-suggest form+form{margin-left:0}
-@media (prefers-reduced-motion:reduce){.mailv2 .seg-pane{animation:none}}
 .mailv2 .detail-back{display:inline-flex;gap:14px;margin-bottom:12px;font-size:var(--fs-2)}
 .mailv2 .detail-back a{color:var(--ink-2);text-decoration:none}
 .mailv2 .detail-back a:hover{color:var(--accent-c);opacity:1}
@@ -878,6 +840,10 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mail-pager button:disabled{opacity:.35;cursor:default}
 .mailv2 .mail-pager button[aria-current="page"]{border-color:var(--accent-b);color:var(--accent-c)}
 .mailv2 .mail-pager .mp-range{margin:0 6px;font-size:var(--fs-0);color:var(--ink-3);font-family:var(--font-mono)}
+/* Вкладка папки: «сьогодні» ⇄ «усі в папці» — під списком, над підвалом. */
+.mailv2 .list-period{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;border-top:1px solid var(--line);font-size:var(--fs-1);color:var(--ink-3)}
+.mailv2 .list-period a{color:var(--accent-c);text-decoration:none}
+.mailv2 .list-period a:hover{text-decoration:underline}
 .mailv2 .mail-pager .mp-all{margin-left:auto;font-family:inherit;border-color:var(--line-2)}
 .mailv2 .mailcb-wrap{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
 .mailv2 .mailcb{width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--accent-c)}

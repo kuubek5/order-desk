@@ -276,64 +276,6 @@ document.addEventListener("keyup", (event) => {
   markMailRowActive(event);
 });
 
-// Segmented triage detail (variant C — _mail_detail_panel.html): [Лист] /
-// [Файли + STL] / [Прийняти] tabs + a sticky action bar. The active segment is
-// remembered across full-panel HTMX re-renders (extract-archives, fetch-link,
-// accept all swap #mail-detail), and reset to "letter" when a DIFFERENT letter
-// is opened. The sticky "Прийняти →" button (data-seg-go) just activates the
-// accept tab — the real accept stays the wizard's own step-3 submit.
-let mailSeg = "letter";
-
-let mailSegId = null;
-
-function applyMailSeg(root) {
-  if (!root) return;
-  const tabs = root.querySelectorAll(".seg-tabs .seg-tab");
-  if (!tabs.length) return;
-  let target = mailSeg;
-  if (![...tabs].some((t) => t.dataset.seg === target)) target = "letter";
-  tabs.forEach((t) => t.classList.toggle("on", t.dataset.seg === target));
-  root.querySelectorAll(".seg-pane").forEach((p) =>
-    p.classList.toggle("on", p.dataset.pane === target)
-  );
-}
-
-document.addEventListener("click", (event) => {
-  const btn = event.target.closest(".seg-tab, [data-seg-go]");
-  if (!btn) return;
-  const root = btn.closest(".mail-seg");
-  if (!root) return;
-  mailSeg = btn.dataset.segGo || btn.dataset.seg;
-  applyMailSeg(root);
-});
-
-// Re-apply the remembered tab after any settle that (re)rendered the panel.
-document.body.addEventListener("htmx:afterSettle", () => {
-  const root = document.querySelector("#mail-detail .mail-seg");
-  if (!root) return;
-  const id = root.dataset.mailId;
-  if (id !== mailSegId) {
-    mailSegId = id;
-    mailSeg = "letter"; // a different letter opened → start on the letter tab
-  }
-  applyMailSeg(root);
-});
-
-// Live mini-summary in the sticky bar mirrors the wizard's client/material as
-// the operator edits step 1 (hidden inputs on later steps keep the last value).
-document.addEventListener("input", (event) => {
-  const t = event.target;
-  if (t.name !== "client_name" && t.name !== "material_color") return;
-  const root = t.closest(".mail-seg");
-  if (!root) return;
-  const client = root.querySelector("[name=client_name]");
-  const material = root.querySelector("[name=material_color]");
-  const cOut = root.querySelector(".ssum-client");
-  const mOut = root.querySelector(".ssum-mat");
-  if (cOut && client) cOut.textContent = client.value || "—";
-  if (mOut && material) mOut.textContent = material.value || "—";
-});
-
 // «Перевірити пошту» — spin + lock while the manual IMAP check runs, then a
 // short cooldown (persisted in localStorage so it survives the post/redirect
 // reload) keeps the button locked for a few seconds — no rapid re-spamming.

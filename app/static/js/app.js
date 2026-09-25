@@ -1027,8 +1027,7 @@ window.showToast = showToast;
 // A "file by link" download adds an attachment and (maybe) STL files, but the
 // per-row swap can't refresh the attachment list or the STL preview. The server
 // fires mailFilesChanged; re-render the whole detail panel once, debounced so a
-// "download all" of many links refreshes a single time after the last one. The
-// active segment tab is preserved by the mail-seg afterSettle handler above.
+// "download all" of many links refreshes a single time after the last one.
 let mailFilesRefreshTimer = null;
 
 function scheduleMailFilesRefresh() {

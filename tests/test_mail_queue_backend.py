@@ -1231,6 +1231,38 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         assert ctx["undownloaded_links"] == []
 
 
+def test_fetch_email_link_uses_the_same_spool_folder_as_attachments(monkeypatch, tmp_path):
+    """Файл за посиланням — у ТУ САМУ теку спулу, що й вкладення листа
+    (`<uidvalidity>_<uid>`, mail_spool.spool_folder_name). Доти роут брав голий
+    uid, і файли одного листа розходились по двох теках (хендоф 25.09.26)."""
+    engine = _database()
+    for _mod in (mail_router_mod, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    dests = []
+    saved = tmp_path / "model.stl"
+    saved.write_bytes(b"STL")
+
+    def _fake_download(link, dest, existing_names=frozenset()):
+        dests.append(dest)
+        return saved
+
+    monkeypatch.setattr(mail_router_mod, "download_link", _fake_download)
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: SimpleNamespace(context=context, headers={}),
+    )
+    fid = "1LIyJrFNKnY7oFyMadR1W5mRgRpAW9ivl"
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="77", uid_validity="1700", status="нове",
+                             body_text=f"<https://drive.google.com/file/d/{fid}/view>")
+        db.add(email)
+        db.commit()
+        mail_router_mod.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
+
+    assert dests == [tmp_path / "mail" / "1700_77"]
+
+
 def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
     """A LinkDownloadError (e.g. file not shared) comes back as an error row, no
     attachment created."""

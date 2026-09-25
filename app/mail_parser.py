@@ -217,45 +217,6 @@ def fuzzy_match_material_color(
     return None
 
 
-def material_candidates(
-    candidate: str,
-    known_materials: list[str],
-    limit: int = 3,
-    threshold: float = 60.0,
-) -> list[str]:
-    """Top ``limit`` known materials closest to ``candidate``, best-first, for
-    the accept wizard's "pick the right material" step. Same Latin↔Cyrillic
-    transliteration scoring as fuzzy_match_material_color, but a LOWER threshold
-    (60 vs 80) and several results on purpose: the operator is deciphering a
-    client's mangled spelling ("monolight a3"), so showing a few near-misses to
-    click beats silently returning nothing. Deduped, preserving best order."""
-    if not candidate or not known_materials:
-        return []
-    candidate_variants = _transliterations(candidate)
-    scored: list[tuple[float, str]] = []
-    for known in known_materials:
-        if not known:
-            continue
-        best = 0.0
-        for known_variant in _transliterations(known):
-            for candidate_variant in candidate_variants:
-                best = max(best, fuzz.ratio(candidate_variant, known_variant))
-        if best >= threshold:
-            scored.append((best, known))
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    seen: set[str] = set()
-    out: list[str] = []
-    for _, name in scored:
-        key = name.strip().lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(name)
-        if len(out) >= limit:
-            break
-    return out
-
-
 def guess_fields_from_text(
     text: str,
     subject: str | None = None,

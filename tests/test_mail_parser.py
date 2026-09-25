@@ -229,27 +229,6 @@ def test_guess_service_type_mixed_milling_and_printing_flags_as_3d_print():
     assert guess_service_type(mixed_text) == "3d_print"
 
 
-# --- material_candidates (accept wizard chips) ---------------------------------
-
-def test_material_candidates_latin_returns_ranked_cyrillic():
-    from app.mail_parser import material_candidates
-    known = ["емо а3.5", "емо а3", "емо а2", "моно а3", "пмма а2"]
-    out = material_candidates("emo a3", known, limit=3)
-    assert out and out[0] == "емо а3"  # exact translit match ranks first
-    assert len(out) <= 3
-
-
-def test_material_candidates_garbage_returns_empty():
-    from app.mail_parser import material_candidates
-    assert material_candidates("zzzzz", ["емо а3", "пмма а2"]) == []
-
-
-def test_material_candidates_empty_inputs():
-    from app.mail_parser import material_candidates
-    assert material_candidates("", ["емо а3"]) == []
-    assert material_candidates("емо", []) == []
-
-
 # --- Deterministic material-family recogniser (sheet-independent backstop) ---
 
 @pytest.mark.parametrize("text,expected", [
