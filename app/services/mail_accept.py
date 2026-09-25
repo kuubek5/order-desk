@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.business_day import business_today
 from app.export_scanner import clear_export_cache
 from app.link_attachments import undownloaded_links
+from app.mail_hold import release_hold
 from app.mail_export import (
     save_attachments_to_export,
     undo_moves,
@@ -40,9 +41,11 @@ from app.mail_reader import _file_is_missing, move_message_to_folder
 from app.models import EmailMessage, Order, StatusEvent, SyncLog
 from app.parser import HEADER_ROWS
 from app.sender_memory import remember_sender
+from app.services.opak import format_opak, opak_units
 from app.settings_store import get_export_folder_path, get_setting
 from app.sheet_writer import append_mail_placeholder_row
 from app.sheets import latest_worksheet_on_or_before, open_spreadsheet
+from app.statuses import STATUS_CALCULATED, STATUS_NEW
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,8 @@ def accept_letter(
     material_folder: str = "",
     attachment_ids: list[int] | None = None,
     accept_anyway: bool = False,
+    sum3d_id: str = "",
+    opak: str = "",
 ) -> AcceptResult:
     """Прийняти лист (або одну кольорову партію з нього) у чергу.
 
@@ -133,7 +138,7 @@ def accept_letter(
             client_name=client_name, material_color=material_color, kind=kind,
             quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
             material_folder=material_folder, attachment_ids=attachment_ids,
-            accept_anyway=accept_anyway,
+            accept_anyway=accept_anyway, sum3d_id=sum3d_id, opak=opak,
         )
     finally:
         lock.release()
@@ -153,6 +158,8 @@ def _accept_letter_locked(
     material_folder: str = "",
     attachment_ids: list[int] | None = None,
     accept_anyway: bool = False,
+    sum3d_id: str = "",
+    opak: str = "",
 ) -> AcceptResult:
     """Тіло `accept_letter` під локом листа — див. коментар до `_letter_locks`."""
     attachment_ids = list(attachment_ids or [])
@@ -209,8 +216,20 @@ def _accept_letter_locked(
         material_color=material_color.strip() or None,
         kind=kind.strip() or None,
         quantity=quantity.strip() or None,
-        status="нове",
+        status=STATUS_NEW,
     )
+    # Sum3D і опак — так само, як у ручному додаванні (`manual_add`): вписаний
+    # Sum3D і є момент «прораховано», тож літера оператора в «Прорахував» і
+    # статус «прораховано»; опак — текстом «2 opaq» у коментар для CAM, звідки
+    # його й рахують за зміну, плюс число в `opak_units`.
+    new_order.sum3d_id = sum3d_id.strip() or None
+    if new_order.sum3d_id:
+        stamp = (user.sheet_initial or "").strip() or None
+        if stamp:
+            new_order.calculated_raw = stamp
+            new_order.status = STATUS_CALCULATED
+    new_order.cam_comment = format_opak(opak) or None
+    new_order.opak_units = opak_units(new_order.cam_comment)
     ensure_seeded(db)
     new_order.material_id = resolve_material_id(
         new_order.material_color, load_alias_rows(db), material_id_by_name(db)
@@ -226,7 +245,10 @@ def _accept_letter_locked(
     if email.order_id is None:
         email.order_id = new_order.id
     db.add(
-        StatusEvent(order_id=new_order.id, operator_id=user.id, status="нове", actor=user.username)
+        StatusEvent(
+            order_id=new_order.id, operator_id=user.id,
+            status=new_order.status, actor=user.username,
+        )
     )
 
     # Часткове прийняття: рухаються лише файли, обрані для ЦЬОГО кольору.
@@ -295,6 +317,10 @@ def _accept_letter_locked(
         if a.order_id is None and not _file_is_missing(a.saved_path)
     ]
     email.status = "нове" if remaining else "прийнято"
+    if not remaining:
+        # Прийнятий лист більше не «на уточненні» — інакше відкат прийняття
+        # повернув би його в стару паузу, а не у «Вхідні».
+        release_hold(email)
 
     # Порядок навмисний: файли → база → таблиця. Рядок-нотатку в спільну
     # Google-таблицю пишемо ОСТАННІМ і лише після успішного коміту бази —
@@ -525,6 +551,17 @@ def _move_attachments(
     return moved_pairs
 
 
+def _material_family(db: Session, material_id: int | None) -> str:
+    """Назва родини матеріалу (ПММА, Титан, Віск…) — за нею рядок-нотатка
+    фарбує клітинку «Колір роботи», як ручне додавання. Не впізнали — порожньо,
+    клітинка лишається без заливки, а не фарбується навмання."""
+    if not material_id:
+        return ""
+    return next(
+        (name for name, mid in material_id_by_name(db).items() if mid == material_id), ""
+    )
+
+
 def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, worksheet) -> None:
     """Рядок-нотатка в спільній таблиці — те, що оператори й так пишуть руками
     для телефонних/поштових замовлень (CLAUDE.md §2).
@@ -547,6 +584,10 @@ def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, w
             new_order.client_name or "",
             new_order.quantity or "",
             new_order.material_color or "",
+            sum3d_id=new_order.sum3d_id or "",
+            cam_comment=new_order.cam_comment or "",
+            calculated=new_order.calculated_raw or "",
+            material_family=_material_family(db, new_order.material_id),
         )
         # Привʼязуємо роботу до щойно записаного рядка. Без цього наступний синк
         # імпортує наряд-less рядок як ОКРЕМУ роботу source="sheet_client" — та

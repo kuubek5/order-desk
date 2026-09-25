@@ -650,6 +650,20 @@ class EmailMessage(Base):
     inbox_returned_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+    # «На уточненні» (власник 25.09.26): лист на паузі — клієнт надіслав дубль,
+    # не надіслав файлів чи не вказав матеріал; адміністратори дзвонять
+    # замовнику, відповідь приходить окремим листом, іноді через пів дня. Лише
+    # стан CRM — скринька ukr.net НЕ змінюється. Такий лист виходить з
+    # «Вхідних» (і з усіх лічильників нових) у свою вкладку; «↩ У Вхідні»
+    # знімає позначку. Час — київський наївний, як mailbox_moved_at.
+    hold_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True, index=True
+    )
+    # Ключ причини (mail_hold.HOLD_REASONS) і вільний текст для «інше…».
+    hold_reason: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    hold_note: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    # Хто поставив на паузу — імʼя оператора, як StatusEvent.actor.
+    hold_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)

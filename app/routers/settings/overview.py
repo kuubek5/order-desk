@@ -364,6 +364,7 @@ def get_settings(
                     .where(
                         EmailMessage.status == "нове",
                         EmailMessage.filter_category.is_(None),
+                        EmailMessage.hold_at.is_(None),
                     )
                 ) or 0,
                 "l": "Пошта",

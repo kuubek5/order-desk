@@ -49,6 +49,7 @@ from app.services.shift import night_label, open_note_count
 from app.statuses import STATUSES, is_overdue, status_dot
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.triage_status import files_on_disk, triage_readiness
+from app.mail_hold import HOLD_REASONS, hold_label
 from app.update_check import get_known_update
 
 logger = logging.getLogger(__name__)
@@ -531,7 +532,7 @@ def pending_mail_count_uncached() -> int:
     «Нові з пошти» в рейці. Раніше число ставив ЛИШЕ роут черги, тож бейдж бачили
     тільки на черзі; тепер це Jinja-глобал і він на кожній сторінці. Той самий
     патерн, що feedback_open_count: власна сесія, широкий except, бейдж не сміє
-    завалити рендер. Рахунок збігається з вкладкою «Усі листи» на /mail."""
+    завалити рендер. Рахунок збігається з вкладкою «Вхідні» на /mail."""
     try:
         from sqlalchemy import func, select
 
@@ -545,6 +546,8 @@ def pending_mail_count_uncached() -> int:
                     EmailMessage.filter_category.is_(None),
                     EmailMessage.mailbox_folder.is_(None),
                     EmailMessage.inbox_gone_at.is_(None),
+                    # «На уточненні» — не нові (mail_hold.not_on_hold).
+                    EmailMessage.hold_at.is_(None),
                 )
             ) or 0
         finally:
@@ -806,6 +809,9 @@ templates.env.globals["all_statuses"] = STATUSES
 templates.env.globals["split_material_color"] = split_material_color
 templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness
+# Підпис причини «На уточненні» (рядок вкладки й банер картки).
+templates.env.globals["hold_label"] = hold_label
+templates.env.globals["hold_reasons"] = HOLD_REASONS
 templates.env.globals["files_on_disk"] = files_on_disk
 from app.services.machines import machine_model_key  # noqa: E402 — після створення templates
 templates.env.globals["machine_model_key"] = machine_model_key

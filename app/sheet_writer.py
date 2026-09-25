@@ -1093,18 +1093,37 @@ def append_mail_placeholder_row(
     material_color: str,
     start_row: int = 60,
     max_search_rows: int = 200,
+    *,
+    sum3d_id: str = "",
+    cam_comment: str = "",
+    calculated: str = "",
+    material_family: str = "",
 ) -> int:
     """Client-row convenience wrapper (email intake): client name into "Вид
-    роботи", наряд left blank, row painted blue. See append_manual_work_row."""
-    return append_manual_work_row(
+    роботи", наряд left blank, row painted blue. See append_manual_work_row.
+
+    Sum3D ID, опак (текст у «Коментар для CAM», `format_opak`), літера
+    «Прорахував» і заливка кольору за родиною матеріалу лягають так само, як
+    при ручному додаванні — той самий
+    словник роботи для `append_manual_work_rows`."""
+    rows = append_manual_work_rows(
         worksheet,
-        e_value=client_name,
-        quantity=quantity,
-        material_color=material_color,
+        [{
+            "e_value": client_name,
+            "quantity": quantity,
+            "material_color": material_color,
+            "sum3d_id": sum3d_id,
+            "cam_comment": cam_comment,
+            "calculated": calculated,
+            # Заливка «Колір роботи» за родиною (ПММА/Титан/Віск) — як у
+            # ручному додаванні; невідома родина лишає клітинку без заливки.
+            "material_family": material_family,
+        }],
         paint_blue=True,
         start_row=start_row,
         max_search_rows=max_search_rows,
     )
+    return rows[0]
 
 
 def append_order_comment(

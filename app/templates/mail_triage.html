@@ -64,14 +64,18 @@
        into two. #}
     <div class="list-controls">
         <nav class="tab-nav" aria-label="Розділ">
-            <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}"{% if view == 'pending' %} aria-current="page"{% endif %}>Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
-            {# Папка «оброблено» зі скриньки — ДРУГОЮ, одразу після «Усі листи»
+            <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}"{% if view == 'pending' %} aria-current="page"{% endif %}>Вхідні <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
+            {# Папка «оброблено» зі скриньки — ДРУГОЮ, одразу після «Вхідні»
                (рішення власника 23.09.26). Вкладка = та сама папка, що закріплена
                в Налаштуваннях; зʼявляється лише коли папку задано або туди вже
                щось перенесено. #}
             {% if mail_processed_folder or processed_count %}
             <a href="/mail?view=processed" class="tab-link {% if view == 'processed' %}active{% endif %}"{% if view == 'processed' %} aria-current="page"{% endif %} title="Листи, перенесені в папку «{{ mail_processed_folder }}» — робота пішла в цех">{{ mail_processed_folder or 'Перенесені' }}{% if processed_count %} <span class="tab-badge">{{ processed_count }}</span>{% endif %}</a>
             {% endif %}
+            {# «На уточненні» (власник 25.09.26): листи на паузі, поки адміністратори
+               уточнюють у замовника. Лише стан CRM. Видно завжди — це місце, куди
+               оператор кладе лист сам. #}
+            <a href="/mail?view=hold" class="tab-link {% if view == 'hold' %}active{% endif %}"{% if view == 'hold' %} aria-current="page"{% endif %} title="Листи на паузі: клієнту телефонують адміністратори">На уточненні{% if hold_count %} <span class="tab-badge hold">{{ hold_count }}</span>{% endif %}</a>
             <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}"{% if view == 'filtered' %} aria-current="page"{% endif %}>Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
             <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}"{% if view == 'archive' %} aria-current="page"{% endif %}>Архів <span class="tab-badge">{{ archive_count }}</span></a>
             {# «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (переклали
@@ -139,13 +143,13 @@
             {# The active tab above already names this list and counts it, so a
                visible header repeated the same two facts and cost 45px of the
                scroller. Kept for screen readers via aria-labelledby. #}
-            <h2 id="mail-list-title" class="sr-only">{% if view == 'archive' %}Архів{% elif view == 'filtered' %}Відфільтровані{% else %}Усі листи{% endif %} — {{ emails|length }}</h2>
+            <h2 id="mail-list-title" class="sr-only">{% if view == 'archive' %}Архів{% elif view == 'filtered' %}Відфільтровані{% elif view == 'hold' %}На уточненні{% else %}Вхідні{% endif %} — {{ emails|length }}</h2>
             {# Конвеєр (блок B): смуга вибору кількох листів. Поза #mail-list-rows,
                тож переживає 15-секундний полл; стан вибору читається з DOM-галочок
                (лише в браузері, mail.js). #}
             {# Масові дії (25.09.26): та сама смуга в кожній вкладці, крім «Авто».
                Кнопки — одна форма `/mail/bulk`; id обраних підставляє mail.js на
-               submit. Конвеєр (`data-conveyor`) — лише «Усі листи». #}
+               submit. Конвеєр (`data-conveyor`) — лише «Вхідні». #}
             {% if view != 'auto' %}
             <div class="mail-batchbar" id="mail-batchbar"{% if view == 'pending' %} data-conveyor="1"{% endif %}>
                 <label class="mb-selall">
@@ -157,20 +161,34 @@
                 <form class="mb-actions" id="mail-bulk-form" method="post" action="/mail/bulk" hidden>
                     <input type="hidden" name="ids" value="">
                     <input type="hidden" name="folder" value="">
+                    <input type="hidden" name="reason" value="">
                     {% if view == 'pending' or view == 'gone' %}
                     {% if view == 'pending' %}
                     {# «Перемістити» — меню папок скриньки (як у ukr.net). Список
                        тягнеться з IMAP лише при першому відкритті. #}
                     <details class="mb-move">
                         <summary class="btn sm">↦ Перемістити</summary>
-                        <div class="mb-move-body" hx-get="/mail/move-folders" hx-trigger="toggle from:closest details once" hx-swap="innerHTML">
-                            <div class="mb-move-head">Зчитую папки скриньки…</div>
+                        <div class="mb-move-body">
+                            {# «На уточненні» — така сама «папка» в списку, як у ukr.net
+                               (власник 25.09.26), але це стан CRM: скринька не
+                               змінюється. Статично, поза відповіддю IMAP — пункт є,
+                               навіть коли скринька не відповіла. Причину можна
+                               дописати потім у картці. #}
+                            <button type="submit" name="action" value="hold" class="mb-move-opt mb-hold-opt"
+                                    title="Лист на паузі, поки адміністратори уточнюють у замовника. Скринька не змінюється.">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 11v4M14 11v4"/></svg>
+                                <span>На уточненні</span>
+                                <span class="mb-move-tag">CRM</span>
+                            </button>
+                            <div class="mb-move-folders" hx-get="/mail/move-folders" hx-trigger="toggle from:closest details once" hx-swap="innerHTML">
+                                <div class="mb-move-head">Зчитую папки скриньки…</div>
+                            </div>
                         </div>
                     </details>
                     {% endif %}
                     {% if view == 'gone' %}
                     <button type="submit" name="action" value="return_inbox" class="btn sm"
-                            data-bulk-confirm="Повернути обрані листи ({n}) у Вхідні скриньки й «Усі листи»? Лист, перекладений у папку, буде перенесено назад.">↩ У Вхідні</button>
+                            data-bulk-confirm="Повернути обрані листи ({n}) у «Вхідні»? Лист, перекладений у папку, буде перенесено назад.">↩ У Вхідні</button>
                     {% endif %}
                     <button type="submit" name="action" value="reject" class="btn sm"
                             data-bulk-confirm="Відхилити обрані листи ({n})? Поштова скринька не змінюється.">✕ Відхилити</button>
@@ -179,10 +197,15 @@
                             data-bulk-confirm="Повернути обрані листи ({n}) у чергу?">↩ У чергу</button>
                     {% elif view == 'archive' %}
                     <button type="submit" name="action" value="restore" class="btn sm"
-                            data-bulk-confirm="Повернути обрані листи ({n}) в «Усі листи»?">↩ Повернути</button>
+                            data-bulk-confirm="Повернути обрані листи ({n}) в «Вхідні»?">↩ Повернути</button>
+                    {% elif view == 'hold' %}
+                    <button type="submit" name="action" value="unhold" class="btn sm"
+                            data-bulk-confirm="Повернути обрані листи ({n}) у «Вхідні»?">↩ У Вхідні</button>
+                    <button type="submit" name="action" value="reject" class="btn sm"
+                            data-bulk-confirm="Відхилити обрані листи ({n})? Поштова скринька не змінюється.">✕ Відхилити</button>
                     {% elif view == 'processed' %}
                     <button type="submit" name="action" value="to_inbox" class="btn sm"
-                            data-bulk-confirm="Повернути обрані листи ({n}) у Вхідні скриньки й «Усі листи»?">↩ У Вхідні</button>
+                            data-bulk-confirm="Повернути обрані листи ({n}) у «Вхідні»?">↩ У Вхідні</button>
                     {% endif %}
                 </form>
             </div>
@@ -193,7 +216,7 @@
             {# Сторінки по 15 листів + «Показати всі» (власник 25.09.26). Будує
                mail.js із рядків, що вже в DOM (поза поллом — переживає своп). #}
             <nav class="mail-pager" id="mail-pager" aria-label="Сторінки листів" hidden></nav>
-            <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. «↩» повертає лист у Вхідні скриньки й «Усі листи»{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}Клік по листу відкриває картку тріажу · галочка — обрати лист, щоб перемістити чи відхилити{% endif %}</div>
+            <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. «↩» повертає лист у «Вхідні»{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% elif view == 'hold' %}Листи на паузі, поки уточнюють у замовника. Скринька не змінюється · «↩» повертає лист у «Вхідні»{% else %}Клік по листу відкриває картку тріажу · галочка — обрати лист, щоб перемістити чи відхилити{% endif %}</div>
         </section>
 
         <section class="detail-panel" id="mail-detail">

@@ -817,6 +817,48 @@ def test_backfills_from_name_and_message_id_on_existing_rows(monkeypatch, tmp_pa
         assert row.status == "нове"             # не зачеплено
 
 
+def test_utc_dated_letter_is_stored_in_kyiv_time_and_old_rows_fixed(monkeypatch, tmp_path):
+    """Proton Mail ставить Date у UTC («+0000»). Колонка received_at без поясу, і
+    годинник заголовка лягав як є — лист, що прийшов о 17:06, показувався 14:05
+    і стояв посеред списку (власник 25.09.26). Новий лист — у київський час;
+    уже збережений неправильно — виправляється на наступному синку."""
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
+    utc = _dt(2026, 9, 25, 14, 6, tzinfo=_tz.utc)
+    kyiv_plus3 = _dt(2026, 9, 25, 17, 6, tzinfo=_tz(_td(hours=3)))
+    new_hdr = _header_with_name_and_mid("7", "shevchukr", "<p@proton>")
+    new_hdr.date = utc
+    old_hdr = _header_with_name_and_mid("8", "Старий", "<o@proton>")
+    old_hdr.date = utc
+    ok_hdr = _header_with_name_and_mid("9", "Київ", "<k@ukr>")
+    ok_hdr.date = kyiv_plus3
+    mailbox = FakeMailbox(headers=[new_hdr, old_hdr, ok_hdr], full_by_uid={})
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add_all([
+            EmailMessage(  # збережений ДО фіксу: годинник UTC без поясу
+                uid="8", from_address="a@x", from_name="Старий", message_id="<o@proton>",
+                subject="case", status="нове", attachments_status="ready",
+                received_at=_dt(2026, 9, 25, 14, 6),
+            ),
+            EmailMessage(  # «+0300» — уже правильний, не чіпаємо
+                uid="9", from_address="b@x", from_name="Київ", message_id="<k@ukr>",
+                subject="case", status="нове", attachments_status="ready",
+                received_at=_dt(2026, 9, 25, 17, 6),
+            ),
+        ])
+        session.commit()
+
+        fetch_new_emails(session, tmp_path)
+
+        by_uid = {r.uid: r for r in session.scalars(select(EmailMessage))}
+        assert by_uid["7"].received_at == _dt(2026, 9, 25, 17, 6)   # новий — київський
+        assert by_uid["8"].received_at == _dt(2026, 9, 25, 17, 6)   # старий — виправлено
+        assert by_uid["9"].received_at == _dt(2026, 9, 25, 17, 6)   # правильний — як був
+
+
 def test_returned_letter_is_adopted_by_message_id_not_duplicated(monkeypatch, tmp_path):
     """Лист, повернутий у Вхідні прямо в пошті (з папки «оброблено» чи іншої), у
     Inbox під НОВИМ uid. Фаза 1 мусить упізнати його за Message-ID і всиновити

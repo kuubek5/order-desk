@@ -153,6 +153,8 @@ POST /actions/undo-last
 GET /machines
 POST /journal/sync/{log_id}/restore-row
 POST /mail/{email_id}/reject
+POST /mail/{email_id}/hold
+POST /mail/{email_id}/unhold
 POST /settings
 GET /clients
 GET /shift

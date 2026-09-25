@@ -156,6 +156,20 @@ def utc_to_business(moment: datetime) -> datetime:
     )
 
 
+def aware_to_business(moment: datetime | None) -> datetime | None:
+    """Момент із ВЛАСНИМ поясом (заголовок Date листа) → наївний київський.
+
+    Колонка `received_at` без поясу, і SQLite зберігав «годинник» заголовка як
+    є: лист із «+0300» лягав за Києвом, а з Proton Mail («+0000») — за
+    Гринвічем, на 3 години раніше. Такий лист показувався «14:05» замість 17:06
+    і стояв посеред списку, ніби давно прийшов (власник 25.09.26). Наївний
+    вхід (пояс невідомий) повертаємо як є — вгадувати гірше.
+    """
+    if moment is None or moment.tzinfo is None:
+        return moment
+    return utc_to_business(moment.astimezone(timezone.utc).replace(tzinfo=None))
+
+
 def canonical_tab_title(title: str | None) -> str:
     """Назва вкладки таблиці без «сміття» навколо: пробіли, нерозривні
     пробіли, невидимі символи зі скопійованої назви.

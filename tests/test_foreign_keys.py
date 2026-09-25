@@ -127,7 +127,7 @@ def test_route_unaccepts_a_two_colour_letter_under_enforcement(tmp_path):
         db.add(StatusEvent(order_id=second.id, status="нове", actor="t"))
         # Оператор уже щось зробив із роботою (статус, Sum3D) — рядок журналу
         # посилається на неї. Бойовий випадок 25.09.26: «↩» з папки «Скачано-
-        # прошитано» падав саме на цьому, і лист не повертався в «Усі листи».
+        # прошитано» падав саме на цьому, і лист не повертався в «Вхідні».
         db.add(ActionLog(order_id=first.id, action_type="status", note="нове → прораховано"))
         db.commit()
 

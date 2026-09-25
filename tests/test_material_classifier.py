@@ -32,6 +32,19 @@ def test_zircon_variants(raw):
     assert classify_material(raw) == ZIRCON
 
 
+@pytest.mark.parametrize("raw", ["Эмоушен а3", "эмоушн А2", "Эмо а3"])
+def test_russian_spelling_of_zircon(raw):
+    """Замовники пишуть і російською: «э» ≠ «е», і «Эмоушен а3» не збігався з
+    синонімом «емо» — лист лишався без матеріалу (власник 25.09.26)."""
+    assert classify_material(raw) == ZIRCON
+
+
+def test_russian_fold_does_not_touch_forgotten_layout_key():
+    """«ы» у матеріалі — це клавіша S при забутій розкладці, тож фолд живе лише
+    в пошуку синонімів, а не в normalize_material."""
+    assert normalize_material("ыдь") == "ыдь"
+
+
 @pytest.mark.parametrize(
     "raw",
     ["монліт а 3", "миноліт а3", "моноа а 3,5"],

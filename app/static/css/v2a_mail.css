@@ -233,6 +233,30 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
   flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--warn);
   align-self:center;
 }
+/* Ctrl+клік — позначені листи «в роботі зараз» (власник 25.09.26): рівна
+   обводка з сяйвом акценту; у момент позначення світло ОДИН раз пробігає
+   рамкою (mail-focus-in, conic + mask). Решта рядків тьмяніє, поки є хоч одна
+   позначка, — щоб око трималось на своїх; наведення повертає яскравість. */
+@property --mf-angle{syntax:"<angle>";initial-value:0deg;inherits:false}
+.mailv2 .mailrow.mail-focus{
+  position:relative;z-index:1;
+  background:rgba(var(--accent-rgb), .07);
+  box-shadow:inset 0 0 0 1.5px rgba(var(--accent-rgb), .85), 0 0 22px -6px rgba(var(--accent-rgb), .6);
+}
+.mailv2 .mailrow.mail-focus .from{color:var(--accent-c)}
+.mailv2 .mailrow.mail-focus-in::before{
+  content:"";position:absolute;inset:0;padding:2px;pointer-events:none;
+  background:conic-gradient(from var(--mf-angle), transparent 0 62%, rgba(var(--accent-rgb), .15) 72%, var(--accent-c) 86%, transparent 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+  animation:mailFocusSweep .9s cubic-bezier(.3,.7,.2,1) 1 both;
+}
+@keyframes mailFocusSweep{from{--mf-angle:0deg;opacity:1}to{--mf-angle:360deg;opacity:0}}
+.mailv2 .listwrap.has-focus .mailrow:not(.mail-focus){opacity:.5;transition:opacity var(--ui-speed) ease}
+.mailv2 .listwrap.has-focus .mailrow:not(.mail-focus):hover{opacity:1}
+@media (prefers-reduced-motion:reduce){
+  .mailv2 .mailrow.mail-focus-in::before{animation:none;display:none}
+}
 @keyframes mailUnreadIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 /* Accent count on the pending tab ("N нових") — same warm language, also static. */
 .mailv2 .tab-badge.unread{display:inline-flex;align-items:center;gap:5px;background:transparent;color:var(--warn);border:none;margin-left:5px;padding:0;font-weight:600;opacity:1}
@@ -745,7 +769,18 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mc-stl .stl-gallery-file{padding:5px 7px}
 .mailv2 .mc-stl .stl-gallery-file .name{font-size:var(--fs-0)}
 /* 4 · Поля в ряд */
-.mailv2 .mc-fields{display:grid;grid-template-columns:1.5fr 1.3fr .5fr;gap:9px 10px;align-items:start}
+/* Клієнт · матеріал — гнучкі; к-сть, опак і Sum3D — вузькі фіксовані (цифри,
+   моно), щоб п'ять полів лишались одним рядком картки. */
+.mailv2 .mc-fields{display:grid;grid-template-columns:1.4fr 1.3fr 58px 58px 100px;gap:9px 10px;align-items:start}
+/* Ширину міряємо в самої картки, не у вікна: на екрані 1280–1366 картка
+   вужча за 640px, і в один рядок «Клієнт» стискався до ~145px. Тоді к-сть,
+   опак і Sum3D ідуть другим рядком (шість колонок: 3+3 / 2+2+2). */
+.mailv2 .mailcard{container-type:inline-size;container-name:mailcard}
+@container mailcard (max-width: 640px){
+  .mailv2 .mc-fields{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .mailv2 .mc-f-client,.mailv2 .mc-f-mat{grid-column:span 3}
+  .mailv2 .mc-f-qty,.mailv2 .mc-f-opak,.mailv2 .mc-f-sum3d{grid-column:span 2}
+}
 .mailv2 .mc-fields .field{margin:0;min-width:0}
 .mailv2 .mc-fields label{display:block;font-size:var(--fs-0);color:var(--ink-3);margin-bottom:3px}
 .mailv2 .mc-cands{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
@@ -776,6 +811,28 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mc-foot{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
 .mailv2 .mc-foot form{margin:0}
 .mailv2 .mc-menu{position:relative}
+/* «На уточнення» (власник 25.09.26): поповер над кнопкою, як меню «⋯».
+   Чіп причини = одна дія. «Інше» стоїть першим у DOM (Enter у полі), тому
+   на екрані чіпи підняті через order. */
+.mailv2 .mc-hold{position:relative}
+.mailv2 .mc-hold>summary{list-style:none;cursor:pointer}
+.mailv2 .mc-hold>summary::-webkit-details-marker{display:none}
+.mailv2 .mc-hold[open]>summary{border-color:rgba(var(--warn-rgb),.7);color:var(--warn)}
+.mailv2 .mc-hold-body{position:absolute;bottom:calc(100% + 6px);right:0;z-index:var(--z-lightbox);width:320px;display:flex;flex-direction:column;gap:9px;padding:12px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);box-shadow:0 20px 60px -24px rgba(0,0,0,.9)}
+.mailv2 .mc-hold-head{order:0;font-size:var(--fs-0);color:var(--ink-3)}
+.mailv2 .mc-hold-chips{order:1;display:flex;flex-wrap:wrap;gap:6px}
+.mailv2 .mc-hold-other{order:2;display:flex;gap:8px;padding-right:2px}
+.mailv2 .mc-hold-other .btn{flex:0 0 auto;padding-left:14px;padding-right:14px}
+.mailv2 .mc-hold-other .suminput{flex:1;min-width:0}
+/* Банер листа на паузі — над текстом замовника. */
+.mailv2 .mc-hold-banner{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid rgba(var(--warn-rgb),.45);border-radius:10px;background:rgba(var(--warn-rgb),.08);font-size:var(--fs-1);color:var(--ink-2)}
+.mailv2 .mc-hold-banner b{color:var(--warn);font-weight:600}
+.mailv2 .mc-hold-ico{color:var(--warn)}
+.mailv2 .mc-hold-text{flex:1;min-width:0}
+.mailv2 .mc-hold-banner form{margin:0}
+/* Причина в рядку вкладки «На уточненні» — обрізається, не ламає рядок. */
+.mailv2 .hold-reason{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .tab-badge.hold{color:var(--warn)}
 .mailv2 .mc-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid var(--line-2);border-radius:9px;color:var(--ink-2);font-size:var(--fs-4);line-height:1}
 .mailv2 .mc-menu>summary::-webkit-details-marker{display:none}
 .mailv2 .mc-menu[open]>summary{border-color:var(--accent-b);color:var(--ink)}
@@ -798,7 +855,6 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
   .mailv2 .mc-files{flex-direction:column}
   .mailv2 .mc-stl{flex:0 0 auto;width:100%}
   .mailv2 .mc-stl .stl-gallery-files{flex:0 0 auto;width:100%;max-height:none;flex-direction:row;flex-wrap:wrap}
-  .mailv2 .mc-fields{grid-template-columns:1fr 1fr}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -809,7 +865,7 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 /* Рядок списку з провідним чекбоксом: третя колонка ЗЛІВА (auto), решта як була.
    .has-cb — усі вкладки, крім «Авто» (масові дії, 25.09.26). */
 .mailv2 .mailrow.has-cb{grid-template-columns:auto minmax(0,1fr) minmax(146px,max-content)}
-/* «Усі листи»: у правій колонці лише іконка готовності (кнопки ↦/✕ прибрано
+/* «Вхідні»: у правій колонці лише іконка готовності (кнопки ↦/✕ прибрано
    25.09.26 — дії йдуть через галочки), тож підлога 146px лишала б порожнечу. */
 .mailv2 .mailrow.has-cb.row-slim{grid-template-columns:auto minmax(0,1fr) max-content}
 /* Сторінки списку (по 15, mail.js): рядок поза сторінкою ховається атрибутом
@@ -852,6 +908,11 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mb-move>summary::-webkit-details-marker{display:none}
 .mailv2 .mb-move[open]>summary{border-color:var(--accent-b);color:var(--ink)}
 .mailv2 .mb-move-body{position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-lightbox);min-width:280px;max-height:360px;overflow:auto;display:flex;flex-direction:column;padding:6px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);box-shadow:0 20px 60px -24px rgba(0,0,0,.9)}
+/* «На уточненні» в меню «Перемістити» — рядок-папка під папками скриньки
+   (order), відділений лінією. */
+.mailv2 .mb-move-folders{order:1;display:flex;flex-direction:column}
+.mailv2 .mb-hold-opt{order:2;margin-top:4px;border-top:1px solid var(--line);border-radius:0 0 8px 8px;padding-top:11px}
+.mailv2 .mb-hold-opt svg{stroke:var(--warn)}
 .mailv2 .mb-move-head{padding:8px 10px 6px;font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .mb-move-err{padding:8px 10px;font-size:var(--fs-1);color:var(--warn)}
 .mailv2 .mb-move-opt{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:8px;background:none;color:var(--ink);font:inherit;font-size:var(--fs-1);text-align:left;cursor:pointer}

@@ -275,7 +275,7 @@ def test_gone_tab_row_has_return_button_except_accepted(app_db):  # noqa: F811
 
 
 def test_all_letters_rows_have_no_per_row_move_or_reject(app_db):  # noqa: F811
-    """«Усі листи»: ↦/✕ у рядку прибрано (власник 25.09.26) — те саме робить
+    """«Вхідні»: ↦/✕ у рядку прибрано (власник 25.09.26) — те саме робить
     галочка + смуга масових дій. Смуга й пейджер на місці."""
     app, session_factory = app_db
     with session_factory() as db:

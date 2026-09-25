@@ -41,7 +41,13 @@ def triage_readiness(email) -> dict:
         return {"state": "no_files", "missing": ["файли"]}
 
     missing: list[str] = []
-    if not (getattr(email, "material_color_guess", None) or "").strip():
+    # `material_known` ставить роутер списку, коли канон (`best_material`)
+    # однозначно знайшов матеріал у темі чи тексті замовника — те саме, що
+    # підставиться в поле картки. Без цього лист зі здогадом, записаним ДО
+    # фіксу розпізнавання («Эмоушен а3», 25.09.26), мав чіп «Zr emo a3» і
+    # водночас «не розпізнано: матеріал».
+    guess = (getattr(email, "material_color_guess", None) or "").strip()
+    if not guess and not getattr(email, "material_known", False):
         missing.append("матеріал")
 
     # Нескачані файли за посиланням. Сервер прийняти такий лист НЕ ДАЄ

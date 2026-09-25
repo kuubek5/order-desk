@@ -28,6 +28,15 @@ def test_blank_material_counts_as_missing():
     assert rd["state"] == "incomplete"
 
 
+def test_material_found_by_canon_counts_as_recognised():
+    """Здогад порожній (записаний до фіксу розпізнавання), але роутер знайшов
+    матеріал каноном у темі — «Эмоушен а3» → `emo a3` (25.09.26). Чіп і бейдж
+    не мусять суперечити один одному."""
+    rd = triage_readiness(_email(material_color_guess=None, material_known=True))
+    assert rd["state"] == "ready"
+    assert rd["missing"] == []
+
+
 def test_3d_takes_precedence_over_completeness():
     # Even with a material guessed, a 3D-print hint wins — it isn't the lab's work.
     rd = triage_readiness(_email(service_type_guess="3d_print", material_color_guess="temp"))

@@ -1,7 +1,7 @@
 """Перенесення листа в папку скриньки й повернення назад (23.09.26).
 
 Оператор після запуску роботи в цех переносить лист у папку «оброблено»
-(«Скачано-просчитано»). Перенесений лист покидає «Усі листи»/«Архів» і живе у
+(«Скачано-просчитано»). Перенесений лист покидає «Вхідні»/«Архів» і живе у
 вкладці папки; звідти його можна повернути в Inbox. IMAP тут замокано —
 стережемо логіку роутів і фільтрацію вкладок, не мережу.
 """
@@ -146,7 +146,7 @@ class TestProcessedTabFiltering:
         client.login(*OPERATOR)
         _, _, pending = client.get("/mail?view=pending")
         _, _, processed = client.get("/mail?view=processed")
-        # Перенесений лист не в «Усі листи», а у вкладці папки.
+        # Перенесений лист не в «Вхідні», а у вкладці папки.
         assert "mailrow-" in pending
         # Бейдж називає саму папку (25.09.26: «Перемістити» кладе в будь-яку).
         assert "↦ Оброблено" in processed
@@ -156,7 +156,7 @@ class TestProcessedTabFiltering:
         assert "скачано" in processed.lower() or "Оброблено" in processed
 
     def test_return_action_matches_status(self, app_db):  # noqa: F811
-        """Повернення з папки веде САМЕ в «Усі листи» (власник 24.09.26). Прийнята
+        """Повернення з папки веде САМЕ в «Вхідні» (власник 24.09.26). Прийнята
         робота — через ВІДКАТ (restore: видаляє роботу, лист → нове), ↦-перенесений
         нове-лист — через лёгкий move-to-inbox."""
         app, session_factory = app_db
@@ -172,7 +172,7 @@ class TestProcessedTabFiltering:
         client = MiniClient(app)
         client.login(*OPERATOR)
         _, _, processed = client.get("/mail?view=processed")
-        # Прийнята → відкат прийняття; нове ↦ → лёгке повернення. Обидві в «Усі листи».
+        # Прийнята → відкат прийняття; нове ↦ → лёгке повернення. Обидві в «Вхідні».
         assert f"/mail/{acc_id}/restore" in processed
         assert f"/mail/{acc_id}/move-to-inbox" not in processed
         assert f"/mail/{new_id}/move-to-inbox" in processed

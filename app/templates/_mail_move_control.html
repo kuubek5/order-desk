@@ -7,8 +7,8 @@
 {# Зворотна дія: повернути лист у Inbox, якщо робота ще в роботі. #}
 <form method="post" action="/mail/{{ email.id }}/move-to-inbox"
       hx-post="/mail/{{ email.id }}/move-to-inbox" hx-target="#mail-detail" hx-swap="innerHTML"
-      hx-confirm="Повернути лист у «Усі листи» (Inbox)? Він знову зʼявиться у вхідних скриньки.">
-    <button type="submit" class="btn sm accent-outline" title="Повернути лист у вхідні скриньки">↩ У «Усі листи»</button>
+      hx-confirm="Повернути лист у «Вхідні» (Inbox)? Він знову зʼявиться у вхідних скриньки.">
+    <button type="submit" class="btn sm accent-outline" title="Повернути лист у вхідні скриньки">↩ У «Вхідні»</button>
 </form>
 {% elif mail_processed_folder %}
 <form method="post" action="/mail/{{ email.id }}/move-processed"

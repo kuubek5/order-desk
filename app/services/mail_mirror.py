@@ -19,11 +19,11 @@ from sqlalchemy.orm import Session, selectinload
 from app.business_day import business_today
 from app.models import Order
 from app.services.order_dates import order_date
-from app.services.queue import RETENTION_DAYS, queue_sort_key
+from app.services.queue import RETENTION_DAYS
 
 
 def mail_mirror_orders(db: Session) -> list[Order]:
-    """Активні роботи з пошти в межах вікна retention, найновіший день згори.
+    """Активні роботи з пошти в межах вікна retention, найновіша згори.
 
     `archived_at IS NULL` стоїть у SQL (архів росте щомісяця); відсів за вікном
     retention — у Python, бо бізнес-дата виводиться з `sheet_tab`, а не зі
@@ -38,9 +38,9 @@ def mail_mirror_orders(db: Session) -> list[Order]:
         .order_by(Order.id.desc())
     ).all()
     orders = [o for o in orders if order_date(o) >= cutoff]
-    # Два стабільні проходи: спершу канонний порядок черги (день, далі рядок
-    # згори вниз), потім день за спаданням — свіжо прийнята робота йде вгору,
-    # а порядок рядків усередині дня зберігається (сортування Python стабільне).
-    orders.sort(key=queue_sort_key)
-    orders.sort(key=order_date, reverse=True)
+    # Порядок СТВОРЕННЯ, найновіша згори (`Order.id DESC` уже в SQL; власник
+    # 25.09.26: «остання робота завжди зверху»). Не порядок таблиці: рядки там
+    # зсуваються від видалень і дописувань (на dev 25.09.26 робота, прийнята
+    # о 12:26, стояла в рядку нижче за прийняту о 13:59), і дзеркало за рядком
+    # ставило б свіжу роботу посередині.
     return orders

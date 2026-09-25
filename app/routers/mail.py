@@ -47,6 +47,13 @@ from app.mail_body_view import inline_parts, letter_segments, useful_text
 from app.mail_color_split import suggest_color_plan
 from app.mail_duplicates import find_duplicates
 from app.mail_filters import apply_rule_retroactively
+from app.mail_hold import (
+    hold_label,
+    not_on_hold,
+    on_hold,
+    put_on_hold,
+    release_hold,
+)
 from app.services.material_suggest import (
     best_material,
     canonical_material,
@@ -176,19 +183,19 @@ def _row_badge(label: dict, old: dict | None) -> dict:
     }
 
 
-_MAIL_VIEWS = ("pending", "filtered", "archive", "auto", "processed", "gone")
+_MAIL_VIEWS = ("pending", "filtered", "archive", "auto", "processed", "gone", "hold")
 
 
 def _mail_back_url(request: Request, open_id: int | None = None) -> str:
-    """Куди повернути оператора після «↩» (повернути лист у «Усі листи»): у ту
-    саму ВКЛАДКУ, з якої він натиснув, а не на «Усі листи» (власник 25.09.26 —
+    """Куди повернути оператора після «↩» (повернути лист у «Вхідні»): у ту
+    саму ВКЛАДКУ, з якої він натиснув, а не на «Вхідні» (власник 25.09.26 —
     розбираючи папку, після кожного повернення доводилось клацати її знову).
 
     Вкладку беремо з адреси сторінки: `HX-Current-URL` для htmx-кнопки картки,
     `Referer` для звичайної форми (як `queue.back_to_queue`). З адреси береться
     лише `view`/`service` із білого списку — відкритого редиректу немає.
-    Невідома вкладка чи «Усі листи» → `/mail` (з `open`, якщо картку треба
-    лишити відкритою: у «Усі листи» повернутий лист якраз і зʼявився)."""
+    Невідома вкладка чи «Вхідні» → `/mail` (з `open`, якщо картку треба
+    лишити відкритою: у «Вхідні» повернутий лист якраз і зʼявився)."""
     headers = getattr(request, "headers", None) or {}
     page = headers.get("HX-Current-URL") or headers.get("referer") or ""
     query = parse_qs(urlsplit(page).query) if urlsplit(page).path == "/mail" else {}
@@ -293,7 +300,11 @@ def get_mail(
         EmailMessage.mailbox_moved_at >= datetime.combine(business_today(), get_rollover()),
     )
     if view == "gone":
-        status_clause = EmailMessage.inbox_gone_at.is_not(None)
+        status_clause = sa_and(EmailMessage.inbox_gone_at.is_not(None), not_on_hold)
+    elif view == "hold":
+        # «На уточненні» (власник 25.09.26): лише стан CRM, тож показуємо лист
+        # на паузі, хоч би що сталося з ним у скриньці — пауза сильніша.
+        status_clause = sa_and(EmailMessage.status == "нове", on_hold)
     elif view == "processed":
         status_clause = processed_today
     elif view == "archive":
@@ -301,12 +312,12 @@ def get_mail(
     elif view == "filtered":
         status_clause = sa_and(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
-            not_moved, not_gone,
+            not_moved, not_gone, not_on_hold,
         )
     else:
         status_clause = sa_and(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
-            not_moved, not_gone,
+            not_moved, not_gone, not_on_hold,
         )
     # STABLE ORDER (pending view). The list polls every 15s; without this a
     # letter arriving mid-glance inserted itself and pushed every row down
@@ -338,9 +349,15 @@ def get_mail(
         # Латинський канон у чіпі: «Zr mono b1» замість «Zr B1» (власник
         # 25.09.26) — та сама відповідь, що підставиться в поле картки, з тим
         # самим пошуком матеріалу в тексті замовника («B1» + «Monolight»).
-        _label = row_label(db, _email.material_color_guess, _material_context(_email))
+        _context = _material_context(_email)
+        _label = row_label(db, _email.material_color_guess, _context)
         if _label:
             _email.mat_badge = _row_badge(_label, _email.mat_badge)
+            # Для бейджа готовності (triage_readiness): матеріал з відтінком
+            # упізнано однозначно — поле картки заповниться саме.
+            _email.material_known = bool(
+                best_material(db, _email.material_color_guess, _context)
+            )
     # How many pending letters are being held back from the frozen list.
     held_back_count = 0
     if since is not None and view == "pending":
@@ -356,18 +373,23 @@ def get_mail(
     pending_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
-            not_moved, not_gone,
+            not_moved, not_gone, not_on_hold,
         )
     ) or 0
     filtered_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
-            not_moved, not_gone,
+            not_moved, not_gone, not_on_hold,
         )
     ) or 0
     gone_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.inbox_gone_at.is_not(None)
+            EmailMessage.inbox_gone_at.is_not(None), not_on_hold,
+        )
+    ) or 0
+    hold_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.status == "нове", on_hold,
         )
     ) or 0
     archive_count = db.scalar(
@@ -392,7 +414,7 @@ def get_mail(
             EmailMessage.status == "нове",
             EmailMessage.seen_at.is_(None),
             EmailMessage.filter_category.is_(None),
-            not_moved, not_gone,
+            not_moved, not_gone, not_on_hold,
         )
     ) or 0
 
@@ -511,6 +533,9 @@ def get_mail(
             # видалення). CRM дзеркалить Вхідні; вкладка показується лише коли є
             # такі листи.
             "gone_count": gone_count,
+            # «На уточненні» — листи на паузі; вкладка видна завжди, бо це
+            # місце, куди оператор кладе лист сам.
+            "hold_count": hold_count,
             # Назва папки скриньки для підпису вкладки перенесених. Порожньо →
             # вкладка ховається (переносити нікуди не налаштовано).
             "mail_processed_folder": get_setting(db, "mail_processed_folder") or "",
@@ -1584,6 +1609,8 @@ def accept_email(
     material_folder: str = Form(""),
     attachment_ids: list[int] = Form(default=[]),
     accept_anyway: str = Form(""),
+    sum3d_id: str = Form(""),
+    opak: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Прийняти лист (або одну кольорову партію) у чергу.
@@ -1643,6 +1670,10 @@ def accept_email(
         quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
         material_folder=material_folder, attachment_ids=attachment_ids,
         accept_anyway=bool(accept_anyway),
+        # Необовʼязкові; при прямому виклику функції (тести) пропущене поле —
+        # обʼєкт Form, не рядок.
+        sum3d_id=sum3d_id if isinstance(sum3d_id, str) else "",
+        opak=opak if isinstance(opak, str) else "",
     )
     if not result.ok:
         return _accept_failed(result.error)
@@ -1895,7 +1926,7 @@ def move_email_to_inbox(
     if from_row and hx:
         return HTMLResponse("", status_code=200)
     request.session["toast_flash"] = {
-        "kind": "success", "message": "Лист повернуто у «Усі листи».",
+        "kind": "success", "message": "Лист повернуто у «Вхідні».",
     }
     target = _mail_back_url(request, open_id=email.id)
     if hx:
@@ -1941,6 +1972,7 @@ def reject_email(
         return RedirectResponse(f"/mail?open={email.id}", status_code=303)
 
     email.status = "відхилено"
+    release_hold(email)
     db.commit()
 
     # Two callers: the triage LIST row (HTMX, hx-swap="delete" — wants just that
@@ -1953,6 +1985,60 @@ def reject_email(
     if request_headers.get("HX-Request") == "true":
         return HTMLResponse("", status_code=200)
     return RedirectResponse("/mail", status_code=303)
+
+
+@router.post("/mail/{email_id}/hold")
+def hold_email(
+    request: Request,
+    email_id: int,
+    reason: str = Form(""),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """«На уточнення» (власник 25.09.26): лист на паузі, поки адміністратори
+    уточнюють у замовника. Лише стан CRM — скринька не змінюється. Оператор
+    лишається у своїй вкладці; лист звідти зникає."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    error = put_on_hold(email, reason, note, user.username)
+    if error:
+        request.session["toast_flash"] = {"kind": "error", "message": error}
+        return RedirectResponse(f"/mail?open={email.id}", status_code=303)
+    db.commit()
+    request.session["toast_flash"] = {
+        "kind": "success",
+        "message": f"Лист на уточненні: {hold_label(email)}",
+    }
+    return RedirectResponse(_mail_back_url(request), status_code=303)
+
+
+@router.post("/mail/{email_id}/unhold")
+def unhold_email(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    """Зняти паузу: лист повертається у «Вхідні». Оператор лишається у вкладці
+    «На уточненні», якщо натиснув звідти."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    release_hold(email)
+    db.commit()
+    # Рядок вкладки (htmx, hx-swap="delete") — порожні 200, як у unfilter;
+    # 303 на всю сторінку згодувався б свопу й стер список.
+    headers = getattr(request, "headers", None) or {}
+    if headers.get("HX-Request") == "true":
+        return HTMLResponse("", status_code=200)
+    request.session["toast_flash"] = {"kind": "success", "message": "Лист повернуто у «Вхідні»."}
+    return RedirectResponse(_mail_back_url(request, open_id=email.id), status_code=303)
 
 
 @router.post("/mail/{email_id}/unfilter")
@@ -1995,9 +2081,11 @@ _BULK_LABELS = {
     "move_processed": "Перенесено в папку",
     "move_to": "Перенесено в папку",
     "unfilter": "Повернуто в чергу",
-    "restore": "Повернуто в «Усі листи»",
+    "restore": "Повернуто в «Вхідні»",
     "to_inbox": "Повернуто у Вхідні",
-    "return_inbox": "Повернуто у Вхідні й «Усі листи»",
+    "return_inbox": "Повернуто у «Вхідні»",
+    "unhold": "Повернуто у «Вхідні»",
+    "hold": "На уточненні",
 }
 
 
@@ -2007,6 +2095,8 @@ def bulk_mail_action(
     action: str = Form(""),
     ids: str = Form(""),
     folder: str = Form(""),
+    reason: str = Form(""),
+    note: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -2055,10 +2145,10 @@ def bulk_mail_action(
         db.commit()
         emails = []  # решта циклу — для інших дій
 
-    # «Покинули Вхідні» → назад у Вхідні й «Усі листи» (власник 25.09.26). Лист
+    # «Покинули Вхідні» → назад у «Вхідні» (власник 25.09.26). Лист
     # шукається в скриньці (Вхідні або будь-яка папка) і, якщо треба,
     # переноситься — ОДНИМ IMAP-входом. Відхилений повертається в тріаж
-    # («нове»), бо «Усі листи» показують лише нові. Прийнятий / з роботою —
+    # («нове»), бо «Вхідні» показують лише нові. Прийнятий / з роботою —
     # пропуск, як у решті масових повернень. `inbox_returned_at` не дає синку
     # за віком одразу позначити лист «покинув» знову.
     if action == "return_inbox":
@@ -2096,6 +2186,24 @@ def bulk_mail_action(
                 skipped += 1
                 continue
             email.status = "відхилено"
+            release_hold(email)
+        elif action == "hold":
+            # Пункт «На уточнення» в меню «Перемістити» (власник 25.09.26) — та
+            # сама пауза, що кнопка картки; лише стан CRM, скринька не
+            # змінюється. Невірна причина — одна відмова на всю партію.
+            if has_work:
+                skipped += 1
+                continue
+            refusal = put_on_hold(email, reason, note, user.username)
+            if refusal:
+                errors.append(refusal)
+                continue
+        elif action == "unhold":
+            # «На уточненні» → «Вхідні» (лише стан CRM, скринька не змінюється).
+            if email.hold_at is None:
+                skipped += 1
+                continue
+            release_hold(email)
         elif action == "unfilter":
             if not email.filter_category:
                 skipped += 1
@@ -2611,7 +2719,7 @@ def _unaccept_email(
     # `order_id` там nullable навмисно: рядок журналу «хто що зробив» мусить
     # пережити видалену роботу. Без цього відкат роботи, з якою оператор уже
     # щось робив (статус, Sum3D), падав на FK — і «↩» з папки «Скачано-
-    # прошитано» не повертав лист у «Усі листи» (бойовий випадок 25.09.26).
+    # прошитано» не повертав лист у «Вхідні» (бойовий випадок 25.09.26).
     order_ids = [o.id for o in orders]
     if order_ids:
         db.execute(
@@ -2665,7 +2773,7 @@ def restore_email(
     if email.status == "відхилено":
         email.status = "нове"
         db.commit()
-        request.session["toast_flash"] = {"kind": "success", "message": "Лист повернуто в «Усі листи»."}
+        request.session["toast_flash"] = {"kind": "success", "message": "Лист повернуто в «Вхідні»."}
     elif email.status == "прийнято" or has_orders:
         # "прийнято" = fully accepted; a "нове" letter WITH orders = partially
         # accepted (some colours taken, more remain). Either way, undo every

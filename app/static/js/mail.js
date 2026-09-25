@@ -42,6 +42,85 @@ document.addEventListener("htmx:afterSettle", (event) => {
 // сторінкою (атрибут hidden). Чому не серверні сторінки: вибір галочками живе в
 // DOM (конвеєр, масові дії) і мусить переживати перехід між сторінками, а
 // «Показати всі» тоді миттєве. «Показати всі» памʼятається в браузері оператора.
+// ── Ctrl+клік: позначити листи, щоб зосередитись (власник 25.09.26) ─────────
+// «Обробляю 2 листи з купи — хочу бачити лише їх». Ctrl (⌘ на Mac) + клік по
+// рядку позначає лист (обводка з сяйвом), повторний — знімає; картку при цьому
+// НЕ відкриваємо — клік із Ctrl означає «позначити», а не «відкрити». Решта
+// рядків тьмяніє, поки позначено хоч один. Позначки — у браузері оператора
+// (KMStore), переживають полл і F5. Світло пробігає рамкою ОДИН раз у момент
+// позначення (`mail-focus-in`): петель анімації в тріажі не заводимо (§14).
+window.KMMailFocus = (function () {
+  const KEY = "mail.focusIds";
+  const MAX = 50;
+  const store = window.KMStore;  // storage.js: префікс і try/catch — там
+  let ids = new Set();
+  try {
+    const raw = store && store.get(KEY);
+    if (raw) ids = new Set(JSON.parse(raw).map(String).slice(0, MAX));
+  } catch (e) {
+    ids = new Set();
+  }
+
+  function save() {
+    if (!store) return;
+    if (ids.size) store.set(KEY, JSON.stringify(Array.from(ids).slice(-MAX)));
+    else store.remove(KEY);
+  }
+
+  function apply() {
+    let any = false;
+    document.querySelectorAll("#mail-list-rows .mailrow").forEach((row) => {
+      const on = ids.has(String(row.dataset.mailId));
+      row.classList.toggle("mail-focus", on);
+      if (on) any = true;
+    });
+    const wrap = document.querySelector(".mailv2 .listwrap");
+    if (wrap) wrap.classList.toggle("has-focus", any);
+  }
+
+  function toggle(row) {
+    const id = String(row.dataset.mailId || "");
+    if (!id) return;
+    if (ids.has(id)) {
+      ids.delete(id);
+      row.classList.remove("mail-focus-in");
+    } else {
+      ids.add(id);
+      row.classList.add("mail-focus-in");
+    }
+    save();
+    apply();
+  }
+
+  // Фаза ПЕРЕХОПЛЕННЯ на document: спрацьовує раніше за htmx-обробник кліку на
+  // самому рядку, тож stopImmediatePropagation не дає картці відкритись.
+  document.addEventListener("click", (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const row = event.target.closest && event.target.closest("#mail-list-rows .mailrow");
+    if (!row) return;
+    if (event.target.closest(".mailcb-wrap, form, button, a, input")) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    toggle(row);
+  }, true);
+
+  document.addEventListener("animationend", (event) => {
+    if (event.animationName === "mailFocusSweep" && event.target.classList) {
+      event.target.classList.remove("mail-focus-in");
+    }
+  });
+
+  // Полл перемальовує рядки без hx-preserve — повернути їм позначку.
+  document.addEventListener("htmx:afterSettle", (event) => {
+    const el = event.detail && event.detail.elt;
+    if (el && el.id === "mail-list-rows") apply();
+  });
+  document.addEventListener("DOMContentLoaded", apply);
+  if (document.readyState !== "loading") apply();
+
+  return { apply: apply };
+})();
+
 window.KMMailPager = (function () {
   const PAGE = 15;
   const KEY = "mail.showAll";
@@ -577,7 +656,7 @@ window.collectMailBatch = function () {
   }
 
   // Усі обрані — для масових дій (/mail/bulk). Готові (data-ready) — для
-  // конвеєра: у «Усі листи» галочка є на кожному листі, а приймати батчем
+  // конвеєра: у «Вхідні» галочка є на кожному листі, а приймати батчем
   // можна лише готові.
   function selectedIds() {
     return idsOf(".mailcb:checked");
@@ -592,7 +671,7 @@ window.collectMailBatch = function () {
     return !!(bar && bar.dataset.conveyor);
   }
 
-  // Пул «Обрати всі»: у «Усі листи» — лише готові, в інших вкладках — усі
+  // Пул «Обрати всі»: у «Вхідні» — лише готові, в інших вкладках — усі
   // незаблоковані. Лише ВИДИМА сторінка (як в ukr.net): «обрати всі» не має
   // тихо захоплювати листи на сторінках, яких оператор не бачить. На «Показати
   // всі» видимі — усі.
@@ -697,6 +776,10 @@ window.collectMailBatch = function () {
     // Пункт меню «Перемістити» несе назву папки в data-folder.
     const folderInput = form.querySelector('[name="folder"]');
     if (folderInput) folderInput.value = (btn && btn.dataset.folder) || "";
+    // Пункт «На уточненні» може нести ключ причини в data-reason (без нього —
+    // пауза без причини).
+    const reasonInput = form.querySelector('[name="reason"]');
+    if (reasonInput) reasonInput.value = (btn && btn.dataset.reason) || "";
     // Повільна дія (IMAP по листу) — не дати натиснути вдруге.
     form.querySelectorAll("button").forEach((b) => {
       if (b !== btn) b.disabled = true;
@@ -704,9 +787,10 @@ window.collectMailBatch = function () {
     if (btn) btn.textContent = "Виконую…";
   });
 
-  // Меню «Перемістити» закривається кліком поза ним — як меню пошти.
+  // Меню «Перемістити» і «На уточнення» закриваються кліком поза ними — як
+  // меню пошти.
   document.addEventListener("click", (event) => {
-    document.querySelectorAll(".mb-move[open]").forEach((menu) => {
+    document.querySelectorAll(".mb-move[open], .mc-hold[open]").forEach((menu) => {
       if (!menu.contains(event.target)) menu.removeAttribute("open");
     });
   });

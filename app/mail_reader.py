@@ -12,7 +12,7 @@ from imap_tools import AND, MailBox
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.business_day import business_today
+from app.business_day import aware_to_business, business_today
 from app.mail_filters import apply_filters_to_email
 from app.mail_parser import guess_fields_from_text, guess_service_type
 from app.material_catalog import ensure_seeded as ensure_materials_seeded, load_alias_rows
@@ -797,7 +797,7 @@ def move_message_back_to_inbox(session: Session, email_message: EmailMessage) ->
     email_message.mailbox_moved_at = None
     # Лист фізично повернувся у Вхідні → він НЕ «покинув Вхідні». Без цього
     # рядка повернута робота падала б у «Покинули Вхідні» (якщо мітку встиг
-    # поставити віковий синк), а не в «Усі листи» (власник 24.09.26).
+    # поставити віковий синк), а не в «Вхідні» (власник 24.09.26).
     email_message.inbox_gone_at = None
 
 
@@ -1167,6 +1167,12 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                         row.from_name = sender_display_name(msg)
                     if not row.message_id:
                         row.message_id = message_id_of(msg)
+                    # Час, записаний до переводу в київський (лист із поясом
+                    # «+0000» лежав на 3 год раніше) — виправляється сам на
+                    # наступному проході, без міграції: вікно синку 30 днів.
+                    received = aware_to_business(msg.date)
+                    if received is not None and row.received_at != received:
+                        row.received_at = received
                 continue
             seen_uids.add(uid)
 
@@ -1192,7 +1198,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     from_name=sender_display_name(msg),
                     message_id=message_id_of(msg),
                     subject=msg.subject,
-                    received_at=msg.date,
+                    received_at=aware_to_business(msg.date),
                     status="нове",
                     attachments_status="pending",
                 )

@@ -176,3 +176,29 @@ def test_mail_mirror_shows_only_email_orders_newest_day_first():
         names = [o.client_name for o in rows]
         assert names == ["Нова", "Стара"]  # лише email, найновіший день згори
         assert "Табличний" not in names and "Архівна" not in names
+
+
+def test_mail_mirror_newest_work_on_top_within_a_day():
+    """Остання прийнята робота — завжди зверху (власник 25.09.26): порядок
+    створення, найновіша згори, незалежно від рядка в таблиці."""
+    engine = _database()
+    from datetime import timedelta
+
+    from app.business_day import business_today
+    day_new = business_today().strftime("%d.%m.%y")
+    day_old = (business_today() - timedelta(days=1)).strftime("%d.%m.%y")
+    with Session(engine, expire_on_commit=False) as db:
+        _user(db)
+        _order(db, client_name="Вчора-верх", sheet_tab=day_old, row_number=60)
+        _order(db, client_name="Вчора-низ", sheet_tab=day_old, row_number=61)
+        _order(db, client_name="Перша", sheet_tab=day_new, row_number=60)
+        _order(db, client_name="Друга", sheet_tab=day_new, row_number=61)
+        _order(db, client_name="Без рядка", sheet_tab=day_new, row_number=None)
+        # Створена ОСТАННЬОЮ, хоч рядок у таблиці вище за всі: рядки зсуваються
+        # від видалень, тож порядок — за створенням, не за позицією.
+        _order(db, client_name="Остання", sheet_tab=day_new, row_number=59)
+
+        names = [o.client_name for o in mail_mirror_orders(db)]
+        assert names == [
+            "Остання", "Без рядка", "Друга", "Перша", "Вчора-низ", "Вчора-верх",
+        ]

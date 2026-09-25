@@ -415,6 +415,16 @@ def test_material_word_found_in_customer_text_when_guess_names_only_colour():
         assert best_material(session, "", "капа а2") == "kappa a2"
 
 
+def test_russian_spelling_reaches_the_latin_line():
+    """Бойовий лист 25.09.26 «Эмоушен а3» (Proton Mail): «э» не складалась у `e`,
+    і чіп рядка лишався порожнім. Тепер — `emo a3`, як «емоушен а3»."""
+    from app.services.material_suggest import best_material, row_label
+
+    with _canon_session() as session:
+        assert best_material(session, "Эмоушен а3") == "emo a3"
+        assert row_label(session, "", "Эмоушен а3")["text"] == "emo a3"
+
+
 def test_customer_text_does_not_invent_material_from_ordinary_words():
     from app.services.material_suggest import best_material, canonical_suggestions
 

@@ -1690,7 +1690,7 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
 
 
 def test_restore_from_archive_sets_toast(monkeypatch):
-    """Archive-row «↩» → letter back to «Усі листи» with an outcome toast."""
+    """Archive-row «↩» → letter back to «Вхідні» with an outcome toast."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -1702,12 +1702,12 @@ def test_restore_from_archive_sets_toast(monkeypatch):
         assert resp.status_code == 303 and resp.headers["location"] == "/mail"
         db.refresh(rejected)
         assert rejected.status == "нове"
-        assert "Усі листи" in req.session["toast_flash"]["message"]
+        assert "«Вхідні»" in req.session["toast_flash"]["message"]
 
 
 def test_restore_stays_on_the_tab_it_was_pressed_from():
     """«↩» у вкладці «Архів» лишає оператора в «Архіві», а не кидає на
-    «Усі листи» (власник 25.09.26 — розбирав папку й щоразу клацав її знову)."""
+    «Вхідні» (власник 25.09.26 — розбирав папку й щоразу клацав її знову)."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -1729,7 +1729,7 @@ def test_mail_back_url_whitelists_the_page_address():
     # htmx-кнопка картки: сторінка — у HX-Current-URL, він важливіший за Referer.
     assert back(req(**{"HX-Current-URL": "http://h/mail?view=processed",
                        "referer": "http://h/mail?view=archive"}), open_id=5) == "/mail?view=processed"
-    # «Усі листи»: картку лишаємо відкритою — повернутий лист якраз тут.
+    # «Вхідні»: картку лишаємо відкритою — повернутий лист якраз тут.
     assert back(req(referer="http://h/mail?open=3"), open_id=5) == "/mail?open=5"
     assert back(req(), open_id=5) == "/mail?open=5"
     assert back(req()) == "/mail"

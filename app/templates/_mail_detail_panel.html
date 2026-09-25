@@ -60,6 +60,17 @@
         {% endif %}
     </div>
 
+    {# «На уточненні» (власник 25.09.26): лист на паузі — хто, коли й чому. #}
+    {% if email.hold_at and is_new %}
+    <div class="mc-hold-banner">
+        <span class="mc-hold-ico" aria-hidden="true">⏸</span>
+        <span class="mc-hold-text"><b>На уточненні</b> з {{ email.hold_at.strftime('%d.%m %H:%M') }} · {{ hold_label(email) }}{% if email.hold_by %} · {{ email.hold_by }}{% endif %}</span>
+        <form method="post" action="/mail/{{ email.id }}/unhold">
+            <button type="submit" class="btn sm accent-outline">↩ У Вхідні</button>
+        </form>
+    </div>
+    {% endif %}
+
     {% if email.service_type_guess == '3d_print' %}
     <div class="type-flag mc-flag">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" class="duo"/><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
@@ -310,6 +321,17 @@
                 <label for="mc-qty">К-сть</label>
                 <input type="text" id="mc-qty" name="quantity" class="suminput mono" value="{{ quantity }}" placeholder="—">
             </div>
+            {# Опак і Sum3D — як у ручному додаванні (manual_add): опак іде в
+               «Коментар для CAM» текстом «2 opaq», Sum3D ставить літеру оператора
+               в «Прорахував» і статус «прораховано». Обидва необовʼязкові. #}
+            <div class="field mc-f-opak">
+                <label for="mc-opak">Опак</label>
+                <input type="text" id="mc-opak" name="opak" class="suminput mono" inputmode="numeric" placeholder="—" title="Кількість опаків, якщо є" autocomplete="off">
+            </div>
+            <div class="field mc-f-sum3d">
+                <label for="mc-sum3d">Sum3D</label>
+                <input type="text" id="mc-sum3d" name="sum3d_id" class="suminput mono" placeholder="—" title="Sum3D ID (напр. 12-01-45), якщо вже прораховано" autocomplete="off">
+            </div>
         </div>
 
         {# Наполегливе попередження про нескачані файли — завжди на видноті, НЕ за
@@ -375,6 +397,30 @@
                 {% include "_mail_move_control.html" %}
             </div>
         </details>
+        {# «На уточнення»: один клік на чіп причини — лист іде у вкладку паузи.
+           Поле тексту спільне: до чіпа — необовʼязкове уточнення, для «Інше» —
+           обовʼязкове (сервер перевіряє). Лише стан CRM, скринька не змінюється. #}
+        {% if not email.hold_at %}
+        <details class="mc-hold">
+            <summary class="btn" title="Поставити лист на паузу, поки адміністратори уточнюють у замовника">⏸ На уточнення</summary>
+            <form method="post" action="/mail/{{ email.id }}/hold" class="mc-hold-body">
+                <div class="mc-hold-head">Що уточнити в замовника?</div>
+                {# «Інше» ПЕРШИМ у розмітці: Enter у полі тексту шле форму першою
+                   submit-кнопкою, і це мусить бути «Інше» з текстом, а не
+                   «Немає файлів». На екрані чіпи вище (CSS order). #}
+                <div class="mc-hold-other">
+                    <input type="text" name="note" class="suminput sm" maxlength="300" autocomplete="off"
+                           placeholder="що уточнити (необовʼязково)" aria-label="Що уточнити">
+                    <button type="submit" name="reason" value="other" class="btn sm">Інше</button>
+                </div>
+                <div class="mc-hold-chips">
+                    {% for key, label in hold_reasons.items() if key != 'other' %}
+                    <button type="submit" name="reason" value="{{ key }}" class="wc-chip">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            </form>
+        </details>
+        {% endif %}
         <form method="post" action="/mail/{{ email.id }}/reject" class="mc-reject"
               onsubmit="return confirm('Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється).')">
             <button type="submit" class="btn danger">Відхилити</button>

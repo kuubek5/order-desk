@@ -211,6 +211,127 @@ def test_successful_accept_writes_the_sheet_placeholder_row_once(tmp_path, monke
         assert order.row_number == 65 - HEADER_ROWS
 
 
+def _accept_with_sheet(monkeypatch, db, user, email, material_color="моно а3", **fields):
+    """Прийняти лист із рядком-нотаткою, що «записався» в рядок 65; повертає
+    іменовані аргументи, з якими прийняття кликало запис рядка."""
+    calls = []
+
+    def _fake_append(worksheet, client_name, quantity, material_color, **kwargs):
+        calls.append(kwargs)
+        return 65
+
+    monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", _fake_append)
+    monkeypatch.setattr(mail_accept_svc, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(
+        mail_accept_svc, "latest_worksheet_on_or_before",
+        lambda *args, **kwargs: SimpleNamespace(title="01.01.26"),
+    )
+    response = mail_router_mod.accept_email(
+        request=_request(user.id), email_id=email.id,
+        client_name="Люмі-Дент", material_color=material_color, kind="", quantity="2",
+        folder_pick="", folder_new="", material_folder="", attachment_ids=[],
+        db=db, **fields,
+    )
+    assert response.status_code == 303
+    assert "error=" not in response.headers["location"]
+    assert len(calls) == 1
+    return calls[0]
+
+
+def test_accept_with_sum3d_and_opak_mirrors_manual_add(tmp_path, monkeypatch):
+    """Sum3D і опак у картці листа лягають так само, як у ручному додаванні
+    (власник 25.09.26): Sum3D — у роботу й у рядок таблиці разом із літерою
+    оператора в «Прорахував» і статусом «прораховано»; опак — «2 opaq» у
+    коментар для CAM і число в `opak_units`."""
+    engine = _database()
+    _export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        user.sheet_initial = "Р"
+        db.commit()
+        email, _stl = _letter(db, mail_root / "u1")
+        written = _accept_with_sheet(
+            monkeypatch, db, user, email, material_color="pmma a3",
+            sum3d_id=" 12-01-45 ", opak="2",
+        )
+
+    # Родина матеріалу — для заливки «Колір роботи», як у ручному додаванні.
+    assert written == {
+        "sum3d_id": "12-01-45", "cam_comment": "2 opaq", "calculated": "Р",
+        "material_family": "ПММА",
+    }
+    with Session(engine) as db:
+        order = db.scalar(select(Order))
+        assert order.sum3d_id == "12-01-45"
+        assert order.calculated_raw == "Р"
+        assert order.status == "прораховано"
+        assert order.cam_comment == "2 opaq"
+        assert order.opak_units == 2
+        assert order.source == "email"
+
+
+def test_accept_without_sum3d_and_opak_stays_new(tmp_path, monkeypatch):
+    """Порожні поля — колишня поведінка: робота «нове», у таблицю нічого з цього
+    не пишеться (порожнє значення `_row_value_map` пропускає)."""
+    engine = _database()
+    _export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        user.sheet_initial = "Р"
+        db.commit()
+        email, _stl = _letter(db, mail_root / "u1")
+        written = _accept_with_sheet(monkeypatch, db, user, email, sum3d_id="", opak="")
+
+    # Цирконій — родина є, але заливки для неї в таблиці немає (як і руками).
+    assert written == {
+        "sum3d_id": "", "cam_comment": "", "calculated": "", "material_family": "Цирконій",
+    }
+    with Session(engine) as db:
+        order = db.scalar(select(Order))
+        assert order.sum3d_id is None
+        assert order.calculated_raw is None
+        assert order.status == "нове"
+        assert order.cam_comment is None
+        assert order.opak_units is None
+
+
+def test_mail_placeholder_row_writes_sum3d_opak_and_initial():
+    """Сам запис рядка: Sum3D, літера й опак ідуть у свої колонки тим самим
+    `_row_value_map`, що й ручне додавання."""
+    from app.sheet_writer import (
+        COL_CALCULATED, COL_CAM_COMMENT, COL_KIND, COL_SUM3D_ID, _row_value_map,
+    )
+
+    captured = {}
+
+    def _fake_rows(worksheet, works, **kwargs):
+        captured["work"] = works[0]
+        return [65]
+
+    import app.sheet_writer as sw
+    original = sw.append_manual_work_rows
+    sw.append_manual_work_rows = _fake_rows
+    try:
+        row = sw.append_mail_placeholder_row(
+            object(), "Люмі-Дент", "2", "pmma a3",
+            sum3d_id="12-01-45", cam_comment="2 opaq", calculated="Р",
+            material_family="ПММА",
+        )
+    finally:
+        sw.append_manual_work_rows = original
+
+    assert row == 65
+    cells = _row_value_map(captured["work"])
+    assert cells[COL_KIND] == "Люмі-Дент"
+    assert cells[COL_SUM3D_ID] == "12-01-45"
+    assert cells[COL_CALCULATED] == "Р"
+    assert cells[COL_CAM_COMMENT] == "2 opaq"
+    assert captured["work"]["material_family"] == "ПММА"
+    assert sw._MATERIAL_FILLS["ПММА"]  # саме за цим ключем фарбує _grid_write_requests
+
+
 def test_processed_view_shows_only_todays_letters(monkeypatch):
     """Вкладка «Оброблено» — лише поточний робочий день (власник 24.09.26):
     сьогоднішній лист показується, вчорашній і безчасовий (legacy) — ні. Так само

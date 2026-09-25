@@ -50,7 +50,11 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
         "mail_pending": db.scalar(
             select(func.count())
             .select_from(EmailMessage)
-            .where(EmailMessage.status == "нове", EmailMessage.filter_category.is_(None))
+            .where(
+                EmailMessage.status == "нове",
+                EmailMessage.filter_category.is_(None),
+                EmailMessage.hold_at.is_(None),
+            )
         ) or 0,
         # Works a technician corrected in the sheet and nobody has acknowledged
         # yet. A rise means a fresh correction — the client toasts on that, so

@@ -132,6 +132,13 @@ def _strip_false_friends(normalized: str) -> str:
     return re.sub(r"\s+", " ", _FALSE_FRIEND_RE.sub(" ", normalized)).strip()
 
 
+# Російські літери → українські, ЛИШЕ для пошуку синонімів у classify_material.
+# Замовники з усієї країни пишуть і російською: «Эмоушен а3» не збігався з
+# синонімом «емо», бо «э» ≠ «е», і лист лишався без матеріалу (власник
+# 25.09.26). Не в normalize_material: там «ы»/«э» — клавіші S і ' для «забутої
+# розкладки» («ыдь» = slm), і такий фолд зламав би її.
+_RUSSIAN_FOLD = str.maketrans({"э": "е", "ы": "и", "ё": "е", "ъ": ""})
+
 _FUZZY_THRESHOLD = 84.0
 _MIN_FUZZY_LEN = 4  # don't fuzzy-match very short tokens (a2, ti, 800)
 
@@ -188,6 +195,8 @@ _MATCH_FOLD = str.maketrans(
         "й": "i", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
         "п": "p", "р": "p", "с": "c", "т": "t", "у": "y", "ф": "f",
         "х": "x", "ц": "c", "ь": "",
+        # Російські літери (замовники пишуть і російською: «Эмоушен а3»).
+        "э": "e", "ы": "i", "ё": "e", "ъ": "",
     }
 )
 
@@ -274,7 +283,7 @@ def classify_material(
     Цирконій, «Ti amo» → Титан (ревʼю 07.09.26, M.7). `contains`-аліаси
     («циркон», «пмма», «титан») лишаються — вони самі по собі однозначні.
     """
-    normalized = _strip_false_friends(normalize_material(raw))
+    normalized = _strip_false_friends(normalize_material(raw).translate(_RUSSIAN_FOLD))
     if not normalized:
         return None
     rows = aliases if aliases is not None else seed_alias_rows()

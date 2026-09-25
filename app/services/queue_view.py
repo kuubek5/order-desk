@@ -400,6 +400,8 @@ def build_queue_view(
             # triage screen's «Відфільтровані» tab — keep the queue widget to
             # actual milling work.
             EmailMessage.filter_category.is_(None),
+            # На паузі («На уточненні») — чекає відповіді замовника, не роботи.
+            EmailMessage.hold_at.is_(None),
         )
         .options(selectinload(EmailMessage.attachments))
         .order_by(
