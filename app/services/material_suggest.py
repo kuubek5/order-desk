@@ -595,3 +595,50 @@ def suggest_materials(
         )
 
     return suggestions[:limit]
+
+
+def explain_material(session: Session, guess: str | None, context: str | None = None) -> dict:
+    """Покроково, ЧОМУ картка листа підставила (чи ні) матеріал — для MCP
+    `kmill_mail_material` (власник 25.09.26: «циркон блич 2 емоутион мульти» на
+    проді не став `emo bl2`, хоча на dev ставав). Той самий ланцюг, що
+    `best_material`: слово зі здогаду → слово з тексту → відтінки.
+
+    Текст листа НЕ повертається цілком (там бувають імена пацієнтів) — лише
+    слова, що зіставились із каноном, і вердикт по кожному."""
+    weight = _word_weights(session)
+    key = match_key(guess or "")
+    first = key.split(" ", 1)[0] if key else ""
+    guess_word = _match_word(first, weight, allow_short=True)
+    tokens = []
+    alias_rows = None
+    names: dict = {}
+    context_word = None
+    for token in _mm_tokens(context):
+        if token.isdigit() or _SHADE_RE.match(token) or not any(ch.isalpha() for ch in token):
+            continue
+        tkey = match_key(token)
+        word = _match_word(tkey, weight, allow_short=False, fuzzy=True)
+        if not word:
+            continue
+        verdict = "прийнято"
+        if len(word) <= _MIN_PREFIX_WORD and tkey != word:
+            if alias_rows is None:
+                ensure_seeded(session)
+                alias_rows = load_alias_rows(session)
+                names = material_id_by_name(session)
+            if resolve_material_id(token, alias_rows, names or {}) is None:
+                verdict = "відкинуто: бібліотека не знає слово як матеріал"
+        tokens.append({"слово": token, "ключ": tkey, "канон": word, "вердикт": verdict})
+        if verdict == "прийнято" and context_word is None:
+            context_word = word
+    wanted = _wanted_shades(guess, None, context)
+    return {
+        "здогад": guess,
+        "слово_здогаду": guess_word,
+        "слова_тексту": tokens,
+        "слово_матеріалу": guess_word or context_word,
+        "відтінки": wanted,
+        "підказки": [s.text for s in canonical_suggestions(session, guess, context=context)],
+        "поле_картки": best_material(session, guess, context),
+        "канон_слова": sorted(weight),
+    }

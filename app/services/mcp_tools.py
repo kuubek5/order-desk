@@ -570,6 +570,28 @@ def tool_handout_match(db: Session, args: dict) -> dict[str, Any]:
     return diagnose_handout_client(db, query)
 
 
+def tool_mail_material(db: Session, args: dict) -> dict[str, Any]:
+    """Як картка листа розпізнала матеріал: той самий контекст (тема + слова
+    замовника), той самий ланцюг `best_material`, покроково."""
+    raw = args.get("email_id")
+    try:
+        email_id = int(raw)
+    except (TypeError, ValueError):
+        raise ToolError("потрібен `email_id` — номер листа (з адреси /mail?open=N)")
+    from app.mail_body_view import letter_segments, useful_text
+    from app.models import EmailMessage
+    from app.services.material_suggest import explain_material
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise ToolError(f"листа {email_id} немає")
+    # Той самий контекст, що `_material_context` у картці: тема + слова замовника.
+    context = "\n".join([email.subject or "", useful_text(letter_segments(email.body_text))])
+    out = explain_material(db, email.material_color_guess, context)
+    out["лист"] = email_id
+    return out
+
+
 # ── Реєстр ───────────────────────────────────────────────────────────────────
 
 
@@ -666,6 +688,27 @@ TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_handout_match,
+    ),
+    Tool(
+        name="kmill_mail_material",
+        description=(
+            "Чому картка листа підставила (чи ні) матеріал і колір: здогад з листа, "
+            "які слова тексту зіставились із каноном цеху і чи прийнято кожне, "
+            "знайдені відтінки, чіпи-підказки й підсумкове значення поля. Текст "
+            "листа цілком не віддається — лише слова, що зіставились."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "email_id": {
+                    "type": "integer",
+                    "description": "Номер листа (з адреси /mail?open=N або з kmill-логу).",
+                }
+            },
+            "required": ["email_id"],
+            "additionalProperties": False,
+        },
+        run=tool_mail_material,
     ),
     Tool(
         name="kmill_sync_journal",
