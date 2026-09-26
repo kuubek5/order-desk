@@ -8,6 +8,7 @@ so the queue, handout, archive and stats all agree on what "day" a work is on.
 
 import calendar
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 
 # BUSINESS_TIMEZONE живе в app.business_day (нижчий рівень); тут лише
 # ре-експорт, щоб наявні імпорти `from app.services.order_dates import
@@ -27,6 +28,15 @@ _TAB_YEARS_AHEAD = 5
 
 
 def parse_sheet_tab(sheet_tab: str | None) -> date | None:
+    # Кеш за (назва, рік): черга кличе це ~3.5 тис. разів на КОЖЕН полл
+    # (по кілька разів на роботу), а `strptime` важкий — на dev ~0.06 с запиту
+    # йшло лише на нього (25.09.26). Різних назв вкладок — десятки. Рік у
+    # ключі — щоб верхня межа `_TAB_YEARS_AHEAD` не застигла в кеші.
+    return _parse_sheet_tab_cached(sheet_tab, date.today().year)
+
+
+@lru_cache(maxsize=4096)
+def _parse_sheet_tab_cached(sheet_tab: str | None, this_year: int) -> date | None:
     # Зайві/невидимі пробіли в назві вкладки — не інша дата (08.09.26:
     # « 08.09.26» з пробілом на початку лишила день без імпорту).
     sheet_tab = canonical_tab_title(sheet_tab)
@@ -36,7 +46,7 @@ def parse_sheet_tab(sheet_tab: str | None) -> date | None:
         parsed = datetime.strptime(sheet_tab, "%d.%m.%y").date()
     except ValueError:
         return None
-    if parsed.year < _TAB_YEAR_MIN or parsed.year > date.today().year + _TAB_YEARS_AHEAD:
+    if parsed.year < _TAB_YEAR_MIN or parsed.year > this_year + _TAB_YEARS_AHEAD:
         return None
     return parsed
 

@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
-from app import sync_control
+from app import perf, sync_control
 from app.models import Order
 from app.order_folder import (
     attach_export_folder_uris,
@@ -128,22 +128,26 @@ def get_queue(
     if not partial and _headers is not None and _headers.get("hx-boosted") == "true":
         effective_partial = "filters"
 
-    view = build_queue_view(
-        db,
-        user,
-        period=period,
-        ready=ready,
-        source=source,
-        overdue=overdue,
-        mine=mine,
-        date_param=date_param,
-        date_page=date_page,
-        sort=sort,
-        sort_dir=sort_dir,
-        partial=effective_partial,
-        focus=focus,
-        limit=limit,
-    )
+    # Фаза-залишок: побудова МІНУС вкладені `sql`/`share:*`. Без неї
+    # «Slow request: GET / took 1.3s [sql 0.05с …]» не казав, де решта —
+    # у нашому коді чи поза ним (25.09.26).
+    with perf.residual("queue:python"):
+        view = build_queue_view(
+            db,
+            user,
+            period=period,
+            ready=ready,
+            source=source,
+            overdue=overdue,
+            mine=mine,
+            date_param=date_param,
+            date_page=date_page,
+            sort=sort,
+            sort_dir=sort_dir,
+            partial=effective_partial,
+            focus=focus,
+            limit=limit,
+        )
 
     # Флеші — єдине, що лишилось на цьому боці: вони живуть у сесії ЗАПИТУ,
     # тобто на HTTP-рівні, і сервіс про неї не знає. Знімаємо їх ЛИШЕ на

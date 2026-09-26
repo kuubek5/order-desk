@@ -102,7 +102,12 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
         # the full triage screen agree on order.
         assert [email.uid for email in context["pending_emails"]] == ["newer", "older"]
         assert context["pending_mail_count"] == 2
-        assert all(email.folder_available is False for email in context["pending_emails"])
+        # Черга НЕ ходить на шару заради листів: доступність теки й токен
+        # прев'ю ніде на екрані черги не читаються, а на поллі коштували ~1 с
+        # мережевих stat/resolve (25.09.26). Атрибута немає = обходу не було.
+        for email in context["pending_emails"]:
+            assert not hasattr(email, "folder_available")
+            assert not hasattr(email, "stl_preview_token")
 
 
 def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):

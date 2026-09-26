@@ -30,8 +30,6 @@ from app.business_day import business_tab_today, business_today, next_tab_day, p
 from app.mail_sync_service import is_mail_sync_running
 from app.models import EmailMessage, Order
 from app.order_folder import (
-    attach_email_folder_availability,
-    attach_email_preview_tokens,
     attach_export_folder_uris,
     attach_job_code_folder_uris,
 )
@@ -44,8 +42,6 @@ from app.queue_filters import (
     filter_by_source,
 )
 from app.services.config_state import (
-    mail_preview_roots,
-    mail_trusted_roots,
     sheets_configured,
 )
 from app.services.focus import count as focus_count, ranks as focus_ranks
@@ -215,7 +211,10 @@ def build_queue_view(
     _t_sql = time.monotonic()
     all_orders = db.scalars(
         select(Order)
-        .options(selectinload(Order.material))
+        # rework_records — теж наперед: `active_rework` читають лічильники
+        # готовності (`_has_sum3d`) по ВСІХ живих роботах і бейдж переробки в
+        # рядку. Ліниво це було ~94 окремі SELECT на кожен полл (25.09.26).
+        .options(selectinload(Order.material), selectinload(Order.rework_records))
         .where(Order.archived_at.is_(None))
         .order_by(Order.id.desc())
     ).all()
@@ -410,11 +409,13 @@ def build_queue_view(
             EmailMessage.id.desc(),
         )
     ).all()
-    attach_email_folder_availability(
-        pending_emails,
-        mail_trusted_roots(db),
-    )
-    attach_email_preview_tokens(pending_emails, mail_trusted_roots(db), mail_preview_roots(db))
+    # Жодних звернень до шари заради цих листів. Тут стояли
+    # `attach_email_folder_availability` і `attach_email_preview_tokens` —
+    # їх читав лише партіал `_pending_mail_row.html`, видалений як сирота
+    # 02.09.26 (a770aed); обчислення лишилось і на КОЖНОМУ 15-секундному поллі
+    # робило по ~15 мережевих stat/resolve на лист, поза будь-якою фазою perf.
+    # На проді це й була «невиміряна» ~1 с у кожному `GET /` (25.09.26).
+    # Віджет пошти показує лише імʼя, час, тему й кількість вкладень.
     pending_mail_count = len(pending_emails)
 
     # Dashboard header (Варіант B): KPI row (small, hard counts) and peek row

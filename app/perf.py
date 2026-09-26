@@ -121,6 +121,30 @@ def span(name: str) -> Iterator[None]:
         recorder.add(name, time.perf_counter() - started)
 
 
+@contextmanager
+def residual(name: str) -> Iterator[None]:
+    """Заміряти блок МІНУС те, що всередині нього вже записали інші фази.
+
+    Для великого блоку з кількома вкладеними `span`/`add` (побудова черги:
+    `sql`, `share:*`): звичайний `span` рахував би їх двічі, і `/diag/perf`,
+    що віднімає суму фаз від загального часу, показав би від'ємну «решту».
+    Тут лишається саме невиміряна Python-робота блоку — те, що 25.09.26
+    ховалось у «Slow request … 1.3s» без жодної фази поруч.
+    """
+    recorder = _current.get()
+    if recorder is None:
+        yield
+        return
+    inner_before = sum(v for k, v in recorder.phases.items() if k not in _NOT_DURATIONS)
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - started
+        inner = sum(v for k, v in recorder.phases.items() if k not in _NOT_DURATIONS) - inner_before
+        recorder.add(name, max(0.0, elapsed - inner))
+
+
 def add(name: str, seconds: float) -> None:
     """Додати вже виміряний шматок (там, де час рахують своїм таймером)."""
     recorder = _current.get()
@@ -145,6 +169,10 @@ def mark_route_entry() -> None:
 # Службова фаза: не «робота», а точка відліку. Не входить у суму заміряного,
 # бо позначає межу, а не відрізок.
 ENTRY_PHASE = "before-route"
+
+# Записи в словнику фаз, які НЕ є відрізками часу: точка відліку й лічильник
+# рядків. `residual` не має віднімати їх як «вже виміряну роботу».
+_NOT_DURATIONS = frozenset({ENTRY_PHASE, "rows"})
 
 
 def note_rows(count: int) -> None:

@@ -83,6 +83,81 @@ def test_stats_eager_loads_status_events_in_constant_query_count(monkeypatch):
         assert queries <= 6
 
 
+def _queue_poll_query_count(monkeypatch, n_orders: int) -> int:
+    """Скільки SQL робить полл черги (partial=rows) при n живих роботах із
+    переробкою. Кожна робота має `rework_records` — саме їх лічильники
+    готовності (`_has_sum3d` → `active_rework`) тягнули по одній."""
+    from app.business_day import business_tab_today
+    from app.models import ReworkRecord
+
+    test_engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(test_engine)
+    tab = business_tab_today().strftime("%d.%m.%y")
+    with Session(test_engine, expire_on_commit=False) as db:
+        user = User(username="operator", password_hash="unused", full_name="Operator")
+        db.add(user)
+        db.flush()
+        for index in range(n_orders):
+            order = Order(source="lab", sheet_tab=tab, job_code=f"J{index}", row_number=7 + index)
+            db.add(order)
+            db.flush()
+            db.add(ReworkRecord(order_id=order.id, occurrence=2, sum3d_id=f"12-00-{index:02d}"))
+        db.commit()
+        user_id = user.id
+        db.expunge_all()
+
+        queries = 0
+
+        def count_query(*_args):
+            nonlocal queries
+            queries += 1
+
+        monkeypatch.setattr(
+            web.templates, "TemplateResponse", lambda request, template, context: context
+        )
+        event.listen(test_engine, "before_cursor_execute", count_query)
+        try:
+            queue_router_mod.get_queue(
+                request=SimpleNamespace(session={"user_id": user_id}),
+                period="today", partial="rows", db=db,
+            )
+        finally:
+            event.remove(test_engine, "before_cursor_execute", count_query)
+    return queries
+
+
+def test_queue_poll_loads_rework_records_in_constant_query_count(monkeypatch, weekday_clock):
+    """Полл черги не робить SELECT на кожну роботу.
+
+    25.09.26 на dev це було ~94 окремі запити `rework_records` на кожен
+    15-секундний полл — лише щоб лічильники готовності спитали
+    `active_rework`. Порівнюємо дві бази замість магічного числа: якщо хтось
+    прибере `selectinload`, п'ять робіт і двадцять дадуть різний рахунок.
+    """
+    assert _queue_poll_query_count(monkeypatch, 5) == _queue_poll_query_count(monkeypatch, 20)
+
+
+def test_residual_phase_excludes_nested_phases(monkeypatch):
+    """`residual` рахує лише своє: вкладені фази не входять удруге.
+
+    Інакше `/diag/perf`, що віднімає суму фаз від загального часу, показав
+    би від'ємну «решту», а лог — роздуту «чергу»."""
+    ticks = iter([0.0, 10.0, 10.0, 10.3, 11.0])
+    monkeypatch.setattr(perf.time, "perf_counter", lambda: next(ticks))
+    recorder = perf.start("t")  # 0.0
+    try:
+        perf.note_rows(40)
+        with perf.residual("queue:python"):  # старт 10.0
+            with perf.span("sql"):  # 10.0 → 10.3
+                pass
+        # кінець блоку 11.0: усього 1.0, з них 0.3 — sql
+    finally:
+        perf.finish()
+    assert abs(recorder.phases["sql"] - 0.3) < 1e-9
+    assert abs(recorder.phases["queue:python"] - 0.7) < 1e-9
+    assert recorder.phases["rows"] == 40.0
+
+
 def test_request_timing_logs_only_slow_requests(monkeypatch, caplog):
     """Гучний рядок лише для затримок, які помітно людині.
 
