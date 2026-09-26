@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
 from app.db import Base
-from app.models import Comment, Order, ReworkRecord
+from app.models import Comment, Order, ReworkRecord, StatusEvent
 from app.parser import OrderRow
 from app.sync import sync_tab
 
@@ -1000,6 +1000,87 @@ def test_change_flag_accumulates_until_dismissed():
 
     assert "колір" in order.sheet_changed_fields
     assert "кількість" in order.sheet_changed_fields
+
+
+def test_correction_before_sum3d_does_not_flag_but_keeps_history():
+    """До Sum3D правка техніка — доопрацювання, а не підміна прорахованого.
+
+    Власник 26.09.26: позначка «змінено» висіла постійно, а потрібна лише
+    після того, як оператор узяв роботу (ввів Sum3D). Історія картки при
+    цьому лишається — це аудит «хто що змінив»."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="", material_color="моно A2")])
+    session.commit()
+    order = session.scalar(select(Order))
+
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="", material_color="моно A3")])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sheet_changed_at is None
+    assert order.sheet_changed_fields is None
+    notes = [e.note for e in session.scalars(select(StatusEvent)) if e.note]
+    assert any("технік змінив у таблиці: колір" in n for n in notes)
+
+
+def test_stale_flag_on_untaken_work_is_cleared():
+    """Позначка, поставлена до правила (прод) або до того, як Sum3D стерли,
+    не має дожити до взяття й назвати давню зміну «змінено після взяття»."""
+    from datetime import datetime
+
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="")])
+    session.commit()
+    order = session.scalar(select(Order))
+    order.sheet_changed_at = datetime(2026, 8, 26, 10, 0)
+    order.sheet_changed_fields = "колір"
+    session.commit()
+
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="")])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sheet_changed_at is None
+    assert order.sheet_changed_fields is None
+
+
+def test_work_handed_back_and_corrected_in_one_pass_is_not_flagged():
+    """Sum3D стерли в таблиці (роботу повернули в чергу) і в тому ж проході
+    технік виправив колір: брати її наново, позначка нічого не захищає."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="12-01-45")])
+    session.commit()
+    order = session.scalar(select(Order))
+
+    sync_tab(session, "26.08.26", [
+        make_row(row_number=1, sum3d_id="", calculated="", material_color="титан")
+    ])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sum3d_id in (None, "")
+    assert order.sheet_changed_at is None
+
+
+def test_pending_operator_sum3d_counts_as_taken():
+    """Оператор ввів Sum3D у порталі, запис у таблицю ще не доїхав (порожня L),
+    а технік тим часом змінив рядок — це і є випадок браку, позначка потрібна."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="", calculated="")])
+    session.commit()
+    order = session.scalar(select(Order))
+    order.sum3d_id = "12-01-45"
+    order.sum3d_pending = "12-01-45"
+    session.commit()
+
+    sync_tab(session, "26.08.26", [
+        make_row(row_number=1, sum3d_id="", calculated="", material_color="моно A3.5")
+    ])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sum3d_id == "12-01-45"
+    assert order.sheet_changed_fields == "колір"
 
 
 def test_portal_own_writeback_does_not_raise_the_flag():

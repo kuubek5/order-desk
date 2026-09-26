@@ -1051,6 +1051,11 @@ def sync_tab(
         # ніколи. Тому порожні L і M його не стирають. Непорожня L — хтось
         # вписав своє або наш повтор дійшов: таблиця знову головна.
         awaiting_sheet = bool(existing.sum3d_pending) and existing.sum3d_pending == existing.sum3d_id
+        # Чи була робота ВЗЯТА до цього проходу. Позначка «технік змінив» має
+        # сенс лише тоді: оператор уже прорахував за старою версією рядка.
+        # До Sum3D правка техніка — звичайне доопрацювання, оператор і так
+        # прочитає свіжий рядок, коли братиме (власник 26.09.26).
+        taken_before_pass = bool(existing.sum3d_id)
         edited: list[str] = []
         for field, value in fields.items():
             if awaiting_sheet and not value and field in _PENDING_SUM3D_FIELDS:
@@ -1083,7 +1088,7 @@ def sync_tab(
             existing.sum3d_pending = None
             changed = True
 
-        if edited:
+        if edited and taken_before_pass and existing.sum3d_id:
             # Keep any still-undismissed change visible: the operator must see
             # everything that moved since they last acknowledged, not only the
             # latest edit.
@@ -1095,6 +1100,18 @@ def sync_tab(
             merged = previous + [name for name in edited if name not in previous]
             existing.sheet_changed_fields = ", ".join(merged)[:400]
             existing.sheet_changed_at = utc_now()
+        elif not existing.sum3d_id and existing.sheet_changed_at is not None:
+            # Невзята робота позначки не несе: ні нової (гілка вище), ні старої —
+            # поставленої до цього правила або до того, як Sum3D стерли в
+            # таблиці (роботу повернули в чергу). Інакше вона дожила б до
+            # введення Sum3D і показала «змінено після взяття» про зміну, що
+            # сталась ДО взяття.
+            existing.sheet_changed_at = None
+            existing.sheet_changed_fields = None
+            changed = True
+        if edited:
+            # Історія картки — завжди, і до Sum3D: це аудит «хто що змінив»,
+            # у черзі його не видно.
             session.add(
                 StatusEvent(
                     order_id=existing.id, status=existing.status, actor="sync",
