@@ -25,7 +25,7 @@ async def save_vyrobitok_pin(request: Request, db: Session = Depends(get_db)):
     лише ознаку «задано», не сам код."""
     require_settings_admin(request, db)
     form = await request.form()
-    pin = (form.get("vyrobitok_pin") or "").strip()
+    pin = str(form.get("vyrobitok_pin") or "").strip()
     # Зберігаємо ХЕШ, не сам код. Шифрування тут не рятує: сенс ПІНа —
     # сховати зарплатні цифри від операторів, а вони мають доступ до тієї ж
     # машини й тієї ж бази, тобто й до ключа розшифрування (ревʼю 07.09.26,
@@ -49,7 +49,7 @@ async def save_section_state(section: str, request: Request, db: Session = Depen
     # Кнопка «Відкрити для всіх» шле state=open; зміна арту в select — variant.
     # Кнопка має старшинство: якщо натиснули її, select теж приїде, але не він
     # є наміром.
-    state = (form.get("state") or form.get("variant") or "").strip()
+    state = str(form.get("state") or form.get("variant") or "").strip()
     try:
         set_section_state(db, section, state)
         # Аудиторія: галочка «усі ролі» має старшинство; інакше — відмічені ролі.
@@ -67,7 +67,7 @@ async def save_section_state(section: str, request: Request, db: Session = Depen
     except (KeyError, ValueError):
         raise HTTPException(status_code=422, detail="невідомий розділ або стан")
     db.commit()
-    back = (form.get("back") or "/").strip()
+    back = str(form.get("back") or "/").strip()
     if not back.startswith("/") or back.startswith("//"):
         back = "/"
     return RedirectResponse(back, status_code=303)
