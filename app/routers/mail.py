@@ -15,6 +15,7 @@
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -184,9 +185,42 @@ def _family_of(email) -> str:
     return (badge.get("symbol") or "").strip().lower() or _NO_FAMILY
 
 
-def _family_chips(emails, active: str) -> list[dict]:
+# Кілька родин одразу (власник 26.09.26: «пмма+циркон» або «усі крім пмма»).
+# Один параметр `fam`, список через кому: `zr,pmma` — лише ці родини;
+# `-pmma,-wax` — усі, крім цих. Один параметр, а не два, бо його вже несуть
+# полл, «+N нових» і повернення після дії — старе `fam=pmma` читається так само.
+# Токен — лише [a-z0-9]: значення їде в адресу повернення (`_mail_back_url`).
+_FAM_TOKEN = re.compile(r"-?[a-z0-9]{1,12}")
+
+
+def _parse_fam(raw: str | None) -> tuple[list[str], list[str]]:
+    """`fam` → (лише ці, усі крім цих). Мішанина не має сенсу: якщо є хоч одна
+    «лише», винятки відкидаються."""
+    include: list[str] = []
+    exclude: list[str] = []
+    for part in (raw or "").strip().lower().split(","):
+        part = part.strip()
+        if not _FAM_TOKEN.fullmatch(part):
+            continue
+        if part.startswith("-"):
+            if part[1:] not in exclude:
+                exclude.append(part[1:])
+        elif part not in include:
+            include.append(part)
+    return (include, []) if include else ([], exclude)
+
+
+def _fam_value(include: list[str], exclude: list[str]) -> str:
+    return ",".join(include) if include else ",".join(f"-{k}" for k in exclude)
+
+
+def _family_chips(emails, include: list[str], exclude: list[str]) -> list[dict]:
     """Ярлики з лічильниками — лише коли в списку щонайменше дві родини (або
-    ярлик уже вибрано, щоб його можна було зняти)."""
+    вибір уже є, щоб його можна було зняти).
+
+    У кожного дві дії одним кліком: `toggle` — додати/прибрати родину з
+    «лише цих», `drop` — сховати/повернути її («усі крім»). Значення `fam`
+    для обох рахує сервер, шаблон лише підставляє."""
     counts: dict[str, int] = {}
     labels: dict[str, str] = {}
     classes: dict[str, str] = {}
@@ -197,22 +231,33 @@ def _family_chips(emails, active: str) -> list[dict]:
         if key != _NO_FAMILY:
             labels.setdefault(key, badge.get("symbol") or key)
             classes.setdefault(key, badge.get("cls") or "mat-other")
-    if len(counts) < 2 and not active:
+    if len(counts) < 2 and not (include or exclude):
         return []
     order = [k for k in _FAMILY_ORDER if k in counts]
     order += sorted(k for k in counts if k not in _FAMILY_ORDER and k != _NO_FAMILY)
     if _NO_FAMILY in counts:
         order.append(_NO_FAMILY)
-    return [
-        {
+
+    def ordered(keys: set[str]) -> list[str]:
+        return [k for k in order if k in keys]
+
+    chips = []
+    for key in order:
+        on, off = key in include, key in exclude
+        label = "без матеріалу" if key == _NO_FAMILY else labels.get(key, key)
+        chips.append({
             "key": key,
-            "label": "без матеріалу" if key == _NO_FAMILY else labels.get(key, key),
+            "label": label,
             "cls": "" if key == _NO_FAMILY else classes.get(key, "mat-other"),
             "count": counts[key],
-            "on": key == active,
-        }
-        for key in order
-    ]
+            "on": on,
+            "off": off,
+            # Клік по ярлику — у «лише ці» (винятки при цьому знімаються).
+            "toggle": _fam_value(ordered(set(include) ^ {key}), []),
+            # ✕ — у «усі крім» (вибрані «лише» при цьому знімаються).
+            "drop": _fam_value([], ordered(set(exclude) ^ {key})),
+        })
+    return chips
 
 
 def _row_badge(label: dict, old: dict | None) -> dict:
@@ -263,9 +308,9 @@ def _mail_back_url(request: Request, open_id: int | None = None) -> str:
         params.append(f"open={open_id}")
     if service in SERVICE_TYPE_FILTERS and service != "all":
         params.append(f"service={quote(service)}")
-    # Ярлик родини матеріалу — лишається після дії (лише слова з білого списку).
-    fam = (query.get("fam") or [""])[0]
-    if fam in _FAMILY_ORDER or fam == _NO_FAMILY:
+    # Вибір родин матеріалу — лишається після дії (лише токени [a-z0-9]).
+    fam = _fam_value(*_parse_fam((query.get("fam") or [""])[0]))
+    if fam:
         params.append(f"fam={fam}")
     return "/mail" + (f"?{'&'.join(params)}" if params else "")
 
@@ -530,12 +575,19 @@ def get_mail(
         emails = filter_emails_by_service_type(emails, service)
     # Ярлики родини матеріалу: лічильники — з усього списку вкладки, фільтр —
     # після них (власник 25.09.26). Невідоме значення = «усі».
-    fam = (fam or "").strip().lower()
-    family_chips = _family_chips(emails, fam)
-    if fam and any(chip["key"] == fam for chip in family_chips):
-        emails = [e for e in emails if _family_of(e) == fam]
-    else:
-        fam = ""
+    # Кілька родин: `fam=zr,pmma` — лише ці, `fam=-pmma` — усі крім (26.09.26).
+    # Родини, якої в списку немає, у вибір не беремо — як і раніше «невідоме
+    # значення = усі».
+    fam_in, fam_out = _parse_fam(fam)
+    present = {_family_of(e) for e in emails}
+    fam_in = [k for k in fam_in if k in present]
+    fam_out = [k for k in fam_out if k in present]
+    family_chips = _family_chips(emails, fam_in, fam_out)
+    if fam_in:
+        emails = [e for e in emails if _family_of(e) in fam_in]
+    elif fam_out:
+        emails = [e for e in emails if _family_of(e) not in fam_out]
+    fam = _fam_value(fam_in, fam_out)
     attach_email_preview_tokens(emails, mail_trusted_roots(db), mail_preview_roots(db))
 
     # Filter rules — listed (and managed by the admin) on the filtered tab.

@@ -267,6 +267,42 @@ function markMailRowActive(event) {
 }
 
 document.addEventListener("click", markMailRowActive);
+
+// Одна колонка (≤940px, пів екрана / телефон): картка стоїть ПІД списком, і
+// клік по листу нічого видимого не робив — картка відкривалась за краєм
+// екрана. Після відкриття листа з рядка підводимо картку у вікно. Лише після
+// кліку по рядку (мітка часу), не на автооновленні картки під час скачування.
+// Відкрита картка → клас на <body>: CSS (v2a_mail.css, ≤940px) підіймає кнопку
+// зворотного зв'язку над липкою смугою дій. Клас, а не `body:has()` — той
+// перевірявся б на кожній мутації (див. has-toast-line в update_overlay.css).
+function syncMailCardOpen() {
+  // mail.js вантажиться на КОЖНІЙ сторінці (і в node-тестах палітри з
+  // мінімальним DOM) — без body/classList просто нічого не робимо.
+  const body = document.body;
+  if (!body || !body.classList) return;
+  body.classList.toggle(
+    "mail-card-open",
+    !!document.querySelector("#mail-detail .mailcard > .mc-foot"),
+  );
+}
+syncMailCardOpen();
+document.addEventListener("htmx:afterSwap", syncMailCardOpen);
+
+let mailRowOpenedAt = 0;
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".mailrow") && !event.target.closest(".mailcb-wrap")) {
+    mailRowOpenedAt = Date.now();
+  }
+});
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = event.detail.target;
+  if (!target || target.id !== "mail-detail") return;
+  if (Date.now() - mailRowOpenedAt > 4000) return;
+  mailRowOpenedAt = 0;
+  if (!window.matchMedia("(max-width: 940px)").matches) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+});
 // Рядок відкривається ще й з клавіатури (hx-trigger keyup Enter/Space у
 // _mail_triage_list.html), а підсвітка жила лише на кліку: Tab+Enter відкривав
 // лист, але «активним» лишався попередній рядок і крапка «непрочитано» не

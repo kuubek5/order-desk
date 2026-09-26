@@ -217,6 +217,15 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .famchip.is-on.mat-wax{border-color:var(--mat-wax);background:color-mix(in srgb,var(--mat-wax) 16%,var(--card-2))}
 .mailv2 .famchip.is-on.mat-slm{border-color:var(--mat-slm);background:color-mix(in srgb,var(--mat-slm) 16%,var(--card-2))}
 .mailv2 .famchip.is-on .famchip-n{color:var(--ink-2)}
+/* Кілька родин (26.09.26): ярлик + ✕ «усі крім». Пара — одна пігулка з двох
+   посилань; сховану родину видно закресленою, ✕ стає ↺ («повернути»). */
+.mailv2 .famchip-pair{display:inline-flex;align-items:stretch}
+.mailv2 .famchip-pair .famchip{border-top-right-radius:0;border-bottom-right-radius:0}
+.mailv2 .famchip-x{display:inline-flex;align-items:center;padding:0 7px;border:1px solid var(--line);border-left:0;border-radius:0 999px 999px 0;background:var(--card-2);color:var(--ink-3);font-size:var(--fs-0);line-height:1;text-decoration:none;transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.mailv2 .famchip-x:hover,.mailv2 .famchip-x:focus-visible{color:var(--ink);border-color:var(--line-2)}
+.mailv2 .famchip.is-off{opacity:.55}
+.mailv2 .famchip.is-off b{text-decoration:line-through}
+.mailv2 .famchip-pair.is-off .famchip-x{color:var(--ink-2)}
 .mailv2 .reco{font-size:var(--fs-0);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .mailv2 .reco.ok{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .3)}
 .mailv2 .reco.warn{background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .3)}
@@ -1055,3 +1064,137 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
   .mailv2 .lr-scroll{padding:16px}
 }
 .mailv2 .lr-mailer{margin:0;font-size:var(--fs-1);color:var(--ink-3);font-style:italic}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Адаптивна верстка (власник 26.09.26: «повний екран, пів екрана, малий»).
+   Прогнано на 1920 · 1366×768 · 960 (пів 1920) · 768 · 375. Блок стоїть
+   ОСТАННІМ навмисно — перекриває базові правила вище тією ж специфічністю.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Шестерня вигляду трималась окремим рядком, щойно вкладки переносились
+   (960: три ряди керування над списком). Вкладки тепер займають залишок
+   ряду й переносяться всередині себе, а шестерня лишається праворуч. */
+.mailv2 .tab-nav{flex:1 1 360px;min-width:0}
+/* Глобальний відступ вкладок (24px згори) — на контейнер, інакше шестерня
+   з align-self:flex-start стояла на 24px вище першого ряду вкладок. */
+.mailv2 .list-controls{margin-top:24px}
+.mailv2 .list-controls>.tab-nav{margin-top:0}
+.mailv2 .list-controls>.lookgear{align-self:flex-start}
+/* Заголовок із рядком стану стискається першим (рядок стану переноситься
+   всередині), щоб «Перевірити пошту» лишалась у тому ж ряду — на 768 вона
+   падала окремим рядком через 2px нестачі. */
+.mailv2 .m-topbar>div:first-child{flex:1 1 300px;min-width:0}
+
+/* Ярлики родин: щільніше, щоб чотири родини влазили в один ряд списку
+   на 380px (1366 — «без матеріалу» перескакував у другий ряд). */
+.mailv2 .famchips{gap:5px;padding:8px 10px}
+.mailv2 .famchip{padding:3px 8px;gap:5px}
+.mailv2 .famchip-x{padding:0 6px}
+
+/* Дії картки завжди на видноті. На 1366×768 «Прийняти в чергу» стояв за
+   нижнім краєм панелі — щоб прийняти лист, треба було прокрутити картку.
+   Липка смуга внизу скролу панелі; попапи «⋯» і «На уточнення»
+   відкриваються вгору, тож смуга їм не заважає. */
+.mailv2 .mailcard>.mc-foot{position:sticky;bottom:0;z-index:2;margin:0 -18px -14px;padding:10px 18px 12px;background:var(--card-2);border-top:1px solid var(--line);border-radius:0 0 var(--r-card) var(--r-card)}
+/* Нижній край картки не заходить під кнопку зворотного зв'язку (#fb-beacon,
+   38px у правому нижньому куті) — інакше вона накривала «Прийняти». */
+.mailv2 .detail-panel{max-height:calc(100vh - 236px)}
+/* 941–1200: вкладки переносяться у два ряди, панель починається нижче —
+   запас під кнопку зворотного зв'язку треба більший. */
+@media (min-width:941px) and (max-width:1200px){
+  .mailv2 .detail-panel{max-height:calc(100vh - 280px)}
+}
+
+/* Шапка картки на вузькій картці: пігулка «постійний…» і перемикач «Авто»
+   переходять у власний ряд, а не обрізаються справа (960: «Авто» зникав
+   за краєм, адреса з датою ламались на два рядки). */
+@container mailcard (max-width: 640px){
+  .mailv2 .mc-head{flex-wrap:wrap;row-gap:8px}
+  .mailv2 .mc-who{flex:1 1 100%}
+  .mailv2 .mc-hintbox{max-width:100%}
+  /* Пігулка стискається з трикрапкою, а не виштовхує «Авто» за край. */
+  .mailv2 .mc-hint{max-width:none;flex:0 1 auto;min-width:0}
+}
+/* Файли під STL (≤900, колонка): без stretch колонка-flex давала списку
+   файлів ширину найдовшої назви (503px на 375) — картка вилазила за екран. */
+@media (max-width:900px){
+  .mailv2 .mc-files{align-items:stretch}
+}
+/* Вузька картка: «Прийняти» — на всю ширину першим рядком (головна дія
+   під великим пальцем і не ховається за переносом), решта — рівним рядом. */
+@container mailcard (max-width: 560px){
+  /* Ряд 1: ⋯ + «Прийняти» (займає решту ряду). Ряд 2: «На уточнення» і
+     «Відхилити» порівну. Три кнопки в один ряд на 375 ламали «На уточнення»
+     на два рядки. */
+  .mailv2 .mc-foot{justify-content:stretch}
+  .mailv2 .mc-foot>.mc-menu{order:-2}
+  .mailv2 .mc-foot>.btn.apex{order:-1;flex:1 1 calc(100% - 52px);justify-content:center}
+  .mailv2 .mc-foot>.mc-hold,.mailv2 .mc-foot>.mc-reject{flex:1 1 40%;min-width:0}
+  .mailv2 .mc-foot>.mc-hold>summary,.mailv2 .mc-foot>.mc-reject>.btn{width:100%;justify-content:center;white-space:nowrap}
+  /* «⋯» і «На уточнення» тепер ЛІВОРУЧ — попапи ростуть праворуч від
+     кнопки, інакше на 375 вони вилазили за лівий край (−109 / −121px). */
+  .mailv2 .mc-foot>.mc-menu .mc-menu-body,.mailv2 .mc-foot>.mc-hold .mc-hold-body{left:0;right:auto}
+  /* Від лівого краю картки до правого краю вікна: рейка 56 + відступи ≈106px. */
+  .mailv2 .mc-hold-body{width:min(320px, calc(100vw - 106px))}
+  .mailv2 .mc-menu-body{max-width:calc(100vw - 106px)}
+}
+
+/* Вузький список (телефон, вузьке пів екрана): тема листа отримує власний
+   рядок. Було — тема, файли й час в одному ряду, і на 375 від теми
+   лишалась одна літера. */
+@container maillist (max-width: 440px){
+  .mailv2 .mailrow .r2{grid-template-columns:minmax(0,1fr) auto;row-gap:1px}
+  .mailv2 .mailrow .r2 .subj{grid-column:1/-1}
+}
+
+/* Одна колонка (≤940): список над карткою. */
+@media (max-width:940px){
+  /* Без stretch колонка-flex стискала картку до ширини вмісту — на 768
+     вона стояла стовпчиком ~35px. */
+  .mailv2 .worklayout{align-items:stretch}
+  /* Картка росте з вмістом, скролиться сторінка — тоді липка смуга дій
+     тримається низу ВІКНА, поки картку видно. */
+  .mailv2 .detail-panel{max-height:none;overflow:visible}
+  /* Кнопка зворотного зв'язку (#fb-beacon) підіймається над липкою смугою
+     дій, поки відкрита картка (клас ставить mail.js), — інакше вона
+     накривала «Прийняти» / «Відхилити», а резерв під неї в самій смузі
+     ламав кнопки на телефоні. Смуга в один ряд ≈62px. */
+  body.mail-card-open .fb-beacon{bottom:84px}
+  /* Рядок стану переноситься — роздільник «|» лишався висіти в кінці рядка. */
+  .mailv2 .topbar-live .sep{display:none}
+}
+
+/* Телефон і вузьке вікно. */
+@media (max-width:700px){
+  .mailv2 .m-topbar{margin-bottom:12px;gap:10px}
+  /* «Показати всі» не під кнопкою зворотного зв'язку. */
+  .mailv2 .mail-pager{padding-right:56px}
+  /* Вкладки — одна гортана стрічка замість чотирьох рядів; край
+     тьмяніє, щоб було видно, що далі є ще. */
+  .mailv2 .list-controls{gap:10px}
+  /* Перемикач скачування (лише адмін) — власним рядком під стрічкою. */
+  .mailv2 .list-controls>.dl-mode{order:3;flex:1 1 100%;margin:0}
+  .mailv2 .tab-nav{flex:1 1 0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);padding-right:24px}
+  .mailv2 .tab-nav::-webkit-scrollbar{display:none}
+  .mailv2 .tab-link{flex:0 0 auto}
+  .mailv2 .worklayout{margin-top:12px;gap:12px}
+  .mailv2 .list-panel{max-height:70vh}
+  /* Загальна підказка «клік по листу…» займала три рядки з кількох видимих
+     листів; пояснення вкладок («Покинули Вхідні», «На уточненні») лишаються. */
+  .mailv2 .list-foot.is-howto{display:none}
+  .mailv2 .mailcard{padding:14px 14px 12px}
+  .mailv2 .mailcard>.mc-foot{margin:0 -14px -12px;padding:10px 14px 12px}
+}
+/* Вузька картка (≤560px картки ≈ ≤660px вікна): смуга дій у два ряди
+   ≈111px — кнопка зворотного зв'язку ще вище. */
+@media (max-width:660px){
+  body.mail-card-open .fb-beacon{bottom:132px}
+}
+/* Дотик: кнопки й ярлики не дрібніші за палець (біля верстата). */
+@media (pointer:coarse){
+  .mailv2 .tab-link{height:36px}
+  .mailv2 .famchip,.mailv2 .famchip-x{min-height:34px}
+  .mailv2 .mail-pager button{min-width:36px;height:34px}
+}

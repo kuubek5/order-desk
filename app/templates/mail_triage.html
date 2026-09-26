@@ -215,19 +215,27 @@
             </div>
             {% endif %}
             {# Ярлики родини матеріалу (власник 25.09.26): «весь день цирконій,
-               пластмаса на потім» — клік лишає в списку одну родину, повторний
-               знімає. Фільтрує сервер (`fam`), тож полл, сторінки й «+N нових»
-               тримають вибір. Лічильники — з усього списку вкладки. #}
+               пластмаса на потім». З 26.09.26 — кілька родин: клік по ярлику
+               додає/прибирає родину з «лише цих» (пмма+циркон), ✕ ховає родину
+               («усі крім пмма»). Значення `fam` для кожної дії рахує сервер
+               (`chip.toggle` / `chip.drop`); фільтрує теж сервер, тож полл,
+               сторінки й «+N нових» тримають вибір. Лічильники — з усього
+               списку вкладки. #}
             {% if family_chips %}
             {% set _fam_base = '/mail?view=' ~ view ~ ('&period=all' if processed_all else '') ~ ('&service=' ~ service if service and service != 'all' else '') %}
             <nav class="famchips" aria-label="Фільтр за матеріалом">
                 <a href="{{ _fam_base }}" class="famchip{% if not fam %} is-on{% endif %}"{% if not fam %} aria-current="true"{% endif %}>Усі</a>
                 {% for chip in family_chips %}
-                <a href="{{ _fam_base }}{% if not chip.on %}&amp;fam={{ chip.key }}{% endif %}"
-                   class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
-                   title="{% if chip.on %}Показати всі листи{% else %}Лише {{ chip.label }}{% endif %}">
-                    <b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
-                </a>
+                <span class="famchip-pair{% if chip.off %} is-off{% endif %}">
+                    <a href="{{ _fam_base }}{% if chip.toggle %}&amp;fam={{ chip.toggle }}{% endif %}"
+                       class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}{% if chip.off %} is-off{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
+                       title="{% if chip.on %}Прибрати {{ chip.label }} з вибраних{% elif fam and not chip.off and family_chips|selectattr('on')|list %}Додати {{ chip.label }} до вибраних{% else %}Лише {{ chip.label }}{% endif %}">
+                        <b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
+                    </a>
+                    <a href="{{ _fam_base }}{% if chip.drop %}&amp;fam={{ chip.drop }}{% endif %}"
+                       class="famchip-x" aria-label="{% if chip.off %}Повернути{% else %}Сховати{% endif %} {{ chip.label }}"
+                       title="{% if chip.off %}Повернути {{ chip.label }} у список{% else %}Усі, крім {{ chip.label }}{% endif %}">{% if chip.off %}↺{% else %}✕{% endif %}</a>
+                </span>
                 {% endfor %}
             </nav>
             {% endif %}
@@ -251,7 +259,7 @@
                 {% endif %}
             </div>
             {% endif %}
-            <div class="list-foot">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. «↩» повертає лист у «Вхідні»{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% elif view == 'hold' %}Листи на паузі, поки уточнюють у замовника. Скринька не змінюється · «↩» повертає лист у «Вхідні»{% else %}Клік по листу відкриває картку тріажу · галочка — обрати лист, щоб перемістити чи відхилити{% endif %}</div>
+            <div class="list-foot{% if view not in ('gone', 'filtered', 'hold') %} is-howto{% endif %}">{% if view == 'gone' %}Цих листів уже немає у Вхідних пошти — їх переклали в папку або видалили. «↩» повертає лист у «Вхідні»{% elif view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% elif view == 'hold' %}Листи на паузі, поки уточнюють у замовника. Скринька не змінюється · «↩» повертає лист у «Вхідні»{% else %}Клік по листу відкриває картку тріажу · галочка — обрати лист, щоб перемістити чи відхилити{% endif %}</div>
         </section>
 
         {# Роздільник: тягни — ширина списку, подвійний клік — «авто»
