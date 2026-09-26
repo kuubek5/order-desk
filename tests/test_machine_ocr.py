@@ -756,6 +756,36 @@ def test_idle_and_done_screens_are_recognized():
     assert machine_ocr.screen_meaning(_newgen("newgen_validate_56.png")) == "check"
 
 
+def test_emergency_stop_screen_means_idle():
+    """EMERGENCY STOP ACTIVE на 250i — «стоїть, без тривоги» (власник 26.09.26).
+
+    Кадр — справжній, зі скриньки невідомих (#18, 9 повторів 15.09.26), у тому
+    зменшеному вигляді 640×400, з якого й знято еталон. Той самий кадр у
+    повному розмірі (×3) лишається тим самим екраном."""
+    from app import machine_ocr
+
+    frame = _newgen("newgen_250i_emergency_stop.png")
+    assert machine_ocr.match_screen(frame) == "emergency_stop"
+    assert machine_ocr.screen_is_idle(frame) is True
+    big = frame.resize((1920, 1200))
+    assert machine_ocr.screen_is_idle(big) is True
+
+
+def test_logosol_dialog_title_means_idle_not_error():
+    """Вікно драйвера осей «Logosol» (кінцевий вимикач) — «стоїть», не помилка.
+
+    Рівність, а не входження, як і в «Error»: вікно з цим словом у довшій назві
+    нічого не означає. Мовчання агента — «не знаємо»."""
+    from app.machine_ocr import titles_have_error, titles_mean_idle
+
+    assert titles_mean_idle(["Remote - x.iso", "Logosol"]) is True
+    assert titles_mean_idle([" LOGOSOL "]) is True
+    assert titles_have_error(["Logosol"]) is False
+    assert titles_mean_idle(["Logosol driver log"]) is False
+    assert titles_mean_idle(["Remote - x.iso", "Settings"]) is False
+    assert titles_mean_idle(None) is False
+
+
 def test_matcher_is_scale_and_model_tolerant():
     """Той самий екран упізнається на іншому масштабі й на іншому верстаті.
 

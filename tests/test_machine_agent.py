@@ -343,23 +343,43 @@ def test_frozen_percent_is_reported_as_stalled_not_as_milling():
     assert got["00-00-19"]["percent"] == 81
 
 
-def test_hundred_percent_is_finished_not_stalled():
-    """100% стоїть на місці за визначенням — це завершення, не зупинка."""
+def test_hundred_percent_is_finished_not_stalled_and_not_milling():
+    """100% стоїть на місці за визначенням — це завершення, не зупинка.
+
+    І не «фрезерується»: ЗМІНА 26.09.26 (власник). Раніше тут стояло, що
+    робота на 100% лишається в `milling_now`, — і рядок черги всю ніч казав
+    «Фрезерується на 350i Loader · 100%» про диск, знятий звечора. Тепер вона
+    зникає рівно тоді, коли картка верстата каже «завершено»; щойно досягнуті
+    100% (менше COMPLETED_AFTER_SECONDS) ще «фрезерується», без «стоїть»."""
     from datetime import datetime, timedelta
 
     now = datetime.now()
-    t = ms.MachineTarget(name="350i", host="10.0.0.3", port=8765, agent_token="t")
+    done = ms.MachineTarget(name="350i", host="10.0.0.3", port=8765, agent_token="t")
+    fresh = ms.MachineTarget(name="250i", host="10.0.0.4", port=8765, agent_token="t")
+    shown = ms.MachineTarget(name="150i", host="10.0.0.5", port=8765, agent_token="t")
     with ms._states_lock:
         ms._states.clear()
-        ms._states[t.key] = ms.MachineState(
-            target=t, frame_at=now, percent=100, sum3d_id="11-11-11",
+        ms._states[done.key] = ms.MachineState(
+            target=done, frame_at=now, percent=100, sum3d_id="11-11-11",
             percent_changed_at=now - timedelta(minutes=30),
         )
+        ms._states[fresh.key] = ms.MachineState(
+            target=fresh, frame_at=now, percent=100, sum3d_id="22-22-22",
+            percent_changed_at=now - timedelta(seconds=20),
+        )
+        ms._states[shown.key] = ms.MachineState(
+            target=shown, frame_at=now, percent=40, sum3d_id="33-33-33",
+            completed=True,
+        )
     try:
-        assert ms.milling_now()["11-11-11"]["stalled"] is False
+        got = ms.milling_now()
     finally:
         with ms._states_lock:
             ms._states.clear()
+
+    assert "11-11-11" not in got, "доробилась звечора — а черга каже «фрезерується»"
+    assert "33-33-33" not in got, "екран SUMMARY — завершено"
+    assert got["22-22-22"]["stalled"] is False
 
 
 def test_poll_target_stamps_percent_change_only_when_number_moves():

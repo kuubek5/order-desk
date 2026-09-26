@@ -1122,6 +1122,10 @@ SCREEN_MEANING = {
     "validate": "check",
     "select_jobs": "idle",
     "windows_updates": "idle",
+    # EMERGENCY STOP ACTIVE (250i, аварійна кнопка до «Confirm») — рішення
+    # власника 26.09.26: «стоїть, без тривоги», не «помилка». Еталон знято з
+    # кадру скриньки невідомих (#18, 640×400) — матчер масштаб-незалежний.
+    "emergency_stop": "idle",
 }
 
 
@@ -1268,6 +1272,21 @@ def screen_has_error_banner(image: Optional[Image.Image]) -> bool:
 # як окреме вікно — це саме діалог, а от входження зловило б будь-яке вікно, у
 # чиїй назві трапилось це слово (лог, довідка, назва програми).
 _ERROR_WINDOW_TITLES = {"error", "помилка", "fehler"}
+
+
+# Діалоги RemiCORE, при яких верстат СТОЇТЬ, але тривоги не треба. «Logosol» —
+# вікно драйвера осей («спрацював кінцевий вимикач, вивести осі?»); рішення
+# власника 26.09.26: «стоїть, без тривоги», не «помилка». У звичайній роботі
+# вікна з таким заголовком немає (заголовки п'яти RemiCORE, 26.09.26: Remote -
+# <програма>, Settings, TK-Zero-Point, RustDesk). Рівність, як і в помилки.
+_IDLE_WINDOW_TITLES = {"logosol"}
+
+
+def titles_mean_idle(titles) -> bool:
+    """Чи серед вікон верстата є діалог, що означає «стоїть» (RemiCORE)."""
+    if not titles:
+        return False
+    return any(str(t).strip().casefold() in _IDLE_WINDOW_TITLES for t in titles)
 
 
 def titles_have_error(titles) -> bool:

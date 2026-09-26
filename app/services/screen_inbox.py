@@ -283,6 +283,37 @@ def _drop_files(puzzle: ScreenPuzzle) -> None:
             logger.debug("Кадр загадки %s не видалився", name, exc_info=True)
 
 
+# Причини, де виріз на повторі треба ОСВІЖАТИ, а не лише дописувати: на екрані
+# JOBS щоразу інша назва програми, і вчити еталон треба з тієї, що не
+# прочиталась ЗАРАЗ, а не з першої за тиждень.
+_REFRESH_ZONE_REASONS = frozenset({"newgen_unread"})
+
+
+def _refresh_zone(puzzle, kind: str, key: str, reason: str, detail: str, zone_crop) -> None:
+    """Виріз для загадки, яку вже бачили.
+
+    Раніше повтор лише нарощував лічильник: загадка 150i «JOBS не прочитано»
+    з'явилась 13.09.26 ДО вирізів і за 13 днів набрала 2489 повторів — і жодного
+    вирізу, тож донавчити цифру було нема з чого (26.09.26). Тепер: виріз,
+    якого немає, дописуємо; для `_REFRESH_ZONE_REASONS` — освіжаємо разом із
+    подробицями (вони кажуть, ЯКУ цифру не впізнано на цьому вирізі). Загадку,
+    яку підписала людина, не чіпаємо — підпис стосується її картинки."""
+    if zone_crop is None or (puzzle.label or "").strip():
+        return
+    if puzzle.zone_file and reason not in _REFRESH_ZONE_REASONS:
+        return
+    zone_file = puzzle.zone_file or f"{puzzle.fingerprint}-{reason}-zone.png"
+    try:
+        _write(folder(kind, key) / zone_file, zone_crop.convert("RGB"))
+    except OSError:
+        # Виріз — бонус до повтору, не його умова: диск відмовив — лічильник
+        # однаково рахується, наступний повтор спробує знову.
+        return
+    puzzle.zone_file = zone_file
+    if detail and reason in _REFRESH_ZONE_REASONS:
+        puzzle.detail = detail
+
+
 def note(
     db: Session,
     *,
@@ -346,6 +377,7 @@ def note(
             existing.last_seen_at = now
             # Назва пристрою могла змінитись — показувати стару немає сенсу.
             existing.device_name = name or existing.device_name
+            _refresh_zone(existing, kind, key, reason, detail, zone_crop)
             db.commit()
             return existing.id
 

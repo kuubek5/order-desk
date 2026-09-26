@@ -53,6 +53,7 @@ from app.machine_ocr import (
     screen_has_error_banner,
     screen_meaning,
     titles_have_error,
+    titles_mean_idle,
 )
 from app.models import Machine, MachineLinkEvent, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
@@ -1892,10 +1893,17 @@ def poll_target(
             # прострочення інструментів), тож банер там шукати не можна.
             # Домішуємо, а не перезаписуємо: у кадру свій голос.
             title_fault = titles_have_error(titles)
+            # Діалог, що означає «стоїть» (Logosol, 26.09.26) — лише коли з
+            # кадру не прочитано жодного відсотка: живий прогрес старший.
+            title_idle = percent is None and titles_mean_idle(titles)
+            if title_idle:
+                idle_known = True
             with _states_lock:
                 state.titles_seen = [str(x)[:120] for x in titles[:12]]
                 if title_fault:
                     state.fault = True
+                if title_idle:
+                    state.idle_known = True
         else:
             with _states_lock:
                 state.titles_seen = None
@@ -2364,12 +2372,7 @@ class MachineCard:
         кадру — те саме хибне число, якого ми уникаємо."""
         if not self.state or self.stale or self.has_problem:
             return False
-        if self.state.completed:
-            return True
-        if self.state.percent != 100 or self.state.percent_changed_at is None:
-            return False
-        held = (self.now - self.state.percent_changed_at).total_seconds()
-        return held >= COMPLETED_AFTER_SECONDS
+        return _program_finished(self.state, self.now)
 
     @property
     def is_validating(self) -> bool:
@@ -2522,6 +2525,20 @@ class MachineCard:
         return machine_model_key(self.target.name, self.target.portrait_model)
 
 
+def _program_finished(state: "MachineState", now: datetime) -> bool:
+    """Програма завершена: екран SUMMARY або 100% довше COMPLETED_AFTER_SECONDS.
+
+    ОДИН предикат для «завершено» на картці верстата (`is_completed`) і для
+    підсвітки «фрезерується» в черзі (`milling_now`): розійдуться — картка
+    скаже «завершено», а рядок черги «фрезерується 100%» (так і було до
+    26.09.26). Свіжість кадру й звʼязок перевіряє викликач."""
+    if state.completed:
+        return True
+    if state.percent != 100 or state.percent_changed_at is None:
+        return False
+    return (now - state.percent_changed_at).total_seconds() >= COMPLETED_AFTER_SECONDS
+
+
 def milling_now() -> dict[str, dict]:
     """Sum3D ID → {machine, percent} для робіт, що ЗАРАЗ фрезеруються.
 
@@ -2541,6 +2558,12 @@ def milling_now() -> dict[str, dict]:
         if not (state.sum3d_id and state.frame_at) or state.error:
             continue
         if (now - state.frame_at).total_seconds() > STALE_AFTER_SECONDS:
+            continue
+        # Доробилась — уже не «фрезерується». RemiCORE тримає 100% і назву .iso
+        # у заголовку до наступної програми, і рядок черги всю ніч казав
+        # «Фрезерується на 350i Loader · 100%» про диск, знятий звечора
+        # (власник 26.09.26). Правило те саме, що «завершено» на картці.
+        if _program_finished(state, now):
             continue
         # Той самий ID на двох верстатах — не вгадуємо, прибираємо обидва.
         if state.sum3d_id in out:

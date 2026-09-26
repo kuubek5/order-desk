@@ -978,6 +978,22 @@ def test_glued_digits_are_split_not_lost():
     assert reading.fields["remaining"].raw == "09:23:44"
 
 
+def test_whole_digit_is_not_split_by_narrow_ones():
+    """Зворотний бік склеювання: у «01:11:17» п'ять вузьких «1» тягнули
+    медіану ширини до 5px, і звичайні 9-піксельні «0» та «7» різались навпіл
+    як «склеєна пара» — сире '??1:11:1.?', зона «Крок» печі «Бочка» порожня
+    220 кадрів (скринька невідомих екранів, 26.09.26). Виріз — справжній, з
+    цеху, у рідному масштабі; кладемо його в зону на порожньому полотні."""
+    from app.furnace_ocr import PANEL_SIZE, ZONES, read_zone
+
+    zone = ZONES["step"]
+    panel = Image.new("RGB", PANEL_SIZE, (0, 0, 0))
+    panel.paste(_frame("step_zone_01-11-17"), zone.rect[:2])
+    field = read_zone(panel, "step")
+    assert field.raw == "01:11:17"
+    assert field.text == "01:11:17"
+
+
 # --- D.2: збій пристрою не валить фоновий воркер ----------------------------
 
 

@@ -270,11 +270,17 @@ class PanelReading:
         return self.status != STATUS_UNKNOWN and not self.warnings
 
 
-def _segments(image: Image.Image, ink: Callable) -> list[tuple[int, int, int, int]]:
+def _segments(
+    image: Image.Image, ink: Callable, glyphs: Optional[dict] = None,
+) -> list[tuple[int, int, int, int]]:
     """Розрізати зону на символи по порожніх колонках.
 
     Табло малює моноширинно й з проміжками, тож розділення колонками надійне і
     не потребує жодної евристики про очікувану кількість символів.
+
+    `glyphs` (еталони печі) — щоб `_split_glued` не різав цифру, яка ЦІЛОЮ
+    точно збігається з еталоном. Передає лише `read_zone`: той самий
+    `_segments` читає й підписи верстатів, і еталони печі там ні до чого.
     """
     px = image.load()
     width, height = image.size
@@ -292,16 +298,22 @@ def _segments(image: Image.Image, ink: Callable) -> list[tuple[int, int, int, in
     ink_per_column = [
         sum(1 for y in range(height) if ink(px[x, y][:3])) for x in range(width)
     ]
-    runs = _split_glued(runs, ink_per_column)
-    boxes = []
-    for left, right in runs:
+    def box_of(left: int, right: int) -> tuple[int, int, int, int]:
         ys = [y for y in range(height) for x in range(left, right) if ink(px[x, y][:3])]
-        boxes.append((left, min(ys), right, max(ys) + 1))
-    return boxes
+        return (left, min(ys), right, max(ys) + 1)
+
+    keep = None
+    if glyphs is not None:
+        def keep(left: int, right: int) -> bool:
+            return _match_digit(_bitmap(image, box_of(left, right), ink), glyphs) is not None
+    runs = _split_glued(runs, ink_per_column, keep)
+    return [box_of(left, right) for left, right in runs]
 
 
 def _split_glued(
-    runs: list[tuple[int, int]], columns: Optional[list[int]] = None
+    runs: list[tuple[int, int]],
+    columns: Optional[list[int]] = None,
+    keep: Optional[Callable[[int, int], bool]] = None,
 ) -> list[tuple[int, int]]:
     """Розрізати склеєні сусідні символи.
 
@@ -328,6 +340,15 @@ def _split_glued(
         parts = round(span / typical)
         # Допуск пропорційний: склеєна пара «44» дала 22px при типовій 9.
         if not (2 <= parts <= 4 and abs(span - parts * typical) <= 0.4 * typical * parts):
+            out.append((left, right))
+            continue
+        # «Типова» ширина — медіана, і в рядку з кількома вузькими «1» вона
+        # падає до ширини одиниці: «01:11:17» мав медіану 5px, і звичайні
+        # 9-піксельні «0» та «7» різались навпіл як «склеєна пара» — зона «Крок»
+        # печі не читалась ('??1:11:1.?', 220 кадрів, 26.09.26). Відрізок, який
+        # ЦІЛИМ точно збігається з еталоном цифри, — одна цифра: склеєна пара
+        # з одним еталоном піксель-у-піксель не збігається ніколи.
+        if keep is not None and keep(left, right):
             out.append((left, right))
             continue
         cuts = _valley_cuts(columns, left, right, parts) if columns else None
@@ -433,7 +454,7 @@ def read_zone(panel: Image.Image, name: str) -> Field:
     glyphs = load_glyphs()
     out: list[str] = []
     unknown = 0
-    boxes = _segments(crop, ink)
+    boxes = _segments(crop, ink, glyphs)
     for box in boxes:
         left, top, right, bottom = box
         width, height = right - left, bottom - top

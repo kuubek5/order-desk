@@ -236,6 +236,61 @@ def test_repeat_stays_quiet_inside_the_window_then_bumps_the_counter(db_session,
     assert row.device_name == "Верстат 250i"
 
 
+def test_repeat_adds_the_missing_crop(db_session, clock):
+    """Загадка без вирізу (заведена до вирізів) отримує його на повторі.
+
+    26.09.26: 150i «JOBS не прочитано» — 2489 повторів за 13 днів і жодного
+    вирізу, тож донавчити цифру було нема з чого."""
+    frame = _frame(400, 300)
+    si.note(db_session, kind=si.KIND_FURNACE, key="p1", name="Піч", frame=frame,
+            reason="glyph_unknown", detail="старе")
+    (row,) = _rows(db_session)
+    assert row.zone_file is None
+
+    clock.sleep(si.TOUCH_EVERY_SECONDS + 1)
+    si.note(db_session, kind=si.KIND_FURNACE, key="p1", name="Піч", frame=frame,
+            reason="glyph_unknown", detail="нове", zone_crop=_zone(120, 40))
+    (row,) = _rows(db_session)
+    assert row.seen_count == 2
+    assert row.zone_file
+    with Image.open(si.image_path(row, "zone")) as zone:
+        assert zone.size == (120, 40)
+    # Не-JOBS причина: подробиці лишаються від першого разу.
+    assert row.detail == "старе"
+
+
+def test_newgen_crop_is_refreshed_with_its_detail(db_session, clock):
+    """JOBS: на кожному повторі інша назва — виріз і подробиці свіжі."""
+    frame = _frame(400, 300)
+    si.note(db_session, kind=si.KIND_MACHINE, key="m1", name="150i", frame=frame,
+            reason="newgen_unread", detail="цифра №10", zone_crop=_zone(120, 40))
+    clock.sleep(si.TOUCH_EVERY_SECONDS + 1)
+    si.note(db_session, kind=si.KIND_MACHINE, key="m1", name="150i", frame=frame,
+            reason="newgen_unread", detail="цифра №3", zone_crop=_zone(200, 40))
+    (row,) = _rows(db_session)
+    assert row.detail == "цифра №3"
+    with Image.open(si.image_path(row, "zone")) as zone:
+        assert zone.size == (200, 40)
+
+
+def test_labelled_puzzle_keeps_its_crop(db_session, clock):
+    """Підпис людини стосується ТІЄЇ картинки — її не підміняємо."""
+    frame = _frame(400, 300)
+    si.note(db_session, kind=si.KIND_MACHINE, key="m1", name="150i", frame=frame,
+            reason="newgen_unread", detail="перше", zone_crop=_zone(120, 40))
+    (row,) = _rows(db_session)
+    row.label = "помилка, потрібно підійти"
+    db_session.commit()
+    clock.sleep(si.TOUCH_EVERY_SECONDS + 1)
+    si.note(db_session, kind=si.KIND_MACHINE, key="m1", name="150i", frame=frame,
+            reason="newgen_unread", detail="друге", zone_crop=_zone(200, 40))
+    (row,) = _rows(db_session)
+    assert row.seen_count == 2
+    assert row.detail == "перше"
+    with Image.open(si.image_path(row, "zone")) as zone:
+        assert zone.size == (120, 40)
+
+
 def test_the_same_screen_on_another_device_is_its_own_row(db_session, clock):
     """Вікно тиші й стеля — на ПРИСТРІЙ: сусід не має ховати свій екран."""
     frame = _frame(400, 300)
