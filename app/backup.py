@@ -511,4 +511,14 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
         raise BackupIncompleteError(
             "Відновлення скасовано — у копії є посилання на записи, яких у ній немає."
         ) from exc
+
+    # Відновлення замінило й історію показань верстатів, а набір «за ким
+    # спостерігали / хто давав відсоток» живе в памʼяті процесу, і процес тут
+    # не перезапускається. Не скинути — і віджет говорив би про верстати з
+    # ПОПЕРЕДНЬОЇ бази. Імпорт локальний: `app/backup.py` знає моделі, а не
+    # сервіси, і тягнути сюди весь модуль верстатів заради одного рядка —
+    # зайва звʼязність.
+    from app.services.machines import forget_machine_history
+
+    forget_machine_history()
     return counts

@@ -232,7 +232,7 @@ def _count_reading_scans(db, fn):
 
 def test_the_history_sets_are_read_from_the_table_only_once():
     with make_session() as db:
-        machines_service._forget_machine_history()
+        machines_service.forget_machine_history()
         _store_machine_reading(db, make_state(), datetime(2026, 9, 8, 18, 14))
         first = _count_reading_scans(db, lambda: machines_service._machine_history_sets(db))
         again = _count_reading_scans(db, lambda: machines_service._machine_history_sets(db))
@@ -243,7 +243,7 @@ def test_a_first_percent_shows_up_without_rereading_the_table():
     """Верстат, що досі мовчав, дав відсоток — віджет мусить це побачити тим
     самим тіком, а не за таймером протухання."""
     with make_session() as db:
-        machines_service._forget_machine_history()
+        machines_service.forget_machine_history()
         _store_machine_reading(db, make_state(percent=None), datetime(2026, 9, 8, 18, 14))
         seen, with_percent = machines_service._machine_history_sets(db)
         assert seen == {"192.168.1.50-8765"} and with_percent == set()

@@ -1208,8 +1208,12 @@ def _remember_machine_history(host: str, *, has_percent: bool) -> None:
             _reading_percent_hosts.add(host)
 
 
-def _forget_machine_history() -> None:
-    """Історію прибрали — наступний `snapshot()` перечитає набори з БД."""
+def forget_machine_history() -> None:
+    """Історію прибрали або замінили — наступний `snapshot()` перечитає її з БД.
+
+    Кличуть звідси два шляхи: прибирання старих показань і ВІДНОВЛЕННЯ З КОПІЇ
+    (там міняється вся база, а процес не перезапускається).
+    """
     global _reading_hosts_source
     with _reading_hosts_lock:
         _reading_hosts.clear()
@@ -1469,7 +1473,7 @@ def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
         db.commit()
         # Історії могло й не стати: набори «хто давав відсоток» тримаються в
         # памʼяті процесу, і після прибирання їх треба перечитати.
-        _forget_machine_history()
+        forget_machine_history()
     return removed
 
 

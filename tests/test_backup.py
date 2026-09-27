@@ -17,6 +17,7 @@ from app.backup import (
     restore_backup,
 )
 from app.crypto import decrypt_value
+
 from app.db import Base
 from app.models import (
     AppSetting,
@@ -401,3 +402,31 @@ def test_a_full_backup_from_an_older_build_still_restores_the_secrets():
         restored = db.scalar(select(AppSetting).where(AppSetting.key == "imap_login"))
         assert restored is not None
         assert decrypt_value(restored.value_encrypted) == "phantom@ukr.net"
+
+
+def test_restore_forgets_what_the_process_remembered_about_machines():
+    """Відновлення міняє всю базу, а процес не перезапускається.
+
+    Набір «за ким із верстатів спостерігали і хто давав відсоток» живе в
+    памʼяті процесу (інакше кожен малюнок черги проходив би всю таблицю
+    показань). Не скинути його на відновленні — і віджет говорив би про
+    верстати з ПОПЕРЕДНЬОЇ бази. База тут ОДНА: саме так і робить екран
+    відновлення — заливає копію в ту саму живу базу.
+    """
+    from app.models import MachineReading
+    from app.services import machines as machines_service
+
+    db = Session(_database())
+    _seed(db)
+    raw = create_backup(db, "correct horse battery staple")
+
+    machines_service.forget_machine_history()
+    db.add(MachineReading(host="192.168.1.99-8765", captured_at=datetime(2026, 9, 27, 9, 0), percent=42))
+    db.commit()
+    assert machines_service._machine_history_sets(db)[1] == {"192.168.1.99-8765"}
+
+    # У копії рядків показань немає — після відновлення їх нема й у базі.
+    restore_backup(db, raw, "correct horse battery staple")
+
+    assert db.query(MachineReading).count() == 0
+    assert machines_service._machine_history_sets(db) == (set(), set())
