@@ -100,9 +100,11 @@
                        останнього вдалого getUpdates цього запуску (правило плит,
                        CLAUDE.md §14), а не від того, що вимикач стоїть. #}
                     <div class="stand-cell w6">
-                        <h3>Бот: меню й сповіщення</h3>
+                        {# Пігулка стану — у заголовку картки, а не окремим рядком під
+                           ним: на цьому екрані три картки зі станом, і читати їх
+                           треба в одному місці (як у «Доступі по мережі»). #}
                         {% set st = bot_status %}
-                        <p>
+                        <h3>Бот: меню й сповіщення
                         {% if not bot_enabled %}
                             <span class="stand-state stand-state-none">вимкнено</span>
                         {% elif st.webhook_host %}
@@ -116,7 +118,7 @@
                         {% else %}
                             <span class="stand-state stand-state-none">запускається…</span>
                         {% endif %}
-                        </p>
+                        </h3>
                         {% if bot_enabled %}
                             {% if st.webhook_host %}
                             <p class="stand-note">На боті стоїть вебхук ({{ st.webhook_host }}), тож Telegram віддає натискання туди, а не KuubMill. Чужий вебхук KuubMill не знімає сам — це зламало б той сервіс. Зняти може власник бота (метод deleteWebhook); перевіряємо знову раз на 5 хв.</p>
@@ -135,7 +137,7 @@
                        сторонньому бот мовчить, і «попроситись» у нього нема як. #}
                     <div class="stand-cell w6 stand-members" id="bot-members">
                         <h3>Учасники бота</h3>
-                        <p class="settings-help">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою 🔔 у боті. Учасники бачать лише пічки й Sisma; роботи, видача, верстати й звернення зворотного зв'язку — лише вам. <b>📦 Склад</b> — окрема роль: отримує лише замовлення дисків, які оператор надсилає з екрана «Нові диски», без меню й сповіщень.</p>
+                        <p class="settings-help">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою <i class="ico ico-bell" aria-hidden="true"></i> у боті. Учасники бачать лише пічки й Sisma; роботи, видача, верстати й звернення зворотного зв'язку — лише вам. <b><i class="ico ico-box" aria-hidden="true"></i> Склад</b> — окрема роль: отримує лише замовлення дисків, які оператор надсилає з екрана «Нові диски», без меню й сповіщень.</p>
                         {% if not bot_enabled %}<p class="stand-note">Бот зараз вимкнено — посилання спрацює, коли його ввімкнете вище.</p>{% endif %}
 
                         <div class="stand-drow">
@@ -147,29 +149,39 @@
                         {% for row in members %}{% set m = row.m %}{% set is_wh = m.role == 'warehouse' %}
                         <div class="stand-drow">
                             <div class="stand-dtext">
-                                <b>{{ row.title }}{% if is_wh %} · 📦 склад{% endif %}</b>
+                                <b>{{ row.title }}{% if is_wh %} · <i class="ico ico-box" aria-hidden="true"></i> склад{% endif %}</b>
                                 <p>{% if m.label and m.name %}{{ m.name }} · {% endif %}{% if m.username %}@{{ m.username }} · {% endif %}з {{ m.joined_at.strftime('%d.%m.%y') }}{% if m.last_seen_at %} · останній запит <span class="mono">{{ m.last_seen_at.strftime('%d.%m %H:%M') }}</span>{% endif %}{% if is_wh %} · отримує лише замовлення дисків з екрана «Нові диски»{% endif %}</p>
                             </div>
                             {% if not is_wh %}
                             <form method="post" action="/settings/feedback/member/{{ m.id }}/notify">
-                                <button type="submit" class="settings-secondary-button" title="Перемкнути сповіщення цій людині">{{ '🔔 сповіщення: так' if m.notify else '🔕 сповіщення: ні' }}</button>
+                                <button type="submit" class="settings-secondary-button" title="Перемкнути сповіщення цій людині"><i class="ico {{ 'ico-bell' if m.notify else 'ico-bell-off' }}" aria-hidden="true"></i> сповіщення: {{ 'так' if m.notify else 'ні' }}</button>
                             </form>
                             {% endif %}
                             <form method="post" action="/settings/feedback/member/{{ m.id }}/warehouse">
-                                <button type="submit" class="settings-secondary-button" title="{{ 'Повернути звичайним учасником: меню пічок і Sisma, сповіщення' if is_wh else 'Зробити складом: лише замовлення дисків, без меню й сповіщень печей' }}">{{ 'Зняти роль складу' if is_wh else '📦 Зробити складом' }}</button>
+                                <button type="submit" class="settings-secondary-button" title="{{ 'Повернути звичайним учасником: меню пічок і Sisma, сповіщення' if is_wh else 'Зробити складом: лише замовлення дисків, без меню й сповіщень печей' }}">{% if is_wh %}Зняти роль складу{% else %}<i class="ico ico-box" aria-hidden="true"></i> Зробити складом{% endif %}</button>
                             </form>
                             <form method="post" action="/settings/feedback/member/{{ m.id }}/remove">
                                 <button type="submit" class="settings-secondary-button">Прибрати</button>
                             </form>
                         </div>
                         {% endfor %}
+                        {# Саме посилання — у блоці `.scmd` (спільний із «Доступом по
+                           мережі»): його копіюють і вставляють у месенджер, тому воно
+                           мусить читатись як адреса, а не як дрібний підпис рядка. #}
                         {% for row in invites %}{% set i = row.i %}
-                        <div class="stand-drow">
+                        <div class="stand-drow stand-drow-invite">
                             <div class="stand-dtext">
-                                <b>Запрошення{% if i.label %} для «{{ i.label }}»{% endif %}{% if i.role == 'warehouse' %} · 📦 склад{% endif %} — ще не використане</b>
-                                <p>{% if row.link %}<span class="mono stand-members-link">{{ row.link }}</span>{% else %}посилання з'явиться, щойно бот відповість{% endif %} · діє до <span class="mono">{{ i.expires_at.strftime('%d.%m %H:%M') }}</span></p>
+                                <b>Запрошення{% if i.label %} для «{{ i.label }}»{% endif %}{% if i.role == 'warehouse' %} · <i class="ico ico-box" aria-hidden="true"></i> склад{% endif %} — ще не використане</b>
+                                <p>діє до <span class="mono">{{ i.expires_at.strftime('%d.%m %H:%M') }}</span></p>
+                                {% if row.link %}
+                                <div class="scmd">
+                                    <code>{{ row.link }}</code>
+                                    <button type="button" class="settings-secondary-button" data-copy="{{ row.link }}" title="Скопіювати посилання">Скопіювати</button>
+                                </div>
+                                {% else %}
+                                <p>посилання з'явиться, щойно бот відповість</p>
+                                {% endif %}
                             </div>
-                            {% if row.link %}<button type="button" class="settings-secondary-button" data-copy="{{ row.link }}" title="Скопіювати посилання">Скопіювати</button>{% endif %}
                             <form method="post" action="/settings/feedback/invite/{{ i.id }}/revoke">
                                 <button type="submit" class="settings-secondary-button">Скасувати</button>
                             </form>
@@ -181,8 +193,8 @@
                                 <input class="login-input" type="text" name="label" maxlength="120"
                                        placeholder="Для кого (напр. «Оля, логіст») — необов'язково" autocomplete="off">
                             </div></div>
-                            <label class="stand-members-role" title="Склад отримує лише замовлення дисків з екрана «Нові диски» — без меню пічок, верстатів і сповіщень">
-                                <input type="checkbox" name="warehouse" value="1"> 📦 склад
+                            <label class="stand-members-role schip" title="Склад отримує лише замовлення дисків з екрана «Нові диски» — без меню пічок, верстатів і сповіщень">
+                                <input type="checkbox" name="warehouse" value="1"> <i class="ico ico-box" aria-hidden="true"></i> склад
                             </label>
                             <button type="submit" class="settings-secondary-button">Створити посилання</button>
                         </form>
@@ -193,8 +205,7 @@
                        табло (слухає / порт зайнятий), не з того, що вимикач стоїть. #}
                     {% set bs = board_status %}
                     <div class="stand-cell w6 stand-members" id="furnace-board">
-                        <h3>Табло пічок для логістів</h3>
-                        <p>
+                        <h3>Табло пічок для логістів
                         {% if not board_enabled %}
                             <span class="stand-state stand-state-none">вимкнено</span>
                         {% elif bs.listening %}
@@ -204,12 +215,12 @@
                         {% else %}
                             <span class="stand-state stand-state-none">вмикається…</span>
                         {% endif %}
-                        </p>
+                        </h3>
                         <p class="settings-help">Сторінка в мережі цеху: картки печей, температура і коли відкриється (за Києвом), сама оновлюється кожні 30 с. Відкривається з будь-якого ПК чи телефона в тій самій мережі за посиланням нижче. Там немає нічого, крім печей: ні черги, ні входу в KuubMill, нічого не можна змінити.</p>
                         {% if board_enabled %}
                         {% for link in board_links %}
-                        <div class="stand-drow">
-                            <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
+                        <div class="scmd">
+                            <code>{{ link }}</code>
                             <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати посилання">Скопіювати</button>
                         </div>
                         {% else %}
@@ -217,14 +228,16 @@
                         {% endfor %}
                         <p class="settings-help">Друга сторінка за тим самим посиланням — <b>табло цеху на телевізор</b>: верстати з роботами й відсотком, SLM-принтер і ті самі печі внизу. Печі для логістів лишаються за адресою вище, нічого перевідкривати не треба.</p>
                         {% for link in shop_links %}
-                        <div class="stand-drow">
-                            <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
+                        <div class="scmd">
+                            <code>{{ link }}</code>
                             <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати посилання">Скопіювати</button>
                         </div>
                         {% endfor %}
                         <p class="stand-note">Якщо посилання не відкривається з іншого ПК: при першому ввімкненні Windows питає, чи дозволити KuubMill доступ до мережі — потрібно «Приватні мережі». Змінити посилання — старе одразу перестане працювати.</p>
                         {% endif %}
-                        <div class="stand-drow">
+                        {# Ряд кнопок — не рядок реєстру: `.stand-drow` малює межу
+                           згори й розтягує вміст, наче це запис у переліку. #}
+                        <div class="sbtnrow">
                             <form method="post" action="/settings/feedback/board/toggle">
                                 <button type="submit" class="settings-secondary-button">{{ 'Вимкнути табло' if board_enabled else 'Увімкнути табло' }}</button>
                             </form>

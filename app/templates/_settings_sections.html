@@ -6,6 +6,22 @@
            без деплою. Логіка — app/services/section_gate.py. #}
         {# Гейт розділу тепер у settings.html через реєстр меню
            (`app/services/settings_nav.py`) — тут дубля немає. #}
+        {# ── Розкладка (26.09.26) ──────────────────────────────────────────
+           Це ТАБЛИЦЯ на 13 рядків, а була гола форма: кожен рядок сам собі
+           flex, тому селекти стояли на різній відстані від лівого краю
+           (`.secmgr-name` ріс разом із назвою розділу), нічого не
+           вирівнювалось. Тепер у всіх рядків ОДНА сітка колонок — назва,
+           стан, доступ, кнопка — тож стовпці збігаються згори вниз.
+
+           Винятки (ролі + поіменні люди) сховані у `<details>`: при пʼятьох
+           операторах це 65 чекбоксів на екрані, майже завжди в стані «усі
+           ролі, нікого поіменно». Підсумок у `<summary>` каже поточний стан
+           словами, тож розгортати треба лише коли справді правиш. Згорнутий
+           `<details>` свої поля ВІДПРАВЛЯЄ — поведінка форми не змінилась.
+
+           Закритий розділ — виняток, і має бути видно здалеку: своя рамка й
+           тон (`.is-closed`). Доти всі 13 рядків виглядали однаково, і один
+           закритий губився серед дванадцяти відкритих. #}
         <section id="sections" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="sections">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7-2.6"/></svg>
@@ -13,45 +29,78 @@
             <div class="box">
                 {{ slab('Блокування розділів', 'Закрий будь-який екран для операторів — на час розробки, тестування чи просто «зачинено на роботи». Не-адміни побачать екран-блокатор, адмін — сам розділ. «Відкрито для всіх» знімає блокування.', slabs['sections']) }}
 
-                {% for sec in sections_admin %}
-                <form method="post" action="/settings/sections/{{ sec.section }}" class="secmgr">
-                    <input type="hidden" name="back" value="/settings#sections">
-                    <div class="secmgr-row">
-                        <div class="secmgr-name">
-                            {{ sec.title }}
-                            <span class="connection-state {% if sec.is_open %}connection-state-ready{% endif %}">
+                <div class="secmgr-table">
+                    <div class="secmgr-head" aria-hidden="true">
+                        <span>Розділ</span>
+                        <span>Стан</span>
+                        <span>Що бачать не-адміни</span>
+                        <span></span>
+                    </div>
+
+                    {% for sec in sections_admin %}
+                    {% set named = sec.users | selectattr('on') | list %}
+                    <form method="post" action="/settings/sections/{{ sec.section }}"
+                          class="secmgr{% if not sec.is_open %} is-closed{% endif %}">
+                        <input type="hidden" name="back" value="/settings#sections">
+                        <div class="secmgr-row">
+                            <div class="secmgr-name" title="{{ sec.title }}">{{ sec.title }}</div>
+                            <span class="stand-state {% if sec.is_open %}stand-state-ok{% else %}stand-state-warn{% endif %}">
                                 {% if sec.is_open %}Відкрито{% else %}Закрито{% endif %}
                             </span>
+                            <span class="secmgr-sel">
+                                <select name="state" aria-label="Стан розділу «{{ sec.title }}»">
+                                    {% for key, label in sec.variants %}
+                                    <option value="{{ key }}" {% if key == sec.state %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </span>
+                            <button type="submit" class="settings-secondary-button secmgr-apply">Застосувати</button>
                         </div>
-                        <select name="state" aria-label="Стан розділу «{{ sec.title }}»">
-                            {% for key, label in sec.variants %}
-                            <option value="{{ key }}" {% if key == sec.state %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                        <button type="submit" class="settings-submit">Застосувати</button>
-                    </div>
-                    {# Кому показувати блокатор. «Усі ролі» має старшинство (ловить і
-                       майбутні ролі); зніми його, щоб вибрати ролі поіменно. #}
-                    <div class="secmgr-aud">
-                        <span class="secmgr-aud-lbl">Кому:</span>
-                        <label><input type="checkbox" name="audience_all" value="1" {% if sec.audience_all %}checked{% endif %}> усі ролі</label>
-                        {% for r in sec.roles %}
-                        <label><input type="checkbox" name="role" value="{{ r.role }}" {% if r.on %}checked{% endif %}> {{ r.role }}</label>
-                        {% endfor %}
-                    </div>
-                    {# Поіменний виняток (власник 25.09.26): розділ закрито для ролі,
-                       але відмічений тут бачить його як відкритий. Адмінів у
-                       переліку немає — їх блокатор не чіпає ніколи. #}
-                    {% if sec.users %}
-                    <div class="secmgr-aud">
-                        <input type="hidden" name="users_sent" value="1">
-                        <span class="secmgr-aud-lbl">Відкрито для:</span>
-                        {% for u in sec.users %}
-                        <label><input type="checkbox" name="user" value="{{ u.id }}" {% if u.on %}checked{% endif %}> {{ u.name }}</label>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                </form>
-                {% endfor %}
+
+                        {# Кому показувати блокатор. «Усі ролі» має старшинство (ловить і
+                           майбутні ролі); зніми його, щоб вибрати ролі поіменно.
+                           Поіменний виняток (власник 25.09.26): розділ закрито для ролі,
+                           але відмічений тут бачить його як відкритий. Адмінів у
+                           переліку немає — їх блокатор не чіпає ніколи. #}
+                        {# Підсумок пишемо ЛИШЕ коли є що сказати. Стан за
+                           замовчуванням — «усі ролі, нікого поіменно» — стоїть
+                           у 12 розділах із 13, і виписаний словами він
+                           перетворювався на тринадцять однакових рядків шуму.
+                           Тоді лишається сама стрілка з коротким словом. #}
+                        {% set is_default = sec.audience_all and not named %}
+                        <details class="secmgr-more{% if is_default %} is-default{% endif %}">
+                            <summary>
+                                <span class="secmgr-sum">
+                                {%- if is_default -%}
+                                    Винятки
+                                {%- else -%}
+                                    Блокатор бачать:
+                                    <b>{% if sec.audience_all %}усі ролі{% else %}{{ sec.roles | selectattr('on') | map(attribute='role') | join(', ') or 'нікого' }}{% endif %}</b>
+                                    {%- if named %} · відкрито: <b>{{ named | map(attribute='name') | join(', ') }}</b>{% endif -%}
+                                {%- endif -%}
+                                </span>
+                            </summary>
+                            <div class="secmgr-audwrap">
+                                <div class="secmgr-aud">
+                                    <span class="secmgr-aud-lbl">Кому:</span>
+                                    <label class="schip"><input type="checkbox" name="audience_all" value="1" {% if sec.audience_all %}checked{% endif %}> усі ролі</label>
+                                    {% for r in sec.roles %}
+                                    <label class="schip"><input type="checkbox" name="role" value="{{ r.role }}" {% if r.on %}checked{% endif %}> {{ r.role }}</label>
+                                    {% endfor %}
+                                </div>
+                                {% if sec.users %}
+                                <div class="secmgr-aud">
+                                    <input type="hidden" name="users_sent" value="1">
+                                    <span class="secmgr-aud-lbl">Відкрито для:</span>
+                                    {% for u in sec.users %}
+                                    <label class="schip"><input type="checkbox" name="user" value="{{ u.id }}" {% if u.on %}checked{% endif %}> {{ u.name }}</label>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </details>
+                    </form>
+                    {% endfor %}
+                </div>
             </div>
         </section>

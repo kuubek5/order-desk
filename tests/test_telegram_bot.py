@@ -601,11 +601,20 @@ from tests.test_settings_slabs_render import ADMIN, app_db  # noqa: E402,F401 �
 
 
 def _feedback_page(app) -> str:
+    """Шматок сторінки, що належить картці «Бот: меню й сповіщення».
+
+    Межі беремо по назвах СУСІДНІХ карток, а не по `</h3>` і першому
+    `</div>`: пігулка стану переїхала в сам заголовок картки (26.09.26, разом
+    із рештою розділів налаштувань), і зріз по кінцю заголовка почав її
+    відрізати. Сам стан — той самий: ті самі слова, той самий тон, та сама
+    картка; змінилось лише місце в розмітці."""
     client = MiniClient(app)
     client.login(*ADMIN)
     status, _, html = client.get("/settings/feedback")
     assert status == 200, status
-    return html.split("Бот: меню й сповіщення</h3>", 1)[1].split("</div>", 1)[0]
+    assert "Бот: меню й сповіщення" in html
+    card = html.split("Бот: меню й сповіщення", 1)[1]
+    return card.split("Учасники бота", 1)[0]
 
 
 def test_settings_shows_bot_disabled_grey(app_db):  # noqa: F811

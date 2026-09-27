@@ -192,6 +192,7 @@
   gap: 8px;
 }
 .scon .stand-cell > h3 .connection-state,
+.scon .stand-cell > h3 .stand-state,
 .scon .stand-cell > h3 .cred-status { margin-left: auto; }
 .scon .stand-cell .settings-field { margin-bottom: 0; }
 /* Комірка ховається цілком разом із заголовком: атрибут data-authmode-block
@@ -201,6 +202,7 @@
   .scon .stand-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .scon .stand-cell,
   .scon .stand-cell.w2,
+  .scon .stand-cell.w3,
   .scon .stand-cell.w4,
   .scon .stand-cell.w6 { grid-column: span 2; }
 }
@@ -476,3 +478,183 @@
 .scon .stand-members-invite .settings-secondary-button { margin: 0; flex: none; }
 .scon .stand-members-role { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--ink-2); font-size: var(--fs-1); cursor: pointer; white-space: nowrap; }
 .scon .stand-members-role input { margin: 0; accent-color: var(--accent); }
+
+/* ── Доступ по мережі (/settings#mcp, `_settings_mcp.html`) ───────────────
+   Розділ — це ТРИ процедури однакової форми: «що зараз» + «що скопіювати» +
+   «перемикач». Смуга (`.nacc-band`) робить кожну окремим кроком, а картка
+   перемикача стоїть у кожній на тому самому місці й несе пігулку стану.
+
+   Було три біди, усі структурні:
+     1. `h3` малював ТРИ рівні одразу — 24px (base.css) для групи, 13px для
+        картки й ще 13px для підзаголовка ВСЕРЕДИНІ тієї самої картки. До
+        того ж 24px групи більші за 19px заголовка самого розділу, тобто
+        ієрархія стояла догори дриґом. Тепер шкала 19 / 16 / 13 і рівно
+        один рівень на тег;
+     2. `w6 + w3` у шестиколонковій сітці = повний рядок і ПІВ рядка
+        порожнечі праворуч (двічі на сторінці). Тепер w4+w2 і w6 — кожен
+        рядок заповнений;
+     3. команди малював `.stand-drow` — рядок реєстру учасників Telegram:
+        текст `--fs-1`/`--ink-3` (дрібний і тьмяний), кнопка відлітає до
+        правого краю картки. Команду, яку копіюють у PowerShell, так читати
+        не можна — тепер `.scmd`, колодязь із моношрифтом.
+   Моношрифт тут не костюм «технічності», а власне код і адреси. */
+
+.scon .nacc-band {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/* Між смугами просторо, всередині щільно — саме цей контраст і каже, де
+   закінчується одна процедура й починається наступна. */
+.scon .nacc-band + .nacc-band {
+  margin-top: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+/* Середній щабель шкали: під заголовком розділу (--fs-5), над назвою
+   картки (--fs-2). Перебиває 1.5rem з base.css. */
+.scon .nacc-bandtitle {
+  font-family: var(--font-head);
+  font-size: var(--fs-4);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  margin: 0;
+}
+/* Міра рядка. Картка тут буває ~1050px завширшки, і абзац на всю ширину
+   давав ~130 символів у рядку — удвічі більше за читабельні 65-75. */
+.scon .nacc-lede,
+.scon .nacc-band .stand-cell > .settings-help { max-width: 68ch; }
+
+/* ── попередження ─────────────────────────────────────────────────────── */
+/* Іконка мальована, а не юнікодний знак: у решті застосунку значки — це
+   SVG одного штриха з класом .duo на підкладці. Рамка рівно 1px з усіх
+   боків — товста кольорова смуга ліворуч тут була б декором. */
+.scon .swarn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 138, 61, .28);
+  background: rgba(255, 138, 61, .07);
+}
+.scon .swarn svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--warn);
+}
+.scon .swarn svg .duo { fill: currentColor; opacity: .13; stroke: none; }
+.scon .swarn p {
+  margin: 0;
+  max-width: 68ch;
+  font-size: var(--fs-1);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ── блок команди ─────────────────────────────────────────────────────── */
+/* Колодязь (--well) відрізняє команду від картки так само, як втоплений
+   ввід у решті «Стенда». Кнопка живе ВСЕРЕДИНІ блоку поруч із текстом, а
+   не біля правого краю картки за 700px порожнечі. */
+.scon .scmd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 9px 10px 9px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--well);
+}
+.scon .scmd + .scmd { margin-top: 8px; }
+/* Команда переноситься ПО ПРОБІЛАХ і видна цілком. Горизонтальна прокрутка
+   тут була б пасткою: `netsh … localport=8000 profile=private,domain`
+   обрізався на `profil`, і обрізана команда виглядає як ціла — адмін
+   запустив би півправила й не зрозумів, чому порт закритий. Ключ
+   (`localport=8000`) усередині не рветься — `break-spaces` ламає лише там,
+   де в команді й так пробіл. */
+.scon .scmd code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: break-spaces;
+  /* `anywhere`, не `break-word`: посилання табло — один суцільний токен без
+     пробілів (`http://192.168.88.2:8010/t/jVxx…`), і `break-word` лишав би
+     його стирчати за межі блоку у вузькій картці. Команда з пробілами
+     однаково рветься спершу по них. */
+  overflow-wrap: anywhere;
+}
+.scon .scmd .settings-secondary-button {
+  margin: 0;
+  flex: none;
+  padding: 5px 11px;
+  font-size: var(--fs-1);
+}
+/* Підпис до другої команди тулиться до неї, а не висить рівно між двома. */
+.scon .scmd-note { margin-top: 4px !important; }
+
+/* ── картка перемикача ────────────────────────────────────────────────── */
+/* Вирізняється не заливкою кнопки (єдина залита кнопка на екран — не тут,
+   settings_stand.css вище), а власним тоном підкладки й сталим місцем:
+   вгорі праворуч у кожній смузі. */
+.scon .nacc-switch { background: var(--card-3, var(--card-2)); }
+.scon .nacc-switch > h3 .stand-state { font-size: var(--fs-0); }
+/* Кнопка-посилання в колонковій картці розтягувалась на всю ширину —
+   на відміну від кнопки у <form>, яка лишається inline-block. */
+.scon .nacc-dl { align-self: flex-start; margin: 0; }
+
+@media (max-width: 720px) {
+  .scon .scmd {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: 8px;
+  }
+}
+
+/* ── мальовані значки замість емодзі ──────────────────────────────────── */
+/* 📦 і 🔔 у підписах і кнопках малювались системним емодзі — чужий колір,
+   чужа вага, на кожній ОС свій. Значок тут той самий, що в решті
+   застосунку: контур одного штриха, колір із тексту. */
+.scon .ico {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -.13em;
+  flex: none;
+  background: currentColor;
+}
+.scon .ico-box {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21 8-9-5-9 5v8l9 5 9-5z'/%3E%3Cpath d='m3 8 9 5 9-5'/%3E%3Cpath d='M12 13v8'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21 8-9-5-9 5v8l9 5 9-5z'/%3E%3Cpath d='m3 8 9 5 9-5'/%3E%3Cpath d='M12 13v8'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.scon .ico-bell {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.7 21a2 2 0 0 1-3.4 0'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.scon .ico-bell-off {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-9.3-5'/%3E%3Cpath d='M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14'/%3E%3Cpath d='M13.7 21a2 2 0 0 1-3.4 0'/%3E%3Cpath d='m2 2 20 20'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-9.3-5'/%3E%3Cpath d='M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14'/%3E%3Cpath d='M13.7 21a2 2 0 0 1-3.4 0'/%3E%3Cpath d='m2 2 20 20'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* ── Telegram-бот і табло (/settings#feedback) ───────────────────────────
+   Ті самі три вади, що були в «Доступі по мережі»: посилання малював рядок
+   реєстру (`.stand-drow`) — дрібний тьмяний підпис із кнопкою біля правого
+   краю картки; абзаци йшли на всю ширину (~130 символів у рядку); стан
+   висів окремим рядком під заголовком. Посилання тепер у спільному `.scmd`,
+   пігулка — в заголовку картки, міра рядка обмежена. */
+.scon .stand-members > .settings-help,
+.scon .stand-members > .stand-note { max-width: 68ch; }
+.scon .stand-members .scmd { margin-top: 8px; }
+.scon .stand-members .scmd + .settings-help { margin-top: 12px; }
+/* Ряд кнопок під карткою — просто ряд: без межі згори й без розтягування,
+   які `.stand-drow` дає запису переліку. */
+.scon .sbtnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.scon .sbtnrow > form { margin: 0; }
+.scon .sbtnrow .settings-secondary-button { margin: 0; }
+/* Запрошення: посилання лежить усередині тексту рядка, тому воно тягнеться
+   на всю ширину, а «Скасувати» лишається праворуч від усього запису. */
+.scon .stand-drow-invite { align-items: flex-start; }
+.scon .stand-drow-invite .stand-dtext .scmd { margin-top: 6px; }

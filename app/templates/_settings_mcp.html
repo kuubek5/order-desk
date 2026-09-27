@@ -10,8 +10,23 @@
 
            Гейт розділу — через реєстр меню (`app/services/settings_nav.py`,
            `roles=ADMIN_ONLY`): це безпекове налаштування, оператору тут
-           нема чого робити, і він цей розділ навіть не бачить. #}
-        <div class="wizard-step scon-sec stand-sec" data-sec="mcp">
+           нема чого робити, і він цей розділ навіть не бачить.
+
+           ── Розкладка (26.09.26) ──────────────────────────────────────────
+           Розділ — це ТРИ незалежні процедури налаштування однакової форми:
+           «що зараз» + «що скопіювати» + «перемикач». Тому кожна лежить у
+           своїй смузі (`.nacc-band`), а КАРТКА ПЕРЕМИКАЧА в кожній стоїть на
+           тому самому місці — вгорі праворуч, і саме вона несе пігулку стану.
+           Повторення тут працює на впізнавання: адмін заходить сюди раз на
+           місяць і не мусить щоразу шукати, де ж вмикається.
+
+           Сітка шестиколонкова, і кожен рядок ЗАПОВНЕНИЙ (w4+w2, w6): до
+           цього стояло w6+w3, тобто повний рядок і половина з порожнечею
+           праворуч. Команди малює `.scmd` — колодязь із моношрифтом і
+           кнопкою всередині; доти це був `.stand-drow`, рядок реєстру
+           учасників Telegram, де текст дрібний і тьмяний (--ink-3), а кнопка
+           відлітає до правого краю картки. #}
+        <div class="wizard-step scon-sec stand-sec nacc" data-sec="mcp">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3 7.5-7 9-4-1.5-7-4-7-9V6z" class="duo"/><path d="M12 3l7 3v6c0 5-3 7.5-7 9-4-1.5-7-4-7-9V6z"/><circle cx="12" cy="11" r="1.6"/></svg>
             </div>
@@ -24,73 +39,81 @@
                    uvicorn лаунчер обирає раз на старті, тому перемикач
                    перезапускає застосунок (оверлей і опитування /health — ті
                    самі, що при оновленні, app.js). #}
-                <h3>Робота з інших ПК</h3>
-                <p class="settings-help">
-                    Одна програма, багато браузерів: другий операторський ПК, або адмін, що править
-                    налаштування, поки за цим ПК працює оператор. Кожен входить під своїм акаунтом і
-                    нікому не заважає. Копія програми лишається ОДНА — на іншому ПК нічого не
-                    встановлюють, лише відкривають адресу нижче.
-                </p>
-                <p class="settings-help stand-note">
-                    ⚠ Звʼязок іде по <span class="mono">http</span> без шифрування — пароль входу й секрети
-                    з екрана налаштувань видно в мережі цеху. Тому правило брандмауера нижче лише для
-                    приватного профілю, а адреси з чужої мережі застосунок не пускає навіть із паролем.
-                    Перемикач ПЕРЕЗАПУСКАЄ застосунок (≈10 с): усі, хто зараз працює, побачать паузу.
-                </p>
-
-                <div class="stand-cells">
-                <div class="stand-cell w6">
-                    <h3>Адреса для інших ПК</h3>
-                    {% if network_links %}
-                    {% for link in network_links %}
-                    <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати адресу">Скопіювати</button>
-                    </div>
-                    {% endfor %}
-                    {% else %}
-                    <p class="stand-note">Не вдалось визначити мережевої адреси цього ПК — перевір підключення.</p>
-                    {% endif %}
-                    <p class="settings-help">
-                        {% if network_restart_pending %}
-                            <span class="stand-state stand-state-warn">чекає перезапуску застосунку</span>
-                        {% elif network_listening %}
-                            <span class="stand-state stand-state-ok">слухає мережу цеху</span>
-                        {% elif network_bound_host %}
-                            <span class="stand-state stand-state-none">лише цей ПК ({{ network_bound_host }})</span>
-                        {% else %}
-                            <span class="stand-state stand-state-none">адреса слухача невідома (dev-запуск без лаунчера)</span>
-                        {% endif %}
+                <section class="nacc-band">
+                    <h3 class="nacc-bandtitle">Робота з інших ПК</h3>
+                    <p class="settings-help nacc-lede">
+                        Одна програма, багато браузерів: другий операторський ПК, або адмін, що править
+                        налаштування, поки за цим ПК працює оператор. Кожен входить під своїм акаунтом і
+                        нікому не заважає. Копія програми лишається ОДНА — на іншому ПК нічого не
+                        встановлюють, лише відкривають адресу нижче.
                     </p>
-
-                    <h3>Брандмауер — один раз</h3>
-                    <p class="settings-help">
-                        PowerShell від імені адміністратора. Правило лише для приватного й доменного
-                        профілів: у «Загальнодоступну» мережу порт {{ network_port }} не відкривається.
-                    </p>
-                    <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ network_firewall_command }}</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="{{ network_firewall_command }}" title="Скопіювати команду">Скопіювати</button>
-                    </div>
-                    <p class="settings-help">Вимкнув назавжди — прибери й правило:</p>
-                    <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ network_firewall_remove_command }}</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="{{ network_firewall_remove_command }}" title="Скопіювати команду">Скопіювати</button>
-                    </div>
-                </div>
-
-                <div class="stand-cell w3">
-                    <h3>Перемикач</h3>
-                    <div class="settings-field">
-                        <p class="settings-help">
-                            {% if network_can_restart %}Застосунок перезапуститься сам.{% else %}Перезапуск — руками (dev).{% endif %}
+                    <div class="swarn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" class="duo"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4.5"/><path d="M12 17.2h.01"/></svg>
+                        <p>
+                            Звʼязок іде по <span class="mono">http</span> без шифрування — пароль входу й секрети
+                            з екрана налаштувань видно в мережі цеху. Тому правило брандмауера нижче лише для
+                            приватного профілю, а адреси з чужої мережі застосунок не пускає навіть із паролем.
+                            Перемикач ПЕРЕЗАПУСКАЄ застосунок (≈10 с): усі, хто зараз працює, побачать паузу.
                         </p>
-                        <form method="post" action="/settings/network/toggle" class="network-toggle" data-busy="{{ busy_operators() }}" data-enabled="{{ '1' if network_enabled else '' }}">
-                            <button type="submit" class="settings-secondary-button">{{ 'Вимкнути доступ з інших ПК' if network_enabled else 'Увімкнути доступ з інших ПК' }}</button>
-                        </form>
                     </div>
-                </div>
-                </div>
+
+                    <div class="stand-cells">
+                        <div class="stand-cell w4">
+                            <h3>Адреса для інших ПК</h3>
+                            <p class="settings-help">Відкрити в браузері на будь-якому ПК цеху.</p>
+                            {% if network_links %}
+                            {% for link in network_links %}
+                            <div class="scmd">
+                                <code>{{ link }}</code>
+                                <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати адресу">Скопіювати</button>
+                            </div>
+                            {% endfor %}
+                            {% else %}
+                            <p class="stand-note">Не вдалось визначити мережевої адреси цього ПК — перевір підключення.</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="stand-cell w2 nacc-switch">
+                            <h3>Перемикач
+                                {% if network_restart_pending %}
+                                    <span class="stand-state stand-state-warn">чекає перезапуску</span>
+                                {% elif network_listening %}
+                                    <span class="stand-state stand-state-ok">слухає мережу</span>
+                                {% elif network_bound_host %}
+                                    <span class="stand-state stand-state-none">лише цей ПК</span>
+                                {% else %}
+                                    <span class="stand-state stand-state-none">адреса невідома</span>
+                                {% endif %}
+                            </h3>
+                            <div class="settings-field">
+                                <p class="settings-help">
+                                    {% if network_can_restart %}Застосунок перезапуститься сам.{% else %}Перезапуск — руками (dev).{% endif %}
+                                    {% if not network_listening and not network_bound_host %} Dev-запуск без лаунчера.{% endif %}
+                                </p>
+                                <form method="post" action="/settings/network/toggle" class="network-toggle" data-busy="{{ busy_operators() }}" data-enabled="{{ '1' if network_enabled else '' }}">
+                                    <button type="submit" class="settings-secondary-button">{{ 'Вимкнути доступ з інших ПК' if network_enabled else 'Увімкнути доступ з інших ПК' }}</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="stand-cell w6">
+                            <h3>Брандмауер — один раз</h3>
+                            <p class="settings-help">
+                                PowerShell від імені адміністратора. Правило лише для приватного й доменного
+                                профілів: у «Загальнодоступну» мережу порт {{ network_port }} не відкривається.
+                            </p>
+                            <div class="scmd">
+                                <code>{{ network_firewall_command }}</code>
+                                <button type="button" class="settings-secondary-button" data-copy="{{ network_firewall_command }}" title="Скопіювати команду">Скопіювати</button>
+                            </div>
+                            <p class="settings-help scmd-note">Вимкнув назавжди — прибери й правило:</p>
+                            <div class="scmd">
+                                <code>{{ network_firewall_remove_command }}</code>
+                                <button type="button" class="settings-secondary-button" data-copy="{{ network_firewall_remove_command }}" title="Скопіювати команду">Скопіювати</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
 
                 {# ── Відкриття тек на ПК операторів ──────────────────────────
                    З мережевого ПК браузер не може відкрити Провідник — сервер
@@ -98,118 +121,128 @@
                    раз на кожен ПК оператора) дозволяє кнопці «Відкрити папку»
                    відкривати теку локально. Без помічника лишається копіювання
                    шляху; вмикати тумблер лише коли помічник стоїть на тих ПК. #}
-                <h3>Відкриття тек на ПК операторів</h3>
-                <p class="settings-help">
-                    З іншого ПК кнопка «Відкрити папку» типово лише копіює шлях (браузер не
-                    має права відкривати Провідник). Постав на кожен операторський ПК крихітний
-                    помічник — і кнопка відкриватиме теку прямо там. Прав адміністратора для
-                    установки не треба.
-                </p>
-                <div class="stand-cells">
-                <div class="stand-cell w6">
-                    <h3>Помічник — раз на кожен ПК</h3>
-                    <p class="settings-help">
-                        Завантаж, розпакуй і запусти <span class="mono">install-kmill-folder.cmd</span>
-                        на ПК оператора (подвійний клік). Повторний запуск безпечний.
+                <section class="nacc-band">
+                    <h3 class="nacc-bandtitle">Відкриття тек на ПК операторів</h3>
+                    <p class="settings-help nacc-lede">
+                        З іншого ПК кнопка «Відкрити папку» типово лише копіює шлях (браузер не
+                        має права відкривати Провідник). Постав на кожен операторський ПК крихітний
+                        помічник — і кнопка відкриватиме теку прямо там. Прав адміністратора для
+                        установки не треба.
                     </p>
-                    <a class="settings-secondary-button" href="/settings/network/folder-helper" download>Завантажити помічник (.zip)</a>
-                </div>
-                <div class="stand-cell w3">
-                    <h3>Режим</h3>
-                    <div class="settings-field">
-                        <p class="settings-help">
-                            Вмикай лише коли помічник стоїть на ПК операторів — інакше в них
-                            вискочить вікно «немає застосунку».
+
+                    <div class="stand-cells">
+                        <div class="stand-cell w4">
+                            <h3>Помічник — раз на кожен ПК</h3>
+                            <p class="settings-help">
+                                Завантаж, розпакуй і запусти <span class="mono">install-kmill-folder.cmd</span>
+                                на ПК оператора (подвійний клік). Повторний запуск безпечний.
+                            </p>
+                            <a class="settings-secondary-button nacc-dl" href="/settings/network/folder-helper" download>Завантажити помічник (.zip)</a>
+                        </div>
+
+                        <div class="stand-cell w2 nacc-switch">
+                            <h3>Режим
+                                {% if network_folder_open %}<span class="stand-state stand-state-ok">відкриває теки</span>{% else %}<span class="stand-state stand-state-none">копіює шлях</span>{% endif %}
+                            </h3>
+                            <div class="settings-field">
+                                <p class="settings-help">
+                                    Вмикай лише коли помічник стоїть на ПК операторів — інакше в них
+                                    вискочить вікно «немає застосунку».
+                                </p>
+                                <form method="post" action="/settings/network/folder-open">
+                                    <button type="submit" class="settings-secondary-button">{{ 'Вимкнути відкриття тек' if network_folder_open else 'Увімкнути відкриття тек' }}</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="nacc-band">
+                    <h3 class="nacc-bandtitle">Читання стану з дому (MCP)</h3>
+                    <p class="settings-help nacc-lede">
+                        Перемикач відкриває ОКРЕМИЙ, крихітний порт (<span class="mono">{{ mcp_port }}</span>),
+                        у якому немає нічого, крім читання стану: ні сторінок, ні входу, ні статики, ні можливості
+                        щось змінити. Головна CRM тим часом лишається на <span class="mono">127.0.0.1</span> і
+                        жодного перезапуску не потребує. Доступ захищає токен нижче — вкрадений токен дає
+                        прочитати стан цеху, але не дає змінити в ньому нічого.
+                    </p>
+                    <div class="swarn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" class="duo"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4.5"/><path d="M12 17.2h.01"/></svg>
+                        <p>
+                            Вимкнений перемикач закриває порт ПОВНІСТЮ — не «забороняє», а фізично перестає
+                            слухати мережу за кілька секунд. Увімкнути назад можна будь-коли.
                         </p>
-                        <form method="post" action="/settings/network/folder-open">
-                            <button type="submit" class="settings-secondary-button">{{ 'Вимкнути відкриття тек' if network_folder_open else 'Увімкнути відкриття тек' }}</button>
-                        </form>
-                        <p class="settings-help">Стан: {% if network_folder_open %}<span class="stand-state stand-state-ok">кнопка відкриває теки</span>{% else %}<span class="stand-state stand-state-none">кнопка копіює шлях</span>{% endif %}</p>
                     </div>
-                </div>
-                </div>
 
-                <h3>Читання стану з дому (MCP)</h3>
-                <p class="settings-help">
-                    Перемикач відкриває ОКРЕМИЙ, крихітний порт (<span class="mono">{{ mcp_port }}</span>),
-                    у якому немає нічого, крім читання стану: ні сторінок, ні входу, ні статики, ні можливості
-                    щось змінити. Головна CRM тим часом лишається на <span class="mono">127.0.0.1</span> і
-                    жодного перезапуску не потребує. Доступ захищає токен нижче — вкрадений токен дає
-                    прочитати стан цеху, але не дає змінити в ньому нічого.
-                </p>
+                    <div class="stand-cells">
+                        <div class="stand-cell w4">
+                            <h3>Рядок для передачі</h3>
+                            <p class="settings-help">
+                                Скопіюй і надішли — у ньому вже є і адреса, і токен, складати нічого не треба.
+                                Якщо рядків кілька, потрібен той, чия адреса збігається з адресою тунелю
+                                (поле <span class="mono">Addresses</span> у програмі WireGuard).
+                            </p>
+                            {% if mcp_links %}
+                            {% for link in mcp_links %}
+                            <div class="scmd">
+                                <code>{{ link }}</code>
+                                <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати рядок">Скопіювати</button>
+                            </div>
+                            {% endfor %}
+                            {% elif not mcp_has_token %}
+                            <p class="stand-note">Спершу увімкни доступ — токен створиться сам, і рядок з'явиться тут.</p>
+                            {% else %}
+                            <p class="stand-note">Не вдалось визначити жодної мережевої адреси цього ПК — перевір підключення (тунель WireGuard мусить бути піднятий).</p>
+                            {% endif %}
+                        </div>
 
-                <p class="settings-help stand-note">
-                    ⚠ Вимкнений перемикач закриває порт ПОВНІСТЮ — не «забороняє», а фізично перестає
-                    слухати мережу за кілька секунд. Увімкнути назад можна будь-коли.
-                </p>
+                        <div class="stand-cell w2 nacc-switch">
+                            <h3>Перемикач
+                                {% set ms = mcp_status %}
+                                {% if not mcp_enabled %}
+                                    <span class="stand-state stand-state-none">порт закрито</span>
+                                {% elif ms and ms.listening %}
+                                    <span class="stand-state stand-state-ok">слухає{% if ms.since %} з {{ ms.since.strftime('%H:%M') }}{% endif %}</span>
+                                {% elif ms and ms.error %}
+                                    <span class="stand-state stand-state-warn">{{ ms.error }}</span>
+                                {% else %}
+                                    <span class="stand-state stand-state-none">вмикається…</span>
+                                {% endif %}
+                            </h3>
+                            <div class="settings-field">
+                                <p class="settings-help">Увімкнення без токена створює його одразу.</p>
+                                <form method="post" action="/settings/mcp/toggle">
+                                    <button type="submit" class="settings-secondary-button">{{ 'Вимкнути доступ' if mcp_enabled else 'Увімкнути доступ' }}</button>
+                                </form>
+                            </div>
+                        </div>
 
-                <div class="stand-cells">
-                <div class="stand-cell w6">
-                    <h3>Рядок для передачі</h3>
-                    <p class="settings-help">
-                        Скопіюй і надішли — у ньому вже є і адреса, і токен, складати нічого не треба.
-                        Якщо рядків кілька, потрібен той, чия адреса збігається з адресою тунелю
-                        (поле <span class="mono">Addresses</span> у програмі WireGuard).
-                    </p>
-                    {% if mcp_links %}
-                    {% for link in mcp_links %}
-                    <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати рядок">Скопіювати</button>
+                        <div class="stand-cell w4">
+                            <h3>Брандмауер — один раз</h3>
+                            <p class="settings-help">
+                                Запусти цю команду в PowerShell від імені адміністратора — вона пускає вхідні на
+                                порт {{ mcp_port }} у всіх профілях мережі. «У всіх» тут суттєво: інтерфейс
+                                WireGuard Windows майже завжди вважається «Загальнодоступною» мережею, і правило
+                                лише для «Приватної» мовчки не працювало б.
+                            </p>
+                            <div class="scmd">
+                                <code>{{ mcp_firewall_command }}</code>
+                                <button type="button" class="settings-secondary-button" data-copy="{{ mcp_firewall_command }}" title="Скопіювати команду">Скопіювати</button>
+                            </div>
+                        </div>
+
+                        <div class="stand-cell w2">
+                            <h3>Токен доступу
+                                <span class="connection-state {% if mcp_has_token %}connection-state-ready{% endif %}">{% if mcp_has_token %}задано{% else %}не задано{% endif %}</span>
+                            </h3>
+                            <div class="settings-field">
+                                <p class="settings-help">Перевипуск одразу вимикає старий токен — усі, кому рядок був переданий, втрачають доступ. Новий рядок з'явиться вище.</p>
+                                <form method="post" action="/settings/mcp/token">
+                                    <button type="submit" class="settings-secondary-button">{% if mcp_has_token %}Перевипустити токен{% else %}Створити токен{% endif %}</button>
+                                </form>
+                            </div>
+                        </div>
                     </div>
-                    {% endfor %}
-                    {% elif not mcp_has_token %}
-                    <p class="stand-note">Спершу увімкни доступ — токен створиться сам, і рядок з'явиться тут.</p>
-                    {% else %}
-                    <p class="stand-note">Не вдалось визначити жодної мережевої адреси цього ПК — перевір підключення (тунель WireGuard мусить бути піднятий).</p>
-                    {% endif %}
-
-                    <h3>Брандмауер — один раз</h3>
-                    <p class="settings-help">
-                        Запусти цю команду в PowerShell від імені адміністратора — вона пускає вхідні на
-                        порт {{ mcp_port }} у всіх профілях мережі. «У всіх» тут суттєво: інтерфейс
-                        WireGuard Windows майже завжди вважається «Загальнодоступною» мережею, і правило
-                        лише для «Приватної» мовчки не працювало б.
-                    </p>
-                    <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ mcp_firewall_command }}</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="{{ mcp_firewall_command }}" title="Скопіювати команду">Скопіювати</button>
-                    </div>
-                    <p class="settings-help">
-                        {% set ms = mcp_status %}
-                        {% if not mcp_enabled %}
-                            <span class="stand-state stand-state-none">вимкнено — порт закрито</span>
-                        {% elif ms and ms.listening %}
-                            <span class="stand-state stand-state-ok">слухає{% if ms.since %} з {{ ms.since.strftime('%H:%M') }}{% endif %}</span>
-                        {% elif ms and ms.error %}
-                            <span class="stand-state stand-state-warn">{{ ms.error }}</span>
-                        {% else %}
-                            <span class="stand-state stand-state-none">вмикається…</span>
-                        {% endif %}
-                    </p>
-                </div>
-
-                <div class="stand-cell w3">
-                    <h3>Токен доступу
-                        <span class="connection-state {% if mcp_has_token %}connection-state-ready{% endif %}">{% if mcp_has_token %}задано{% else %}не задано{% endif %}</span>
-                    </h3>
-                    <div class="settings-field">
-                        <p class="settings-help">Перевипуск одразу вимикає старий токен — усі, кому рядок був переданий, втрачають доступ. Новий рядок з'явиться вище.</p>
-                        <form method="post" action="/settings/mcp/token">
-                            <button type="submit" class="settings-secondary-button">{% if mcp_has_token %}Перевипустити токен{% else %}Створити токен{% endif %}</button>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="stand-cell w3">
-                    <h3>Перемикач</h3>
-                    <div class="settings-field">
-                        <p class="settings-help">Увімкнення без токена створює його одразу.</p>
-                        <form method="post" action="/settings/mcp/toggle">
-                            <button type="submit" class="settings-secondary-button">{{ 'Вимкнути доступ' if mcp_enabled else 'Увімкнути доступ' }}</button>
-                        </form>
-                    </div>
-                </div>
-                </div>
+                </section>
             </div>
         </div>

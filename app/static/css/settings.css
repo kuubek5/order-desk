@@ -1027,15 +1027,159 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .fu-add-row .fu-model-select{display:inline-block;width:auto;height:34px;margin-top:0;font-size:var(--fs-1)}
 .setv2 .fu-add .fu-add-row{grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto auto}
 
-/* Керування розділами «в розробці» (Налаштування → Оператори, лише адмін). */
-.secmgr-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-.secmgr-row .secmgr-name { display: flex; align-items: center; gap: 8px; min-width: 160px; font-weight: 600; }
-.secmgr-row select { background: var(--field); border: 1px solid var(--line-2); color: var(--ink); border-radius: 8px; padding: 6px 10px; font-size: var(--fs-2); }
-.secmgr-row .settings-submit { margin: 0; width: auto; padding: 7px 14px; }
-.secmgr { margin-top: 14px; }
-.secmgr-aud { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 8px 0 0 4px; font-size: var(--fs-1); color: var(--ink-2); }
-.secmgr-aud-lbl { color: var(--ink-3); }
-.secmgr-aud label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+/* ── Керування розділами «в розробці» (лише адмін) ────────────────────────
+   Таблиця на 13 рядків, а не 13 незалежних форм. Раніше кожен рядок був
+   власним flex-контейнером із `min-width:160px` на назві — назва росла
+   разом із текстом, і селект у кожному рядку починався з іншого місця:
+   згори вниз не збігалось нічого. Тепер у ВСІХ рядків одна сітка колонок,
+   тому стовпці стоять рівно. Назва — `1fr` з трикрапкою, решта фіксовані. */
+.secmgr-table { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-4); }
+.secmgr-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px 208px 128px;
+  gap: 12px;
+  padding: 0 14px 2px;
+  font-size: var(--fs-0);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.secmgr {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card-2);
+  padding: 9px 14px 8px;
+}
+/* Закритий розділ — виняток серед дванадцяти відкритих, і має читатись
+   здалеку. Рамка рівно 1px з усіх боків (товста кольорова смуга збоку тут
+   була б декором), тон — той самий, що в пігулки стану. */
+.secmgr.is-closed {
+  border-color: rgba(255, 138, 61, .3);
+  background: linear-gradient(rgba(255, 138, 61, .05), rgba(255, 138, 61, .05)), var(--card-2);
+}
+.secmgr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px 208px 128px;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.secmgr-row .secmgr-name {
+  font-weight: 600;
+  font-size: var(--fs-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.secmgr-row .stand-state { justify-self: start; }
+
+/* Системний вигляд `select` — найпомітніша прикмета «голої форми»: чужа
+   стрілка й чужі метрики. Стрілку малюємо самі маскою, щоб вона брала
+   колір із токена (у `url()` змінні не працюють). */
+.secmgr-sel { position: relative; display: block; }
+.secmgr-sel select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  background: var(--well);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 7px 30px 7px 11px;
+  font-size: var(--fs-2);
+  font-family: inherit;
+  cursor: pointer;
+}
+.secmgr-sel select:hover { border-color: var(--line-strong, var(--line-2)); }
+.secmgr-sel::after {
+  content: "";
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  pointer-events: none;
+  background: var(--ink-3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* Кнопка в рядку — контурна, не залита: залита на екран лишається одна
+   (settings_stand.css), а тут їх тринадцять, по одній на розділ. */
+.secmgr-apply { margin: 0; width: 100%; padding: 7px 10px; font-size: var(--fs-1); }
+
+/* ── винятки під розкриттям ───────────────────────────────────────────── */
+/* Пʼятеро операторів × 13 розділів = 65 чекбоксів, майже завжди в стані
+   «усі ролі, нікого поіменно». Підсумок словами лишається на екрані,
+   самі поля — за одним кліком. Згорнутий <details> поля ВІДПРАВЛЯЄ. */
+.secmgr-more { margin-top: 6px; }
+/* Розділ у стані за замовчуванням не притлумлюємо ПРОЗОРІСТЮ: `opacity:.62`
+   давала 2.85:1 замість 4.5 (заміряно в браузері 26.09.26). Стриманість тут
+   уже й так є — одне коротке слово проти цілого підсумку в решти. */
+.secmgr-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-1);
+  color: var(--ink-3);
+  padding: 2px 0;
+}
+.secmgr-more > summary::-webkit-details-marker { display: none; }
+.secmgr-more > summary::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: none;
+  background: currentColor;
+  transition: transform .15s ease;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.secmgr-more[open] > summary::before { transform: rotate(90deg); }
+.secmgr-more > summary:hover { color: var(--ink-2); }
+.secmgr-sum b { color: var(--ink-2); font-weight: 600; }
+.secmgr-audwrap {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.secmgr-aud { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: 0; font-size: var(--fs-1); color: var(--ink-2); }
+.secmgr-aud-lbl { color: var(--ink-3); flex: none; margin-right: 3px; }
+/* Чекбокс у власній пігулці: системна синя галочка на теплій темній темі
+   була чужою плямою — єдиний елемент на екрані не з палітри. */
+.schip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--well);
+  cursor: pointer;
+  transition: border-color .12s ease, background-color .12s ease;
+}
+.schip:hover { border-color: var(--line-2); }
+.schip input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.schip:has(input:checked) {
+  border-color: rgba(var(--accent-rgb), .42);
+  background: rgba(var(--accent-rgb), .1);
+  color: var(--ink);
+}
+.schip:focus-within { outline: 2px solid rgba(var(--accent-rgb), .5); outline-offset: 1px; }
+
+@media (max-width: 860px) {
+  .secmgr-head { display: none; }
+  .secmgr-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 10px; }
+  .secmgr-sel, .secmgr-apply { grid-column: span 2; }
+  .secmgr-apply { width: auto; justify-self: start; padding: 7px 16px; }
+}
 
 
 /* ── Копії Google-таблиці (розділ #sheet-backup, app/sheet_backup.py) ──────
