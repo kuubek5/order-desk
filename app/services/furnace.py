@@ -430,6 +430,12 @@ def grab(
         return None, f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
+#: Попередження, які лише переказують «зона не прочиталась». Їх виставляє
+#: `furnace_ocr.read_panel` після розбору зон, тож поруч із ними завжди є
+#: точніша скарга самої зони — з її назвою, сирим текстом і вирізом.
+DERIVED_WARNINGS = ("Температуру не розпізнано", "Залишок часу не розпізнано")
+
+
 def _puzzle_of(reading: Optional[PanelReading]) -> Optional[tuple[str, str, Optional[str]]]:
     """Що саме читач не зрозумів на цьому кадрі: (причина, пояснення, зона).
 
@@ -439,8 +445,16 @@ def _puzzle_of(reading: Optional[PanelReading]) -> Optional[tuple[str, str, Opti
     """
     if reading is None:
         return ("layout_unknown", "табло не прочиталось зовсім (виняток на розборі)", None)
-    if reading.warnings:
-        return ("layout_unknown", "; ".join(reading.warnings), None)
+    # Похідні попередження («Температуру не розпізнано», «Залишок часу не
+    # розпізнано») — це НАСЛІДОК того, що зона не прочиталась, і вони не мають
+    # заступати причину. Доки вони поверталися першими, загадка печі виходила
+    # без назви зони, без сирого тексту й БЕЗ ВИРІЗУ: у цеху такий рядок набрав
+    # 1082 повтори з 13.09.26, і донавчити з нього було нема чого (27.09.26).
+    # Решта попереджень (чужий розмір екрана, немає файлу еталонів, «срок» не
+    # сходиться зі статусом) стосуються всього табла — вони й далі головніші.
+    other = [w for w in reading.warnings if w not in DERIVED_WARNINGS]
+    if other:
+        return ("layout_unknown", "; ".join(other), None)
 
     found: dict[str, tuple[str, Optional[str]]] = {}
     if reading.status == STATUS_UNKNOWN:
@@ -467,6 +481,10 @@ def _puzzle_of(reading: Optional[PanelReading]) -> Optional[tuple[str, str, Opti
             )
     reason = screen_inbox.pick_reason(found)
     if reason is None:
+        # Жодна зона не поскаржилась, а число все одно не зібралось (напр.
+        # прочиталось, але не склалось у час) — лишається сказати те, що є.
+        if reading.warnings:
+            return ("layout_unknown", "; ".join(reading.warnings), None)
         return None
     detail, zone_name = found[reason]
     return (reason, detail, zone_name)

@@ -314,3 +314,48 @@ def test_two_furnace_states_are_two_screens(db_session, inbox, target):
             screen_inbox.signature(a.convert("RGB")), screen_inbox.signature(b.convert("RGB"))
         )
     assert same <= limit, f"два кадри однієї панелі розійшлись на {same:.2f}"
+
+
+def test_an_unread_remaining_zone_reaches_the_inbox_with_its_crop(
+    db_session, inbox, target, monkeypatch
+):
+    """Залишок часу не зібрався — у скриньці мусить бути ЗОНА, а не переказ.
+
+    Бойовий слід: загадка «Залишок часу не розпізнано» набрала 1082 повтори з
+    13.09.26 і не мала ні назви зони, ні сирого тексту, ні вирізу — бо похідне
+    попередження поверталось раніше за скаргу самої зони. Донавчити з такого
+    рядка було нема чого.
+    """
+    from app import furnace_ocr
+
+    zone = furnace_ocr.ZONES["remaining"]
+    # Зсуваємо праву межу всередину числа — рівно те, що на табло робить
+    # нове, ширше значення: останньої цифри в зоні вже немає, і час не
+    # складається («09:05:3» замість «09:05:31»).
+    clipped = (zone.rect[0], zone.rect[1], zone.rect[2] - 30, zone.rect[3])
+    monkeypatch.setitem(
+        furnace_ocr.ZONES, "remaining",
+        furnace_ocr.Zone(clipped, zone.ink, zone.title, zone.pattern),
+    )
+    with Image.open(REAL_FRAME) as opened:
+        frame = opened.convert("RGB")
+    furnace.poll_target(db_session, target, password=None, frame=frame)
+
+    rows = db_session.scalars(select(ScreenPuzzle)).all()
+    assert len(rows) == 1
+    puzzle = rows[0]
+    assert puzzle.reason != "layout_unknown", puzzle.detail
+    assert "Лишилось" in puzzle.detail
+    assert screen_inbox.image_path(puzzle, "zone") is not None
+
+
+def test_a_whole_panel_problem_still_beats_the_zones(db_session, inbox, target, monkeypatch):
+    """Чужий розмір екрана стосується ВСЬОГО табла — він і далі головніший за
+    скаргу окремої зони, інакше причина загубилась би серед наслідків."""
+    with Image.open(REAL_FRAME) as opened:
+        frame = opened.convert("RGB").resize((640, 480))
+    furnace.poll_target(db_session, target, password=None, frame=frame)
+
+    rows = db_session.scalars(select(ScreenPuzzle)).all()
+    assert [r.reason for r in rows] == ["layout_unknown"]
+    assert "розмір екрана" in rows[0].detail
