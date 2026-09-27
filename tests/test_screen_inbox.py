@@ -255,8 +255,27 @@ def test_repeat_adds_the_missing_crop(db_session, clock):
     assert row.zone_file
     with Image.open(si.image_path(row, "zone")) as zone:
         assert zone.size == (120, 40)
-    # Не-JOBS причина: подробиці лишаються від першого разу.
-    assert row.detail == "старе"
+
+
+def test_a_zone_crop_and_its_detail_stay_from_the_same_minute(db_session, clock):
+    """Зонні причини печі теж освіжаються — і виріз, і підпис разом.
+
+    Доти підпис лишався від ПЕРШОГО разу, а виріз дописувався на якомусь
+    пізнішому повторі, і вони розходились: загадка «Бочки» по зоні «Крок»
+    казала «3 символи без еталона, сире '??1:11:1.?'», а виріз читався чисто
+    як «01:11:17» (27.09.26). Доказ із однієї хвилини й скарга з іншої —
+    правила з такої пари робити не можна, а саме для правил скринька і є.
+    """
+    frame = _frame(400, 300)
+    si.note(db_session, kind=si.KIND_FURNACE, key="p2", name="Піч", frame=frame,
+            reason="glyph_unknown", detail="сире '??1:11:1.?'", zone_crop=_zone(120, 40))
+    clock.sleep(si.TOUCH_EVERY_SECONDS + 1)
+    si.note(db_session, kind=si.KIND_FURNACE, key="p2", name="Піч", frame=frame,
+            reason="glyph_unknown", detail="сире '0?:11:17'", zone_crop=_zone(200, 40))
+    (row,) = _rows(db_session)
+    assert row.detail == "сире '0?:11:17'"
+    with Image.open(si.image_path(row, "zone")) as zone:
+        assert zone.size == (200, 40)
 
 
 def test_newgen_crop_is_refreshed_with_its_detail(db_session, clock):
