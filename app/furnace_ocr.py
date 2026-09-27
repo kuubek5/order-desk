@@ -656,11 +656,19 @@ def read_panel(image: Image.Image) -> PanelReading:
             "Немає файлу еталонів цифр — жодне число з табло не читається"
         )
     if reading.temp_c is None:
-        reading.warnings.append("Температуру не розпізнано")
+        reading.warnings.append(WARN_NO_TEMP)
     if reading.remaining_seconds is None:
-        reading.warnings.append("Залишок часу не розпізнано")
+        reading.warnings.append(WARN_NO_REMAINING)
 
     return reading
+
+
+#: Попередження, які лише переказують «зона не зібралась у число». Названі,
+#: бо на них дивиться `app/services/furnace.py::_puzzle_of`: там вони МУСЯТЬ
+#: пропустити вперед точнішу скаргу самої зони (з назвою, сирим текстом і
+#: вирізом). Збіг двох однакових рядків у різних файлах розійшовся б мовчки.
+WARN_NO_TEMP = "Температуру не розпізнано"
+WARN_NO_REMAINING = "Залишок часу не розпізнано"
 
 
 def format_remaining(seconds: Optional[int]) -> str:

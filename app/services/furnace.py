@@ -43,6 +43,8 @@ from app.furnace_ocr import (
     STATUS_RUN,
     STATUS_UNKNOWN,
     STATUS_WAIT,
+    WARN_NO_REMAINING,
+    WARN_NO_TEMP,
     ZONES,
     format_remaining,
     read_panel,
@@ -433,7 +435,7 @@ def grab(
 #: Попередження, які лише переказують «зона не прочиталась». Їх виставляє
 #: `furnace_ocr.read_panel` після розбору зон, тож поруч із ними завжди є
 #: точніша скарга самої зони — з її назвою, сирим текстом і вирізом.
-DERIVED_WARNINGS = ("Температуру не розпізнано", "Залишок часу не розпізнано")
+DERIVED_WARNINGS = (WARN_NO_TEMP, WARN_NO_REMAINING)
 
 
 def _puzzle_of(reading: Optional[PanelReading]) -> Optional[tuple[str, str, Optional[str]]]:

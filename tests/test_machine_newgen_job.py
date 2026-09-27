@@ -494,3 +494,59 @@ def test_too_many_unsure_digits_give_no_variants(monkeypatch):
     blurred["9"].extend(blurred["0"])
     monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: blurred)
     assert ng.read_newgen_program_variants(Image.open(FRAME_250I)) == []
+
+
+def _picks_for(text, unsure_at, options):
+    """Хвіст «2026-09-0412-57-22.I??» посимвольно, з однією непевною цифрою."""
+    picks = []
+    for index, char in enumerate(text):
+        if index == unsure_at:
+            picks.append(ng._Pick(None, tuple(options)))
+        else:
+            picks.append(ng._Pick(char, (char,)))
+    return picks
+
+
+TAIL_TEXT = "2026-09-0412-57-22.I??"
+
+
+def test_the_helper_test_itself_reads_a_valid_tail(monkeypatch):
+    """Сторож для двох тестів нижче: хвіст справді складається в програму.
+
+    Перша версія тесту стелі була зелена й БЕЗ стелі — вона годувала читачу
+    несправжній хвіст, той не складався в дату, і порожній список означав
+    «сміття на вході», а не «перебір зупинено».
+    """
+    monkeypatch.setattr(
+        ng, "_tail_picks", lambda image, templates: (_picks_for(TAIL_TEXT, 5, "09"), None)
+    )
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: {"0": []})
+    got = {p.sum3d_id for p in ng.read_newgen_program_variants(Image.open(FRAME_250I))}
+    assert got == {"12-57-22"}, "дві дати, один час — обидві мусять прочитатись"
+
+
+def test_a_smeared_digit_with_many_candidates_is_not_brute_forced(monkeypatch):
+    """Розмазаний гліф може лягти в межі MAX_DISTANCE від пів десятка цифр.
+
+    Кожне прочитання коштує запиту в базу НА КОЖНОМУ тіку опитування, доки
+    екран не прочитається, тож перебір має стелю: краще мовчати, ніж
+    перебирати. На наявних еталонах більше двох претендентів не буває жодного
+    разу — тут це відтворено штучно.
+    """
+    monkeypatch.setattr(
+        ng, "_tail_picks",
+        lambda image, templates: (_picks_for(TAIL_TEXT, 17, "0123456789"), None),
+    )
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: {"0": []})
+    assert ng.read_newgen_program_variants(Image.open(FRAME_250I)) == []
+
+
+def test_two_candidates_still_go_through(monkeypatch):
+    """Звичайний випадок (двоє претендентів) стеля не чіпає."""
+    monkeypatch.setattr(
+        ng, "_tail_picks",
+        lambda image, templates: (_picks_for(TAIL_TEXT, 17, "28"), None),
+    )
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: {"0": []})
+    got = {p.sum3d_id for p in ng.read_newgen_program_variants(Image.open(FRAME_250I))}
+    assert got == {"12-57-22", "12-57-28"}

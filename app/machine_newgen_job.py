@@ -328,6 +328,13 @@ def _ranked(glyph: _Glyph, templates: dict[str, list[np.ndarray]]) -> list[tuple
 #: «рівно один збігся з чергою» перестає бути рідкісною подією.
 UNSURE_LIMIT = 2
 
+#: І стеля на сам перебір. Непевна цифра зазвичай має двох претендентів (на
+#: наявних еталонах більше двох не буває жодного разу — перевірено), але
+#: розмазаний гліф може опинитись у межах MAX_DISTANCE від пів десятка цифр.
+#: Кожне прочитання коштує запиту в базу НА КОЖНОМУ тіку опитування, доки
+#: екран не прочитається, тож нехай краще мовчить, ніж перебирає.
+VARIANTS_LIMIT = 4
+
 
 @dataclass(frozen=True)
 class _Pick:
@@ -437,6 +444,11 @@ def read_newgen_program_variants(image: Image.Image) -> "list[MillingProgram]":
         return []
     unsure = [p for p in picks if p.char is None]
     if not unsure or len(unsure) > UNSURE_LIMIT:
+        return []
+    combos = 1
+    for pick in unsure:
+        combos *= max(1, len(pick.options))
+    if combos > VARIANTS_LIMIT:
         return []
     programs: "list[MillingProgram]" = []
     for combo in product(*[p.options if p.char is None else (p.char,) for p in picks]):
