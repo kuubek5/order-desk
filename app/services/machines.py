@@ -1556,7 +1556,18 @@ def _program_from_screen(
     try:
         program, why = read_newgen_program_explained(frame)
     except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
-        logger.exception("Назву програми з екрана верстата %s не прочитано", target.host)
+        # Через глушник: кадр читається кожні 5-6 с на кожному верстаті, і
+        # битий кадр (напр. порожня смуга в сегментації назви) інакше спамив би
+        # повний traceback щотіку — 398 разів за 2 год у цеху 27.09.26, кожен
+        # коштує форматування стеку й запис у файл. Раз на годину з лічильником
+        # достатньо, щоб побачити проблему, не палячи CPU на її повторний опис.
+        skipped = log_throttle.due(f"machines.newgen_read_error:{target.key}")
+        if skipped is not None:
+            logger.exception(
+                "Назву програми з екрана верстата %s не прочитано "
+                "(ще %d подібних відтоді)",
+                target.host, skipped,
+            )
         return None
     if program is None:
         program = _program_resolved_by_queue(db, target, frame)

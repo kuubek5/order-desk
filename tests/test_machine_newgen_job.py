@@ -550,3 +550,52 @@ def test_two_candidates_still_go_through(monkeypatch):
     monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: {"0": []})
     got = {p.sum3d_id for p in ng.read_newgen_program_variants(Image.open(FRAME_250I))}
     assert got == {"12-57-22", "12-57-28"}
+
+
+@pytest.mark.parametrize("size", [(60, 20), (200, 40), (5, 5), (300, 1)])
+def test_degenerate_zone_never_raises(size):
+    """`_glyphs_in_zone` на вироджених/порожніх зонах не кидає ValueError.
+
+    Бойовий випадок 27.09.26: `max(pieces)` на порожній смузі падав
+    «max() arg is an empty sequence» із `_program_from_screen` — 398 разів за
+    2 год на цеховому ПК, кожне будувало traceback і крутило numpy намарно.
+    Guard `if not bases` нижче ставили саме проти цього, але на другий max;
+    падав перший. Тут — усі краї: біле, чорне, вузьке, однопіксельне."""
+    for colour in ((255, 255, 255), (0, 0, 0), (128, 128, 128)):
+        zone = Image.new("RGB", size, colour)
+        # Не має кидати — повертає None або список гліфів.
+        result = ng._glyphs_in_zone(zone)
+        assert result is None or isinstance(result, list)
+
+
+def test_thin_ink_stripe_does_not_crash():
+    """Смуга з тонкою горизонтальною рискою чорнила (підкреслення/рамка без
+    рядка символів) — саме той клас входу, що давав порожній `pieces`."""
+    zone = Image.new("RGB", (120, 30), (255, 255, 255))
+    draw = ImageDraw.Draw(zone)
+    draw.line((0, 15, 119, 15), fill=(20, 20, 20), width=1)
+    result = ng._glyphs_in_zone(zone)
+    assert result is None or isinstance(result, list)
+
+
+def test_broken_frame_read_error_is_throttled(db, monkeypatch, caplog):
+    """Виняток читання кадру логується РАЗ на годину, не щотіку.
+
+    Битий кадр читається кожні 5-6 с на кожному верстаті; без глушника він
+    спамив повний traceback — 398 разів за 2 год у цеху 27.09.26, кожен коштує
+    форматування стеку. Тут: 10 підряд винятків → рівно один запис у лог."""
+    import logging
+
+    def boom(_frame):
+        raise ValueError("max() arg is an empty sequence")
+
+    monkeypatch.setattr(ms, "read_newgen_program_explained", boom)
+    frame = Image.open(FRAME_250I)
+    target = _agent()
+
+    with caplog.at_level(logging.ERROR, logger="app.services.machines"):
+        for _ in range(10):
+            assert ms._program_from_screen(db, target, frame) is None
+
+    errors = [r for r in caplog.records if "не прочитано" in r.getMessage()]
+    assert len(errors) == 1, f"очікував 1 запис, було {len(errors)}"
