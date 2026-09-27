@@ -678,9 +678,18 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    rgba(229,115,106) не їхав за темою разом із текстом. */
 .q2 .sum3d-clear:hover{color:var(--color-overdue);background:rgba(var(--alarm-rgb),.12)}
 @media (hover:none){.q2 .sum3d-clear{opacity:.55}}
-.q2 .folder-link{margin-left:6px;color:var(--ink-3);display:inline-flex;vertical-align:middle}
-.q2 .folder-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.q2 .folder-link:hover{color:var(--accent-c);opacity:1}
+/* Іконка теки (клієнтські роботи) = ТОЙ САМИЙ вигляд, що кубик прев'ю
+   лабораторних робіт (.q2 .job-code-preview вище): одна дія «подивитись STL»
+   мусить виглядати однаково в обох типах рядків. Доти вона успадковувала з
+   queue_table.css таблетку 1.75rem із фоном і рамкою, і в одній таблиці стояли
+   дві різні кнопки на одну дію (власник 27.09.26). Тому фон/рамку/розмір
+   скидаємо ЯВНО — базове правило лишається для екранів поза `.q2`. */
+.q2 .folder-link{margin:0 0 0 6px;padding:2px;width:auto;height:auto;border:0;background:none;
+  color:var(--accent-b);display:inline-flex;align-items:center;vertical-align:middle;cursor:pointer;
+  border-radius:5px;transition:color var(--ui-speed) ease,background var(--ui-speed) ease}
+.q2 .folder-link svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.q2 .folder-link:hover{color:var(--accent-c);background:rgba(var(--accent-base-rgb), .14);opacity:1;border-color:transparent}
+.q2 .folder-link:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .q2 .status-select{
   height:26px;border-radius:999px;background:var(--field);border:1px solid var(--line);color:var(--ink);
   font-size:var(--fs-1);padding:0 8px;font-family:var(--font-body);cursor:pointer;
@@ -747,7 +756,8 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    в точності, а програв у кількості видимих робіт. Псевдоелемент не займає
    місця в потоці, тож геометрія рядка не змінюється на жоден піксель.
    Розширення в КОЖНОМУ випадку менше за власний відступ до сусіда, щоб зони не
-   налазили одна на одну (іконка теки 15px має відступ 6px, розширюємо на 4.5). */
+   налазили одна на одну (іконка теки й кубик прев'ю — 18px з відступом 5-6px,
+   тож розширюємо обидві на 3). */
 .q2 .focus-btn,
 .q2 .rowmenu-btn,
 .q2 .sum3d-clear,
@@ -761,7 +771,7 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 .q2 .focus-btn::after{inset:-2px}
 .q2 .rowmenu-btn::after{inset:-1px}
 .q2 .sum3d-clear::after{inset:0 -1px}
-.q2 .folder-link::after{inset:-4.5px}
+.q2 .folder-link::after{inset:-3px}
 .q2 .job-code-preview::after{inset:-3px}
 .q2 .row-delete:hover{color:var(--alarm);background:rgba(var(--alarm-rgb), .14)}
 @media (hover:none){.q2 .row-delete{opacity:.55}}
