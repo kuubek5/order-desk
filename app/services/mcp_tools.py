@@ -131,6 +131,9 @@ def _order_email_files(db: Session, order: Order) -> dict | None:
     existing = [a for a in own if Path(a.saved_path).exists()]
     return {
         "id_листа": order.source_email_id,
+        # Головне джерело теки: прийняття листа записує сюди точний шлях, і
+        # саме його читають видача й дзеркало черги на екрані пошти.
+        "закріплена_тека": order.export_folder_path,
         "своїх_файлів": len(own),
         "з_них_на_диску": len(existing),
         "нерозібраних_у_листі": len(loose),

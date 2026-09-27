@@ -23,6 +23,7 @@ from pathlib import Path, PureWindowsPath
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.export_scanner import entry_for_folder
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import (
     get_export_folder_path,
@@ -515,6 +516,22 @@ def attach_job_code_folder_uris(db: Session, orders: list[Order]) -> None:
             order.job_code_folder_preview_token = token
 
 
+def _bound_folder(export_root: Path | None, order: Order) -> Path | None:
+    """Тека, яку прийняття листа записало в `Order.export_folder_path`.
+
+    Шлях відносний (`<клієнт>/<партія>/<матеріал>`, іноді на рівень коротший
+    або довший), тому склеюємо з коренем export тим самим `entry_for_folder`,
+    що й видача — своя склейка розійшлася б з нею на перших же нетипових
+    рівнях. Теки вже немає (перейменували, прибрали) — None, і викликач іде
+    далі по власних файлах роботи.
+    """
+    rel = getattr(order, "export_folder_path", None)
+    if not rel or export_root is None:
+        return None
+    entry = entry_for_folder(export_root, rel)
+    return entry.folder_path if entry is not None else None
+
+
 def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     """Те саме, що `attach_export_folder_uris`, але для ДЗЕРКАЛА на екрані
     пошти — і тека береться з файлів САМЕ ЦІЄЇ роботи.
@@ -526,11 +543,18 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     знаходився, тека бралася як батько ПЕРШОГО існуючого файлу ЛИСТА — тобто
     при двох партіях перша робота могла дістати теку чужого кольору чи клієнта.
 
-    Тут ходимо прямо `Attachment.order_id` → `saved_path`: це поле проставляє
-    сам переїзд файлів у export (`mail_accept`), тож воно точно каже, чиї це
-    файли. Якщо власних файлів у роботи немає (лист прийняли без скачаних
-    вкладень), відкочуємось на НЕРОЗІБРАНІ вкладення листа (`order_id IS NULL`,
-    вони ще лежать у спулі) — чужої теки в export це дати не може.
+    Перше джерело — `Order.export_folder_path`: прийняття листа САМЕ туди
+    переносить файли й одразу записує цей шлях (`mail_accept`), тобто теку не
+    треба відновлювати з файлів — вона вже відома з моменту, коли оператор
+    обрав її в майстрі пошти. Так само її читає видача (`handout`), і саме цього
+    джерела тут бракувало: обидва попередні резолвери йшли в обхід, через
+    вкладення (власник 27.09.26: «ці шляхи обробляються в поштовому клієнті»).
+
+    Далі — `Attachment.order_id` → `saved_path` (поле проставляє той самий
+    переїзд): рятує роботи, чий шлях стерла пересадка рядка в синку. Якщо
+    власних файлів немає зовсім (лист прийняли без скачаних вкладень) —
+    НЕРОЗІБРАНІ вкладення листа (`order_id IS NULL`, ще в спулі); чужої теки в
+    export це дати не може.
 
     Свідомо окрема функція, а не правка спільної: черга й архів лишаються на
     старій поведінці, поки власник не подивиться на «було → стало» там.
@@ -586,16 +610,20 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
             if path.exists():
                 spool_by_email[attachment.email_message_id] = path.parent
 
+    export_root = get_export_folder_path(db)
     preview_roots: dict[str, str | None] = {
-        "export": get_export_folder_path(db),
+        "export": export_root,
         **mail_spool_root_map(db),
     }
     # Корені — один раз на пакет, як у `attach_export_folder_uris`: та сама
     # перевірка, просто не помножена на кількість рядків.
     validated_roots = validate_preview_roots(preview_roots)
+    root_path = Path(export_root) if export_root else None
 
     for order in email_orders:
-        folder = folder_by_order.get(order.id)
+        folder = _bound_folder(root_path, order)
+        if folder is None:
+            folder = folder_by_order.get(order.id)
         if folder is None and order.id not in claimed and order.source_email_id is not None:
             folder = spool_by_email.get(order.source_email_id)
         if folder is None:

@@ -128,3 +128,76 @@ def test_sheet_work_is_left_alone(db_session, tmp_path):
 
     assert order.export_folder_uri is None
     assert order.export_folder_preview_token is None
+
+
+def test_bound_path_from_accept_wins_over_attachments(db_session, tmp_path, monkeypatch):
+    """Тека, яку прийняття листа записало в `Order.export_folder_path`, — перше
+    джерело. Її обрав оператор у майстрі пошти, і саме її читає видача; шукати
+    теку по файлах, коли шлях уже відомий, — обхідний маневр (власник 27.09.26).
+    """
+    from app import order_folder
+
+    db = db_session
+    export_root = tmp_path / "export"
+    bound = export_root / "Юрій Бойко" / "27.09.26" / "mono b2"
+    bound.mkdir(parents=True)
+    (bound / "crown.stl").write_text("x")
+    monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(export_root))
+
+    email = EmailMessage(uid="9", uid_validity="v", status="прийнято")
+    db.add(email)
+    db.flush()
+    order = Order(
+        source="email", client_name="Юрій Бойко", source_email_id=email.id,
+        export_folder_path="Юрій Бойко/27.09.26/mono b2",
+    )
+    db.add(order)
+    db.flush()
+    # Файл роботи лежить ІНДЕ — якби резолвер і далі йшов від вкладень, він
+    # показав би цю теку замість закріпленої.
+    other = tmp_path / "somewhere" / "old"
+    other.mkdir(parents=True)
+    (other / "crown.stl").write_text("x")
+    db.add(Attachment(
+        email_message_id=email.id, filename="crown.stl",
+        saved_path=str(other / "crown.stl"), order_id=order.id,
+    ))
+    db.commit()
+
+    attach_mail_mirror_folder_uris(db, [order])
+
+    assert order.export_folder_uri is not None
+    assert "mono%20b2" in order.export_folder_uri
+
+
+def test_bound_path_that_no_longer_exists_falls_through(db_session, tmp_path, monkeypatch):
+    """Теку перейменували — беремо власні файли роботи, а не мертве посилання."""
+    from app import order_folder
+
+    db = db_session
+    export_root = tmp_path / "export"
+    export_root.mkdir()
+    monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(export_root))
+
+    email = EmailMessage(uid="10", uid_validity="v", status="прийнято")
+    db.add(email)
+    db.flush()
+    order = Order(
+        source="email", client_name="Хтось", source_email_id=email.id,
+        export_folder_path="Хтось/01.01.26/зникла",
+    )
+    db.add(order)
+    db.flush()
+    real = tmp_path / "export" / "Хтось" / "02.01.26" / "mono a2"
+    real.mkdir(parents=True)
+    (real / "crown.stl").write_text("x")
+    db.add(Attachment(
+        email_message_id=email.id, filename="crown.stl",
+        saved_path=str(real / "crown.stl"), order_id=order.id,
+    ))
+    db.commit()
+
+    attach_mail_mirror_folder_uris(db, [order])
+
+    assert order.export_folder_uri is not None
+    assert "mono%20a2" in order.export_folder_uri
