@@ -201,3 +201,57 @@ def test_bound_path_that_no_longer_exists_falls_through(db_session, tmp_path, mo
 
     assert order.export_folder_uri is not None
     assert "mono%20a2" in order.export_folder_uri
+
+
+def test_hand_downloaded_mail_falls_back_to_client_card_folder(db_session, tmp_path, monkeypatch):
+    """Файли скачали з пошти руками повз CRM (у базі нуль вкладень) — але тека
+    клієнта відома з картки (`ClientNameAlias`), тож відкриваємо ЇЇ, рівень
+    клієнта. Бойовий випадок 27.09.26: листи 243/296."""
+    from app import order_folder
+    from app.models import ClientNameAlias
+
+    db = db_session
+    export_root = tmp_path / "export"
+    (export_root / "Жестовский").mkdir(parents=True)
+    monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(export_root))
+
+    email = EmailMessage(uid="11", uid_validity="v", status="прийнято")
+    db.add(email)
+    db.flush()
+    order = Order(
+        source="email", client_name="Виктор Жестовский", source_email_id=email.id,
+    )
+    db.add(order)
+    db.add(ClientNameAlias(
+        sheet_name="Виктор Жестовский", export_folder_name="Жестовский", confirmed=True,
+    ))
+    db.commit()
+
+    attach_mail_mirror_folder_uris(db, [order])
+
+    assert order.export_folder_uri is not None
+    assert order.export_folder_uri.endswith("/%D0%96%D0%B5%D1%81%D1%82%D0%BE%D0%B2%D1%81%D0%BA%D0%B8%D0%B9")
+
+
+def test_no_confirmed_binding_means_no_guessing(db_session, tmp_path, monkeypatch):
+    """Немає підтвердженої прив'язки — клітинка порожня, тека за схожістю імені
+    не вгадується (правило видачі §2)."""
+    from app import order_folder
+
+    db = db_session
+    export_root = tmp_path / "export"
+    (export_root / "Виктор Жестовский").mkdir(parents=True)  # тека Є, збіг точний
+    monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(export_root))
+
+    email = EmailMessage(uid="12", uid_validity="v", status="прийнято")
+    db.add(email)
+    db.flush()
+    order = Order(
+        source="email", client_name="Виктор Жестовский", source_email_id=email.id,
+    )
+    db.add(order)
+    db.commit()
+
+    attach_mail_mirror_folder_uris(db, [order])
+
+    assert order.export_folder_uri is None

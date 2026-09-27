@@ -532,6 +532,32 @@ def _bound_folder(export_root: Path | None, order: Order) -> Path | None:
     return entry.folder_path if entry is not None else None
 
 
+def _client_folder(
+    db: Session, export_root: Path, order: Order, email: EmailMessage | None
+) -> Path | None:
+    """Тека клієнта в export за ПІДТВЕРДЖЕНОЮ прив'язкою — або None.
+
+    Те саме джерело, яким прийняття листа обирає теку (`preferred_client_folder`):
+    картка клієнта, а без неї — пам'ять відправника. Нечіткого збігу за іменем
+    тут свідомо немає (правило видачі §2: система не вгадує). Повертає теку
+    рівня КЛІЄНТА: партію/матеріал без файлів у базі не відновити чесно.
+    """
+    from app.client_folder import preferred_client_folder
+    from app.sender_memory import lookup_sender
+
+    hint = lookup_sender(db, email) if email is not None else None
+    name = preferred_client_folder(db, order.client_name, hint)
+    if not name:
+        return None
+    folder = export_root / name
+    try:
+        if not folder.is_dir():
+            return None
+    except OSError:
+        return None
+    return folder
+
+
 def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     """Те саме, що `attach_export_folder_uris`, але для ДЗЕРКАЛА на екрані
     пошти — і тека береться з файлів САМЕ ЦІЄЇ роботи.
@@ -555,6 +581,14 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     власних файлів немає зовсім (лист прийняли без скачаних вкладень) —
     НЕРОЗІБРАНІ вкладення листа (`order_id IS NULL`, ще в спулі); чужої теки в
     export це дати не може.
+
+    Останнє джерело — тека КЛІЄНТА (без партії й матеріалу): картка клієнта
+    (`ClientNameAlias`, підтверджена) або пам'ять відправника листа. Це для
+    робіт, чиї файли оператор скачав з пошти руками повз CRM (бойовий випадок
+    27.09.26: листи 243/296 — нуль вкладень у базі, лог без download-attachments,
+    а робота у видачі і тека в export існує). Вгадування тут немає: беруться
+    лише підтверджені прив'язки, якими користується й саме прийняття
+    (`preferred_client_folder`); немає прив'язки — клітинка порожня.
 
     Свідомо окрема функція, а не правка спільної: черга й архів лишаються на
     старій поведінці, поки власник не подивиться на «було → стало» там.
@@ -620,12 +654,35 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     validated_roots = validate_preview_roots(preview_roots)
     root_path = Path(export_root) if export_root else None
 
+    # Для робіт, яким не вистачило перших трьох джерел, — лист цілком:
+    # пам'ять відправника прив'язана до адреси, а адреса живе в EmailMessage.
+    email_by_id: dict[int, EmailMessage] = {}
+    orphan_email_ids = {
+        order.source_email_id
+        for order in email_orders
+        if order.source_email_id is not None
+        and _bound_folder(root_path, order) is None
+        and order.id not in folder_by_order
+        and order.source_email_id not in spool_by_email
+    }
+    if orphan_email_ids and root_path is not None:
+        email_by_id = {
+            email.id: email
+            for email in db.scalars(
+                select(EmailMessage).where(EmailMessage.id.in_(orphan_email_ids))
+            )
+        }
+
     for order in email_orders:
         folder = _bound_folder(root_path, order)
         if folder is None:
             folder = folder_by_order.get(order.id)
         if folder is None and order.id not in claimed and order.source_email_id is not None:
             folder = spool_by_email.get(order.source_email_id)
+        if folder is None and root_path is not None:
+            folder = _client_folder(
+                db, root_path, order, email_by_id.get(order.source_email_id or -1)
+            )
         if folder is None:
             continue
         order.export_folder_uri = folder_to_file_uri(folder)

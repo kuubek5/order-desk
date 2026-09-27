@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app import log_throttle, perf
+from app import perf
 from app.business_day import utc_now
 from app.client_profile import (
     count_matching_orders,
@@ -43,9 +43,10 @@ from app.services.clients import (
     ensure_client_profiles,
     quantity_units,
 )
-from app.services.client_merge import find_candidates, record_merge, record_skip
+from app.services.client_merge import record_merge, record_skip
+from app.services import duplicates_cache
 from app.services import folder_merge as folder_merge_svc
-from app.export_scanner import list_export_client_names_cached, peek_export_client
+from app.export_scanner import peek_export_client
 from app.settings_store import get_export_folder_path
 from app.client_folder import card_folder_for
 from app.mail_export import _contained_child
@@ -262,40 +263,27 @@ def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
     if blocked is not None:
         return blocked
 
-    # Мітки не косметика: на проді екран стояв 11-24 с, а в «Slow request» усі
-    # фази були по 0.00 — увесь час падав у невиміряну решту, і гадати, який із
-    # чотирьох шматків винен, не було по чому (27.09.26).
-    with perf.span("dup:clients"):
-        candidates = find_candidates(db)
-    # Теки на диску — для розбору дублікатів ТЕК (дві папки на одного клієнта).
-    # Порожній/недоступний шлях export → просто немає кандидатів-тек.
-    with perf.span("dup:scan"):
-        try:
-            folder_names = list_export_client_names_cached(Path(get_export_folder_path(db)))
-        except OSError:
-            folder_names = []
-    with perf.span("dup:folders"):
-        folder_candidates = folder_merge_svc.find_candidates(db, folder_names)
+    # Рахунок пар тут БІЛЬШЕ НЕ ЙДЕ: на проді він коштував 15+ секунд на кожне
+    # відкриття (замір 27.09.26: dup:folders 13.24с при 757 теках), а список
+    # змінюється рідко. Екран віддає останній знімок з duplicates_cache, а
+    # перерахунок живе у фоновому потоці; холодний старт показує «рахується»,
+    # і сторінка перезавантажує себе сама, доки знімок не з'явиться.
+    with perf.span("dup:snapshot"):
+        snapshot, computing = duplicates_cache.snapshot_for_screen()
     with perf.span("dup:groups"):
         folder_groups = folder_merge_svc.list_groups(db)
-    # Обсяг у лог — через глушник, бо екран відкривають підряд. Без цих двох
-    # чисел фази кажуть «повільно тут», але не кажуть, від чого воно росте.
-    if log_throttle.due("clients.duplicates_size") is not None:
-        logger.info(
-            "Можливі дублікати: %d пар клієнтів, %d тек export",
-            len(candidates), len(folder_names),
-        )
     return templates.TemplateResponse(
         request,
         "clients_duplicates.html",
         {
             "user": user,
-            "candidates": candidates,
-            "folder_candidates": folder_candidates,
+            "candidates": snapshot.clients if snapshot else [],
+            "folder_candidates": snapshot.folders if snapshot else [],
             # Ручний режим: усі теки для списку вибору + наявні групи (перегляд і
             # «розбити»), щоб зчепити пару, яку rapidfuzz не запропонував.
-            "folder_all": sorted(folder_names),
+            "folder_all": snapshot.folder_names if snapshot else [],
             "folder_groups": folder_groups,
+            "computing": snapshot is None and computing,
             "flash": request.query_params.get("flash"),
         },
     )
@@ -315,6 +303,8 @@ def merge_folder_duplicate(
         raise HTTPException(status_code=403, detail="розділ недоступний")
     folder_merge_svc.record_merge(db, name_a, name_b)
     db.commit()
+    duplicates_cache.drop_folder_pair(name_a, name_b)
+    duplicates_cache.kick("folder-merge")
     return RedirectResponse("/clients/duplicates?flash=folder_merged", status_code=303)
 
 
@@ -332,6 +322,8 @@ def skip_folder_duplicate(
         raise HTTPException(status_code=403, detail="розділ недоступний")
     folder_merge_svc.record_skip(db, name_a, name_b)
     db.commit()
+    duplicates_cache.drop_folder_pair(name_a, name_b)
+    duplicates_cache.kick("folder-skip")
     return RedirectResponse("/clients/duplicates?flash=folder_skipped", status_code=303)
 
 
@@ -344,6 +336,8 @@ def unmerge_folder_group(request: Request, name: str = Form(...), db: Session = 
         raise HTTPException(status_code=403, detail="розділ недоступний")
     folder_merge_svc.record_unmerge(db, name)
     db.commit()
+    # Розбита група повертає теки в гру — потрібен повний перерахунок.
+    duplicates_cache.kick("folder-unmerge")
     return RedirectResponse("/clients/duplicates?flash=folder_unmerged", status_code=303)
 
 
@@ -361,6 +355,8 @@ def merge_client_duplicate(
         raise HTTPException(status_code=403, detail="розділ недоступний")
     record_merge(db, canonical_name, variant_name)
     db.commit()
+    duplicates_cache.drop_client_pair(canonical_name, variant_name)
+    duplicates_cache.kick("merge")
     return RedirectResponse("/clients/duplicates?flash=merged", status_code=303)
 
 
@@ -378,6 +374,8 @@ def skip_client_duplicate(
         raise HTTPException(status_code=403, detail="розділ недоступний")
     record_skip(db, name_a, name_b)
     db.commit()
+    duplicates_cache.drop_client_pair(name_a, name_b)
+    duplicates_cache.kick("skip")
     return RedirectResponse("/clients/duplicates?flash=skipped", status_code=303)
 
 

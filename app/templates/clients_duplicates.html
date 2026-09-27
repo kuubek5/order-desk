@@ -4,6 +4,10 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/clients.css?v={{ static_ver('css/clients.css') }}">
+{# Холодний старт: знімок ще рахується у фоні — сторінка перезапитує себе
+   сама, доки він не з'явиться. Meta, а не HTMX: тут перезавантажується вся
+   сторінка цілком, і жодного стану, який шкода втратити, ще немає. #}
+{% if computing %}<meta http-equiv="refresh" content="3">{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -18,6 +22,11 @@
            написання й «Злити», або познач «Не дублі». Зведення діє в підказках
            і на екрані клієнтів; видачу коронок воно НЕ чіпає.</p>
     </header>
+
+    {% if computing %}
+    <div class="cdup-flash" role="status">Список рахується у фоні — сторінка
+        оновиться сама за кілька секунд.</div>
+    {% endif %}
 
     {% if flash == 'merged' %}
     <div class="cdup-flash" role="status">Імена злито.</div>
