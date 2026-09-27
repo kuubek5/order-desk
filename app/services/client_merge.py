@@ -16,13 +16,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from rapidfuzz import fuzz
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
 from app.material_classifier import match_key
 from app.models import ClientMerge, Order
+from app.services.fuzzy_pairs import fold_keys, similar_pairs
 
 #: Скільки схожості достатньо, щоб ПОКАЗАТИ пару як можливий дубль. Не для
 #: автозлиття — лише для показу; вирішує власник.
@@ -44,14 +44,6 @@ def _pair_keys(name_a: str, name_b: str) -> tuple[str, str]:
     """Впорядкована пара ключів — ідентичність пари незалежно від порядку."""
     ka, kb = match_key(name_a), match_key(name_b)
     return (ka, kb) if ka <= kb else (kb, ka)
-
-
-def _pair_score(name_a: str, name_b: str) -> float:
-    """Схожість двох імен. Беремо максимум по сирих і по згорнутих формах, щоб
-    зловити і різний регістр/пробіли, і різний алфавіт (гомогліфи)."""
-    raw = fuzz.token_set_ratio(name_a.lower(), name_b.lower())
-    folded = fuzz.token_set_ratio(match_key(name_a), match_key(name_b))
-    return max(raw, folded)
 
 
 def _distinct_names(session: Session) -> list[tuple[str, int]]:
@@ -88,35 +80,41 @@ def merge_map(session: Session) -> dict[str, str]:
 
 
 def find_candidates(session: Session, *, limit: int = _MAX_CANDIDATES) -> list[Candidate]:
-    """Пари схожих імен, ще не розібрані власником, від найсхожіших."""
+    """Пари схожих імен, ще не розібрані власником, від найсхожіших.
+
+    Схожість рахує `fuzzy_pairs.similar_pairs` (див. його докстрінг: матриця в C
+    замість подвійного циклу на Python). Відсів «уже зведені / вже розібрані /
+    той самий ключ» лишився ТУТ і не змінився — він лише переїхав з середини
+    циклу на список пар, що вже пройшли поріг схожості. Результат від цього не
+    зсувається: усі три перевірки тільки відкидають пари, жодна не додає.
+    """
     names = _distinct_names(session)
     decided = _decided_pairs(session)
     merged_variants = set(merge_map(session))  # уже зведені — не пропонуємо знову
 
+    labels = [name for name, _count in names]
+    keys = fold_keys(labels)
+
     out: list[Candidate] = []
-    for i in range(len(names)):
-        name_a, count_a = names[i]
-        key_a = match_key(name_a)
-        if key_a in merged_variants:
+    for i, j, score in similar_pairs(
+        labels, threshold=_CANDIDATE_THRESHOLD, keys=keys
+    ):
+        key_a, key_b = keys[i], keys[j]
+        if key_a in merged_variants or key_b in merged_variants:
             continue
-        for j in range(i + 1, len(names)):
-            name_b, count_b = names[j]
-            key_b = match_key(name_b)
-            if key_b in merged_variants:
-                continue
-            if key_a == key_b:
-                continue  # той самий згорнутий ключ — це вже один кластер підказок
-            if _pair_keys(name_a, name_b) in decided:
-                continue
-            score = _pair_score(name_a, name_b)
-            if score < _CANDIDATE_THRESHOLD:
-                continue
-            out.append(
-                Candidate(
-                    a_name=name_a, a_count=count_a,
-                    b_name=name_b, b_count=count_b, score=int(round(score)),
-                )
+        if key_a == key_b:
+            continue  # той самий згорнутий ключ — це вже один кластер підказок
+        pair = (key_a, key_b) if key_a <= key_b else (key_b, key_a)
+        if pair in decided:
+            continue
+        name_a, count_a = names[i]
+        name_b, count_b = names[j]
+        out.append(
+            Candidate(
+                a_name=name_a, a_count=count_a,
+                b_name=name_b, b_count=count_b, score=int(round(score)),
             )
+        )
     out.sort(key=lambda c: (-c.score, -(c.a_count + c.b_count)))
     return out[:limit]
 

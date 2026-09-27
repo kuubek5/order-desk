@@ -16,12 +16,12 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from rapidfuzz import fuzz
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.material_classifier import match_key
 from app.models import FolderMerge
+from app.services.fuzzy_pairs import fold_keys, similar_pairs
 
 _CANDIDATE_THRESHOLD = 82.0
 _MAX_CANDIDATES = 40
@@ -39,12 +39,6 @@ def _pair_keys(name_a: str, name_b: str) -> tuple[str, str]:
     return (ka, kb) if ka <= kb else (kb, ka)
 
 
-def _pair_score(name_a: str, name_b: str) -> float:
-    raw = fuzz.token_set_ratio(name_a.lower(), name_b.lower())
-    folded = fuzz.token_set_ratio(match_key(name_a), match_key(name_b))
-    return max(raw, folded)
-
-
 def _decided_pairs(session: Session) -> set[tuple[str, str]]:
     return {(row.a_key, row.b_key) for row in session.execute(select(FolderMerge)).scalars()}
 
@@ -56,19 +50,22 @@ def find_candidates(
     `folder_names` дає викликач (list_export_client_names) — сервіс диск не читає."""
     names = sorted({(n or "").strip() for n in folder_names if (n or "").strip()})
     decided = _decided_pairs(session)
+    keys = fold_keys(names)
+
     out: list[Candidate] = []
-    for i in range(len(names)):
-        key_a = match_key(names[i])
-        for j in range(i + 1, len(names)):
-            key_b = match_key(names[j])
-            if key_a == key_b:
-                continue
-            if _pair_keys(names[i], names[j]) in decided:
-                continue
-            score = _pair_score(names[i], names[j])
-            if score < _CANDIDATE_THRESHOLD:
-                continue
-            out.append(Candidate(a_name=names[i], b_name=names[j], score=int(round(score))))
+    # Схожість — `fuzzy_pairs.similar_pairs` (матриця в C замість подвійного
+    # циклу). Тут це важить навіть більше, ніж у клієнтів: назв тек у export
+    # накопичується більше, ніж імен у черзі, а вікна за датою в них немає.
+    # Відсів «той самий ключ / уже розібрана пара» не змінився — він лише
+    # переїхав на пари, що вже пройшли поріг.
+    for i, j, score in similar_pairs(names, threshold=_CANDIDATE_THRESHOLD, keys=keys):
+        key_a, key_b = keys[i], keys[j]
+        if key_a == key_b:
+            continue
+        pair = (key_a, key_b) if key_a <= key_b else (key_b, key_a)
+        if pair in decided:
+            continue
+        out.append(Candidate(a_name=names[i], b_name=names[j], score=int(round(score))))
     out.sort(key=lambda c: -c.score)
     return out[:limit]
 
