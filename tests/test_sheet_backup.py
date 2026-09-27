@@ -276,3 +276,54 @@ def test_snapshot_reads_each_tab_once(patched):
     sb.snapshot_all_tabs(object(), dbp, today=date(2026, 7, 22))
 
     assert calls == [1]
+
+
+def test_a_padded_tab_name_is_healed_before_reading(patched, monkeypatch):
+    """Вкладка « 17.09.26» лікується, а не лишається без копії назавжди.
+
+    Пробіл на початку назви ламає читання намертво: gspread підставляє назву
+    в діапазон A1, і Google відмовляє навіть у лапках. У лозі цеху цей самий
+    «Unable to parse range: ' 17.09.26'» лежав вісім разів, і день не мав
+    копії. Обійти на своєму боці не можна — канонічної назви Google не знає,
+    — тому знімок кличе те саме перейменування по ID аркуша, що й запис.
+    """
+    healed = []
+
+    class _PaddedWS(_FakeWS):
+        def get_all_values(self):
+            if self.title != self.title.strip():
+                raise RuntimeError("Unable to parse range: ' 17.09.26'")
+            return self._rows
+
+    ws = _PaddedWS(" 17.09.26", _work_rows([24150]))
+
+    def _repair(spreadsheet, worksheet):
+        healed.append(worksheet.title)
+        worksheet.title = worksheet.title.strip()
+
+    monkeypatch.setattr("app.sheets.repair_padded_tab_title", _repair, raising=True)
+    state, dbp = patched
+    state["sheets"] = [ws]
+
+    result = sb.snapshot_all_tabs(object(), dbp, today=date(2026, 9, 17))
+
+    assert healed == [" 17.09.26"]
+    assert result.written == 1 and result.failed == 0
+    assert b"24150" in (sb.sheets_backup_dir(dbp) / "2026-09-17.csv").read_bytes()
+    assert sb.list_snapshots(dbp)[0].tab == "17.09.26"
+
+
+def test_a_tab_that_cannot_be_healed_is_reported_not_hidden(patched, monkeypatch):
+    """Перейменувати не вийшло (акаунт «Читач») — день іде у `failed`, а не
+    зникає тихо."""
+    class _PaddedWS(_FakeWS):
+        def get_all_values(self):
+            raise RuntimeError("Unable to parse range: ' 17.09.26'")
+
+    monkeypatch.setattr("app.sheets.repair_padded_tab_title", lambda *a: None, raising=True)
+    state, dbp = patched
+    state["sheets"] = [_PaddedWS(" 17.09.26", _work_rows([24150]))]
+
+    result = sb.snapshot_all_tabs(object(), dbp, today=date(2026, 9, 17))
+
+    assert result.failed == 1 and result.written == 0

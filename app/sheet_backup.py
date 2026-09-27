@@ -50,7 +50,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.business_day import business_today
+from app.business_day import business_today, canonical_tab_title
 from app.parser import HEADER_ROWS
 from app.settings_store import get_google_sheet_id
 
@@ -180,7 +180,12 @@ def snapshot_all_tabs(
 
     # Імпорт тут, а не вгорі: тягне gspread/google-auth, і тримати модуль
     # знімків незалежним від них до першого реального проходу дешевше.
-    from app.sheets import call_with_retry, open_spreadsheet, quota_is_tight
+    from app.sheets import (
+        call_with_retry,
+        open_spreadsheet,
+        quota_is_tight,
+        repair_padded_tab_title,
+    )
     from app.sheet_sync_service import _sync_lock
 
     # Знімок — страховка, і вона не має заважати живому синку: беремо той самий
@@ -214,6 +219,19 @@ def snapshot_all_tabs(
                 tab_date = _parse_tab_date(title)
                 if tab_date is None:
                     continue  # недатована вкладка — поза межами добово-місячного архіву
+                if canonical_tab_title(title) != title:
+                    # Пробіл на початку назви (« 17.09.26») ламає ЧИТАННЯ цієї
+                    # вкладки намертво: gspread підставляє назву в діапазон A1,
+                    # і Google відмовляє навіть у лапках («Unable to parse
+                    # range: ' 17.09.26'» — вісім разів у лозі цеху). Обійти на
+                    # своєму боці не можна: канонічну назву Google не знає.
+                    # Тому лікуємо джерело — тим самим перейменуванням по ID
+                    # аркуша, що й перед записом; воно з трьома запобіжниками й
+                    # мовчки нічого не робить, коли чіпати не можна (акаунт
+                    # «Читач», назва зайнята, вкладка не дата). Не вийшло —
+                    # читаємо як є і чесно потрапляємо у `failed`.
+                    repair_padded_tab_title(spreadsheet, ws)
+                    title = ws.title
                 iso = _iso(tab_date)
                 present_isos.add(iso)
                 target = folder / f"{iso}.csv"

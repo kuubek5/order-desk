@@ -554,7 +554,7 @@ def latest_worksheet_on_or_before(
     return best_ws
 
 
-def _repair_padded_tab_title(
+def repair_padded_tab_title(
     spreadsheet: gspread.Spreadsheet, worksheet: gspread.Worksheet
 ) -> None:
     """Прибрати «сміття» з назви вкладки просто в таблиці.
@@ -649,6 +649,6 @@ def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gsprea
     # не заважають читанню (його канонізує `canonical_tab_title`), але ламають
     # КОЖЕН запис, бо назва йде в діапазон A1 як є. Дешево: коли чистити нічого,
     # функція виходить без жодного звернення до Google.
-    _repair_padded_tab_title(spreadsheet, worksheet)
+    repair_padded_tab_title(spreadsheet, worksheet)
     cache[name] = worksheet
     return worksheet
