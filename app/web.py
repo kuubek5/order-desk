@@ -861,6 +861,38 @@ def export_warm_once(db: Session) -> int:
     return total_folders
 
 
+FOLDER_BINDING_INITIAL_DELAY_SECONDS = 30.0
+FOLDER_BINDING_INTERVAL_SECONDS = 60.0
+
+
+def _folder_binding_worker(stop_event: Event) -> None:
+    """Прив'язати свіжі клієнтські рядки до їхніх тек у export (власник
+    26.09.26, `app/services/folder_binding.py`). Раз на хвилину: рядок чекає
+    2 хв після появи, а пробуємо його 6 годин — кандидати тільки теки,
+    старші за рядок, тож довше сканувати шару нема сенсу.
+
+    НА ПАУЗІ (власник 27.09.26): у переліку воркерів нижче не зареєстрований,
+    тож ця функція зараз не виконується. Прапорець `folder_binding.ENABLED`
+    лишається другим запобіжником — щоб воркер, випадково повернений у
+    перелік, не почав тихо писати в базу повз рішення власника."""
+    from app.services.folder_binding import ENABLED, bind_pending
+
+    if not ENABLED:
+        return
+    if stop_event.wait(FOLDER_BINDING_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                root = (get_export_folder_path(db) or "").strip()
+                if root:
+                    bind_pending(db, Path(root))
+        except Exception:  # noqa: BLE001 — фонова прив'язка не валить застосунок
+            logger.exception("Фонова прив'язка тек не вдалась")
+        if stop_event.wait(FOLDER_BINDING_INTERVAL_SECONDS):
+            return
+
+
 @dataclass
 class _BackgroundWorker:
     """Один фоновий daemon-потік і його вимикач. Раніше кожен воркер

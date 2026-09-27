@@ -70,6 +70,12 @@ class ExportEntry:
     """Партії всередині теки кольору (`SubBatch`), за часом; порожньо, коли
     партія одна. Лише для теки з підтеками: один scandir на підтеку."""
 
+    material_created_at: datetime | None = None
+    """Час створення САМОЇ теки кольору (рівень 3). `created_at` — час теки
+    партії (рівень 2), а оператор кладе в одну партію кілька кольорів у різні
+    години (Середюк `Новая папка (762)`: тека 10:08, `mono bl2` — лише ввечері).
+    Прив'язці рядка до теки (`folder_binding`) потрібна саме ця мить."""
+
 
 _STL = ".stl"
 
@@ -79,7 +85,7 @@ def _entry_ctime(entry: "os.DirEntry") -> datetime | None:
     ходить на диск удруге)."""
     try:
         return datetime.fromtimestamp(entry.stat().st_ctime)
-    except (OSError, ValueError, OverflowError):
+    except (OSError, ValueError, OverflowError, AttributeError):
         return None
 
 
@@ -301,6 +307,7 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
                 folder_path=Path(material.path),
                 subfolders=subfolders,
                 parts=_material_parts(root_stls, subdirs),
+                material_created_at=_entry_ctime(material),
             )
         )
     # Лише коли підтек немає зовсім: файл поруч із теками матеріалу — це
@@ -315,6 +322,7 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
                 material_color_folder_name=batch.name,
                 files=loose,
                 folder_path=Path(batch.path),
+                material_created_at=created_at,
             )
         )
     return entries
@@ -329,14 +337,19 @@ def entry_for_folder(root: Path, rel_path: str) -> "ExportEntry | None":
     самого кольору дістав би чужу теку). Читає РІВНО цю теку: один scandir
     листа, як і решта видачі. None — теки вже немає (оператор перейменував чи
     прибрав) або шлях кривий: викликач тоді тихо падає на нечіткий збіг.
+
+    Прив'язка рядка до теки (`folder_binding`, 26.09.26) пише ще два види
+    шляху: `<клієнт>/<партія>` — файли лежать просто в партії, без теки
+    кольору; і `<клієнт>/<партія>/<матеріал>/<підтека>` — окрема партія
+    всередині теки кольору (Середюк `763/pmma a2/Новая папка`). Колір запису
+    — завжди тека кольору (3-й рівень) або сама партія, не назва підтеки.
     """
     rel = (rel_path or "").strip().replace("\\", "/").strip("/")
     if not rel:
         return None
     parts = rel.split("/")
-    # Три рівні — інваріант save_attachments_to_export; будь-що інше (порожні
-    # частини, `.`/`..`) відкидаємо як биту чи небезпечну назву.
-    if len(parts) != 3 or any(p in ("", ".", "..") for p in parts):
+    # Порожні частини й `.`/`..` відкидаємо як биту чи небезпечну назву.
+    if not 2 <= len(parts) <= 4 or any(p in ("", ".", "..") for p in parts):
         return None
     target = Path(root).joinpath(*parts)
     try:
@@ -357,11 +370,12 @@ def entry_for_folder(root: Path, rel_path: str) -> "ExportEntry | None":
         except OSError:
             continue
 
-    # Час — з теки ПАРТІЇ (рівень 2), як у решти сканера; тека матеріалу чи
+    # Час — з теки ПАРТІЇ (рівень 2), як у решти сканера; глибша тека чи
     # `now` — лише запаска, щоб шаблон видачі мав що показати (created_at
     # обовʼязковий). Для прямого шляху дата вторинна: збіг уже точний.
+    batch_dir = Path(root).joinpath(*parts[:2])
     created_at = datetime.now()
-    for candidate in (target.parent, target):
+    for candidate in (batch_dir, target):
         try:
             created_at = datetime.fromtimestamp(candidate.stat().st_ctime)
             break
@@ -372,7 +386,7 @@ def entry_for_folder(root: Path, rel_path: str) -> "ExportEntry | None":
         client_folder_name=parts[0],
         batch_folder_name=parts[1],
         created_at=created_at,
-        material_color_folder_name=parts[2],
+        material_color_folder_name=parts[2] if len(parts) >= 3 else parts[1],
         files=files_list,
         folder_path=target,
         subfolders=subfolders,

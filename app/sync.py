@@ -209,6 +209,10 @@ def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None
     order.sheet_changed_fields = None
     # Недійшлий Sum3D стосувався СТАРОЇ роботи — у новій його бути не може.
     order.sum3d_pending = None
+    # Тека з файлами теж була СТАРОЇ роботи (прийняття листа чи прив'язка в
+    # мить появи рядка, `folder_binding`). Лишити її — і видача впевнено
+    # показувала б під новою роботою чужі STL, минаючи будь-яку перевірку.
+    order.export_folder_path = None
     for field in _ALL_ROW_FIELDS:
         setattr(order, field, None)
 

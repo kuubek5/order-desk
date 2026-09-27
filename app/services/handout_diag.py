@@ -20,9 +20,12 @@ from sqlalchemy.orm import Session
 
 from app.business_day import business_date_of, business_today
 from app.export_scanner import (
+    entry_for_folder,
     list_export_client_names_cached,
     scan_export_client_cached,
 )
+from app.services import folder_binding
+from app.services.folder_binding import entry_fully_bound, rel_key
 from app.services.handout import (
     NAMELESS_CLIENT_KEY,
     covered_days,
@@ -128,8 +131,36 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
     works = []
     for order in orders:
         work_day = parse_sheet_tab(order.sheet_tab)
+        # Та сама логіка, що на екрані (`routers/handout.py`): закріплена тека
+        # б'є будь-який збіг, а чужі закріплені теки з кандидатів випадають.
+        if order.export_folder_path:
+            exists = entry_for_folder(export_root, order.export_folder_path) is not None
+            works.append(
+                {
+                    "id": order.id,
+                    "наряд": order.work_order_no,
+                    "матеріал": order.material_color,
+                    "день_роботи": order.sheet_tab,
+                    "статус": order.status,
+                    "результат": (
+                        f"закріплено за текою: {order.export_folder_path}"
+                        + ("" if exists else " — ТЕКИ НЕМАЄ на диску, екран падає на нечіткий збіг")
+                    ),
+                }
+            )
+            continue
+        bound_elsewhere = {
+            rel_key(o.export_folder_path)
+            for o in orders
+            if o.export_folder_path and o.id != order.id
+        } if folder_binding.ENABLED else set()
+        candidates = (
+            [e for e in entries if not entry_fully_bound(e, bound_elsewhere)]
+            if bound_elsewhere
+            else entries
+        )
         matched = entries_for_material(
-            order.material_color, entries, work_day, claims, order.id
+            order.material_color, candidates, work_day, claims, order.id
         )
         if matched:
             result = "зіставлено з текою: " + ", ".join(
@@ -146,7 +177,7 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
             result = "тека клієнта НЕ зіставлена (ім'я не знайшло теки в export)"
         else:
             stale = stale_folder_day(
-                order.material_color, entries, work_day, claims, order.id
+                order.material_color, candidates, work_day, claims, order.id
             )
             if stale is not None:
                 result = (

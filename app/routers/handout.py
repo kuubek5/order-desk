@@ -77,6 +77,8 @@ from app.services.handout import (
     stale_folder_day,
     work_units,
 )
+from app.services import folder_binding
+from app.services.folder_binding import entry_fully_bound, rel_key
 from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
 from app.services.sheet_writeback import (
@@ -352,8 +354,22 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                 order.export_matches = [direct]
                 order.export_stale_day = None
             else:
+                # Теку, закріплену за ІНШОЮ роботою (прийняття листа чи прив'язка
+                # в мить появи рядка, `folder_binding`), нечіткий збіг уже не
+                # пропонує: одна тека — одна робота. Саме так bitesplint 4482
+                # висів би й під 4490 (Середюк 24.09.26).
+                bound_elsewhere = {
+                    rel_key(o.export_folder_path)
+                    for o in by_client.get(client_name, ())
+                    if o.export_folder_path and o.id != order.id
+                } if folder_binding.ENABLED else set()
+                candidates = (
+                    [e for e in export_entries if not entry_fully_bound(e, bound_elsewhere)]
+                    if bound_elsewhere
+                    else export_entries
+                )
                 order.export_matches = entries_for_material(
-                    order.material_color, export_entries, work_day, client_claims, order.id
+                    order.material_color, candidates, work_day, client_claims, order.id
                 )
                 # Теки за день роботи немає, є лише старіші з тим самим кольором —
                 # їх НЕ показуємо (хибна тека гірша за жодну), а рядок каже про
@@ -361,7 +377,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                 order.export_stale_day = (
                     None if order.export_matches
                     else stale_folder_day(
-                        order.material_color, export_entries, work_day, client_claims, order.id
+                        order.material_color, candidates, work_day, client_claims, order.id
                     )
                 )
             # З якого STL відкривати прев'ю, коли в теці кольору кілька партій
