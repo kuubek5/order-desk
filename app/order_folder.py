@@ -513,3 +513,94 @@ def attach_job_code_folder_uris(db: Session, orders: list[Order]) -> None:
         token = build_preview_token_for_known_child("tech", name)
         if token is not None:
             order.job_code_folder_preview_token = token
+
+
+def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
+    """Те саме, що `attach_export_folder_uris`, але для ДЗЕРКАЛА на екрані
+    пошти — і тека береться з файлів САМЕ ЦІЄЇ роботи.
+
+    Різниця не косметична. `attach_export_folder_uris` шукає лист через
+    `EmailMessage.order_id`, а той ставиться лише для ПЕРШОЇ роботи листа
+    (`mail_accept`, коментар біля `if email.order_id is None`), тож у другої й
+    далі робіт багатопартійного листа теки не було ніколи. І навіть коли лист
+    знаходився, тека бралася як батько ПЕРШОГО існуючого файлу ЛИСТА — тобто
+    при двох партіях перша робота могла дістати теку чужого кольору чи клієнта.
+
+    Тут ходимо прямо `Attachment.order_id` → `saved_path`: це поле проставляє
+    сам переїзд файлів у export (`mail_accept`), тож воно точно каже, чиї це
+    файли. Якщо власних файлів у роботи немає (лист прийняли без скачаних
+    вкладень), відкочуємось на НЕРОЗІБРАНІ вкладення листа (`order_id IS NULL`,
+    вони ще лежать у спулі) — чужої теки в export це дати не може.
+
+    Свідомо окрема функція, а не правка спільної: черга й архів лишаються на
+    старій поведінці, поки власник не подивиться на «було → стало» там.
+    """
+    for order in orders:
+        order.export_folder_uri = None
+        order.export_folder_preview_token = None
+
+    email_orders = [order for order in orders if order.source == "email"]
+    if not email_orders:
+        return
+
+    order_ids = [order.id for order in email_orders]
+    own = db.scalars(
+        select(Attachment).where(Attachment.order_id.in_(order_ids))
+    ).all()
+
+    folder_by_order: dict[int, Path] = {}
+    claimed: set[int] = set()
+    for attachment in own:
+        if attachment.order_id is None:
+            continue
+        claimed.add(attachment.order_id)
+        if attachment.order_id in folder_by_order:
+            continue
+        path = Path(attachment.saved_path)
+        if path.exists():
+            folder_by_order[attachment.order_id] = path.parent
+
+    # Відкат для робіт, у яких ВЛАСНИХ вкладень немає зовсім (лист прийняли без
+    # скачаних файлів): спул листа, з якого робота народилась. Саме «немає
+    # зовсім», а не «є, але зникли з диска»: у другому випадку файли кудись
+    # поділися вже ПІСЛЯ переїзду, і спул тоді тримає їх застарілу копію —
+    # відкрити її означало б показати оператору не ту коронку. Порожня клітинка
+    # тут чесніша.
+    pending_email_ids = {
+        order.source_email_id
+        for order in email_orders
+        if order.id not in claimed and order.source_email_id is not None
+    }
+    spool_by_email: dict[int, Path] = {}
+    if pending_email_ids:
+        loose = db.scalars(
+            select(Attachment).where(
+                Attachment.email_message_id.in_(pending_email_ids),
+                Attachment.order_id.is_(None),
+            )
+        ).all()
+        for attachment in loose:
+            if attachment.email_message_id in spool_by_email:
+                continue
+            path = Path(attachment.saved_path)
+            if path.exists():
+                spool_by_email[attachment.email_message_id] = path.parent
+
+    preview_roots: dict[str, str | None] = {
+        "export": get_export_folder_path(db),
+        **mail_spool_root_map(db),
+    }
+    # Корені — один раз на пакет, як у `attach_export_folder_uris`: та сама
+    # перевірка, просто не помножена на кількість рядків.
+    validated_roots = validate_preview_roots(preview_roots)
+
+    for order in email_orders:
+        folder = folder_by_order.get(order.id)
+        if folder is None and order.id not in claimed and order.source_email_id is not None:
+            folder = spool_by_email.get(order.source_email_id)
+        if folder is None:
+            continue
+        order.export_folder_uri = folder_to_file_uri(folder)
+        order.export_folder_preview_token = build_preview_token_lexical(
+            folder, preview_roots, validated_roots
+        )
