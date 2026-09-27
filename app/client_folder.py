@@ -138,7 +138,7 @@ def sender_display_names(db: Session, memories) -> dict[int, str]:
         .order_by(EmailMessage.id)
     ).all():
         if address:
-            signed[address.strip().casefold()] = from_name.strip()
+            signed[address.strip().casefold()] = (from_name or "").strip()
     names: dict[int, str] = {}
     for memory in memories:
         key = (memory.sender_key or "").strip().casefold()

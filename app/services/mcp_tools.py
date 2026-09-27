@@ -46,7 +46,7 @@ from app.business_day import (
     utc_to_business,
 )
 from app.config import DATA_DIR, DB_PATH
-from app.models import ActionLog, Comment, Order, StatusEvent, SyncLog
+from app.models import ActionLog, Attachment, Comment, Order, StatusEvent, SyncLog
 from app.services import device_diag
 from app.services.order_dates import parse_sheet_tab
 
@@ -104,6 +104,39 @@ def _readiness(order: Order) -> str:
         return "можна брати"
     return "в роботі"
 
+
+
+def _order_email_files(db: Session, order: Order) -> dict | None:
+    """Звідки поштова робота бере теку — або чому не бере.
+
+    Дзеркало черги на екрані пошти показує іконку теки за файлами САМЕ ЦІЄЇ
+    роботи (`Attachment.order_id`). Коли іконки немає, ззовні не видно, що саме
+    порожнє: робота без листа, лист без вкладень, вкладення не переїхали чи
+    файли зникли з диска. Питати це доводилось власника кліками по екрану
+    (27.09.26) — тепер видно звідси.
+    """
+    if order.source != "email":
+        return None
+    own = db.scalars(
+        select(Attachment).where(Attachment.order_id == order.id)
+    ).all()
+    loose: list[Attachment] = []
+    if order.source_email_id is not None:
+        loose = list(db.scalars(
+            select(Attachment).where(
+                Attachment.email_message_id == order.source_email_id,
+                Attachment.order_id.is_(None),
+            )
+        ).all())
+    existing = [a for a in own if Path(a.saved_path).exists()]
+    return {
+        "id_листа": order.source_email_id,
+        "своїх_файлів": len(own),
+        "з_них_на_диску": len(existing),
+        "нерозібраних_у_листі": len(loose),
+        "тека": str(Path(existing[0].saved_path).parent) if existing else None,
+        "шлях_першого_файлу": own[0].saved_path if own else None,
+    }
 
 def _order_brief(order: Order) -> dict[str, Any]:
     return {
@@ -276,6 +309,7 @@ def _order_full(db: Session, order: Order) -> dict[str, Any]:
             "видано_звідки": order.issued_source,
             "видача_закріплена": order.issue_locked,
             "sum3d_не_в_таблиці": order.sum3d_pending,
+            "лист": _order_email_files(db, order),
             "хронологія": [
                 {
                     "коли": _local(e.occurred_at),

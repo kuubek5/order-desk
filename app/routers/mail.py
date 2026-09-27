@@ -631,7 +631,7 @@ def get_mail(
                 ).all()
             }
             for address, cnt in rejected_counts:
-                if address.strip().lower() not in sender_patterns:
+                if (address or "").strip().lower() not in sender_patterns:
                     filter_suggest = {"address": address, "count": cnt}
                     break
 

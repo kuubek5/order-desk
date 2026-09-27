@@ -77,6 +77,7 @@ def load_colour_rows(session: Session) -> list[ColourRow]:
     ).all()
     out: list[ColourRow] = []
     for raw, count in rows:
+        raw = raw or ""
         normalized = normalize_material(raw)
         if not normalized:
             continue

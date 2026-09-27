@@ -179,7 +179,7 @@ def feed(db: Session, *, limit: int = HISTORY_LIMIT) -> tuple[list[ShiftNote], b
     stmt = _with_people(
         select(ShiftNote).order_by(ShiftNote.created_at.desc()).limit(limit + 1)
     )
-    rows = list(db.execute(stmt).scalars().all())
+    rows: list[ShiftNote] = list(db.execute(stmt).scalars().all())
     truncated = len(rows) > limit
     return rows[:limit], truncated
 

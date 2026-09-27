@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app import log_throttle, perf
 from app.business_day import utc_now
 from app.client_profile import (
     count_matching_orders,
@@ -261,14 +262,29 @@ def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
     if blocked is not None:
         return blocked
 
-    candidates = find_candidates(db)
+    # Мітки не косметика: на проді екран стояв 11-24 с, а в «Slow request» усі
+    # фази були по 0.00 — увесь час падав у невиміряну решту, і гадати, який із
+    # чотирьох шматків винен, не було по чому (27.09.26).
+    with perf.span("dup:clients"):
+        candidates = find_candidates(db)
     # Теки на диску — для розбору дублікатів ТЕК (дві папки на одного клієнта).
     # Порожній/недоступний шлях export → просто немає кандидатів-тек.
-    try:
-        folder_names = list_export_client_names_cached(Path(get_export_folder_path(db)))
-    except OSError:
-        folder_names = []
-    folder_candidates = folder_merge_svc.find_candidates(db, folder_names)
+    with perf.span("dup:scan"):
+        try:
+            folder_names = list_export_client_names_cached(Path(get_export_folder_path(db)))
+        except OSError:
+            folder_names = []
+    with perf.span("dup:folders"):
+        folder_candidates = folder_merge_svc.find_candidates(db, folder_names)
+    with perf.span("dup:groups"):
+        folder_groups = folder_merge_svc.list_groups(db)
+    # Обсяг у лог — через глушник, бо екран відкривають підряд. Без цих двох
+    # чисел фази кажуть «повільно тут», але не кажуть, від чого воно росте.
+    if log_throttle.due("clients.duplicates_size") is not None:
+        logger.info(
+            "Можливі дублікати: %d пар клієнтів, %d тек export",
+            len(candidates), len(folder_names),
+        )
     return templates.TemplateResponse(
         request,
         "clients_duplicates.html",
@@ -279,7 +295,7 @@ def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
             # Ручний режим: усі теки для списку вибору + наявні групи (перегляд і
             # «розбити»), щоб зчепити пару, яку rapidfuzz не запропонував.
             "folder_all": sorted(folder_names),
-            "folder_groups": folder_merge_svc.list_groups(db),
+            "folder_groups": folder_groups,
             "flash": request.query_params.get("flash"),
         },
     )

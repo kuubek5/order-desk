@@ -30,7 +30,10 @@ from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
 
 from PIL import Image
 from sqlalchemy import delete as sa_delete, select
@@ -677,8 +680,9 @@ def prune_readings(db: Session, now: Optional[datetime] = None) -> int:
     # десятки тисяч, і кожне довелося б спершу перетворити на обʼєкт ORM
     # (ревʼю 07.09.26, C.8). На рядок історії ніхто не посилається, тож
     # каскади ORM тут не втрачаються.
-    removed = db.execute(
-        sa_delete(FurnaceReading).where(FurnaceReading.captured_at < cutoff)
+    removed = cast(
+        "CursorResult[Any]",
+        db.execute(sa_delete(FurnaceReading).where(FurnaceReading.captured_at < cutoff)),
     ).rowcount or 0
     if removed:
         db.commit()

@@ -217,6 +217,60 @@ def test_order_passport_by_sum3d_tail(app_db):  # noqa: F811
     assert data["роботи"][0]["клієнт"] == "Лагус"
 
 
+def test_email_order_passport_says_why_there_is_no_folder(app_db, tmp_path):  # noqa: F811
+    """Іконки теки на екрані пошти немає — паспорт мусить сказати, ЧОГО саме
+    бракує, інакше причину доводиться з'ясовувати кліками по живому екрану
+    (27.09.26)."""
+    from app.models import Attachment, EmailMessage, Order
+
+    app, session_factory = app_db
+    with session_factory() as db:
+        email = EmailMessage(uid="7", uid_validity="v", status="прийнято")
+        db.add(email)
+        db.flush()
+        with_file = Order(
+            source="email", client_name="З текою", sum3d_id="2026-09-11_10-00-01",
+            source_email_id=email.id,
+        )
+        no_file = Order(
+            source="email", client_name="Без теки", sum3d_id="2026-09-11_10-00-02",
+            source_email_id=email.id,
+        )
+        db.add_all([with_file, no_file])
+        db.flush()
+        folder = tmp_path / "export" / "З текою"
+        folder.mkdir(parents=True)
+        (folder / "crown.stl").write_text("x")
+        db.add(Attachment(
+            email_message_id=email.id, filename="crown.stl",
+            saved_path=str(folder / "crown.stl"), order_id=with_file.id,
+        ))
+        db.commit()
+
+    client = MiniClient(app)
+    good = _tool(client, "kmill_order", {"query": "10-00-01"})["result"]["structuredContent"]
+    bad = _tool(client, "kmill_order", {"query": "10-00-02"})["result"]["structuredContent"]
+
+    assert good["роботи"][0]["лист"]["з_них_на_диску"] == 1
+    assert good["роботи"][0]["лист"]["тека"].endswith("З текою")
+    assert bad["роботи"][0]["лист"]["своїх_файлів"] == 0
+    assert bad["роботи"][0]["лист"]["тека"] is None
+    assert bad["роботи"][0]["лист"]["id_листа"] is not None
+
+
+def test_sheet_order_passport_has_no_email_block(app_db):  # noqa: F811
+    app, session_factory = app_db
+    _seed(
+        session_factory,
+        mcp_tools.business_tab_today().strftime("%d.%m.%y"),
+        [dict(work_order_no="30001", sum3d_id="2026-09-11_11-11-11", client_name="Лаба")],
+    )
+    data = _tool(MiniClient(app), "kmill_order", {"query": "11-11-11"})["result"][
+        "structuredContent"
+    ]
+    assert data["роботи"][0]["лист"] is None
+
+
 def test_order_not_found_says_what_to_try(app_db):  # noqa: F811
     app, _ = app_db
     result = _tool(MiniClient(app), "kmill_order", {"query": "нічого"})["result"]
