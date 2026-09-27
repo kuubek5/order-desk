@@ -1,0 +1,4 @@
+{# Лише <option> для datalist автодоповнення тек — вантажиться окремим лінивим
+   запитом (/clients/duplicates/folders), не в тілі сторінки: на проді це 757
+   рядків і 1.7-3.5с рендеру щоразу. #}
+{% for name in folder_all %}<option value="{{ name }}">{% endfor %}

@@ -90,9 +90,10 @@
         <input class="cdup-inp" type="text" name="name_b" list="cdup-folders" placeholder="тека 2" required autocomplete="off">
         <button type="submit" class="cdup-btn">Об'єднати вручну</button>
     </form>
-    <datalist id="cdup-folders">
-        {% for name in folder_all %}<option value="{{ name }}">{% endfor %}
-    </datalist>
+    {# Порожній: наповнюється лінивим запитом при першому фокусі на поле (скрипт
+       нижче). Навіть якщо скрипт не спрацює — поле лишається звичайним текстовим
+       вводом, ручне об'єднання тек працює без автодоповнення. #}
+    <datalist id="cdup-folders"></datalist>
 
     {% if folder_groups %}
     <div class="cdup-groups">
@@ -137,4 +138,27 @@
     <p class="cdup-empty">Схожих тек не знайдено.</p>
     {% endif %}
 </main>
+
+<script>
+// Ліниве наповнення datalist тек: 757 <option> більше не рендеряться в тілі
+// сторінки (1.7-3.5с). Вантажимо раз при першому фокусі на будь-яке поле
+// ручного вводу. Поле й без цього робоче — це лише автодоповнення.
+(function () {
+    var loaded = false;
+    function fill() {
+        if (loaded) return;
+        loaded = true;  // не повторювати навіть при помилці — поле й так робоче
+        fetch("/clients/duplicates/folders", { credentials: "same-origin" })
+            .then(function (r) { return r.ok ? r.text() : ""; })
+            .then(function (html) {
+                var dl = document.getElementById("cdup-folders");
+                if (dl && html) dl.innerHTML = html;
+            })
+            .catch(function () { /* тиша: ручний ввід працює й без списку */ });
+    }
+    document.querySelectorAll(".cdup-inp").forEach(function (el) {
+        el.addEventListener("focus", fill, { once: true });
+    });
+})();
+</script>
 {% endblock %}

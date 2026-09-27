@@ -279,13 +279,37 @@ def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
             "user": user,
             "candidates": snapshot.clients if snapshot else [],
             "folder_candidates": snapshot.folders if snapshot else [],
-            # Ручний режим: усі теки для списку вибору + наявні групи (перегляд і
-            # «розбити»), щоб зчепити пару, яку rapidfuzz не запропонував.
-            "folder_all": snapshot.folder_names if snapshot else [],
+            # Ручний режим: наявні групи (перегляд і «розбити»). Список УСІХ тек
+            # для автодоповнення (`<datalist>`) більше НЕ рендериться тут — на
+            # проді це 757 <option> і 1.7-3.5с рендеру щоразу (27.09.26). Він
+            # їде окремим лінивим запитом `/clients/duplicates/folders` при
+            # першому фокусі на поле ручного вводу.
             "folder_groups": folder_groups,
             "computing": snapshot is None and computing,
             "flash": request.query_params.get("flash"),
         },
+    )
+
+
+@router.get("/clients/duplicates/folders", response_class=HTMLResponse)
+def duplicate_folder_options(request: Request, db: Session = Depends(get_db)):
+    """`<option>` усіх тек export для автодоповнення ручного вибору — ліниво.
+
+    Раніше 757 <option> рендерились у самій сторінці щоразу (1.7-3.5с). Тепер
+    поле ручного вводу підвантажує їх раз при першому фокусі. Джерело — той
+    самий знімок кешу (`duplicates_cache`), тож скану диску тут немає; поки
+    знімок не готовий, список порожній, а автодоповнення оживе після
+    перерахунку (пара секунд), не блокуючи ручне введення назви.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if blocked_response(request, db, user, "clients") is not None:
+        raise HTTPException(status_code=403, detail="розділ недоступний")
+    snapshot = duplicates_cache.peek()
+    names = snapshot.folder_names if snapshot else []
+    return templates.TemplateResponse(
+        request, "_cdup_folder_options.html", {"folder_all": names},
     )
 
 
