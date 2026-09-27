@@ -402,6 +402,23 @@ def _sha256_of_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _drop_broken_download(path: Path) -> None:
+    """Прибрати недоладний інсталятор, не заступаючи справжню причину.
+
+    Файл у цей момент може тримати антивірус, що саме його перевіряє: тоді
+    `unlink` кидає PermissionError, і в лог цеху летіло «Процесс не может
+    получить доступ к файлу» замість «контрольна сума не збігається» — тобто
+    видно було наслідок, а не причину відмови (двічі, 27.09.26). Не вийшло
+    прибрати — не біда: наступне завантаження тієї самої версії перезапише
+    файл, а лишній інсталятор у теці `updates` і так лишається за задумом
+    (з нього робиться відкат).
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Недоладний інсталятор %s не видалився: %s", path.name, exc)
+
+
 def download_and_verify(
     release: ReleaseInfo, dest_dir: Path | None = None, progress=None
 ) -> Path:
@@ -435,7 +452,7 @@ def download_and_verify(
                     progress(done, total)
 
     if not release.checksum_url:
-        installer_path.unlink(missing_ok=True)
+        _drop_broken_download(installer_path)
         raise UpdateVerificationError(
             "Реліз не має файлу контрольної суми — встановлення скасовано з міркувань безпеки"
         )
@@ -446,7 +463,7 @@ def download_and_verify(
     actual = _sha256_of_file(installer_path)
 
     if actual != expected:
-        installer_path.unlink(missing_ok=True)
+        _drop_broken_download(installer_path)
         raise UpdateVerificationError(
             "Контрольна сума завантаженого файлу не збігається — встановлення скасовано"
         )

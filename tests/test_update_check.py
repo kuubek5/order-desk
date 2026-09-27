@@ -709,3 +709,29 @@ def test_a_403_without_rate_limit_headers_stays_a_plain_http_error():
     message = human_update_error(requests.exceptions.HTTPError(response=response))
 
     assert "403" in message and "ліміт" not in message
+
+
+def test_a_locked_file_does_not_replace_the_real_reason(tmp_path, monkeypatch, caplog):
+    """Контрольна сума не збіглась, а файл тримає антивірус.
+
+    У лозі цеху від цього лишалось «Процесс не может получить доступ к файлу»
+    замість «контрольна сума не збігається» — наслідок замість причини. Тепер
+    невдале прибирання лише пишеться попередженням.
+    """
+    content = b"fake installer bytes"
+    installer_response = _installer_response(content)
+    checksum_response = _checksum_response("0" * 64)
+
+    original = Path.unlink
+
+    def _locked(self, *args, **kwargs):
+        if self.suffix == ".exe":
+            raise PermissionError(32, "Процесс не может получить доступ к файлу")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _locked)
+    with patch("app.update_check._http_get", side_effect=[installer_response, checksum_response]):
+        with caplog.at_level("WARNING"):
+            with pytest.raises(UpdateVerificationError, match="сума"):
+                download_and_verify(_release(), dest_dir=tmp_path)
+    assert [r for r in caplog.records if "не видалився" in r.getMessage()]
