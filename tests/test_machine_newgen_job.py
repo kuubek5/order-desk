@@ -409,3 +409,88 @@ def test_a_band_without_a_baseline_does_not_kill_the_whole_frame():
     # Одна світла риска: у кожному рядку пікселів рівно один відрізок.
     ImageDraw.Draw(image).rectangle((8, 10, 40, 12), fill=(230, 230, 230))
     assert ng._glyphs_in_zone(image) == []
+
+
+# ── Коли шрифт не дав відриву, вирішує черга ─────────────────────────────────
+#
+# `3` і `8` цього шрифту після зведення до спільного розміру розходяться на
+# 12-16 при порозі відриву 12, тож кожне нове накреслення робило читання
+# мовчазним: 2520 відмов на 150i-Olejka, 1102 на 250i-Sec, 926 на 250i-Tolik
+# (скринька екранів, 27.09.26). Тут ту саму ситуацію відтворено чесно: еталони
+# зліплено так, щоб одна цифра хвоста не мала відриву.
+
+
+def _blurred_templates(ambiguous="7", twin="1"):
+    """Еталони, у яких `ambiguous` не відрізнити від `twin`.
+
+    Бітмапу справжньої цифри дописуємо ВАРІАНТОМ чужої — рівно те, що робить
+    нове накреслення в цеху: дві цифри опиняються на однаковій відстані, і
+    відриву немає.
+    """
+    truth = "118-EMOTIONS-A1-X1932026-09-0412-57-22.ISO"
+    glyphs = ng._name_glyphs(Image.open(FRAME_250I))
+    assert glyphs and len(glyphs) == len(truth)
+    templates: dict[str, list] = {}
+    for glyph, char in zip(glyphs, truth):
+        if char.isdigit():
+            templates.setdefault(char, []).append(ng._normalise(glyph.bits))
+    templates[twin].extend(templates[ambiguous])
+    return templates
+
+
+def test_an_ambiguous_digit_alone_still_reads_nothing(monkeypatch):
+    """Сам читач мовчить, як і раніше: варіанти — не прочитання."""
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _blurred_templates())
+    program, why = ng.read_newgen_program_explained(Image.open(FRAME_250I))
+    assert program is None
+    assert why and "не впізнано" in why
+    # Але правдоподібні прочитання є, і їх рівно два: 12-57-22 і 12-51-22.
+    variants = {p.sum3d_id for p in ng.read_newgen_program_variants(Image.open(FRAME_250I))}
+    assert variants == {"12-57-22", "12-51-22"}
+
+
+def test_the_queue_resolves_the_digit_when_exactly_one_work_fits(db, monkeypatch):
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _blurred_templates())
+    db.add(Order(source="lab", sheet_tab="04.09.26", row_number=3, sum3d_id="12-57-22"))
+    db.commit()
+    state = ms.poll_target(db, _agent(), None, frame=Image.open(FRAME_250I), titles=[])
+    assert state.sum3d_id == "12-57-22"
+
+
+def test_two_fitting_works_keep_the_machine_silent(db, monkeypatch):
+    """Обидва прочитання є в черзі — вибирати між чужими роботами не можна."""
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _blurred_templates())
+    db.add(Order(source="lab", sheet_tab="04.09.26", row_number=3, sum3d_id="12-57-22"))
+    db.add(Order(source="lab", sheet_tab="04.09.26", row_number=4, sum3d_id="12-51-22"))
+    db.commit()
+    state = ms.poll_target(db, _agent(), None, frame=Image.open(FRAME_250I), titles=[])
+    assert state.sum3d_id is None
+
+
+def test_nothing_in_the_queue_keeps_the_old_unread_path(db, tmp_path, monkeypatch, caplog):
+    """Жодне з прочитань не стоїть у черзі — поводимось як досі: мовчимо,
+    пишемо причину в лог і кладемо кадр у скриньку."""
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _blurred_templates())
+    with caplog.at_level("WARNING", logger=ms.logger.name):
+        state = ms.poll_target(db, _agent(), None, frame=Image.open(FRAME_250I), titles=[])
+    assert state.sum3d_id is None
+    assert [r for r in caplog.records if "назву програми не прочитано" in r.getMessage()]
+    assert (tmp_path / "newgen_unread" / f"{_agent().key}.png").exists()
+
+
+def test_a_glyph_that_is_no_digit_at_all_gives_no_variants(monkeypatch):
+    """Стерта цифра (у цеху — «8=85, 5=96») лишається мовчанням: черга тут
+    ні до чого, вгадувати з нічого ми не починаємо."""
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _blurred_templates())
+    assert ng.read_newgen_program_variants(_paint(FRAME_250I, (525, 305, 545, 330))) == []
+
+
+def test_too_many_unsure_digits_give_no_variants(monkeypatch):
+    """Дві непевні цифри — стеля: на трьох перебір дає до восьми прочитань, і
+    «рівно одне збіглося» перестає бути рідкісною подією."""
+    blurred = _blurred_templates()
+    # Ще одна пара без відриву: тепер непевних цифр у хвості більше за дві
+    # (нулів у «2026-09-04» кілька).
+    blurred["9"].extend(blurred["0"])
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: blurred)
+    assert ng.read_newgen_program_variants(Image.open(FRAME_250I)) == []

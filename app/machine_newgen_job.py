@@ -56,6 +56,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from itertools import product
 from pathlib import Path
 from typing import Optional
 
@@ -322,18 +323,127 @@ def _ranked(glyph: _Glyph, templates: dict[str, list[np.ndarray]]) -> list[tuple
     return sorted(best.items(), key=lambda kv: kv[1])
 
 
-def _classify_digit(glyph: _Glyph, templates: dict[str, list[np.ndarray]]) -> Optional[str]:
-    """Цифра або None, якщо немає впевненого переможця."""
+#: Скільки цифр хвоста можна доуточнити ЧЕРГОЮ, коли шрифт не дав відриву.
+#: Дві — стеля свідомо: на трьох перебір дає вже до восьми варіантів, і
+#: «рівно один збігся з чергою» перестає бути рідкісною подією.
+UNSURE_LIMIT = 2
+
+
+@dataclass(frozen=True)
+class _Pick:
+    """Що вийшло з одного символа хвоста.
+
+    `char` — впевнений символ (правила ті самі: ≤MAX_DISTANCE і відрив
+    ≥MIN_MARGIN). `options` — усе, що лишилось правдоподібним: з них
+    складають варіанти прочитання, коли шрифт не вирішив сам, а вирішити
+    може черга. Порожні `options` означають «це взагалі не цифра» — тоді
+    не допоможе й черга.
+    """
+
+    char: "Optional[str]"
+    options: "tuple[str, ...]"
+
+
+def _digit_pick(glyph: "_Glyph", templates: "dict[str, list[np.ndarray]]") -> "_Pick":
+    """Цифра — впевнено, правдоподібно або ніяк."""
     h, w = glyph.bits.shape
     if h < glyph.cap * 0.9 or not templates:
-        return None
+        return _Pick(None, ())
     ranked = _ranked(glyph, templates)
     char, distance = ranked[0]
+    plausible = tuple(c for c, d in ranked if d <= MAX_DISTANCE and c.isdigit())
     if distance > MAX_DISTANCE:
-        return None
+        return _Pick(None, ())
     if len(ranked) > 1 and ranked[1][1] - distance < MIN_MARGIN:
-        return None
-    return char
+        return _Pick(None, plausible)
+    return _Pick(char, plausible or (char,))
+
+
+def _tail_picks(
+    image: Image.Image, templates: "dict[str, list[np.ndarray]]"
+) -> "tuple[Optional[list[_Pick]], Optional[str]]":
+    """Хвіст назви посимвольно. `None, None` — тут нема чого читати."""
+    glyphs = _name_glyphs(image)
+    # Короткий рядок біля кружка — не назва програми (SUMMARY теж має кружок
+    # і кілька слів поруч): читати нема чого, це не відмова.
+    if glyphs is None or len(glyphs) < len(TAIL):
+        return None, None
+    picks: "list[_Pick]" = []
+    for index, (glyph, want) in enumerate(zip(glyphs[-len(TAIL):], TAIL)):
+        if want == "?":
+            picks.append(_Pick("?", ("?",)))
+            continue
+        if want == "#":
+            pick = _digit_pick(glyph, templates)
+            if pick.char is None and not pick.options:
+                ranked = _ranked(glyph, templates)
+                near = ", ".join(f"{c}={d:.0f}" for c, d in ranked[:2])
+                return None, (
+                    f"цифру №{index + 1} хвоста не впізнано ({near}; треба ≤{MAX_DISTANCE:.0f} "
+                    f"і відрив ≥{MIN_MARGIN:.0f}) — донавчити: scripts/newgen_glyphs.py learn"
+                )
+            picks.append(pick)
+            continue
+        got = _shape_class(glyph)
+        if got != want:
+            h, w = glyph.bits.shape
+            return None, (
+                f"символ №{index + 1} хвоста мав бути «{want}», а форма {w}×{h}, "
+                f"заповнення {glyph.bits.mean():.2f}"
+            )
+        picks.append(_Pick(got, (got,)))
+    return picks, None
+
+
+def _program_from_text(s: str) -> "tuple[Optional[MillingProgram], Optional[str]]":
+    """Зібрати програму з прочитаного хвоста, перевіривши дату й час."""
+    # ####-##-## ##-##-## .I??
+    year, month, day = s[0:4], s[5:7], s[8:10]
+    hour, minute, second = s[10:12], s[13:15], s[16:18]
+    if not (2020 <= int(year) <= 2099 and 1 <= int(month) <= 12 and 1 <= int(day) <= 31):
+        return None, f"прочитано неможливу дату {year}-{month}-{day}"
+    if not (int(hour) < 24 and int(minute) < 60 and int(second) < 60):
+        return None, f"прочитано неможливий час {hour}-{minute}-{second}"
+    date_text = f"{year}-{month}-{day}"
+    time_text = f"{hour}-{minute}-{second}"
+    return (
+        MillingProgram(
+            iso_name=f"{date_text}_{time_text}.iso", sum3d_id=time_text, date=date_text
+        ),
+        None,
+    )
+
+
+def read_newgen_program_variants(image: Image.Image) -> "list[MillingProgram]":
+    """Усі прочитання, які шрифт вважає правдоподібними, коли впевненості нема.
+
+    Потрібне рівно для однієї ситуації: цифри `3` і `8` цього шрифту після
+    зведення до спільного розміру розходяться всього на 12-16, тобто на самій
+    межі відриву, і будь-яке нове накреслення робить читання мовчазним. У цеху
+    ця відмова повторювалась тисячами: 2520 разів на 150i-Olejka, 1102 на
+    250i-Sec, 926 на 250i-Tolik (скринька екранів, 27.09.26).
+
+    Вгадувати ми при цьому не починаємо: список віддається ВИКЛИКАЧЕВІ, а той
+    лишає рядок, лише коли з ним збігається РІВНО ОДНА робота живої черги —
+    той самий другий незалежний сигнал, що вже потрібен і для впевненого
+    читання (`_program_from_screen`). Не зійшлось — мовчимо, як раніше:
+    хибне число гірше за жодне.
+    """
+    templates = load_newgen_glyphs()
+    if not templates:
+        return []
+    picks, _why = _tail_picks(image, templates)
+    if picks is None:
+        return []
+    unsure = [p for p in picks if p.char is None]
+    if not unsure or len(unsure) > UNSURE_LIMIT:
+        return []
+    programs: "list[MillingProgram]" = []
+    for combo in product(*[p.options if p.char is None else (p.char,) for p in picks]):
+        program, _bad = _program_from_text("".join(combo))
+        if program is not None:
+            programs.append(program)
+    return programs
 
 
 def read_newgen_program(image: Image.Image) -> Optional[MillingProgram]:
@@ -360,43 +470,18 @@ def read_newgen_program_explained(
     templates = load_newgen_glyphs()
     if not templates:
         return None, None
-    glyphs = _name_glyphs(image)
-    # Короткий рядок біля кружка — не назва програми (SUMMARY теж має кружок
-    # і кілька слів поруч): читати нема чого, це не відмова.
-    if glyphs is None or len(glyphs) < len(TAIL):
-        return None, None
-    tail = glyphs[-len(TAIL):]
-    text = []
-    for index, (glyph, want) in enumerate(zip(tail, TAIL)):
-        if want == "?":
-            text.append("?")
+    picks, why = _tail_picks(image, templates)
+    if picks is None:
+        return None, why
+    for index, pick in enumerate(picks):
+        if pick.char is not None:
             continue
-        if want == "#":
-            got = _classify_digit(glyph, templates)
-            if got is None or not got.isdigit():
-                ranked = _ranked(glyph, templates)
-                near = ", ".join(f"{c}={d:.0f}" for c, d in ranked[:2])
-                return None, (
-                    f"цифру №{index + 1} хвоста не впізнано ({near}; треба ≤{MAX_DISTANCE:.0f} "
-                    f"і відрив ≥{MIN_MARGIN:.0f}) — донавчити: scripts/newgen_glyphs.py learn"
-                )
-        else:
-            got = _shape_class(glyph)
-            if got != want:
-                h, w = glyph.bits.shape
-                return None, (
-                    f"символ №{index + 1} хвоста мав бути «{want}», а форма {w}×{h}, "
-                    f"заповнення {glyph.bits.mean():.2f}"
-                )
-        text.append(got)
-    s = "".join(text)
-    # ####-##-## ##-##-## .I??
-    year, month, day = s[0:4], s[5:7], s[8:10]
-    hour, minute, second = s[10:12], s[13:15], s[16:18]
-    if not (2020 <= int(year) <= 2099 and 1 <= int(month) <= 12 and 1 <= int(day) <= 31):
-        return None, f"прочитано неможливу дату {year}-{month}-{day}"
-    if not (int(hour) < 24 and int(minute) < 60 and int(second) < 60):
-        return None, f"прочитано неможливий час {hour}-{minute}-{second}"
-    date = f"{year}-{month}-{day}"
-    time = f"{hour}-{minute}-{second}"
-    return MillingProgram(iso_name=f"{date}_{time}.iso", sum3d_id=time, date=date), None
+        # Правдоподібні варіанти Є, але шрифт не дав відриву. Строгий читач
+        # мовчить, як і раніше; розвʼязати таке може лише черга
+        # (`read_newgen_program_variants`).
+        near = ", ".join(pick.options[:2])
+        return None, (
+            f"цифру №{index + 1} хвоста не впізнано (схожі: {near}; треба відрив "
+            f"≥{MIN_MARGIN:.0f}) — донавчити: scripts/newgen_glyphs.py learn"
+        )
+    return _program_from_text("".join(p.char or "" for p in picks))

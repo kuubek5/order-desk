@@ -44,6 +44,7 @@ from app.services import screen_inbox
 from app.machine_newgen_job import (
     name_row_crop as read_newgen_name_row,
     read_newgen_program_explained,
+    read_newgen_program_variants,
 )
 from app.services.order_dates import order_date
 from app.machine_ocr import (
@@ -1478,6 +1479,64 @@ def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
 SCREEN_PROGRAM_DAYS_BACK = 14
 
 
+def _queued_work_for(db: Session, program: MillingProgram) -> bool:
+    """Чи стоїть така робота в ЖИВІЙ черзі поруч із датою програми.
+
+    Sum3D ID — лише час доби (`HH-MM-SS`), і за місяці той самий час
+    трапляється в різних роботах. Тому «є в базі» замало: робота мусить бути
+    в РОБОЧІЙ черзі (не в архіві) і її день — поруч із датою з назви програми.
+    Вікно широке назад (замовлення з «Раніше» прораховують через дні після
+    появи рядка) і вузьке вперед (прорахувати раніше за появу рядка можна
+    хіба на день).
+    """
+    try:
+        milled_on = date.fromisoformat(program.date)
+    except ValueError:
+        return False
+    candidates = db.scalars(
+        select(Order).where(Order.sum3d_id == program.sum3d_id, Order.archived_at.is_(None))
+    ).all()
+    return any(
+        milled_on - timedelta(days=SCREEN_PROGRAM_DAYS_BACK)
+        <= order_date(o)
+        <= milled_on + timedelta(days=1)
+        for o in candidates
+    )
+
+
+def _program_resolved_by_queue(
+    db: Session, target: MachineTarget, frame: Image.Image
+) -> Optional[MillingProgram]:
+    """Шрифт не дав відриву — питаємо чергу.
+
+    `3` і `8` цього шрифту розходяться всього на 12-16 при порозі відриву 12,
+    тож кожне нове накреслення робило читання мовчазним: 2520 відмов на
+    150i-Olejka, 1102 на 250i-Sec, 926 на 250i-Tolik (скринька екранів,
+    27.09.26). Читач віддає ВСІ правдоподібні прочитання (не більше двох
+    непевних цифр), і ми лишаємо рядок, лише коли РІВНО ОДНЕ з них стоїть у
+    живій черзі. Два збіги — мовчимо: вибирати між чужими роботами не можна,
+    хибне число гірше за жодне.
+    """
+    try:
+        variants = read_newgen_program_variants(frame)
+    except Exception:  # noqa: BLE001 — добір не має валити опитування
+        logger.exception("Варіанти назви програми верстата %s не зібрано", target.host)
+        return None
+    matched = [p for p in variants if _queued_work_for(db, p)]
+    if len(matched) != 1:
+        return None
+    program = matched[0]
+    skipped = log_throttle.due(f"machines.newgen_by_queue:{target.key}:{program.sum3d_id}")
+    if skipped is not None:
+        logger.info(
+            "Верстат %s: цифру хвоста шрифт не вирішив, але в черзі рівно одна "
+            "така робота — читаємо %s від %s%s",
+            target.name, program.sum3d_id, program.date,
+            f" (ще {skipped} разів відтоді)" if skipped else "",
+        )
+    return program
+
+
 def _program_from_screen(
     db: Session, target: MachineTarget, frame: Optional[Image.Image]
 ) -> Optional[MillingProgram]:
@@ -1495,6 +1554,8 @@ def _program_from_screen(
     except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
         logger.exception("Назву програми з екрана верстата %s не прочитано", target.host)
         return None
+    if program is None:
+        program = _program_resolved_by_queue(db, target, frame)
     if program is None:
         if why is not None:
             _report_unread_screen(target, frame, why)
@@ -1528,24 +1589,7 @@ def _program_from_screen(
             )
         return None
     log_throttle.clear(f"machines.newgen_unread:{target.key}")
-    # Sum3D ID — лише час доби (`HH-MM-SS`), і за місяці той самий час
-    # трапляється в різних роботах. Тому «є в базі» замало: робота мусить
-    # бути в РОБОЧІЙ черзі (не в архіві) і її день — поруч із датою з назви
-    # програми. Вікно широке назад (замовлення з «Раніше» прораховують через
-    # дні після появи рядка) і вузьке вперед (прорахувати раніше за появу
-    # рядка можна хіба на день).
-    try:
-        milled_on = date.fromisoformat(program.date)
-    except ValueError:
-        return None
-    candidates = db.scalars(
-        select(Order).where(Order.sum3d_id == program.sum3d_id, Order.archived_at.is_(None))
-    ).all()
-    near = [
-        o for o in candidates
-        if milled_on - timedelta(days=SCREEN_PROGRAM_DAYS_BACK) <= order_date(o) <= milled_on + timedelta(days=1)
-    ]
-    if not near:
+    if not _queued_work_for(db, program):
         # Не DEBUG: у проді його не видно, а це єдиний слід того, що читання
         # спрацювало й зупинилось саме на черзі (робота не з таблиці, інший день).
         skipped = log_throttle.due(f"machines.newgen_not_queued:{target.key}:{program.sum3d_id}")
