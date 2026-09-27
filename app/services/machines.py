@@ -22,6 +22,7 @@ import logging
 import os
 import time
 import threading
+import weakref
 from threading import Lock
 from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
@@ -1140,6 +1141,80 @@ MACHINE_READINGS_RETENTION_DAYS = 30
 _stored: dict[str, tuple[datetime, tuple, bool]] = {}
 _stored_lock = Lock()
 
+# Хто з верстатів уже лишив слід в історії і хто з них хоч раз дав відсоток.
+# Памʼять процесу, а не запит на кожен рендер: `SELECT DISTINCT host … WHERE
+# percent IS NOT NULL` на бойовому обсязі (30 днів × 8 верстатів ≈ 350 тис.
+# рядків) коштує 162 мс, бо умова по `percent` індекс `host` не рятує — це
+# прохід усієї таблиці. `snapshot()` кличуть ТРИЧІ на один малюнок черги
+# (віджет + підсумок шапки + SLM), тож у лозі цеху і стояло «GET /machines/side
+# took 1.0s» при `render 0.00с` і «queue:python 0.9с» (заміряно 27.09.26 на
+# копії бази з дописаною бойовою історією).
+#
+# Набори НЕ протухають за таймером: їх поповнює сам запис рядка
+# (`_store_machine_reading`), тобто новий верстат і перший відсоток стають
+# видні тим самим тіком, що й лягають у базу. Скидає їх лише прибирання
+# старих рядків — після нього історії може й не стати.
+_reading_hosts_lock = Lock()
+_reading_hosts: set[str] = set()
+_reading_percent_hosts: set[str] = set()
+_reading_hosts_source: "Optional[weakref.ref]" = None
+
+
+def _machine_history_sets(db: Session) -> tuple[set[str], set[str]]:
+    """(за ким спостерігали, хто давав відсоток) — з памʼяті, перший раз із БД.
+
+    Набір привʼязаний до САМОГО рушія (`_reading_hosts_source`, слабке
+    посилання): у проді він один на процес, а в тестах — свій на кожен тест, і
+    без привʼязки другий тест читав би памʼять, набиту з чужої бази, тобто
+    мовчки перевіряв би порожнечу. Саме рушій, а не рядок URL: усі тестові бази
+    звуться `sqlite://` і за URL нерозрізненні (спіймано тестом
+    `test_another_database_does_not_inherit_the_sets`).
+    """
+    global _reading_hosts_source
+    bind = db.get_bind()
+    with _reading_hosts_lock:
+        known = _reading_hosts_source() if _reading_hosts_source is not None else None
+        if known is bind:
+            return set(_reading_hosts), set(_reading_percent_hosts)
+    try:
+        seen = set(db.scalars(select(MachineReading.host).distinct()))
+        with_percent = set(
+            db.scalars(
+                select(MachineReading.host)
+                .where(MachineReading.percent.isnot(None))
+                .distinct()
+            )
+        )
+    except Exception:  # noqa: BLE001 — віджет не сміє впасти через діагностику
+        logger.debug("Не вдалось дізнатись, які верстати дають відсоток", exc_info=True)
+        return set(), set()
+    with _reading_hosts_lock:
+        known = _reading_hosts_source() if _reading_hosts_source is not None else None
+        if known is not bind:
+            _reading_hosts.clear()
+            _reading_percent_hosts.clear()
+        _reading_hosts.update(seen)
+        _reading_percent_hosts.update(with_percent)
+        _reading_hosts_source = weakref.ref(bind)
+        return set(_reading_hosts), set(_reading_percent_hosts)
+
+
+def _remember_machine_history(host: str, *, has_percent: bool) -> None:
+    """Записали рядок — поповнити набори, щоб не перечитувати всю таблицю."""
+    with _reading_hosts_lock:
+        _reading_hosts.add(host)
+        if has_percent:
+            _reading_percent_hosts.add(host)
+
+
+def _forget_machine_history() -> None:
+    """Історію прибрали — наступний `snapshot()` перечитає набори з БД."""
+    global _reading_hosts_source
+    with _reading_hosts_lock:
+        _reading_hosts.clear()
+        _reading_percent_hosts.clear()
+        _reading_hosts_source = None
+
 
 def _reading_event_key(state: "MachineState") -> tuple:
     """Те, зміна чого мусить лягти в базу НЕГАЙНО.
@@ -1193,6 +1268,9 @@ def _store_machine_reading(
         )
     )
     db.commit()
+    _remember_machine_history(
+        state.target.key, has_percent=not error and state.percent is not None
+    )
     with _stored_lock:
         _stored[state.target.key] = (now, _reading_event_key(state), bool(error))
 
@@ -1388,6 +1466,9 @@ def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
     removed = deleted.rowcount or 0
     if removed:
         db.commit()
+        # Історії могло й не стати: набори «хто давав відсоток» тримаються в
+        # памʼяті процесу, і після прибирання їх треба перечитати.
+        _forget_machine_history()
     return removed
 
 
@@ -2608,9 +2689,10 @@ def machine_side_context(db: Session) -> dict:
     однакові речі (рішення власника 06.09.26). Принтер живе у власному
     віджеті над чергою.
     """
+    cards = [c for c in snapshot(db) if not c.is_sisma_machine]
     return {
-        "machine_cards": [c for c in snapshot(db) if not c.is_sisma_machine],
-        "machine_summary": strip_summary(db),
+        "machine_cards": cards,
+        "machine_summary": strip_summary(db, cards),
     }
 
 
@@ -2622,16 +2704,22 @@ def sisma_context(db: Session) -> dict:
     return {"sisma_cards": [c for c in snapshot(db) if c.is_sisma_machine]}
 
 
-def strip_summary(db: Session) -> dict:
+def strip_summary(db: Session, cards: Optional[list["MachineCard"]] = None) -> dict:
     """Підсумок для шапки віджета: скільки фрезерує / без зв'язку.
 
     Годується з тих самих карток, що й сам віджет — два ПОГЛЯДИ на одне
     значення це нормально, два ДЖЕРЕЛА ні (правило зі смуги пічок).
 
+    Готові картки можна передати: `machine_side_context` уже їх зібрав, а
+    другий `snapshot()` означав би ще пʼять запитів у базу на той самий
+    віджет. Без них поводиться як раніше — на цьому тримаються інші входи
+    (звіт у Telegram).
+
     SISMA сюди не входить — так само, як `machine_side_context` не кладе її
     в картки: принтер, що друкує, інакше рахувався б як «фрезерує», а
     відключений — як «без звʼязку» серед фрезерних."""
-    cards = [c for c in snapshot(db) if not c.is_sisma_machine]
+    if cards is None:
+        cards = [c for c in snapshot(db) if not c.is_sisma_machine]
     return {
         "total": len(cards),
         "running": sum(1 for c in cards if c.is_running),
@@ -2648,9 +2736,10 @@ def snapshot(db: Session) -> list[MachineCard]:
     cards = []
     with _states_lock:
         states = dict(_states)
-    # Чи давав ЦЕЙ верстат колись відсоток. ОДИН запит на всі картки: те саме
-    # правило, що зі зв'язкою «верстат ↔ наряд» нижче — запит усередині
-    # property дав би N+1 у циклі рендера, а віджет малюється кожні 10 с.
+    # Чи давав ЦЕЙ верстат колись відсоток. Відповідь живе в памʼяті процесу
+    # (`_machine_history_sets`): запит усередині property дав би N+1 у циклі
+    # рендера, а `SELECT DISTINCT` на кожен виклик коштував 180 мс на бойовому
+    # обсязі історії — при трьох викликах на малюнок черги.
     #
     # Саме цим «є кадр, немає відсотка» розкладається на два різні стани:
     # «стоїть» (екран читається, програми справді немає) і «не читається»
@@ -2661,19 +2750,7 @@ def snapshot(db: Session) -> list[MachineCard]:
     # кажемо ЛИШЕ про той, за яким ми вже спостерігали (є рядки історії), але
     # відсотка від нього не бачили жодного разу. Немає історії — немає й
     # висновку (None), і віджет лишається на обережному «стоїть».
-    seen: set[str] = set()
-    with_percent: set[str] = set()
-    try:
-        seen = set(db.scalars(select(MachineReading.host).distinct()))
-        with_percent = set(
-            db.scalars(
-                select(MachineReading.host)
-                .where(MachineReading.percent.isnot(None))
-                .distinct()
-            )
-        )
-    except Exception:  # noqa: BLE001 — віджет не сміє впасти через діагностику
-        logger.debug("Не вдалось дізнатись, які верстати дають відсоток", exc_info=True)
+    seen, with_percent = _machine_history_sets(db)
 
     def reads_percent(key: str) -> Optional[bool]:
         if key in with_percent:

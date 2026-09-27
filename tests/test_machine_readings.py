@@ -199,3 +199,78 @@ def test_a_machine_coming_back_is_stored_without_waiting_a_minute():
     state = make_state()
     machines_service._stored[state.target.key] = (now, machines_service._reading_event_key(state), True)
     assert machines_service._should_store_machine(state, now + timedelta(seconds=2)) is True
+
+
+# ── «Чи давав цей верстат відсоток» — відповідь з памʼяті, не з таблиці ──────
+#
+# `snapshot()` кличуть тричі на один малюнок черги, і кожен виклик питав
+# `SELECT DISTINCT host … WHERE percent IS NOT NULL`. Умову по `percent`
+# індекс `host` не рятує — це прохід УСІЄЇ таблиці: на бойовому обсязі
+# (30 днів × 8 верстатів ≈ 350 тис. рядків) 162 мс за виклик. Саме звідси в
+# лозі цеху 27.09.26 бралось «GET /machines/side took 1.0s» при «render 0.00с»
+# і «queue:python 0.9с» — час, якого не показувала жодна фаза.
+
+
+def _count_reading_scans(db, fn):
+    """Скільки разів запит пішов у таблицю показань під час виклику."""
+    from sqlalchemy import event
+
+    seen = []
+
+    def hook(conn, cursor, statement, params, ctx, many):
+        if "machine_readings" in statement and "SELECT" in statement.upper():
+            seen.append(statement)
+
+    bind = db.get_bind()
+    event.listen(bind, "before_cursor_execute", hook)
+    try:
+        fn()
+    finally:
+        event.remove(bind, "before_cursor_execute", hook)
+    return len(seen)
+
+
+def test_the_history_sets_are_read_from_the_table_only_once():
+    with make_session() as db:
+        machines_service._forget_machine_history()
+        _store_machine_reading(db, make_state(), datetime(2026, 9, 8, 18, 14))
+        first = _count_reading_scans(db, lambda: machines_service._machine_history_sets(db))
+        again = _count_reading_scans(db, lambda: machines_service._machine_history_sets(db))
+        assert first > 0 and again == 0
+
+
+def test_a_first_percent_shows_up_without_rereading_the_table():
+    """Верстат, що досі мовчав, дав відсоток — віджет мусить це побачити тим
+    самим тіком, а не за таймером протухання."""
+    with make_session() as db:
+        machines_service._forget_machine_history()
+        _store_machine_reading(db, make_state(percent=None), datetime(2026, 9, 8, 18, 14))
+        seen, with_percent = machines_service._machine_history_sets(db)
+        assert seen == {"192.168.1.50-8765"} and with_percent == set()
+
+        _store_machine_reading(db, make_state(percent=40), datetime(2026, 9, 8, 18, 15))
+        scans = _count_reading_scans(
+            db, lambda: machines_service._machine_history_sets(db)
+        )
+        _, with_percent = machines_service._machine_history_sets(db)
+        assert with_percent == {"192.168.1.50-8765"}
+        assert scans == 0
+
+
+def test_another_database_does_not_inherit_the_sets():
+    """Памʼять привʼязана до бази: інакше другий тест (і друга БД) читав би
+    набір, набитий з чужої."""
+    with make_session() as first:
+        _store_machine_reading(first, make_state(), datetime(2026, 9, 8, 18, 14))
+        assert machines_service._machine_history_sets(first)[0]
+    machines_service._stored.clear()
+    with make_session() as second:
+        assert machines_service._machine_history_sets(second) == (set(), set())
+
+
+def test_pruning_the_history_makes_the_sets_reload():
+    with make_session() as db:
+        _store_machine_reading(db, make_state(), datetime(2026, 9, 8, 18, 14))
+        assert machines_service._machine_history_sets(db)[0]
+        assert prune_machine_readings(db, now=datetime(2026, 12, 31)) == 1
+        assert machines_service._machine_history_sets(db) == (set(), set())

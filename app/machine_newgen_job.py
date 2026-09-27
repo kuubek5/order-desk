@@ -267,7 +267,18 @@ def _glyphs_in_zone(zone_image: Image.Image) -> Optional[list[_Glyph]]:
         # окремими відрізками (низи всіх символів). Нижче лишається лише `_`.
         pieces = [len(_runs(row)) for row in line]
         busiest = max(pieces)
-        base = max(i for i, n in enumerate(pieces) if n >= max(4, 0.3 * busiest))
+        bases = [i for i, n in enumerate(pieces) if n >= max(4, 0.3 * busiest)]
+        if not bases:
+            # Смуга, де ЖОДЕН рядок пікселів не має чотирьох окремих відрізків,
+            # рядком назви бути не може (там суцільні цифри й дефіси) — це
+            # уламок: підкреслення, облямівка, шматок рамки. Базової лінії в
+            # ньому немає, а `max()` на порожньому генераторі падав ValueError
+            # і валив читання ВСЬОГО кадру (у лозі цеху — «max() arg is an
+            # empty sequence» із `_program_from_screen`, 3 рази з 13.09.26).
+            # Пропускаємо смугу: решта рядка читається далі, а якщо не
+            # прочитається — відмова буде чесною, з номером символу.
+            continue
+        base = max(bases)
         cap_band = line[: base + 1]
         for a, b in _runs(cap_band.any(axis=0)):
             column = cap_band[:, a:b]

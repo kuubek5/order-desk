@@ -395,3 +395,17 @@ def test_a_named_idle_screen_beats_a_percent_conjured_from_nothing(db):
                           reads_percent=True)
     assert card.state_key == "idle"
     assert card.state_word == "стоїть"
+
+
+def test_a_band_without_a_baseline_does_not_kill_the_whole_frame():
+    """Смуга-уламок (підкреслення, облямівка) не валить читання кадру.
+
+    Бойовий слід: у лозі цеху тричі з 13.09.26 лежав `ValueError: max() arg is
+    an empty sequence` із `_program_from_screen` — сегментація шукала базову
+    лінію серед рядків із ≥4 відрізками чорнила, а в такій смузі їх нема
+    жодного. Кадр тоді не читався ВЗАГАЛІ, замість чесної відмови.
+    """
+    image = Image.new("RGB", (60, 24), (18, 18, 18))
+    # Одна світла риска: у кожному рядку пікселів рівно один відрізок.
+    ImageDraw.Draw(image).rectangle((8, 10, 40, 12), fill=(230, 230, 230))
+    assert ng._glyphs_in_zone(image) == []

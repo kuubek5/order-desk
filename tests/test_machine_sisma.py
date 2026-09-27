@@ -208,7 +208,9 @@ def test_printer_leaves_the_milling_strip_and_gets_its_own_widget(monkeypatch):
 
     printer, mill = card(True), card(False)
     monkeypatch.setattr(service, "snapshot", lambda db: [printer, mill])
-    monkeypatch.setattr(service, "strip_summary", lambda db: {})
+    # `cards=None` — з 27.09.26 `machine_side_context` передає вже зібрані
+    # картки, щоб не робити другий snapshot() на той самий віджет.
+    monkeypatch.setattr(service, "strip_summary", lambda db, cards=None: {})
 
     assert service.machine_side_context(None)["machine_cards"] == [mill]
     assert service.sisma_context(None)["sisma_cards"] == [printer]
