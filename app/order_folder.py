@@ -23,7 +23,7 @@ from pathlib import Path, PureWindowsPath
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.export_scanner import entry_for_folder
+from app.export_scanner import entry_for_folder, list_export_client_names_cached
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import (
     get_export_folder_path,
@@ -532,21 +532,65 @@ def _bound_folder(export_root: Path | None, order: Order) -> Path | None:
     return entry.folder_path if entry is not None else None
 
 
-def _client_folder(
-    db: Session, export_root: Path, order: Order, email: EmailMessage | None
-) -> Path | None:
-    """Тека клієнта в export за ПІДТВЕРДЖЕНОЮ прив'язкою — або None.
+def _folder_name_matcher(db: Session, export_root: Path | None):
+    """Зіставлення «ім'я клієнта → назва теки export» як на видачі, ліниво.
 
-    Те саме джерело, яким прийняття листа обирає теку (`preferred_client_folder`):
-    картка клієнта, а без неї — пам'ять відправника. Нечіткого збігу за іменем
-    тут свідомо немає (правило видачі §2: система не вгадує). Повертає теку
-    рівня КЛІЄНТА: партію/матеріал без файлів у базі не відновити чесно.
+    Список тек і аліаси вантажаться один раз на пакет і ЛИШЕ коли до нечіткого
+    збігу справді дійшло (перші джерела не спрацювали) — дзеркало поллиться
+    кожні 15 с, і платити скан кореня за рядки, яким тека вже відома, зайве.
+    """
+    state: dict = {}
+
+    def matcher(client_name: str | None) -> str | None:
+        name = (client_name or "").strip()
+        if not name or export_root is None:
+            return None
+        if not state:
+            from app.client_matcher import match_client_name_cached, matcher_cache_key
+            from app.models import ClientNameAlias
+
+            try:
+                folder_names = list(list_export_client_names_cached(export_root))
+            except OSError:
+                folder_names = []
+            aliases = {
+                a.sheet_name: a.export_folder_name
+                for a in db.scalars(
+                    select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))
+                ).all()
+            }
+            state["match"] = match_client_name_cached
+            state["args"] = (folder_names, aliases, matcher_cache_key(folder_names, aliases))
+        folder_names, aliases, key = state["args"]
+        return state["match"](name, folder_names, aliases, key).matched_folder_name
+
+    return matcher
+
+
+def _client_folder(
+    db: Session, export_root: Path, order: Order, email: EmailMessage | None,
+    matcher,
+) -> Path | None:
+    """Тека клієнта в export — тим САМИМ зіставленням, що й видача.
+
+    Спершу прив'язки, якими користується прийняття листа
+    (`preferred_client_folder`: картка клієнта, пам'ять відправника). Далі —
+    `match_client_name`, той самий резолвер, що зіставляє імена на екрані
+    видачі: підтверджені аліаси, точний нормалізований збіг, нечіткий з
+    порогом 90 і полем неоднозначності (двоє схожих → None, вирішує людина).
+    Перша версія обмежувалась карткою — і на проді промахнулась одразу на
+    обох бойових рядках 27.09.26: аліас Жестовского записаний під ІНШИМ
+    написанням імені, а LekaLab має теку з точним збігом без жодного аліаса;
+    видача обох давно знаходить. Повертає теку рівня КЛІЄНТА: партію й
+    матеріал без файлів у базі не відновити чесно.
     """
     from app.client_folder import preferred_client_folder
     from app.sender_memory import lookup_sender
 
     hint = lookup_sender(db, email) if email is not None else None
     name = preferred_client_folder(db, order.client_name, hint)
+    if not name:
+        name = matcher(order.client_name)
     if not name:
         return None
     folder = export_root / name
@@ -672,6 +716,7 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
                 select(EmailMessage).where(EmailMessage.id.in_(orphan_email_ids))
             )
         }
+    matcher = _folder_name_matcher(db, root_path) if orphan_email_ids else (lambda _n: None)
 
     for order in email_orders:
         folder = _bound_folder(root_path, order)
@@ -681,7 +726,8 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
             folder = spool_by_email.get(order.source_email_id)
         if folder is None and root_path is not None:
             folder = _client_folder(
-                db, root_path, order, email_by_id.get(order.source_email_id or -1)
+                db, root_path, order, email_by_id.get(order.source_email_id or -1),
+                matcher,
             )
         if folder is None:
             continue

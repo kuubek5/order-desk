@@ -233,22 +233,44 @@ def test_hand_downloaded_mail_falls_back_to_client_card_folder(db_session, tmp_p
     assert order.export_folder_uri.endswith("/%D0%96%D0%B5%D1%81%D1%82%D0%BE%D0%B2%D1%81%D0%BA%D0%B8%D0%B9")
 
 
-def test_no_confirmed_binding_means_no_guessing(db_session, tmp_path, monkeypatch):
-    """Немає підтвердженої прив'язки — клітинка порожня, тека за схожістю імені
-    не вгадується (правило видачі §2)."""
+def test_exact_folder_name_match_needs_no_alias(db_session, tmp_path, monkeypatch):
+    """Тека, що зветься рівно як клієнт, знаходиться й без прив'язки — тим
+    самим резолвером, що на видачі (бойовий рядок LekaLab, 27.09.26)."""
     from app import order_folder
 
     db = db_session
     export_root = tmp_path / "export"
-    (export_root / "Виктор Жестовский").mkdir(parents=True)  # тека Є, збіг точний
+    (export_root / "LekaLab").mkdir(parents=True)
     monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(export_root))
 
     email = EmailMessage(uid="12", uid_validity="v", status="прийнято")
     db.add(email)
     db.flush()
-    order = Order(
-        source="email", client_name="Виктор Жестовский", source_email_id=email.id,
-    )
+    order = Order(source="email", client_name="LekaLab", source_email_id=email.id)
+    db.add(order)
+    db.commit()
+
+    attach_mail_mirror_folder_uris(db, [order])
+
+    assert order.export_folder_uri is not None
+    assert order.export_folder_uri.endswith("/LekaLab")
+
+
+def test_ambiguous_similars_stay_empty(db_session, tmp_path, monkeypatch):
+    """Двоє однаково схожих тек — рішення за людиною, клітинка порожня
+    (правило видачі §2: система не вгадує)."""
+    from app import order_folder
+
+    db = db_session
+    export_root = tmp_path / "export"
+    (export_root / "Петренко Іван").mkdir(parents=True)
+    (export_root / "Петренко Іванн").mkdir(parents=True)
+    monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(export_root))
+
+    email = EmailMessage(uid="13", uid_validity="v", status="прийнято")
+    db.add(email)
+    db.flush()
+    order = Order(source="email", client_name="Петренко Іва", source_email_id=email.id)
     db.add(order)
     db.commit()
 
