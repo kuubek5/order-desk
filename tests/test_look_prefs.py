@@ -46,7 +46,14 @@ def _user(db):
 
 
 def _save(request, db, **kwargs):
-    payload = {"row_pad": 0, "list_width": 0, "density": "", "mat_style": "", "step": 2}
+    # view=None явно: post_account_look — роут FastAPI, і його `Form(None)`
+    # за замовчуванням при виклику НАПРЯМУ (не через ASGI) лишається обʼєктом
+    # fastapi.params.Form, а не None, — inne apply_mail_look дістав би не-None
+    # "значення" на кожному цьому виклику і падав би 422 з невідомого вигляду.
+    payload = {
+        "row_pad": 0, "list_width": 0, "density": "", "mat_style": "", "step": 2,
+        "view": None,
+    }
     payload.update(kwargs)
     return asyncio.run(
         auth_router_mod.post_account_look(request=request, db=db, **payload)
@@ -69,6 +76,40 @@ def test_values_are_clamped_and_zero_stays_zero():
         _save(request, db, scope="mail", row_pad=0, list_width=0, step=2)
         db.refresh(user)
         assert (user.mail_row_pad, user.mail_list_width) == (0, 0)
+
+
+def test_mail_view_switches_and_canon_has_its_own_word():
+    """Канон («класика») мусить мати ВЛАСНЕ слово на дроті, інакше клік по
+    відступу (view не передається) і клік «скинути вигляд» (view="classic")
+    злились би в одне порожнє значення — і повернутись у класику стало б
+    неможливо (§14 «Порожнє поле = поля не було», обпеклись двічі за вечір)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        request = _request(user.id)
+
+        _save(request, db, scope="mail", view="conversation")
+        db.refresh(user)
+        assert user.mail_view == "conversation"
+
+        # Клік по відступу (без view) не має скидати вигляд назад.
+        _save(request, db, scope="mail", row_pad=10)
+        db.refresh(user)
+        assert user.mail_view == "conversation"
+
+        # "classic" на дроті — це порожній рядок у базі, не окреме слово.
+        _save(request, db, scope="mail", view="classic")
+        db.refresh(user)
+        assert user.mail_view == ""
+
+        _save(request, db, scope="mail", view="focus")
+        db.refresh(user)
+        assert user.mail_view == "focus"
+
+        resp = _save(request, db, scope="mail", view="вигадка")
+        assert resp.status_code == 422
+        db.refresh(user)
+        assert user.mail_view == "focus", "невалідне значення не має тихо стерти попереднє"
 
 
 def test_queue_scope_saves_its_own_fields():
@@ -145,6 +186,16 @@ def test_markup_only_offers_values_the_server_accepts():
     queue = Path("app/templates/queue.html").read_text(encoding="utf-8")
     presets = set(re.findall(r"\('([a-z]*)', \d+, '", queue))
     assert presets <= set(look_prefs.QUEUE_DENSITIES), presets
+
+    # Вигляд пошти (MAIL_V1_BRIEF.md етап 2): "classic" на дроті — це "" в
+    # базі (та сама пастка, що HANDOUT_FLOWS/"clients"). Розмітка мусить
+    # пропонувати лише слова, які apply_mail_look справді приймає.
+    mail_triage = Path("app/templates/mail_triage.html").read_text(encoding="utf-8")
+    views_block = mail_triage.split("views=[")[1].split("],\n")[0]
+    views = set(re.findall(r"\('([a-z]+)',", views_block))
+    assert views, "не знайдено переліку views= у виклику lookgear('mail', ...)"
+    wire_values = {v if v != "classic" else "" for v in views}
+    assert wire_values <= set(look_prefs.MAIL_VIEWS), wire_values - set(look_prefs.MAIL_VIEWS)
 
 
 def test_handout_day_totals_counts_the_same_set_the_screen_shows():

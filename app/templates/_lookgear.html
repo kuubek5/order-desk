@@ -26,7 +26,7 @@
 {% macro lookgear(scope, host, pad, step, width=None, width_target='', pad_probe='', presets=[],
                   density='', mat_styles=[], mat_style='', pad_default=6,
                   reset_event='', col_edit=false, title='Вигляд списку', load_shown=none,
-                  widgets_hidden=none) %}
+                  widgets_hidden=none, views=[], view='') %}
 <div class="lookgear" data-look-gear data-look-scope="{{ scope }}"
      data-look-host="{{ host }}"
      data-pad="{{ pad }}" data-width="{{ width or 0 }}" data-step="{{ step or 2 }}"
@@ -46,6 +46,25 @@
 
     <div class="lookpanel" id="look-panel-{{ scope }}" data-look-panel hidden>
         <div class="lookpanel-head">{{ title }}</div>
+
+        {% if views %}
+        {# Вигляд екрана (MAIL_V1_BRIEF.md етап 2) — структурний вибір, ПЕРШИЙ у
+           панелі, вищий за пресети щільності: він міняє розкладку, не тонкі
+           числа. Клік шле /account/look і перезавантажує сторінку цілком —
+           як розкладка/порядок видачі (handout.js), не живий CSS-своп: тут
+           міняється каркас, а не змінна. Обробник — mail.js, не lookgear.js
+           (той самий підхід, що col_edit-кнопки нижче). #}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Вигляд екрана</span>
+            <div class="lookpresets" role="group" aria-label="Вигляд екрана пошти">
+                {% for value, label, hint in views %}
+                <button type="button" class="lookpreset" data-look-view="{{ value }}" title="{{ hint }}"
+                        aria-pressed="{{ 'true' if (view or 'classic') == value else 'false' }}">{{ label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="looksplit" aria-hidden="true"></div>
+        {% endif %}
 
         {% if presets %}
         {# Пресети першими: «постав і йди» — найчастіший рух у панелі. Ручне

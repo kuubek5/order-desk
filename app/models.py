@@ -70,6 +70,11 @@ class User(Base):
     mail_row_pad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     mail_list_width: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     mail_ui_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Вигляд екрана пошти (28.09.26, MAIL_V1_BRIEF.md етап 2): "" — класика
+    # (доведений V1), "conversation" — «Лист як розмова» (A), "focus" —
+    # «Лист ↔ заявка» (C). Обидва нові вигляди міняють РОЗТАШУВАННЯ, не
+    # можливості — увесь чекліст §3 брифу лишається доступним у кожному.
+    mail_view: Mapped[str] = mapped_column(String(20), default="", server_default="")
     # Те саме для черги. Щільність і вигляд колонки «Матеріал / Колір» жили в
     # localStorage — тобто гинули при зміні браузера й не їхали за оператором.
     # Переїхали сюди ЄДИНИМ джерелом: два місця для одного значення рано чи

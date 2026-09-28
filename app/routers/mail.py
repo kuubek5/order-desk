@@ -1086,6 +1086,10 @@ def _mail_panel_context(
     context = {
         "email": email,
         "user": user,
+        # Вигляд екрана пошти (MAIL_V1_BRIEF.md етап 2): з акаунта оператора,
+        # прямо з `user`, без другого round-trip до ui_prefs(request) — картку
+        # рендерять і без request (див. виклики нижче в цьому файлі).
+        "mail_view": (getattr(user, "mail_view", "") or ""),
         "error": error,
         "client_name": client_name,
         # id картки клієнта (для кліку по імені в шапці) — за РЕЗОЛЬВНУТИМ іменем

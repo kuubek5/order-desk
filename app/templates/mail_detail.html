@@ -4,7 +4,9 @@
 {% block stl_scripts %}{% include "_stl_scripts.html" %}{% endblock %}
 
 {% block content %}
-<main class="mailv2">
+{# `mail_view` тут — прямо з context _mail_panel_context (не через ui_prefs):
+   ця сторінка вже отримує його як top-level змінну. -#}
+<main class="mailv2{% if mail_view %} mailv2--{{ mail_view }}{% endif %}">
     {% if error %}
     <div class="settings-alert settings-alert-error">{{ error }}</div>
     {% endif %}

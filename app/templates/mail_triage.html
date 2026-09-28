@@ -23,7 +23,11 @@
    власну область видимості, і top-level `set` батьківського шаблону сюди не
    дотягується. Другий виклик безкоштовний — він кешований у request.state. #}
 {% set _up = ui_prefs(request) %}
-<main class="mailv2">
+{# Модифікатор вигляду (MAIL_V1_BRIEF.md етап 2): "" — класика, без класу
+   взагалі (канон лишається байт-у-байт тим самим виводом, що й до етапу 2 —
+   перевірено знімком). "conversation"/"focus" — A і C, лише CSS-розкладка
+   ТИХ САМИХ партіалів списку й картки. -#}
+<main class="mailv2{% if _up.mail_view %} mailv2--{{ _up.mail_view }}{% endif %}">
     <div class="m-topbar">
         <div>
             <h1>{{ page_title }}</h1>
@@ -63,6 +67,14 @@
        OVER the list — so they share a single band instead of stacking
        into two. #}
     <div class="list-controls">
+        {# Видно ТРИ головні вкладки (Вхідні · папка «оброблено» · На уточненні),
+           решта — під «Ще ▾»: вісім пігулок в один ряд не вміщались і
+           переносились у два-три ряди, які з'їдали висоту списку. Ховається
+           лише ПОКАЗ — усі вісім лишаються звичайними посиланнями в DOM.
+           Коли оператор стоїть на одній із захованих, «Ще» називає її вголос
+           і підсвічується, інакше він не бачив би, де він. #}
+        {% set _more_views = ['milled', 'filtered', 'archive', 'gone', 'auto'] %}
+        {% set _more_labels = {'milled': mail_milled_folder, 'filtered': 'Відфільтровані', 'archive': 'Архів', 'gone': 'Покинули Вхідні', 'auto': 'Авто-скачування'} %}
         <nav class="tab-nav" aria-label="Розділ">
             <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}"{% if view == 'pending' %} aria-current="page"{% endif %}>Вхідні <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
             {# Папка «оброблено» зі скриньки — ДРУГОЮ, одразу після «Вхідні»
@@ -72,24 +84,44 @@
             {% if mail_processed_folder or processed_count %}
             <a href="/mail?view=processed" class="tab-link {% if view == 'processed' %}active{% endif %}"{% if view == 'processed' %} aria-current="page"{% endif %} title="Листи, перенесені в папку «{{ mail_processed_folder }}» — робота пішла в цех">{{ mail_processed_folder or 'Перенесені' }}{% if processed_count %} <span class="tab-badge">{{ processed_count }}</span>{% endif %}</a>
             {% endif %}
-            {# Друга папка — окрема вкладка (власник 25.09.26), лише коли задана. #}
-            {% if mail_milled_folder %}
-            <a href="/mail?view=milled" class="tab-link {% if view == 'milled' %}active{% endif %}"{% if view == 'milled' %} aria-current="page"{% endif %} title="Листи в папці «{{ mail_milled_folder }}» — робота відправлена замовнику">{{ mail_milled_folder }}{% if milled_count %} <span class="tab-badge">{{ milled_count }}</span>{% endif %}</a>
-            {% endif %}
             {# «На уточненні» (власник 25.09.26): листи на паузі, поки адміністратори
                уточнюють у замовника. Лише стан CRM. Видно завжди — це місце, куди
                оператор кладе лист сам. #}
             <a href="/mail?view=hold" class="tab-link {% if view == 'hold' %}active{% endif %}"{% if view == 'hold' %} aria-current="page"{% endif %} title="Листи на паузі: клієнту телефонують адміністратори">На уточненні{% if hold_count %} <span class="tab-badge hold">{{ hold_count }}</span>{% endif %}</a>
-            <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}"{% if view == 'filtered' %} aria-current="page"{% endif %}>Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
-            <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}"{% if view == 'archive' %} aria-current="page"{% endif %}>Архів <span class="tab-badge">{{ archive_count }}</span></a>
-            {# «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (переклали
-               в папку АБО видалили — усі чистять скриньку). CRM дзеркалить
-               Вхідні. Вкладка лише коли такі листи є. #}
-            {% if gone_count %}
-            <a href="/mail?view=gone" class="tab-link {% if view == 'gone' %}active{% endif %}"{% if view == 'gone' %} aria-current="page"{% endif %} title="Листи, яких уже немає у Вхідних пошти — переклали в папку або видалили">Покинули Вхідні <span class="tab-badge">{{ gone_count }}</span></a>
-            {% endif %}
-            <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}"{% if view == 'auto' %} aria-current="page"{% endif %} title="Довірені відправники — вкладення скачуються автоматично">Авто-скачування{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
+            {# Решта вкладок — під «Ще ▾». Посилання ті самі, лише інший контейнер. #}
+            <details class="tab-more">
+                <summary class="tab-link{% if view in _more_views %} active{% endif %}" title="Інші розділи пошти">
+                    <span>{% if view in _more_views %}{{ _more_labels[view] }}{% else %}Ще{% endif %}</span>
+                    <span class="tab-more-caret" aria-hidden="true">▾</span>
+                </summary>
+                <div class="tab-more-body">
+                {# Друга папка — окрема вкладка (власник 25.09.26), лише коли задана. #}
+                {% if mail_milled_folder %}
+                <a href="/mail?view=milled" class="tab-link {% if view == 'milled' %}active{% endif %}"{% if view == 'milled' %} aria-current="page"{% endif %} title="Листи в папці «{{ mail_milled_folder }}» — робота відправлена замовнику">{{ mail_milled_folder }}{% if milled_count %} <span class="tab-badge">{{ milled_count }}</span>{% endif %}</a>
+                {% endif %}
+                <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}"{% if view == 'filtered' %} aria-current="page"{% endif %}>Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
+                <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}"{% if view == 'archive' %} aria-current="page"{% endif %}>Архів <span class="tab-badge">{{ archive_count }}</span></a>
+                {# «Покинули Вхідні» — листи, яких уже нема у Вхідних пошти (переклали
+                   в папку АБО видалили — усі чистять скриньку). CRM дзеркалить
+                   Вхідні. Вкладка лише коли такі листи є. #}
+                {% if gone_count %}
+                <a href="/mail?view=gone" class="tab-link {% if view == 'gone' %}active{% endif %}"{% if view == 'gone' %} aria-current="page"{% endif %} title="Листи, яких уже немає у Вхідних пошти — переклали в папку або видалили">Покинули Вхідні <span class="tab-badge">{{ gone_count }}</span></a>
+                {% endif %}
+                <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}"{% if view == 'auto' %} aria-current="page"{% endif %} title="Довірені відправники — вкладення скачуються автоматично">Авто-скачування{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
+                </div>
+            </details>
         </nav>
+
+        {# «Половина вікна» (власник): під 960px список з карткою поруч не
+           живуть, а список НАД карткою забирає піввисоти екрана. Кнопка
+           ховає список і віддає картці всю ширину. Ширшим за 960px кнопки
+           немає взагалі (CSS) — там ховати нічого. #}
+        <button type="button" class="tab-link mail-listtoggle" data-list-toggle
+                aria-expanded="true" aria-controls="mail-list-panel"
+                title="Показати або сховати список листів">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            <span>Список</span>
+        </button>
 
         {# Download mode: a STATE CHIP, not an action button. It was sitting in
            .head-actions 8px from «Перевірити пошту» — a persistent global setting
@@ -122,7 +154,23 @@
                     width=_up.mail_list_w, width_target='.mailv2 .list-panel',
                     pad_probe='.mailv2 .mailrow',
                     presets=[('', 3, 'Щільно'), ('', 0, 'Звичайно'), ('', 12, 'Просторо')],
-                    pad_default=6) }}
+                    pad_default=6,
+                    views=[('classic', 'Класичний', 'Список і картка поруч — доведений вигляд'),
+                           ('conversation', 'Розмова', 'Лист як цитата, маршрут роботи праворуч'),
+                           ('focus', 'Фокус', 'Один лист за раз, список за кнопкою')],
+                    view=(_up.mail_view or 'classic')) }}
+    </div>
+
+    {# «Лист N з M» + ←/→ — лише вигляд «Фокус» (C); в ДОМ завжди, CSS ховає в
+       інших виглядах. Рахує mail.js із самого списку рядків (DOM), той самий
+       підрахунок, яким уже керує J/K — нового запиту чи серверної логіки
+       нуль. Клавіатурні підказки — ті самі клавіші, що вже працюють скрізь
+       у тріажі (§3.4), тут просто названі вголос. #}
+    <div class="mail-focus-nav" role="group" aria-label="Навігація листами">
+        <button type="button" class="btn sm" data-focus-prev aria-label="Попередній лист">←</button>
+        <span class="mail-focus-pos">Лист <b class="mono" data-focus-pos>–</b> з <b class="mono" data-focus-total>0</b></span>
+        <button type="button" class="btn sm" data-focus-next aria-label="Наступний лист">→</button>
+        <span class="mail-focus-keys"><span class="kbd">J</span><span class="kbd">K</span> наступний / попередній лист</span>
     </div>
 
     {% if filter_suggest %}
@@ -143,7 +191,7 @@
     {% endif %}
 
     <div class="worklayout">
-        <section class="list-panel" aria-labelledby="mail-list-title">
+        <section class="list-panel" id="mail-list-panel" aria-labelledby="mail-list-title">
             {# The active tab above already names this list and counts it, so a
                visible header repeated the same two facts and cost 45px of the
                scroller. Kept for screen readers via aria-labelledby. #}
@@ -317,6 +365,24 @@
             {% include "_mail_queue_mirror.html" %}
         </div>
     </section>
+    {# Дзеркало типово ЗГОРНУТЕ (власник 28.09.26): смуга з лічильником замість
+       піввисоти таблиці. Клас ставимо ТУТ, одразу після секції, а не в mail.js:
+       той із defer, і дзеркало встигло б малюнутись розгорнутим — сторінка
+       сіпалась би на кожному відкритті. KMStore вантажиться без defer, тож уже
+       існує. Пам'ять стану лишається за mail.js, це лише перший кадр. #}
+    <script>
+    (function () {
+        try {
+            var saved = window.KMStore && KMStore.get("mailMirrorCollapsed");
+            if (saved === "0") return;  // оператор розгорнув — поважаємо
+            var mirror = document.getElementById("mail-queue-mirror");
+            if (!mirror) return;
+            mirror.classList.add("qmir-collapsed");
+            var btn = mirror.querySelector(".qmir-toggle");
+            if (btn) btn.setAttribute("aria-expanded", "false");
+        } catch (e) { /* сховище недоступне — лишається розгорнутим */ }
+    })();
+    </script>
 </main>
 
 {# Виїзний паспорт роботи (slide-over) — ТОЙ САМИЙ, що в черзі: клік по наряду/виду

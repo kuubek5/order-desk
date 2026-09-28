@@ -521,6 +521,9 @@ async def post_account_look(
     # скидав би другу в дефолт.
     layout: str | None = Form(None),
     flow: str | None = Form(None),
+    # Вигляд екрана пошти (MAIL_V1_BRIEF.md етап 2): None — не чіпати, як і
+    # layout/flow вище. Кнопки-пресети в шестерні пошти шлють лише це поле.
+    view: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Зберегти вигляд списку (шестерня) — один роут на обидва екрани.
@@ -536,7 +539,7 @@ async def post_account_look(
         return Response(status_code=401)
     try:
         if scope == "mail":
-            apply_mail_look(user, row_pad=row_pad, list_width=list_width, step=step)
+            apply_mail_look(user, row_pad=row_pad, list_width=list_width, step=step, view=view)
         elif scope == "queue":
             apply_queue_look(
                 user, density=density, row_pad=row_pad, mat_style=mat_style, step=step

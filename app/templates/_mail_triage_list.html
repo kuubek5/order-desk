@@ -41,6 +41,21 @@
            (`/mail/bulk`) перевіряє ще раз. У «Вхідні» галочка активна для
            всіх: конвеєр бере з обраних лише готові (`data-ready`). #}
         {% set has_cb = view != 'auto' %}
+        {# Точка стану — щоб вона стояла ПЕРЕД іменем клієнта (власник 28.09.26).
+           Бейдж .reco праворуч лишається: він несе текст причини. Але до нього
+           від імені ~800px, і око бігало через увесь рядок, щоб дізнатись, чи
+           лист готовий. Колір тут той самий, що в бейджі того самого рядка —
+           два сигнали про один стан не мають говорити різними мовами. #}
+        {% set _dot = none %}
+        {% if view == 'pending' %}
+            {% set _dot = 'ok' if rd.state == 'ready' else ('danger' if rd.state in ('no_files', '3d') else 'warn') %}
+        {% elif view in ('archive', 'gone') %}
+            {% set _dot = 'ok' if email.status == 'прийнято' else ('muted' if email.status == 'відхилено' else 'warn') %}
+        {% elif view in ('processed', 'milled') %}
+            {% set _dot = 'ok' %}
+        {% elif view in ('filtered', 'hold') %}
+            {% set _dot = 'warn' %}
+        {% endif %}
         {% set cb_locked = view in ('archive', 'processed', 'milled', 'gone') and (email.status == 'прийнято' or email.order_id) %}
         <div class="mailrow{% if has_cb %} has-cb{% endif %}{% if view == 'pending' %} row-slim{% endif %}{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
              id="mailrow-{{ email.id }}"
@@ -66,6 +81,7 @@
                dictates the row height. #}
             <span class="rowmain">
             <span class="r1">
+                {% if _dot %}<span class="statedot {{ _dot }}" aria-hidden="true"></span>{% endif %}
                 {% if is_unread %}<span class="newdot" aria-hidden="true"></span>{% endif %}
                 {# Головний напис — показне ім'я відправника (як ukr.net, за яким
                    оператор звик обробляти пошту). Здогад класифікатора лишається,

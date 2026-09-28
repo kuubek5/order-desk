@@ -284,6 +284,15 @@ function syncMailCardOpen() {
     "mail-card-open",
     !!document.querySelector("#mail-detail .mailcard > .mc-foot"),
   );
+  // Окремий клас — БУДЬ-ЯКА картка в панелі, зокрема архівна (у неї немає
+  // липкої смуги дій, тож mail-card-open її не ловить). Від нього CSS тягне
+  // панель на висоту списку, щоб дії стояли внизу картки, а не там, де
+  // скінчився текст листа. Клас, а не `:has()`: селектор на body
+  // перевірявся б на кожній мутації (див. has-toast-line в update_overlay.css).
+  body.classList.toggle(
+    "mail-has-card",
+    !!document.querySelector("#mail-detail .mailcard"),
+  );
 }
 syncMailCardOpen();
 document.addEventListener("htmx:afterSwap", syncMailCardOpen);
@@ -434,28 +443,15 @@ document.addEventListener("keydown", (event) => {
   // Відкрите читання листа — J/K під ним перемикали б лист у картці позаду.
   if (document.querySelector("dialog.letter-reader[open]")) return;
 
-  const rows = Array.prototype.slice.call(document.querySelectorAll(".mailrow"));
-  if (!rows.length) return; // не екран тріажу — нічого не перехоплюємо
-
-  const active = document.querySelector(".mailrow.active");
-  const at = active ? rows.indexOf(active) : -1;
-  // Без вибраного рядка J починає згори, K — знизу: це те, що людина мала на
-  // увазі, натиснувши «вниз» чи «вгору» на щойно відкритому екрані.
-  let next;
-  if (at === -1) next = forward ? rows[0] : rows[rows.length - 1];
-  else next = rows[Math.min(Math.max(at + (forward ? 1 : -1), 0), rows.length - 1)];
-  if (!next || next === active) return;
-
+  // querySelectorAll, не querySelector: тестовий DOM-скелет (test_palette.py)
+  // мокає лише querySelectorAll(".mailrow") — querySelector(".mailrow") там
+  // завжди null, і перевірка мовчки вимикала б J/K на кожному прогоні тестів.
+  if (!document.querySelectorAll(".mailrow").length) return; // не екран тріажу
   event.preventDefault(); // інакше пробіл/літера прогортають сторінку під панеллю
-  // Наступний лист на іншій сторінці списку — перегорнути на неї.
-  if (window.KMMailPager) window.KMMailPager.reveal(next);
-  // preventScroll + scrollIntoView('nearest'): focus() сам би стрибнув так,
-  // щоб рядок став по центру, і список смикався б на кожне натискання.
-  try { next.focus({ preventScroll: true }); } catch (e) { next.focus(); }
-  if (next.scrollIntoView) next.scrollIntoView({ block: "nearest" });
-  // Рядок несе hx-trigger="click" — справжній клік відкриває лист у панелі й
-  // заодно доводить підсвітку через markMailRowActive вище.
-  next.click();
+  // Без вибраного рядка J починає згори, K — знизу (mailStepRow, нижче за
+  // текстом файлу — оголошення функції піднімається, hoisting): це те, що
+  // людина мала на увазі, натиснувши «вниз»/«вгору» на щойно відкритому екрані.
+  mailStepRow(forward);
 });
 
 // ── Список файлів листа: «Розгорнути» на весь зріст (власник 25.09.26) ──────
@@ -870,8 +866,15 @@ document.addEventListener("htmx:afterSwap", (event) => {
     if (btn) btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
   }
 
-  let saved = "0";
-  try { saved = (window.KMStore && KMStore.get(KEY)) || "0"; } catch (e) { saved = "0"; }
+  // Типово ЗГОРНУТЕ (власник 28.09.26). Перший кадр ставить інлайн-скрипт у
+  // mail_triage.html (цей файл із defer — дзеркало встигло б мигнути); тут
+  // лишається пам'ять вибору. "0" і "1" читаємо явно: `|| "0"` робив би
+  // канонним розгорнуте, а нічого не збережено = згорнуте.
+  let saved = "1";
+  try {
+    const stored = window.KMStore && KMStore.get(KEY);
+    if (stored === "0" || stored === "1") saved = stored;
+  } catch (e) { saved = "1"; }
   apply(saved === "1");
 
   if (btn) {
@@ -882,3 +885,129 @@ document.addEventListener("htmx:afterSwap", (event) => {
     });
   }
 })();
+
+// ── Список за кнопкою (вузьке вікно) ────────────────────────────────────────
+// Під 960px список і картка не стоять поруч, а список НАД карткою забирає
+// піввисоти. Кнопка «Список» ховає його класом на <body> (CSS вмикає і кнопку,
+// і правило лише в цьому діапазоні). Клік по листу ховає список сам — як у
+// поштовому застосунку на телефоні; на широкому екрані клас нічого не робить,
+// тож стан можна не скидати на resize.
+(function () {
+  const btn = document.querySelector("[data-list-toggle]");
+  if (!btn) return; // не екран пошти
+  const body = document.body;
+  // Фокус (C, MAIL_V1_BRIEF.md етап 2): список СХОВАНИЙ ЗА ЗАМОВЧУВАННЯМ
+  // незалежно від ширини вікна — сама суть вигляду «один лист за раз». Та
+  // сама кнопка тут означає ПРОТИЛЕЖНЕ: клік РОЗКРИВАЄ список, а не ховає
+  // його, тому клас на <body> інший (`mail-list-open`, не `mail-list-hidden`)
+  // — один і той самий клас з двома значеннями плутав би собою CSS обох
+  // режимів. Перевіряємо режим ЖИВИМ запитом до DOM (клас на <main> міняється
+  // лише повним перезавантаженням сторінки — див. вигляд у шестерні — тож
+  // тут не потрібен реактивний стан).
+  const isFocus = () => !!document.querySelector(".mailv2--focus");
+
+  function apply(hidden) {
+    body.classList.toggle("mail-list-hidden", hidden);
+    btn.setAttribute("aria-expanded", hidden ? "false" : "true");
+  }
+  function applyFocusOpen(open) {
+    body.classList.toggle("mail-list-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  btn.addEventListener("click", () => {
+    if (isFocus()) {
+      applyFocusOpen(!body.classList.contains("mail-list-open"));
+      return;
+    }
+    apply(!body.classList.contains("mail-list-hidden"));
+  });
+
+  // Відкрили лист із рядка — список поступається карткою. Саме по кліку, а не
+  // на кожному свопі #mail-detail: панель перемальовується й сама (скачування
+  // вкладень), і список зникав би під руками.
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest) return;
+    if (!event.target.closest(".mailrow")) return;
+    if (event.target.closest(".mailcb-wrap")) return; // галочка — не відкриття
+    if (event.target.closest(".mail-reject-form")) return; // ✕ / ↦ / ↩ — теж ні
+    if (isFocus()) {
+      applyFocusOpen(false); // обрали лист — список ховається знову
+      return;
+    }
+    if (window.matchMedia("(max-width: 960px)").matches) apply(true);
+  });
+})();
+
+// ── Вигляд екрана пошти: перемикач у шестерні ───────────────────────────────
+// Три кнопки-пресети («Класичний»/«Розмова»/«Фокус») усередині лукгіру —
+// СТРУКТУРНИЙ вибір, а не тонке підкручування, тому власна логіка (POST +
+// повне перезавантаження), не живий CSS-своп lookgear.js: розкладка міняє
+// каркас навколо тих самих партіалів, підміняти половину заради економії
+// мережі означало б плодити стани напів-так-напів-інакше (той самий принцип,
+// що в handout.js для розкладки видачі).
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-look-view]");
+  if (!btn) return;
+  const view = btn.dataset.lookView || "classic";
+  const body = new URLSearchParams({ scope: "mail", view: view });
+  fetch("/account/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+    credentials: "same-origin",
+  })
+    .then((response) => {
+      if (response.ok) { window.location.reload(); return; }
+      if (window.showToast) window.showToast("Не вдалось зберегти вигляд", "error");
+    })
+    .catch(() => {
+      if (window.showToast) window.showToast("Не вдалось зберегти вигляд", "error");
+    });
+});
+
+// ── Фокус: «Лист N з M» + ←/→ ────────────────────────────────────────────────
+// Рахує з ДОМ, не з бекенда: лист і так уже фільтрує/сортує сервер, а рядки —
+// усі в ДОМ навіть під пагінацією (§3.5 п.13, «сторінки — hidden, не
+// серверні»). Тому «скільки всього» і «який зараз» — той самий підрахунок,
+// яким уже живе J/K нижче; лічильник просто читає той самий стан, а не
+// заводить другий запит на позицію листа.
+function mailStepRow(forward) {
+  const rows = Array.prototype.slice.call(document.querySelectorAll(".mailrow"));
+  if (!rows.length) return false;
+  const active = document.querySelector(".mailrow.active");
+  const at = active ? rows.indexOf(active) : -1;
+  let next;
+  if (at === -1) next = forward ? rows[0] : rows[rows.length - 1];
+  else next = rows[Math.min(Math.max(at + (forward ? 1 : -1), 0), rows.length - 1)];
+  if (!next || next === active) return false;
+  if (window.KMMailPager) window.KMMailPager.reveal(next);
+  try { next.focus({ preventScroll: true }); } catch (e) { next.focus(); }
+  if (next.scrollIntoView) next.scrollIntoView({ block: "nearest" });
+  next.click();
+  return true;
+}
+
+function syncMailFocusNav() {
+  const bar = document.querySelector(".mail-focus-nav");
+  if (!bar) return; // не Фокус (елемент є в ДОМ завжди, CSS ховає в інших виглядах)
+  const rows = document.querySelectorAll(".mailrow");
+  const active = document.querySelector(".mailrow.active");
+  const total = rows.length;
+  const idx = active ? Array.prototype.indexOf.call(rows, active) + 1 : 0;
+  const posEl = bar.querySelector("[data-focus-pos]");
+  const totEl = bar.querySelector("[data-focus-total]");
+  const prevBtn = bar.querySelector("[data-focus-prev]");
+  const nextBtn = bar.querySelector("[data-focus-next]");
+  if (posEl) posEl.textContent = idx || "–";
+  if (totEl) totEl.textContent = total;
+  if (prevBtn) prevBtn.disabled = idx <= 1;
+  if (nextBtn) nextBtn.disabled = idx === 0 || idx >= total;
+}
+syncMailFocusNav();
+document.addEventListener("htmx:afterSwap", syncMailFocusNav);
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-focus-next]")) mailStepRow(true);
+  else if (event.target.closest("[data-focus-prev]")) mailStepRow(false);
+});

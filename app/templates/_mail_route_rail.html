@@ -1,0 +1,42 @@
+{# Маршрут роботи після прийняття — вигляди «Розмова» (A, вертикально, третя
+   колонка) і «Фокус» (C, горизонтально, під формою). Дані ті самі, що вже
+   рахує форма прийняття для рядка шляху (_mail_path_preview.html): нової
+   логіки тут нуль, лише інша розкладка тих самих чисел. Два кроки праворуч
+   («Рядок у таблиці», «Черга») — це те, що СТАНЕТЬСЯ при прийнятті, не
+   окремий стан листа; показуємо їх як «буде», щоб не вигадувати статус,
+   якого в моделі нема (§14 «жодного авто-зіставлення» — тут не зіставлення,
+   а щойно та сама підказка, розказана наперед).
+   Потребує: email, preview, attachment_count, on_disk_count, att_count. #}
+<div class="mc-route" aria-label="Маршрут роботи після прийняття">
+    <div class="mc-route-label">Куди піде після прийняття</div>
+    <ol class="mc-route-steps">
+        <li class="mc-route-step is-done">
+            <span class="mc-route-dot" aria-hidden="true"></span>
+            <div class="mc-route-body">
+                <div class="mc-route-name">Пошта → спул</div>
+                <div class="mc-route-note">{{ on_disk_count }} з {{ att_count }} файл. на диску</div>
+            </div>
+        </li>
+        <li class="mc-route-step is-done">
+            <span class="mc-route-dot" aria-hidden="true"></span>
+            <div class="mc-route-body">
+                <div class="mc-route-name">Тека export</div>
+                <div class="mc-route-note mono">{{ preview.client_folder }}/{{ preview.batch_folder }}/{{ preview.material_folder }}</div>
+            </div>
+        </li>
+        <li class="mc-route-step is-pending">
+            <span class="mc-route-dot" aria-hidden="true"></span>
+            <div class="mc-route-body">
+                <div class="mc-route-name">Рядок у таблиці</div>
+                <div class="mc-route-note">буде — новий рядок при прийнятті</div>
+            </div>
+        </li>
+        <li class="mc-route-step is-pending">
+            <span class="mc-route-dot" aria-hidden="true"></span>
+            <div class="mc-route-body">
+                <div class="mc-route-name">Черга</div>
+                <div class="mc-route-note">буде — сьогодні</div>
+            </div>
+        </li>
+    </ol>
+</div>

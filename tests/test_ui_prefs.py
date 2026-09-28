@@ -111,7 +111,7 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
     prefs = deps_mod.ui_prefs(req)
     assert prefs == {"theme": "forge", "icons": "thin", "buttons": "glass",
                      "loader": "ring", "chips": "marker",
-                     "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "queue_density": "", "queue_row_pad": 0,
+                     "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "mail_view": "", "queue_density": "", "queue_row_pad": 0,
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": "", "handout_flow": "",
                      "machine_art": "", "machine_strip": "", "machine_card": "",
                      "side_order": "", "strip_order": "", "load_metrics": "crm,pc,ram",
@@ -123,7 +123,7 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
     # Явно вибраний бірюзовий канон → "teal"; решта набору порожня.
     teal_prefs = {"theme": "teal", "icons": "", "buttons": "", "loader": "", "chips": "",
-             "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "queue_density": "", "queue_row_pad": 0,
+             "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "mail_view": "", "queue_density": "", "queue_row_pad": 0,
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": "", "handout_flow": "",
                      "machine_art": "", "machine_strip": "", "machine_card": "",
                      "side_order": "", "strip_order": "", "load_metrics": "crm,pc,ram",

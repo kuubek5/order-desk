@@ -49,15 +49,32 @@ ROW_PAD = Bounds(2, 28)
 #: Ширина панелі списку листів. Нижня — та, під яку розрахований двоповерховий
 #: рядок; верхня — стеля, за якою рядок перестає читатись як рядок.
 LIST_WIDTH = Bounds(340, 1180)
+#: Вигляд екрана пошти: канон — доведений класичний екран (V1), "conversation"
+#: і "focus" — опційні вигляди A і C (MAIL_V1_BRIEF.md, 28.09.26). "" тут — це
+#: і канон, і «нічого не збережено» (як у HANDOUT_FLOWS): перемикач ніколи не
+#: шле порожній рядок сам, лише "classic"/"conversation"/"focus" — інакше
+#: скидання на канон і «поля не було» злились би в одне значення.
+MAIL_VIEWS = ("", "classic", "conversation", "focus")
 
 
 class LookError(ValueError):
     """Значення, яке не могло прийти від кнопок — тобто помилка розмітки."""
 
 
-def apply_mail_look(user: User, *, row_pad: int, list_width: int, step: int) -> None:
+def apply_mail_look(
+    user: User, *, row_pad: int, list_width: int, step: int, view: str | None = None
+) -> None:
+    """`view=None` — не чіпати (кнопки щільності й ширини шлють лише своє,
+    як і в apply_handout_look): інакше клік по відступу скидав би вигляд
+    назад у класику."""
     if step not in UI_STEPS:
         raise LookError("невідомий крок")
+    if view is not None:
+        if view not in MAIL_VIEWS:
+            raise LookError("невідомий вигляд пошти")
+        # Канон у базі лишається порожнім рядком — так його читає ui_prefs і
+        # шаблони; "classic" це лише слово на дроті (§ пастка «порожнє поле»).
+        user.mail_view = "" if view == "classic" else view
     user.mail_row_pad = ROW_PAD.clamp_or_zero(row_pad)
     user.mail_list_width = LIST_WIDTH.clamp_or_zero(list_width)
     user.mail_ui_step = step
