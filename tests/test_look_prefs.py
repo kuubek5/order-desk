@@ -102,14 +102,14 @@ def test_mail_view_switches_and_canon_has_its_own_word():
         db.refresh(user)
         assert user.mail_view == ""
 
-        _save(request, db, scope="mail", view="focus")
+        _save(request, db, scope="mail", view="conversation")
         db.refresh(user)
-        assert user.mail_view == "focus"
+        assert user.mail_view == "conversation"
 
-        resp = _save(request, db, scope="mail", view="вигадка")
-        assert resp.status_code == 422
+        resp = _save(request, db, scope="mail", view="focus")
+        assert resp.status_code == 422, "«Фокус» прибрано 28.09.26 — більше не приймається"
         db.refresh(user)
-        assert user.mail_view == "focus", "невалідне значення не має тихо стерти попереднє"
+        assert user.mail_view == "conversation", "невалідне значення не має тихо стерти попереднє"
 
 
 def test_queue_scope_saves_its_own_fields():

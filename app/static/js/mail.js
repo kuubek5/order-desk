@@ -896,30 +896,13 @@ document.addEventListener("htmx:afterSwap", (event) => {
   const btn = document.querySelector("[data-list-toggle]");
   if (!btn) return; // не екран пошти
   const body = document.body;
-  // Фокус (C, MAIL_V1_BRIEF.md етап 2): список СХОВАНИЙ ЗА ЗАМОВЧУВАННЯМ
-  // незалежно від ширини вікна — сама суть вигляду «один лист за раз». Та
-  // сама кнопка тут означає ПРОТИЛЕЖНЕ: клік РОЗКРИВАЄ список, а не ховає
-  // його, тому клас на <body> інший (`mail-list-open`, не `mail-list-hidden`)
-  // — один і той самий клас з двома значеннями плутав би собою CSS обох
-  // режимів. Перевіряємо режим ЖИВИМ запитом до DOM (клас на <main> міняється
-  // лише повним перезавантаженням сторінки — див. вигляд у шестерні — тож
-  // тут не потрібен реактивний стан).
-  const isFocus = () => !!document.querySelector(".mailv2--focus");
 
   function apply(hidden) {
     body.classList.toggle("mail-list-hidden", hidden);
     btn.setAttribute("aria-expanded", hidden ? "false" : "true");
   }
-  function applyFocusOpen(open) {
-    body.classList.toggle("mail-list-open", open);
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-  }
 
   btn.addEventListener("click", () => {
-    if (isFocus()) {
-      applyFocusOpen(!body.classList.contains("mail-list-open"));
-      return;
-    }
     apply(!body.classList.contains("mail-list-hidden"));
   });
 
@@ -931,16 +914,12 @@ document.addEventListener("htmx:afterSwap", (event) => {
     if (!event.target.closest(".mailrow")) return;
     if (event.target.closest(".mailcb-wrap")) return; // галочка — не відкриття
     if (event.target.closest(".mail-reject-form")) return; // ✕ / ↦ / ↩ — теж ні
-    if (isFocus()) {
-      applyFocusOpen(false); // обрали лист — список ховається знову
-      return;
-    }
     if (window.matchMedia("(max-width: 960px)").matches) apply(true);
   });
 })();
 
 // ── Вигляд екрана пошти: перемикач у шестерні ───────────────────────────────
-// Три кнопки-пресети («Класичний»/«Розмова»/«Фокус») усередині лукгіру —
+// Дві кнопки-пресети («Класичний»/«Розмова») усередині лукгіру —
 // СТРУКТУРНИЙ вибір, а не тонке підкручування, тому власна логіка (POST +
 // повне перезавантаження), не живий CSS-своп lookgear.js: розкладка міняє
 // каркас навколо тих самих партіалів, підміняти половину заради економії
@@ -966,12 +945,10 @@ document.addEventListener("click", (event) => {
     });
 });
 
-// ── Фокус: «Лист N з M» + ←/→ ────────────────────────────────────────────────
-// Рахує з ДОМ, не з бекенда: лист і так уже фільтрує/сортує сервер, а рядки —
-// усі в ДОМ навіть під пагінацією (§3.5 п.13, «сторінки — hidden, не
-// серверні»). Тому «скільки всього» і «який зараз» — той самий підрахунок,
-// яким уже живе J/K нижче; лічильник просто читає той самий стан, а не
-// заводить другий запит на позицію листа.
+// ── Крок по списку (J/K) — винесено окремою функцією ─────────────────────────
+// Раніше жило прямо в обробнику keydown нижче; винесено без зміни поведінки,
+// щоб той самий рух можна було викликати й не з клавіатури (не використовується
+// зараз — лишається єдиним місцем цієї логіки на майбутнє).
 function mailStepRow(forward) {
   const rows = Array.prototype.slice.call(document.querySelectorAll(".mailrow"));
   if (!rows.length) return false;
@@ -987,27 +964,3 @@ function mailStepRow(forward) {
   next.click();
   return true;
 }
-
-function syncMailFocusNav() {
-  const bar = document.querySelector(".mail-focus-nav");
-  if (!bar) return; // не Фокус (елемент є в ДОМ завжди, CSS ховає в інших виглядах)
-  const rows = document.querySelectorAll(".mailrow");
-  const active = document.querySelector(".mailrow.active");
-  const total = rows.length;
-  const idx = active ? Array.prototype.indexOf.call(rows, active) + 1 : 0;
-  const posEl = bar.querySelector("[data-focus-pos]");
-  const totEl = bar.querySelector("[data-focus-total]");
-  const prevBtn = bar.querySelector("[data-focus-prev]");
-  const nextBtn = bar.querySelector("[data-focus-next]");
-  if (posEl) posEl.textContent = idx || "–";
-  if (totEl) totEl.textContent = total;
-  if (prevBtn) prevBtn.disabled = idx <= 1;
-  if (nextBtn) nextBtn.disabled = idx === 0 || idx >= total;
-}
-syncMailFocusNav();
-document.addEventListener("htmx:afterSwap", syncMailFocusNav);
-
-document.addEventListener("click", (event) => {
-  if (event.target.closest("[data-focus-next]")) mailStepRow(true);
-  else if (event.target.closest("[data-focus-prev]")) mailStepRow(false);
-});

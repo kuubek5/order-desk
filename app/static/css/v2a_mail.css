@@ -1275,10 +1275,6 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .mc-route-step.is-pending .mc-route-name{color:var(--ink-2)}
 .mailv2 .mc-route-note{font-size:var(--fs-1);color:var(--ink-3);margin-top:2px;overflow-wrap:break-word}
 
-/* ── «Лист N з M» (Фокус) — в ДОМ завжди, видно лише тут ────────────────── */
-.mailv2 .mail-focus-nav{display:none}
-.mailv2 .kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;margin:0 1px;border-radius:4px;border:1px solid var(--line-2);background:var(--card-2);font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-2)}
-
 /* ── A · «Розмова»: маршрут — рейка праворуч від картки ─────────────────── */
 /* flex-direction:ROW явно: базове правило .mailcard{flex-direction:column}
    тут не перебивалось, і flex-wrap для колонки загортав .mc-foot у НОВУ
@@ -1298,35 +1294,4 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 @media (max-width:1200px){
   .mailv2--conversation .mc-route{flex-basis:100%;order:2}
   .mailv2--conversation .mc-foot{order:99}
-}
-
-/* ── C · «Фокус»: один лист за раз, список за кнопкою ───────────────────── */
-/* Список схований ЗА ЗАМОВЧУВАННЯМ незалежно від ширини вікна — сама суть
-   вигляду. `body.mail-list-open` (mail.js, той самий перемикач, що ≤960px
-   у класиці, але тут з протилежним значенням — див. коментар у mail.js)
-   повертає список назад. */
-.mailv2--focus .list-panel,
-.mailv2--focus .mail-pager,
-.mailv2--focus .list-period,
-.mailv2--focus .famchips{display:none}
-body.mail-list-open .mailv2--focus .list-panel{display:flex}
-body.mail-list-open .mailv2--focus .mail-pager{display:block}
-body.mail-list-open .mailv2--focus .list-period{display:flex}
-body.mail-list-open .mailv2--focus .famchips{display:flex}
-.mailv2--focus .mail-split{display:none}
-.mailv2--focus .worklayout{display:block}
-.mailv2--focus .detail-panel{max-width:920px;margin:0 auto}
-.mailv2--focus .mail-listtoggle{display:inline-flex}
-.mailv2--focus .mail-focus-nav{display:flex;align-items:center;gap:10px;padding:10px 4px;margin-bottom:2px}
-.mailv2--focus .mail-focus-pos{font-size:var(--fs-2);color:var(--ink-2)}
-.mailv2--focus .mail-focus-keys{margin-left:auto;font-size:var(--fs-0);color:var(--ink-3)}
-/* Маршрут — суцільною смугою під карткою, кроки в рядок замість колонки. */
-.mailv2--focus .mc-route{margin-top:4px;padding-top:16px;border-top:1px solid var(--line)}
-.mailv2--focus .mc-route-steps{flex-direction:row;flex-wrap:wrap;gap:20px}
-.mailv2--focus .mc-route-step{flex:1 1 200px;padding-bottom:0}
-.mailv2--focus .mc-route-step::before{display:none}
-@media (max-width:900px){
-  .mailv2--focus .mc-route-steps{flex-direction:column}
-  .mailv2--focus .mc-route-step{padding-bottom:14px}
-  .mailv2--focus .mc-route-step:not(:last-child)::before{display:block}
 }
