@@ -774,30 +774,59 @@ window.collectMailBatch = function () {
     });
   });
 
-  // «⋯» і «На уточнення» відкриваються ВГОРУ (CSS bottom:calc(100%+6px)) —
-  // правильно, коли над кнопкою є вікно браузера. Але сторінка з довгою
-  // карткою може бути прокручена так, що кнопці бракує місця зверху: попап
-  // тоді вилазить за верхній край вікна й лишається нечитабельним (живий
-  // кейс на цеховому ПК, 29.09.26: «не видно кнопок»). Клас .popover-flip-down
-  // (CSS) перевертає його вниз — вимірюємо ПІСЛЯ відкриття (`toggle`, а не
-  // клік по summary): доти <details> ще не встиг розкритись, і геометрія
-  // попапу/кнопки не порахована.
+  // «⋯» і «На уточнення» відкриваються ВГОРУ й ліворуч від кнопки (CSS
+  // bottom:calc(100%+6px); right:0). Але картка листа має ВЛАСНУ прокрутку
+  // (.detail-panel, overflow:auto) і обрізає все, що з неї вилазить: на
+  // половині екрана (цех, 29.09.26) картка вузька, і ліва частина «⋯» —
+  // «У фільтр», «Навчити фільтр» — ховалась за її краєм, «ніби на задньому
+  // фоні». Тому міряємо не вікно, а найближчого предка, що обрізає:
+  //   • вертикаль — бракує місця зверху → .popover-flip-down (униз);
+  //   • горизонталь — зсуваємо попап усередину на стільки, скільки вилазить.
+  // Міряємо ПІСЛЯ відкриття (`toggle`): доти геометрія ще не порахована. І
+  // вдруге, коли всередині «⋯» розкрилось «Навчити фільтр» — попап вищає.
+  const clipBox = (el) => {
+    for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+      const cs = getComputedStyle(node);
+      if (cs.overflowY !== "visible" || cs.overflowX !== "visible") return node.getBoundingClientRect();
+    }
+    return { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight };
+  };
+  const placePopover = (details) => {
+    const summary = details.querySelector(":scope > summary");
+    const body = details.querySelector(".mc-menu-body, .mc-hold-body");
+    if (!summary || !body) return;
+    details.classList.remove("popover-flip-down"); // міряти в «природному» напрямі
+    body.style.left = "";
+    body.style.right = "";
+    const box = clipBox(details);
+    const top = Math.max(box.top, 0);
+    const bottom = Math.min(box.bottom, window.innerHeight);
+    const summaryRect = summary.getBoundingClientRect();
+    const bodyHeight = body.getBoundingClientRect().height || body.scrollHeight;
+    const spaceAbove = summaryRect.top - top;
+    const spaceBelow = bottom - summaryRect.bottom;
+    if (spaceAbove < bodyHeight + 12 && spaceBelow > spaceAbove) {
+      details.classList.add("popover-flip-down");
+    }
+    const rect = body.getBoundingClientRect();
+    const minLeft = Math.max(box.left, 0) + 8;
+    const maxRight = Math.min(box.right, window.innerWidth) - 8;
+    let dx = 0;
+    if (rect.left < minLeft) dx = minLeft - rect.left;
+    else if (rect.right > maxRight) dx = maxRight - rect.right;
+    if (dx) {
+      body.style.left = `${parseFloat(getComputedStyle(body).left) + dx}px`;
+      body.style.right = "auto";
+    }
+  };
   document.addEventListener(
     "toggle",
     (event) => {
-      const details = event.target.closest && event.target.closest(".mc-menu, .mc-hold");
+      const target = event.target;
+      if (!target.closest) return;
+      const details = target.closest(".mc-menu, .mc-hold");
       if (!details || !details.hasAttribute("open")) return;
-      details.classList.remove("popover-flip-down"); // міряти в «природному» напрямі
-      const summary = details.querySelector("summary");
-      const body = details.querySelector(".mc-menu-body, .mc-hold-body");
-      if (!summary || !body) return;
-      const summaryRect = summary.getBoundingClientRect();
-      const bodyHeight = body.getBoundingClientRect().height || body.scrollHeight;
-      const spaceAbove = summaryRect.top;
-      const spaceBelow = window.innerHeight - summaryRect.bottom;
-      if (spaceAbove < bodyHeight + 12 && spaceBelow > spaceAbove) {
-        details.classList.add("popover-flip-down");
-      }
+      placePopover(details);
     },
     true, // capture: подія toggle на <details> НЕ спливає (специфікація)
   );
