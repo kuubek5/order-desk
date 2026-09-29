@@ -789,6 +789,48 @@ def pending_mail_count() -> int:
     return _cached_global("pending_mail_count", pending_mail_count_uncached)
 
 
+def queue_can_take_count_uncached() -> int:
+    """Скільки СЬОГОДНІШНІХ робіт ЛАБОРАТОРІЇ можна брати — бейдж «Черга» в
+    рейці (власник 29.09.26: «лічильник пошти працює, потрібно і черги»).
+    Те саме число, що на чіпах «Сьогодні · Лабораторія · Можна брати»: день —
+    `order_date` проти `business_tab_today` (вихідні пишуть у п'ятницю),
+    готовність — `order_can_take`, як у фільтрі черги. SQL лише звужує набір
+    (жива, лабораторна, шлях заповнено); вирішують ті самі предикати, тож
+    бейдж і чіп розійтись не можуть. Широкий except — як у бейджа пошти."""
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.business_day import business_tab_today
+        from app.models import Order
+        from app.queue_filters import order_can_take
+        from app.services.order_dates import order_date
+
+        db = SessionLocal()
+        try:
+            rows = db.scalars(
+                select(Order)
+                .options(selectinload(Order.rework_records))
+                .where(
+                    Order.archived_at.is_(None),
+                    Order.source == "lab",
+                    Order.job_code.is_not(None),
+                    Order.job_code != "",
+                )
+            ).all()
+            today = business_tab_today()
+            return sum(1 for o in rows if order_date(o) == today and order_can_take(o))
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("queue_can_take_count fell back to 0", exc_info=True)
+        return 0
+
+
+def queue_can_take_count() -> int:
+    return _cached_global("queue_can_take_count", queue_can_take_count_uncached)
+
+
 def closed_sections_titles() -> list[str]:
     return _cached_global("closed_sections", closed_sections_uncached)
 
@@ -886,6 +928,7 @@ templates.env.globals["notify_prefs"] = _timed_global("notify_prefs", notify_pre
 templates.env.globals["shift_pending"] = _timed_global("shift_pending", shift_pending)
 templates.env.globals["feedback_open_count"] = _timed_global("feedback_open_count", feedback_open_count)
 templates.env.globals["mail_pending_count"] = _timed_global("mail_pending_count", pending_mail_count)
+templates.env.globals["queue_can_take_count"] = _timed_global("queue_can_take_count", queue_can_take_count)
 templates.env.globals["busy_operators"] = _timed_global("busy_operators", busy_operators)
 templates.env.globals["sync_state"] = _timed_global("sync_state", sync_state)
 templates.env.globals["ui_prefs"] = _timed_global("ui_prefs", ui_prefs)
