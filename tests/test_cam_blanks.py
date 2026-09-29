@@ -662,6 +662,33 @@ class TestRealNamesFromTheShop:
         p = parse_blank_name(name)
         assert (p.height, p.brand, p.shade, p.serial) == expected
 
+    # Власник 29.09.26: два диски на /discs лишались «назву не розібрано».
+    def test_wax_disc_has_no_shade(self):
+        """`wax18_18-x33` — диск воску висотою 18. Кольору у воску немає, тож
+        у назві лише голова й номер."""
+        p = parse_blank_name("wax18_18-x33.blk")
+        assert (p.height, p.brand, p.shade, p.serial) == (18, "wax", None, 33)
+
+    @pytest.mark.parametrize("name, expected", [
+        # Виробник із дефісом у назві — CAM ставить подвійний дефіс перед кольором.
+        ("zr25_25-Z-Nature--a3-5-x01.blk", (25, "z-nature", "a3-5", 1)),
+        ("zr16_16-Z-Smile--A2-x07.blk", (16, "z-smile", "a2", 7)),
+    ])
+    def test_hyphenated_brand_before_a_double_dash(self, name, expected):
+        p = parse_blank_name(name)
+        assert (p.height, p.brand, p.shade, p.serial) == expected
+
+    def test_two_part_names_still_need_a_height(self):
+        """Дві частини без висоти в голові — не диск: вгадувати не беремось."""
+        assert parse_blank_name("wax-x33.blk").serial is None
+        assert parse_blank_name("D98_ti26.blk").serial is None
+
+    def test_new_names_read_for_the_warehouse(self):
+        names = ("wax18_18-x33.blk", "zr25_25-Z-Nature--a3-5-x01.blk")
+        rows = [CamBlank(rel_path=n, file_name=n, first_seen_at=datetime(2026, 9, 29, 3, i))
+                for i, n in enumerate(names)]
+        assert sorted(order_text(rows).splitlines()) == ["wax-18", "z-nature-a3.5-25"]
+
     def test_brand_word_names_read_as_the_owner_writes_them(self):
         names = ("zr20_20-Monolith-a3-5-x24.blk", "zr18_18-Emotions-a1-x194.blk",
                  "zr14_14-Emotions-A3-x843PRO.blk")

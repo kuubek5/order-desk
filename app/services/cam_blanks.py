@@ -154,19 +154,35 @@ def parse_blank_name(name: str) -> ParsedBlank:
     КОД МАТЕРІАЛУ з голови (`zr`, `pmma`, `crco`, `ti`). Для комірниці рядок
     «zr a2 25» усе одно кращий за сире імʼя файлу.
     """
-    stem = name[: -len(BLANK_EXT)] if name.lower().endswith(BLANK_EXT) else name
-    parts = [part.strip() for part in stem.strip().split("-")]
-    # Голова, хоч один блок кольору й номер. Порожній блок (`a--b`) — не наша
-    # конвенція, вгадувати не беремось.
-    if len(parts) < 3 or not all(parts):
+    stem = (name[: -len(BLANK_EXT)] if name.lower().endswith(BLANK_EXT) else name).strip()
+    # Виробник із дефісом у назві (`Z-Nature`, `Z-Smile`, власник 29.09.26):
+    # CAM відділяє його від кольору ПОДВІЙНИМ дефісом —
+    # `zr25_25-Z-Nature--a3-5-x01`. Ліва частина — голова й виробник, права —
+    # колір і номер. Будь-який інший порожній блок — не наша конвенція.
+    hyphen_brand = None
+    if "--" in stem:
+        left, _, right = stem.partition("--")
+        left_parts = [part.strip() for part in left.split("-")]
+        if len(left_parts) < 2 or not all(left_parts) or "--" in right:
+            return ParsedBlank()
+        hyphen_brand = "-".join(left_parts[1:])
+        parts = [left_parts[0]] + [part.strip() for part in right.split("-")]
+    else:
+        parts = [part.strip() for part in stem.split("-")]
+    # Голова, (колір) і номер. Дві частини — диск БЕЗ кольору: віск
+    # `wax18_18-x33` (власник 29.09.26); тоді голова мусить нести висоту,
+    # інакше це не диск, а невідомо що.
+    if len(parts) < 2 or not all(parts):
+        return ParsedBlank()
+    if len(parts) == 2 and (hyphen_brand or not _HEAD_HEIGHT_RE.search(parts[0])):
         return ParsedBlank()
     serial_match = _SERIAL_RE.match(parts[-1])
     if serial_match is None:
         return ParsedBlank()
 
     head, middle = parts[0], parts[1:-1]
-    brand_word = None
-    if len(middle) >= 2 and _BRAND_WORD_RE.match(middle[0]):
+    brand_word = hyphen_brand
+    if brand_word is None and len(middle) >= 2 and _BRAND_WORD_RE.match(middle[0]):
         brand_word, middle = middle[0], middle[1:]
 
     if head.isdigit():
@@ -181,7 +197,7 @@ def parse_blank_name(name: str) -> ParsedBlank:
     return ParsedBlank(
         height=height,
         brand=_clip(brand_word or code),
-        shade=_clip("-".join(middle)),
+        shade=_clip("-".join(middle)) if middle else None,
         serial=int(serial_match.group("serial")),
     )
 
