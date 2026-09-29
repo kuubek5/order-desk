@@ -22,7 +22,7 @@ from app.sender_memory import is_auto_sender
 from app.safe_names import avoid_reserved_device_name
 from app.mail_spool import spool_folder_name
 from app.models import Attachment, EmailMessage, Order
-from app.services.mail_folder_journal import VIA_MAILBOX, log_folder_move
+from app.services.mail_folder_journal import VIA_MAILBOX, VIA_SELF_FIX, log_folder_move
 from app.settings_store import (
     get_imap_login,
     get_imap_password,
@@ -958,7 +958,7 @@ def _reflect_processed_folder(
         ):
             # Хибна мітка: лист лежить у Вхідних (двійник за Message-ID у папці
             # або давній збій) — повертаємо в тріаж.
-            log_folder_move(session, row, row.mailbox_folder, None, via=VIA_MAILBOX)
+            log_folder_move(session, row, row.mailbox_folder, None, via=VIA_SELF_FIX)
             row.mailbox_folder = None
             row.mailbox_moved_at = None
             row.inbox_gone_at = None

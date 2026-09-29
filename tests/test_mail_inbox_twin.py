@@ -90,6 +90,8 @@ def test_wrongly_marked_letter_returns_to_triage_by_itself(app_db, monkeypatch):
         assert row.mailbox_folder is None and row.mailbox_moved_at is None
         log = db.query(SyncLog).filter(SyncLog.direction == "mail_folder").one()
         assert f"«{MILLED}» → «Вхідні»" in log.message
+        assert "CRM виправила власну хибну мітку" in log.message
+        assert "прямо в пошті" not in log.message
 
 
 def test_move_made_after_the_inbox_read_is_not_undone(app_db, monkeypatch):  # noqa: F811

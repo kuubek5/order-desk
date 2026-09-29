@@ -31,6 +31,7 @@ GONE = "зник зі Вхідних"
 VIA_CRM = "crm"
 VIA_ACCEPT = "accept"
 VIA_MAILBOX = "mailbox"
+VIA_SELF_FIX = "self_fix"
 
 
 def _describe(email: EmailMessage) -> str:
@@ -58,7 +59,8 @@ def log_folder_move(
 
     `via`: VIA_CRM (кнопка/масова дія, `user` — хто), VIA_ACCEPT (прийняття в
     чергу, `user` — хто), VIA_MAILBOX (синк побачив, що лист перемістили прямо
-    в пошті — людини тут не знає ніхто, тому й не пишемо).
+    в пошті — людини тут не знає ніхто, тому й не пишемо), VIA_SELF_FIX (синк
+    зняв хибну мітку папки з листа, що лежить у Вхідних — це не перенос людини).
     """
     src = source or INBOX
     dst = target or INBOX
@@ -68,6 +70,8 @@ def log_folder_move(
         how = f"через CRM, {user or 'оператор ?'}"
     elif via == VIA_ACCEPT:
         how = f"при прийнятті в чергу, {user or 'оператор ?'}"
+    elif via == VIA_SELF_FIX:
+        how = "CRM виправила власну хибну мітку: лист весь час лежав у Вхідних"
     else:
         how = "прямо в пошті (не через CRM)"
     # Ризиковий випадок: лист без роботи покидає Вхідні — у папку чи «в нікуди».
