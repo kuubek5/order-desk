@@ -5,6 +5,7 @@ import mimetypes
 import re
 import time
 from datetime import datetime, timedelta
+from typing import cast
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from app.sender_memory import is_auto_sender
 from app.safe_names import avoid_reserved_device_name
 from app.mail_spool import spool_folder_name
 from app.models import Attachment, EmailMessage, Order
+from app.services.mail_folder_journal import VIA_MAILBOX, log_folder_move
 from app.settings_store import (
     get_imap_login,
     get_imap_password,
@@ -907,6 +909,10 @@ def _reflect_processed_folder(
         physical = where((row.message_id or "").strip())
         if physical is None:
             continue
+        log_folder_move(
+            session, row, "зник зі Вхідних" if row.inbox_gone_at else None, physical,
+            via=VIA_MAILBOX,
+        )
         row.mailbox_folder = physical
         # для вкладки «Оброблено за сьогодні»
         row.mailbox_moved_at = row.inbox_gone_at or now
@@ -932,6 +938,7 @@ def _reflect_processed_folder(
             # обробленим. Час — момент переходу: кожна папка має власну вкладку
             # «сьогодні» (власник 25.09.26), і в «Відфрезеровано» сьогоднішні —
             # це саме ті, кого логіст сьогодні переклав.
+            log_folder_move(session, row, row.mailbox_folder, physical, via=VIA_MAILBOX)
             row.mailbox_folder = physical
             row.mailbox_moved_at = now
             changed += 1
@@ -945,6 +952,7 @@ def _reflect_processed_folder(
             continue  # поза вікном — відсутність у папці не довести
         # У вікні, але в папках немає, і фаза 1 не всиновила назад у Inbox →
         # перенесений в іншу папку або видалений: «Покинули Вхідні».
+        log_folder_move(session, row, row.mailbox_folder, "зник зі Вхідних", via=VIA_MAILBOX)
         row.mailbox_folder = None
         row.mailbox_moved_at = None
         row.inbox_gone_at = now
@@ -1008,6 +1016,7 @@ def _reconcile_inbox_gone(
             continue  # дати немає — не гадаємо
         if received >= cutoff_dt:
             if complete_fetch and str(row.uid) not in incoming_uids:
+                log_folder_move(session, row, None, "зник зі Вхідних", via=VIA_MAILBOX)
                 row.inbox_gone_at = now
                 marked += 1
         elif row.inbox_returned_at is None:
@@ -1244,6 +1253,14 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
             adopted = displaced_by_mid.pop((mid or "").strip(), None) if mid else None
             if adopted is not None:
                 # Той самий лист під новим uid — повернувся у Вхідні.
+                # cast: імʼя `adopted` у цій функції вже зайняте bool-ом вище,
+                # і mypy бачить тут обидва типи (стара колізія, не наша).
+                returned = cast(EmailMessage, adopted)
+                log_folder_move(
+                    session, returned,
+                    returned.mailbox_folder or ("зник зі Вхідних" if returned.inbox_gone_at else None),
+                    None, via=VIA_MAILBOX,
+                )
                 adopted.uid = uid
                 adopted.uid_validity = uid_validity
                 adopted.mailbox_folder = None

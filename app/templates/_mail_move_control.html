@@ -13,7 +13,7 @@
 {% elif mail_processed_folder %}
 <form method="post" action="/mail/{{ email.id }}/move-processed"
       hx-post="/mail/{{ email.id }}/move-processed" hx-target="#mail-detail" hx-swap="innerHTML"
-      hx-confirm="Перемістити лист у папку «{{ mail_processed_folder }}» у скриньці? Він зникне з Inbox.">
+      hx-confirm="Перемістити лист у папку «{{ mail_processed_folder }}» у скриньці? Він зникне з Inbox.{% if email.status == 'нове' and not email.order_id %} Лист ще НЕ прийнятий у чергу — з нього роботу в CRM не буде створено.{% endif %}">
     <button type="submit" class="btn sm accent-outline" title="Перенести лист у папку «{{ mail_processed_folder }}» — робота пішла в цех">↦ У «{{ mail_processed_folder }}»</button>
 </form>
 {% endif %}

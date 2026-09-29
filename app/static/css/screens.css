@@ -786,6 +786,8 @@ body.rail-collapsed .rail-sync-dot {
    десятки поспіль, і суцільна червона стіна перестає щось означати. */
 .sj-row.is-ok .sj-status { color: var(--ok); }
 .sj-row.is-skipped .sj-status { color: var(--warn); }
+.sj-row.is-warning .sj-status { color: var(--warn); }
+.sj-row.is-warning { background: rgba(var(--warn-rgb), .05); }
 .sj-row.is-error .sj-status { color: var(--alarm); }
 .sj-row.is-error { background: rgba(var(--alarm-rgb), .05); }
 /* Дія в рядку журналу: тиха, поки не потрібна. Стирання рядка трапляється

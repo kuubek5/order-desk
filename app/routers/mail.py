@@ -118,6 +118,7 @@ from app.routers.deps import (
 )
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, sender_key_for
 from app.services.mail_accept import accept_letter, resolve_wizard_overrides
+from app.services.mail_folder_journal import VIA_CRM, log_folder_move
 from app.services.mail_mirror import mail_mirror_orders
 from app.services.focus import focused_ids
 from app.statuses import STATUSES
@@ -2119,6 +2120,7 @@ def move_email_processed(
             return Response(status_code=204, headers={"HX-Redirect": target})
         return RedirectResponse(target, status_code=303)
 
+    log_folder_move(db, email, None, folder, via=VIA_CRM, user=user.username)
     email.mailbox_folder = folder
     email.mailbox_moved_at = datetime.now()  # для вкладки «Оброблено за сьогодні»
     db.commit()
@@ -2154,6 +2156,7 @@ def move_email_to_inbox(
 
     hx = (getattr(request, "headers", None) or {}).get("HX-Request") == "true"
     from_row = bool(row)
+    source_folder = email.mailbox_folder
     try:
         move_message_back_to_inbox(db, email)
     except Exception as exc:  # noqa: BLE001
@@ -2166,6 +2169,7 @@ def move_email_to_inbox(
             return Response(status_code=204, headers={"HX-Redirect": target})
         return RedirectResponse(target, status_code=303)
 
+    log_folder_move(db, email, source_folder, None, via=VIA_CRM, user=user.username)
     db.commit()
     if from_row and hx:
         return HTMLResponse("", status_code=200)
@@ -2383,6 +2387,7 @@ def bulk_mail_action(
             if email.id in failed:
                 errors.append(failed[email.id])
                 continue
+            log_folder_move(db, email, None, folder, via=VIA_CRM, user=user.username)
             email.mailbox_folder = folder
             email.mailbox_moved_at = moved_at
             done += 1
@@ -2413,6 +2418,10 @@ def bulk_mail_action(
             if email.id in failed:
                 errors.append(failed[email.id])
                 continue
+            log_folder_move(
+                db, email, email.mailbox_folder or ("зник зі Вхідних" if email.inbox_gone_at else None),
+                None, via=VIA_CRM, user=user.username,
+            )
             email.inbox_gone_at = None
             email.inbox_returned_at = now
             email.mailbox_folder = None
@@ -2463,12 +2472,14 @@ def bulk_mail_action(
             if has_work or not email.mailbox_folder:
                 skipped += 1
                 continue
+            source_folder = email.mailbox_folder
             try:
                 move_message_back_to_inbox(db, email)
             except Exception as exc:  # noqa: BLE001
                 db.rollback()
                 errors.append(str(exc))
                 continue
+            log_folder_move(db, email, source_folder, None, via=VIA_CRM, user=user.username)
         # Комітимо ПО ОДНОМУ: IMAP-переніс уже відбувся в скриньці, і збій на
         # наступному листі не має відкотити базу вже перенесених (інакше база
         # розійдеться зі скринькою).
@@ -2871,6 +2882,7 @@ def _unaccept_email(
     db: Session,
     email: EmailMessage,
     moved_out: list[tuple[Path, Path]] | None = None,
+    user_name: str | None = None,
 ) -> list[tuple[Path, Path]]:
     """Fully undo EVERY order accepted from this letter (a multi-colour letter
     can have several), returning it to the pre-accept "нове" state: move all
@@ -2982,8 +2994,10 @@ def _unaccept_email(
     # «нове», але у вкладці «Оброблено». Best-effort: збій IMAP не має валити
     # відкат — файли й база вже повернені, лишиться слід у лозі.
     if email.mailbox_folder:
+        source_folder = email.mailbox_folder
         try:
             move_message_back_to_inbox(db, email)
+            log_folder_move(db, email, source_folder, None, via=VIA_CRM, user=user_name)
         except Exception:  # noqa: BLE001 — відкат важливіший за цей крок
             logger.exception(
                 "Відкат листа %s: не вдалося повернути з папки у Вхідні", email.id
@@ -3024,7 +3038,7 @@ def restore_email(
         # order and put all files back — a clean restart of the whole letter.
         moved_pairs: list[tuple[Path, Path]] = []
         try:
-            _unaccept_email(db, email, moved_out=moved_pairs)
+            _unaccept_email(db, email, moved_out=moved_pairs, user_name=user.username)
             db.commit()
         except Exception as exc:  # noqa: BLE001 — mirror image of accept (C-2)
             # Two kinds of failure, one compensation. A filesystem error leaves

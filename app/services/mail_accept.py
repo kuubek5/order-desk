@@ -39,6 +39,7 @@ from app.material_catalog import (
 )
 from app.mail_reader import _file_is_missing, move_message_to_folder
 from app.models import EmailMessage, Order, StatusEvent, SyncLog
+from app.services.mail_folder_journal import VIA_ACCEPT, log_folder_move
 from app.parser import HEADER_ROWS
 from app.client_folder import preferred_client_folder
 from app.sender_memory import lookup_sender, remember_sender
@@ -370,7 +371,7 @@ def _accept_letter_locked(
     # (мережа, папка) не відкочуємо — лишаємо слід у SyncLog, а лист лишається у
     # Вхідних, звідки його потім забере кнопка чи наступний синк.
     if not remaining:
-        _move_letter_to_processed_folder(db, email)
+        _move_letter_to_processed_folder(db, email, getattr(user, "username", None))
 
     return AcceptResult(
         order=new_order,
@@ -381,7 +382,9 @@ def _accept_letter_locked(
     )
 
 
-def _move_letter_to_processed_folder(db: Session, email: EmailMessage) -> None:
+def _move_letter_to_processed_folder(
+    db: Session, email: EmailMessage, user_name: str | None = None
+) -> None:
     """Перенести прийнятий лист у папку «оброблено» скриньки й позначити його
     перенесеним у базі (`mailbox_folder`) — CRM і пошта синхронні: лист покидає
     Вхідні і в скриньці, і в CRM (вкладка «Оброблено»).
@@ -399,6 +402,7 @@ def _move_letter_to_processed_folder(db: Session, email: EmailMessage) -> None:
         return  # уже в папці
     try:
         move_message_to_folder(db, email, folder)
+        log_folder_move(db, email, None, folder, via=VIA_ACCEPT, user=user_name)
         email.mailbox_folder = folder
         email.mailbox_moved_at = datetime.now()  # для вкладки «Оброблено за сьогодні»
         email.inbox_gone_at = None  # опрацьований лист у папці ⇒ не «покинув»
