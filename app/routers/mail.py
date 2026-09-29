@@ -266,11 +266,13 @@ def _row_badge(label: dict, old: dict | None) -> dict:
     кольору — зі старого чіпа, а без нього — за символом категорії."""
     symbol = label.get("badge") or (old or {}).get("symbol") or "?"
     cls = (old or {}).get("cls") or _BADGE_CLS.get(symbol, "mat-other")
-    # Колір невідомий і лінія зветься як сама категорія («pmma» під «PMMA») —
-    # не дублювати: просто «PMMA» (власник 25.09.26). «Zr mono» лишається.
-    text = label["text"]
-    if text.strip().lower() == symbol.strip().lower():
-        text = ""
+    # Лінія зветься як сама категорія («pmma» під «PMMA») — слово не
+    # дублювати: «PMMA», а з кольором «PMMA a3», не «PMMA pmma a3» (власник
+    # 25.09 і 29.09.26). Інша лінія лишається: «Zr mono», «PMMA kappa».
+    text = label["text"].strip()
+    head, _, rest = text.partition(" ")
+    if head.lower() == symbol.strip().lower():
+        text = rest.strip()
     # title — лише категорія: шаблон сам дописує «· <колір>» до підказки.
     return {
         "symbol": symbol, "cls": cls, "color": text,

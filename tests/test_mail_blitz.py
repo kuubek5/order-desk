@@ -99,5 +99,10 @@ def test_row_chip_without_colour_does_not_repeat_the_category():
     assert badge["symbol"] == "PMMA" and badge["color"] == ""
     zr = mail_router_mod._row_badge({"badge": "Zr", "text": "mono"}, None)
     assert zr["color"] == "mono"
+    # 29.09.26: «PMMA pmma a3» → «PMMA a3» (слово категорії не повторюємо).
     shade = mail_router_mod._row_badge({"badge": "PMMA", "text": "pmma a2"}, None)
-    assert shade["color"] == "pmma a2"
+    assert shade["color"] == "a2"
+    kappa = mail_router_mod._row_badge({"badge": "PMMA", "text": "kappa"}, None)
+    assert kappa["color"] == "kappa"
+    zr_shade = mail_router_mod._row_badge({"badge": "Zr", "text": "emo a3"}, None)
+    assert zr_shade["color"] == "emo a3"
