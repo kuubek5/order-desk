@@ -17,11 +17,12 @@
 <span class="tl-sync-live"
       hx-get="/sheets/state" hx-trigger="every 3s[!document.hidden]" hx-target="this" hx-swap="outerHTML">
 {%- set s = _st.sheet -%}
-<span class="tl-sync{% if s.running %} syncing{% elif s.paused %} paused{% endif %}">
-{%- if s.running %}<span class="tl-beacon" aria-hidden="true"></span>таблиця: <b>синхронізує…</b>
-{%- elif s.paused %}таблиця: <b>на паузі</b>
-{%- else %}таблиця: <b>{{ s.label }}</b>{% endif %}
-</span>
+{#- Обидва написи лежать в ОДНІЙ клітинці (.tl-slot — inline-grid), видно
+    один: ширина сегмента = ширші з двох і не змінюється, коли стартує синк.
+    Доти «✓ щойно» → «● синхронізує…» розширювало рядок, flex-wrap переносив
+    його хвіст униз, і сторінка під шапкою стрибала на кожен синк (власник
+    29.09.26: «бісить — має бути елегантно»). #}
+<span class="tl-sync{% if s.running %} syncing{% elif s.paused %} paused{% endif %}">таблиця: <span class="tl-slot"><b class="tl-idle">{% if s.paused %}на паузі{% else %}{{ s.label }}{% endif %}</b><b class="tl-run"><span class="tl-beacon" aria-hidden="true"></span>синхронізує…</b></span></span>
 </span>
 {# Кружок здоровʼя синку в рейці оновлюється РАЗОМ із цим поллом
    (hx-swap-oob), а не власним запитом: полл і так ходить кожні 3 с, а

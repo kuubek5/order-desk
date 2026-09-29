@@ -773,6 +773,14 @@ body.rail-collapsed .rail-kbd { display: none; }
    у 56 px тексту нема куди подіти. */
 .rail-sync{padding:6px 12px;font-size:var(--fs-1);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rail-sync .tl-sync{display:inline-flex;align-items:center;gap:6px}
+/* Живий підпис «таблиця: …» (шапка Черги й рейка): два стани в одній
+   клітинці, видно один — ширина не стрибає, коли стартує синк (29.09.26).
+   visibility, не display: схований напис і далі тримає свою ширину, а
+   читач екрана його не озвучує. */
+.tl-sync .tl-slot{display:inline-grid}
+.tl-sync .tl-slot>b{grid-area:1/1;white-space:nowrap}
+.tl-sync .tl-run{display:inline-flex;align-items:center;gap:6px}
+.tl-sync:not(.syncing) .tl-run,.tl-sync.syncing .tl-idle{visibility:hidden}
 body.rail-collapsed .rail-sync{display:none}
 
 /* Рядок «Зачинено: …» у підвалі рейки. Бачить лише адмін і лише коли є що
