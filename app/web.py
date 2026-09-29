@@ -115,6 +115,9 @@ from app.services.cam_blanks import sync_blanks as _sync_cam_blanks
 from app.settings_store import get_setting
 from app.services.journal_prune import prune_journals
 from app.shift_images import prune_shift_images
+from app.mail_spool import DEFAULT_PRUNE_AFTER_DAYS, prune_spool
+from app.models import SyncLog
+from app.settings_store import get_mail_attachments_path
 from app.routers.deps import templates
 from app.services.order_dates import parse_sheet_tab as _parse_sheet_tab
 from app.services.handout import (
@@ -465,6 +468,14 @@ def _shift_images_prune_tick() -> None:
     # Гірше за ріст було друге: SELF_PRUNING означає «зменшення тут нормальне»,
     # тож справжня втрата даних у цих таблицях не підняла б тривоги після
     # оновлення (аудит 08.09.26).
+    # Спул пошти — тим самим добовим тіком (правило власника 29.09.26: файли
+    # завершених листів — через 2 дні). Окремий try з тієї ж причини.
+    try:
+        with SessionLocal() as db:
+            _prune_mail_spool(db)
+    except Exception:
+        logger.exception("Прибирання спулу пошти не вдалось")
+
     try:
         with SessionLocal() as db:
             removed_journals = prune_journals(db)
@@ -474,6 +485,21 @@ def _shift_images_prune_tick() -> None:
                 db.rollback()
     except Exception:
         logger.exception("Прибирання журналів не вдалось")
+
+
+def _prune_mail_spool(db) -> None:
+    """Прибрати файли завершених листів зі спулу й лишити рядок у Журналі
+    синку — щоб «куди поділись файли» мало відповідь."""
+    root = Path(get_mail_attachments_path(db))
+    removed, freed = prune_spool(db, root)
+    if removed:
+        mb = round(freed / (1024 * 1024), 1)
+        db.add(SyncLog(
+            direction="mail_spool", status="ok",
+            message=f"спул пошти: прибрано тек {removed}, звільнено {mb} МБ "
+                    f"(листи, завершені понад {DEFAULT_PRUNE_AFTER_DAYS} дні тому)",
+        ))
+        db.commit()
 
 
 def _shift_images_prune_worker(stop_event: Event) -> None:

@@ -52,6 +52,7 @@ DIRECTION_LABELS: dict[str, str] = {
     # Перенос листа між папками скриньки — хто, коли, звідки → куди
     # (app/services/mail_folder_journal.py, 29.09.26).
     "mail_folder": "лист → папка",
+    "mail_spool": "спул пошти",
 }
 
 STATUS_LABELS: dict[str, str] = {

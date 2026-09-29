@@ -1,22 +1,29 @@
-"""Mail-spool disk usage and a conservative, operator-triggered cleanup.
+"""Mail-spool disk usage and its cleanup — daily by itself and by a button.
 
 `mail_attachments/<uid_validity>_<uid>/` accumulates one folder per imported
 letter (теки, створені до складеного імені, звуться самим uid і читаються
-далі — див. `folder_candidates`). Accepted
-letters have their files MOVED into export (the spool folder is left empty),
-but rejected letters — and letters whose files nobody ever needed — keep theirs
-forever. With the «скачувати все» toggle on, that grows a lot faster.
+далі — див. `folder_candidates`). Accepted letters have their files MOVED into
+export, but letters that were handled by hand (operators download from ukr.net
+themselves and clean the mailbox directly) keep theirs forever.
 
-Nothing here runs automatically. Deleting an operator's files is not a
-background job's decision: the settings screen shows what could be freed and
-the admin presses the button. The rules below are deliberately narrow:
+Правило власника 29.09.26 («поставити правило видаляти їх після 2 днів»), одне
+для щоденного прибирання (`web._shift_images_prune_tick`) і кнопки в
+Налаштуваннях. Тека прибирається, коли ЛИСТ ЗАВЕРШЕНО щонайменше
+`DEFAULT_PRUNE_AFTER_DAYS` днів тому:
 
-  * empty folders — always safe,
-  * folders of REJECTED letters older than `older_than_days`,
-  * orphan folders whose letter no longer exists in the DB at all.
+  * порожня тека — завжди (прийнятий лист: файли вже в export);
+  * тека без листа в базі — завжди;
+  * прийнятий лист — від моменту, коли покинув Вхідні (інакше від приходу);
+  * відхилений — від приходу листа;
+  * неприйнятий лист, що ПОКИНУВ Вхідні (переклали в папку чи видалили в
+    пошті, `mailbox_folder` / `inbox_gone_at`) — від моменту, коли покинув.
 
-Pending/accepted/filtered letters are never touched, and neither is any file
-still referenced by an Attachment row of a non-rejected letter.
+НІКОЛИ не чіпаємо лист, що досі у «Вхідних», і лист «На уточненні» (`hold_at`),
+скільки б він не лежав: його ще приймати, а без файлів прийняти не можна. Не
+чіпаємо і те, чого не довести (неприйнятий лист без жодного часу).
+
+Файли в export не чіпаємо ніколи. Прибране не безповоротно: лист лежить у
+пошті, повернутий у Вхідні — скачується наново.
 """
 
 from __future__ import annotations
@@ -36,7 +43,7 @@ from app.models import EmailMessage
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PRUNE_AFTER_DAYS = 30
+DEFAULT_PRUNE_AFTER_DAYS = 2
 
 
 def spool_folder_name(uid: str, uid_validity: str | None) -> str:
@@ -131,6 +138,31 @@ def analyze_spool_cached(
     return report
 
 
+def _finished_at(
+    status: str,
+    received_at: datetime | None,
+    mailbox_folder: str | None,
+    mailbox_moved_at: datetime | None,
+    inbox_gone_at: datetime | None,
+    hold_at: datetime | None,
+) -> datetime | None:
+    """Коли лист ЗАВЕРШЕНО, тобто його файли у спулі вже не знадобляться.
+    None — лист ще в роботі (або цього не довести): теку не чіпати."""
+    if hold_at is not None:
+        return None  # «На уточненні» — чекає відповіді клієнта
+    left_inbox = mailbox_moved_at or inbox_gone_at
+    if status == "відхилено":
+        return received_at or datetime.min
+    if status == "прийнято":
+        return left_inbox or received_at or datetime.min
+    if status == "нове":
+        if mailbox_folder is None and inbox_gone_at is None:
+            return None  # досі у Вхідних — його ще приймати
+        # Перенесені до появи `mailbox_moved_at` — від приходу листа.
+        return left_inbox or received_at
+    return None
+
+
 def analyze_spool(
     session: Session,
     spool_root: Path,
@@ -153,15 +185,21 @@ def analyze_spool(
     # рядки можуть ділити uid, і застарілий «відхилено» затінював би живий
     # «нове», позначаючи потрібну теку прибираною. Тека прибирається за
     # статусом лише коли ВСІ рядки, що на неї претендують, згодні.
-    letters: dict[str, list[tuple[str, datetime | None]]] = {}
-    for uid, uid_validity, status, received_at in session.execute(
+    letters: dict[str, list[datetime | None]] = {}
+    for row in session.execute(
         select(
             EmailMessage.uid, EmailMessage.uid_validity,
             EmailMessage.status, EmailMessage.received_at,
+            EmailMessage.mailbox_folder, EmailMessage.mailbox_moved_at,
+            EmailMessage.inbox_gone_at, EmailMessage.hold_at,
         )
     ).all():
-        for name in folder_candidates(uid, uid_validity):
-            letters.setdefault(name, []).append((status, received_at))
+        done = _finished_at(
+            row.status, row.received_at, row.mailbox_folder,
+            row.mailbox_moved_at, row.inbox_gone_at, row.hold_at,
+        )
+        for name in folder_candidates(row.uid, row.uid_validity):
+            letters.setdefault(name, []).append(done)
 
     total_bytes = 0
     total_dirs = 0
@@ -183,10 +221,7 @@ def analyze_spool(
         if size == 0:
             prunable.append(child)
             continue
-        if all(
-            status == "відхилено" and (received_at is None or received_at < cutoff)
-            for status, received_at in entries
-        ):
+        if all(done is not None and done < cutoff for done in entries):
             prunable.append(child)
             prunable_bytes += size
 

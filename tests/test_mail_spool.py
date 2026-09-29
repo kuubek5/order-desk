@@ -36,8 +36,8 @@ def test_analyze_counts_size_and_marks_only_safe_dirs(tmp_path, db_session):
     # old rejected letter — prunable
     _letter(db, "3", "відхилено", days_ago=90)
     old_rej = _spool_dir(tmp_path, "3", ("junk.pdf", b"Y" * 2000))
-    # recently rejected — too fresh, keep
-    _letter(db, "4", "відхилено", days_ago=2)
+    # recently rejected — too fresh, keep (правило 29.09.26: 2 дні)
+    _letter(db, "4", "відхилено", days_ago=1)
     fresh_rej = _spool_dir(tmp_path, "4", ("maybe.stl", b"Z" * 500))
     # orphan folder — no letter row at all
     orphan = _spool_dir(tmp_path, "999", ("ghost.stl", b"Q" * 300))
@@ -190,3 +190,70 @@ def test_cleanup_button_refreshes_the_number(tmp_path, db_session, monkeypatch):
 
     assert after.total_bytes == 0
     mail_spool.clear_spool_report_cache()
+
+
+# ── Правило власника 29.09.26: файли ЗАВЕРШЕНИХ листів — через 2 дні ─────────
+
+
+def _mail(db, uid, status="нове", **kw):
+    db.add(EmailMessage(uid=uid, status=status, received_at=datetime.now() - timedelta(days=30), **kw))
+    db.commit()
+
+
+def test_letter_still_in_inbox_or_on_hold_is_never_pruned(tmp_path, db_session):
+    """Лист у «Вхідних» місяць і лист «На уточненні» — файли лишаються: їх ще
+    приймати, а без файлів прийняти не можна."""
+    db = db_session
+    old = datetime.now() - timedelta(days=30)
+    _mail(db, "10")
+    inbox = _spool_dir(tmp_path, "10", ("a.stl", b"X"))
+    _mail(db, "11", hold_at=old, inbox_gone_at=old)
+    held = _spool_dir(tmp_path, "11", ("b.stl", b"X"))
+    prunable = set(analyze_spool(db, tmp_path).prunable_dirs)
+    assert inbox not in prunable and held not in prunable
+
+
+def test_unaccepted_letter_that_left_inbox_goes_after_two_days(tmp_path, db_session):
+    """Лист оброблено руками — переклали в папку чи видалили в пошті. Рахуємо
+    від моменту, коли покинув Вхідні, а не від приходу."""
+    db = db_session
+    now = datetime.now()
+    _mail(db, "20", mailbox_folder="Відфрезеровано", mailbox_moved_at=now - timedelta(days=3))
+    moved_old = _spool_dir(tmp_path, "20", ("a.stl", b"X"))
+    _mail(db, "21", inbox_gone_at=now - timedelta(days=3))
+    gone_old = _spool_dir(tmp_path, "21", ("b.stl", b"X"))
+    _mail(db, "22", mailbox_folder="Відфрезеровано", mailbox_moved_at=now - timedelta(hours=20))
+    moved_fresh = _spool_dir(tmp_path, "22", ("c.stl", b"X"))
+    prunable = set(analyze_spool(db, tmp_path).prunable_dirs)
+    assert moved_old in prunable and gone_old in prunable
+    assert moved_fresh not in prunable, "покинув Вхідні менше 2 днів тому"
+
+
+def test_accepted_letter_leftovers_go_two_days_after_it_left_inbox(tmp_path, db_session):
+    """Прийнятий лист: основні файли вже в export, у теці — те, що оператор не
+    взяв. Прибираємо через 2 дні після того, як лист покинув Вхідні."""
+    db = db_session
+    now = datetime.now()
+    _mail(db, "30", "прийнято", mailbox_folder="Скачано", mailbox_moved_at=now - timedelta(days=3))
+    old = _spool_dir(tmp_path, "30", ("rest.jpg", b"X"))
+    _mail(db, "31", "прийнято", mailbox_folder="Скачано", mailbox_moved_at=now - timedelta(hours=5))
+    fresh = _spool_dir(tmp_path, "31", ("rest.jpg", b"X"))
+    prunable = set(analyze_spool(db, tmp_path).prunable_dirs)
+    assert old in prunable and fresh not in prunable
+
+
+def test_daily_tick_prunes_and_leaves_a_journal_line(tmp_path, db_session, monkeypatch):
+    """Щоденний прохід: прибирає й пише рядок у Журнал синку."""
+    from app import web
+    from app.models import SyncLog
+
+    db = db_session
+    _mail(db, "40", inbox_gone_at=datetime.now() - timedelta(days=5))
+    gone = _spool_dir(tmp_path, "40", ("a.stl", b"X" * 2048))
+    _mail(db, "41")
+    kept = _spool_dir(tmp_path, "41", ("b.stl", b"X"))
+    monkeypatch.setattr(web, "get_mail_attachments_path", lambda _db: str(tmp_path))
+    web._prune_mail_spool(db)
+    assert not gone.exists() and kept.exists()
+    line = db.query(SyncLog).filter(SyncLog.direction == "mail_spool").one()
+    assert "прибрано тек 1" in line.message

@@ -46,6 +46,7 @@
                             Спул зайняв <strong>{{ spool_report.total_mb }} МБ</strong> у {{ spool_report.total_dirs }} папк(ах).
                             {% if not spool_report.prunable_dirs %}Прибирати нічого — усе на місці.{% endif %}
                         </p>
+                        <p class="stand-note">Раз на добу застосунок сам прибирає файли листів, завершених понад 2 дні тому: прийнятих, відхилених і тих, що покинули «Вхідні» пошти. Листи у «Вхідних» і «На уточненні» не чіпаються ніколи, файли в export — теж.</p>
                         {% endif %}
                     </div>
                 </div>
@@ -115,17 +116,18 @@
                 </div>
 
                 {% if spool_report and spool_report.prunable_dirs %}
-                {# Ручне прибирання спулу. Автоматично не видаляється НІЧОГО —
-                   див. app/mail_spool.py; тому дія живе у зоні руйнівних. #}
+                {# Прибирання спулу зараз, не чекаючи щоденного проходу. Те саме
+                   правило, що й автоматичне (app/mail_spool.py); видаляє файли,
+                   тому живе у зоні руйнівних. #}
                 <div class="stand-danger">
                     <h3>Небезпечна зона<span class="stand-danger-note">видаляє файли з диска</span></h3>
                     <div class="stand-drow">
                         <div class="stand-dtext">
                             <b>Прибрати тимчасові папки пошти</b>
-                            <p>Можна прибрати <strong>{{ spool_report.prunable_dirs|length }}</strong> папк(и) — порожні, «нічиї» та файли відхилених листів, старших за 30 днів ({{ spool_report.prunable_mb }} МБ). Файли прийнятих і активних листів не чіпаються.</p>
+                            <p>Можна прибрати <strong>{{ spool_report.prunable_dirs|length }}</strong> папк(и) — порожні, «нічиї» та файли листів, завершених понад 2 дні тому ({{ spool_report.prunable_mb }} МБ). Листи у «Вхідних» і «На уточненні» не чіпаються.</p>
                         </div>
                         <form method="post" action="/settings/mail-spool/prune"
-                              onsubmit="return confirm('Видалити {{ spool_report.prunable_dirs|length }} тимчасов(их) папок ({{ spool_report.prunable_mb }} МБ)? Файли прийнятих і активних листів не чіпаються.')">
+                              onsubmit="return confirm('Видалити {{ spool_report.prunable_dirs|length }} тимчасов(их) папок ({{ spool_report.prunable_mb }} МБ)? Листи у «Вхідних» і «На уточненні» не чіпаються.')">
                             <button type="submit" class="settings-secondary-button">Прибрати {{ spool_report.prunable_mb }} МБ</button>
                         </form>
                     </div>
