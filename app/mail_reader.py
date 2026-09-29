@@ -827,7 +827,9 @@ def _folder_message_ids(mailbox, folder: str, cutoff) -> tuple[set[str] | None, 
 
 
 def _reflect_processed_folder(
-    session: Session, mailbox, folder: str, cutoff, milled_folder: str = ""
+    session: Session, mailbox, folder: str, cutoff, milled_folder: str = "",
+    *, inbox_uids: set[str] | None = None, inbox_validity: str | None = None,
+    inbox_seen_at: datetime | None = None,
 ) -> int:
     """Дзеркалити папки «оброблено» в ОБИДВА боки за фізичним станом скриньки.
 
@@ -867,6 +869,16 @@ def _reflect_processed_folder(
     Message-ID пропускаємо: беккфіл (фаза 1) проставляє його всім листам, поки
     вони ще в Inbox. Не кидає: збій читання папки не має валити синк. Повертає,
     скільки листів змінено.
+
+    ВХІДНІ ПЕРЕМАГАЮТЬ (SmileDent Laba, 29.09.26): Message-ID — не паспорт. Той
+    самий заголовок буває у двох листів (клієнт надіслав лист удруге, копія в
+    пошті), і лист, що досі лежав у Вхідних, ставав «Відфрезеровано» лише тому,
+    що в папці був його двійник. `inbox_uids` — UID свіжої вибірки Вхідних (без
+    позначених `\\Deleted`) під нумерацією `inbox_validity`: лист із таким UID
+    фізично у Вхідних. Вперед такий лист не йде, а вже хибно позначений
+    повертається в тріаж — але лише коли його мітка СТАРША за вибірку
+    (`inbox_seen_at`): оператор міг перенести лист кнопкою, поки синк ще йшов,
+    і тоді стара вибірка бреше.
     """
     folder = (folder or "").strip()
     milled = (milled_folder or "").strip()
@@ -895,6 +907,13 @@ def _reflect_processed_folder(
     now = datetime.now()
     cutoff_dt = datetime.combine(cutoff, datetime.min.time())
     changed = 0
+    live_inbox = inbox_uids or set()
+
+    def in_inbox(row: EmailMessage) -> bool:
+        """UID листа є у вибірці Вхідних ТІЄЇ Ж нумерації — лист фізично там."""
+        if str(row.uid) not in live_inbox:
+            return False
+        return not (inbox_validity and row.uid_validity and row.uid_validity != inbox_validity)
 
     # ВПЕРЕД: рядки, які додаток вважає НЕ в папці, але фізично вони вже в ній.
     forward = list(
@@ -909,6 +928,8 @@ def _reflect_processed_folder(
         physical = where((row.message_id or "").strip())
         if physical is None:
             continue
+        if in_inbox(row):
+            continue  # у папці двійник за Message-ID, а сам лист у Вхідних
         log_folder_move(
             session, row, "зник зі Вхідних" if row.inbox_gone_at else None, physical,
             via=VIA_MAILBOX,
@@ -929,6 +950,20 @@ def _reflect_processed_folder(
         )
     )
     for row in marked_rows:
+        moved_at = row.mailbox_moved_at
+        if (
+            in_inbox(row)
+            and inbox_seen_at is not None
+            and (moved_at is None or moved_at < inbox_seen_at)
+        ):
+            # Хибна мітка: лист лежить у Вхідних (двійник за Message-ID у папці
+            # або давній збій) — повертаємо в тріаж.
+            log_folder_move(session, row, row.mailbox_folder, None, via=VIA_MAILBOX)
+            row.mailbox_folder = None
+            row.mailbox_moved_at = None
+            row.inbox_gone_at = None
+            changed += 1
+            continue
         mid = (row.message_id or "").strip()
         if mid in found.get(row.mailbox_folder or "", set()):
             continue  # усе ще там, де база й думає
@@ -1160,6 +1195,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         uid_validity = _folder_uidvalidity(mailbox)
 
         # --- Phase 1: headers-only, fast, one row (and commit) per message ---
+        inbox_seen_at = datetime.now()
         headers = list(
             mailbox.fetch(
                 AND(date_gte=cutoff),
@@ -1171,6 +1207,12 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         )
 
         incoming_uids = {str(msg.uid) for msg in headers}
+        # Для дзеркала папок (фаза 3): лист, позначений на видалення, але ще не
+        # стертий, у Вхідних уже не живе — доказом «лист тут» не вважається.
+        live_inbox_uids = {
+            str(msg.uid) for msg in headers
+            if "\\Deleted" not in (getattr(msg, "flags", ()) or ())
+        }
         # Дедуп у межах ОДНОГО namespace. Рядок з іншим (мертвим) UIDVALIDITY
         # збігом не вважається: інакше новий лист, якому дістався старий номер,
         # мовчки не імпортувався б узагалі. Порожній uid_validity у рядку —
@@ -1406,6 +1448,8 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         _reflect_processed_folder(
             session, mailbox, get_setting(session, "mail_processed_folder") or "", cutoff,
             milled_folder=get_setting(session, "mail_milled_folder") or "",
+            inbox_uids=live_inbox_uids, inbox_validity=uid_validity,
+            inbox_seen_at=inbox_seen_at,
         )
 
     return created
