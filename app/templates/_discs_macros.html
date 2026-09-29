@@ -19,7 +19,7 @@
 {%- if p.raw -%}
 <span class="dz-pos is-raw{{ ' is-w' if warn }}">{{ p.key }}{% if count > 1 %}<span class="ct">(х{{ count }})</span>{% endif %}</span>
 {%- else -%}
-<span class="dz-pos{{ ' is-w' if warn }}"><span class="br">{{ p.brand }}</span>{% if p.shade %}<i>-</i><span class="sh">{{ p.shade }}</span>{% endif %}<i>-</i><span class="hh">{{ p.height }}</span>{% if count > 1 %}<span class="ct">(х{{ count }})</span>{% endif %}</span>
+<span class="dz-pos{{ ' is-w' if warn }}"><span class="br">{{ p.brand }}</span>{% if p.shade %}<i>{{ p.sep }}</i><span class="sh">{{ p.shade }}</span>{% endif %}<i>{{ p.sep }}</i><span class="hh">{{ p.height }}</span>{% if count > 1 %}<span class="ct">(х{{ count }})</span>{% endif %}</span>
 {%- endif -%}
 {%- endmacro %}
 

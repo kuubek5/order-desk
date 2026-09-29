@@ -687,7 +687,8 @@ class TestRealNamesFromTheShop:
         names = ("wax18_18-x33.blk", "zr25_25-Z-Nature--a3-5-x01.blk")
         rows = [CamBlank(rel_path=n, file_name=n, first_seen_at=datetime(2026, 9, 29, 3, i))
                 for i, n in enumerate(names)]
-        assert sorted(order_text(rows).splitlines()) == ["wax-18", "z-nature-a3.5-25"]
+        # Z-Nature — як пишуть на складі (власник 29.09.26): «Z-Nature A3,5 25».
+        assert sorted(order_text(rows).splitlines()) == ["Z-Nature A3,5 25", "wax-18"]
 
     def test_brand_word_names_read_as_the_owner_writes_them(self):
         names = ("zr20_20-Monolith-a3-5-x24.blk", "zr18_18-Emotions-a1-x194.blk",

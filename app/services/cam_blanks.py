@@ -669,7 +669,15 @@ def _brand_label(brand: Optional[str]) -> str:
         return "mono"
     if lowered.startswith("emo"):
         return "emo"
+    if lowered in _CATALOG_BRANDS:
+        return _CATALOG_BRANDS[lowered]
     return lowered
+
+
+# Лінійки, які в цеху пишуть ТАК, як на складі: «Z-Nature A3,5 25» — велика
+# назва, колір великими з комою, через пробіл (власник 29.09.26). Решта
+# позицій лишається у прийнятому `mono-a3.5-25`.
+_CATALOG_BRANDS = {"z-nature": "Z-Nature", "z-smile": "Z-Smile"}
 
 
 def shade_label(shade: Optional[str]) -> str:
@@ -739,6 +747,9 @@ class DiscPos:
     group: str = ""
     tag: str = ""
     title: str = ""
+    # Роздільник частин у рядку: `-` (mono-a3.5-25) або пробіл для лінійок
+    # складу (Z-Nature A3,5 25). Шаблон бере його ж — екран і буфер однакові.
+    sep: str = "-"
 
     @property
     def sort_key(self) -> tuple:
@@ -756,10 +767,14 @@ def disc_position(row: CamBlank) -> DiscPos:
         name = row.file_name or row.rel_path.rsplit("/", 1)[-1]
         return DiscPos(key=bare_name(name), raw=True, group=group, tag=tag, title=title)
     brand_l, shade_l = _brand_label(brand), shade_label(shade)
-    key = "-".join(p for p in (brand_l, shade_l, str(height)) if p)
+    sep = "-"
+    if brand_l in _CATALOG_BRANDS.values():
+        sep = " "
+        shade_l = shade_l.upper().replace(".", ",")
+    key = sep.join(p for p in (brand_l, shade_l, str(height)) if p)
     return DiscPos(
         key=key, raw=False, brand=brand_l, shade=shade_l, height=height,
-        group=group, tag=tag, title=title,
+        group=group, tag=tag, title=title, sep=sep,
     )
 
 
