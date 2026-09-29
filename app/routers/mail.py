@@ -57,6 +57,7 @@ from app.mail_hold import (
     put_on_hold,
     release_hold,
 )
+from app.services.opak import letter_opak_hint
 from app.services.material_suggest import (
     best_material,
     canonical_material,
@@ -481,6 +482,9 @@ def get_mail(
         # 25.09.26) — та сама відповідь, що підставиться в поле картки, з тим
         # самим пошуком матеріалу в тексті замовника («B1» + «Monolight»).
         _context = _material_context(_email)
+        # Бейдж «опак» (власник 29.09.26): замовник просить покрити опаком
+        # («з опаком», «блокир.», «заопачити») — нагадування, не поле.
+        _email.opak_hint = letter_opak_hint(_context)
         _label = row_label(db, _email.material_color_guess, _context)
         if _label:
             _email.mat_badge = _row_badge(_label, _email.mat_badge)
@@ -1104,6 +1108,7 @@ def _mail_panel_context(
         "auto_on": is_auto_sender(db, email),
         "can_auto": can_edit(user, "mail-filters") and sender_key_for(email) is not None,
         "material_color": material_color,
+        "opak_hint": letter_opak_hint(material_ctx),
         "kind": kind,
         "quantity": quantity,
         "folder_pick": folder_pick,

@@ -50,6 +50,7 @@
                 <a class="mc-from mc-from-link" href="/clients?q={{ (client_name or _dispname)|urlencode }}" title="Знайти клієнта у «Клієнти»">{{ _dispname }}</a>
                 {% endif %}
                 {% if material_color %}<span class="mc-matchip mono">{{ material_color }}</span>{% endif %}
+                {% if opak_hint %}<span class="opakmini" title="Замовник просить опак: «{{ opak_hint }}»">опак</span>{% endif %}
             </div>
             <div class="mc-addr mono">{% if email.from_address %}{{ email.from_address }}{% endif %}{% if email.received_at %} · {{ email.received_at.strftime('%d.%m.%y %H:%M') }}{% endif %}</div>
             {# Тема листа — часто замовник пише матеріал/колір саме в темі

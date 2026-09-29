@@ -209,6 +209,12 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .mailrow .matmini.mat-ti b{color:var(--mat-ti)}
 .mailv2 .mailrow .matmini.mat-wax b{color:var(--mat-wax)}
 .mailv2 .mailrow .matmini.mat-slm b{color:var(--mat-slm)}
+/* Бейдж «опак» (власник 29.09.26): замовник просить покрити коронку опаком.
+   Опак — біла непрозора рідина, тож і бейдж «молочний» — кольору тексту теми
+   (--ink, у світлій темі сам стає темним), помітний поруч із матеріалом, але не тривога (не червоний/помаранчевий). Кружечок-«крапля»
+   перед словом — щоб впізнавався боковим зором. */
+.mailv2 .opakmini{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:var(--fs-0);font-weight:700;letter-spacing:.02em;white-space:nowrap;padding:2px 7px;border-radius:5px;color:var(--ink);background:color-mix(in srgb,var(--ink) 9%,transparent);border:1px solid color-mix(in srgb,var(--ink) 30%,transparent)}
+.mailv2 .opakmini::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink);box-shadow:0 0 5px color-mix(in srgb,var(--ink) 55%,transparent)}
 /* Ярлики родини матеріалу над списком (власник 25.09.26). Колір символу —
    той самий, що в чіпі рядка; вибраний ярлик — заливка й рамка його кольору. */
 .mailv2 .famchips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
