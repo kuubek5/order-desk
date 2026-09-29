@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from tests.test_mail_bulk import _letter
 from tests.test_mail_hold import _client, _page
@@ -33,8 +33,20 @@ def test_processed_tab_today_by_default_and_all_on_request(app_db):  # noqa: F81
     ставав сьогоднішнім. Тест падав дві доби на тиждень при ПРАВИЛЬНОМУ
     застосунку й блокував ворота CI. Перевірено 27.09.26 — у справжню неділю
     без піну тест зелений, тобто застосунок на вихідних поводиться правильно.
+
+    Друга пастка того самого роду (29.09.26): голий `datetime.now()` тут — це
+    годинник МАШИНИ, що виконує тест, а не Києва. На dev-ПК він і так київський,
+    тож локально завжди зелено; на CI-раннері (UTC) наївний "зараз" відстає
+    від Києва на 2-3 години, і застосунок — який трактує КОЖЕН наївний datetime
+    як київський — читає цей самий момент як «ще ДО сьогоднішнього 07:30»,
+    хоча за Києвом уже після. Вікно збою — щодня 04:30–07:30 UTC (=07:30–10:30
+    Київ), і саме туди вперся реліз 0.21.15 (CI впав двічі поспіль, той самий
+    тест, той самий рядок). Беремо naive-київський момент через
+    `business_day.business_now()`, а не годинник ОС раннера.
     """
-    now = datetime.now()
+    from app.business_day import business_now
+
+    now = business_now().replace(tzinfo=None)
     app, session_factory = app_db
     with session_factory() as db:
         _letter(db, "1", folder="Оброблено", subject="Сьогоднішній",
