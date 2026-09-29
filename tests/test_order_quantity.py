@@ -146,19 +146,20 @@ def test_quantity_undo_and_redo_restore_values():
 # --- дзеркало черги на екрані пошти ------------------------------------------
 
 
-def test_mail_mirror_shows_only_email_orders_newest_day_first():
+def test_mail_mirror_shows_only_todays_email_orders():
+    """Дзеркало скидається щодня (власник 29.09.26): робота, прийнята з
+    пошти вчора чи раніше, більше сюди не потрапляє, хай навіть її ще не
+    видали. Кейс, що це показав: Юрія Бойка прийняли 25.09, видали 28.09,
+    а рядок висів у дзеркалі ще й 29.09 — серед листів, оприйнятих
+    ЩОЙНО, — доти, доки хтось не додумався б прибрати руками."""
     engine = _database()
-    from datetime import timedelta
 
-    from app.business_day import business_today, utc_now
-    # Дати відносно справжнього робочого «сьогодні», щоб не впертись у вікно
-    # retention (30 днів): фіксовані дати з минулого місяця час від часу самі
-    # виходили б за нього й губились.
-    day_new = business_today().strftime("%d.%m.%y")
-    day_old = (business_today() - timedelta(days=3)).strftime("%d.%m.%y")
+    from app.business_day import business_tab_today, utc_now
+    day_new = business_tab_today().strftime("%d.%m.%y")
+    day_old = "25.09.26"  # будь-який день, що не сьогодні — сам факт старості
     with Session(engine, expire_on_commit=False) as db:
         _user(db)
-        # дві поштові роботи різних днів + чужі джерела + архівна
+        # учорашня поштова робота + чужі джерела + архівна — усі мають зникнути
         _order(db, source="email", client_name="Стара", sheet_tab=day_old,
                row_number=7)
         _order(db, source="email", client_name="Нова", sheet_tab=day_new,
@@ -174,19 +175,21 @@ def test_mail_mirror_shows_only_email_orders_newest_day_first():
 
         rows = mail_mirror_orders(db)
         names = [o.client_name for o in rows]
-        assert names == ["Нова", "Стара"]  # лише email, найновіший день згори
+        assert names == ["Нова"]  # лише сьогоднішня пошта
+        assert "Стара" not in names, "учорашнє (навіть невидане) сюди не належить"
         assert "Табличний" not in names and "Архівна" not in names
 
 
 def test_mail_mirror_newest_work_on_top_within_a_day():
     """Остання прийнята робота — завжди зверху (власник 25.09.26): порядок
-    створення, найновіша згори, незалежно від рядка в таблиці."""
+    створення, найновіша згори, незалежно від рядка в таблиці. Учорашні
+    роботи в цей самий прохід — довести, що фільтр «сьогодні» (29.09.26)
+    їх уже прибрав і не плутає з порядком усередині дня."""
     engine = _database()
-    from datetime import timedelta
 
-    from app.business_day import business_today
-    day_new = business_today().strftime("%d.%m.%y")
-    day_old = (business_today() - timedelta(days=1)).strftime("%d.%m.%y")
+    from app.business_day import business_tab_today
+    day_new = business_tab_today().strftime("%d.%m.%y")
+    day_old = "25.09.26"
     with Session(engine, expire_on_commit=False) as db:
         _user(db)
         _order(db, client_name="Вчора-верх", sheet_tab=day_old, row_number=60)
@@ -199,6 +202,5 @@ def test_mail_mirror_newest_work_on_top_within_a_day():
         _order(db, client_name="Остання", sheet_tab=day_new, row_number=59)
 
         names = [o.client_name for o in mail_mirror_orders(db)]
-        assert names == [
-            "Остання", "Без рядка", "Друга", "Перша", "Вчора-низ", "Вчора-верх",
-        ]
+        assert names == ["Остання", "Без рядка", "Друга", "Перша"]
+        assert "Вчора-верх" not in names and "Вчора-низ" not in names

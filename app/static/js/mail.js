@@ -763,10 +763,13 @@ window.collectMailBatch = function () {
     if (btn) btn.textContent = "Виконую…";
   });
 
-  // Меню «Перемістити» і «На уточнення» закриваються кліком поза ними — як
-  // меню пошти.
+  // Меню «Перемістити», «На уточнення» й «⋯» (У фільтр / навчити фільтр)
+  // закриваються кліком поза ними — як меню пошти. Без цього «⋯» лишався
+  // відкритим після кліку деінде (навіть після переходу на інший лист) і
+  // наліплювався на свіжий вміст під ним, коли той підмінявся під руками
+  // (власник 29.09.26: «меню фільтрів відображається криво»).
   document.addEventListener("click", (event) => {
-    document.querySelectorAll(".mb-move[open], .mc-hold[open]").forEach((menu) => {
+    document.querySelectorAll(".mb-move[open], .mc-hold[open], .mc-menu[open]").forEach((menu) => {
       if (!menu.contains(event.target)) menu.removeAttribute("open");
     });
   });
