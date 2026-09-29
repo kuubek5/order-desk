@@ -29,6 +29,7 @@ _IMAGES = {
     # Дефолти моделей — коли свого фото верстата ще не завантажили.
     "machine-portrait-350i.jpg", "machine-portrait-350i-loader.jpg",
     "machine-portrait-250i.jpg", "machine-portrait-250i-dry.jpg",
+    "machine-portrait-150i.jpg",
 }
 _JS = {"shop_board_slm.js"}
 

@@ -20,6 +20,7 @@
 import json
 import logging
 import os
+import re
 import time
 import threading
 import weakref
@@ -2206,20 +2207,23 @@ def poll_all(
 # ── Картки для екранів ──────────────────────────────────────────────────────
 
 
-# Чотири портрети цеху (з реальних фото власника, 04.09.26): ключ → підпис у
+# Портрети цеху (з реальних фото власника, 04.09.26; 150i — 29.09.26): ключ → підпис у
 # селекторі Налаштувань. Ключ = суфікс файлу app/static/img/machine-portrait-*.jpg.
 MACHINE_MODELS: tuple[tuple[str, str], ...] = (
     ("350i", "350i"),
     ("350i-loader", "350i loader"),
     ("250i", "250i"),
     ("250i-dry", "250i dry"),
+    # CORiTEC 150i PRO (власник 29.09.26: на табло стояла картинка 350i).
+    # Портрет згенеровано в стилі решти з фото цеху — design/*150i*.log.md.
+    ("150i", "150i"),
 )
 MACHINE_MODEL_KEYS = frozenset(key for key, _ in MACHINE_MODELS)
 
 
 def machine_model_key(name: str, chosen: str = "") -> str:
     """Портрет картки: ОБРАНИЙ у Налаштуваннях, а без вибору — здогад за
-    моделлю в назві (loader / dry / 250 / решта 350i). Невідомий ключ у
+    моделлю в назві (loader / dry / 250 / 150 / решта 350i). Невідомий ключ у
     `chosen` (стара БД, чужа форма) не ламає нічого — просто здогад."""
     if chosen in MACHINE_MODEL_KEYS:
         return chosen
@@ -2228,6 +2232,9 @@ def machine_model_key(name: str, chosen: str = "") -> str:
         return "350i-loader"
     if "250" in lowered:
         return "250i-dry" if "dry" in lowered else "250i"
+    # «150i-Olejka» — окреме число, а не шматок «1500» чи «2150».
+    if re.search(r"(?<!\d)150(?!\d)", lowered):
+        return "150i"
     return "350i"
 
 

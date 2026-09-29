@@ -87,6 +87,9 @@ def test_chosen_model_beats_name_guess():
     assert machine_model_key("Верстат 1", "350i-loader") == "350i-loader"
     assert machine_model_key("250i dry", "") == "250i-dry"           # авто
     assert machine_model_key("250i dry", "polaroid") == "250i-dry"   # сміття = авто
+    # CORiTEC 150i PRO (29.09.26): «150i-Olejka» на проді; «1500» — не 150.
+    assert machine_model_key("150i-Olejka", "") == "150i"
+    assert machine_model_key("Станок 1500", "") == "350i"
     t = MachineTarget(name="Верстат 1", host="h", portrait_model="250i")
     assert MachineCard(target=t, state=None).model_key == "250i"
 
@@ -105,7 +108,10 @@ def test_settings_row_has_model_select_with_chosen_option():
     assert 'form="machine-1" name="portrait_model"' in html
     assert '<option value="250i-dry" selected>250i dry</option>' in html
     assert 'data-model="250i-dry"' in html                 # мініатюра показує обране
-    assert html.count('<option value="') == 5 + 5          # рядок + форма «Додати»
+    # «авто» + кожна модель, двічі: рядок верстата + форма «Додати» (з 29.09.26
+    # моделей п'ять — додано 150i).
+    from app.services.machines import MACHINE_MODELS
+    assert html.count('<option value="') == 2 * (1 + len(MACHINE_MODELS)) == 12
 
 
 def test_update_route_persists_chosen_model_and_ignores_junk():

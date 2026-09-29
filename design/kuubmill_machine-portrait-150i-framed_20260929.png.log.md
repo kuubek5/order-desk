@@ -1,0 +1,11 @@
+# kuubmill_machine-portrait-150i-framed_20260929.png
+- модель: nano-banana-2 (Kie AI)
+- задача: 917605086f0062229b54931c39dd0b9f
+- кредитів списано: 8.0
+- референс: https://tempfile.redpandaai.co/kieai/11635814/images/refs/1790691102077-hfm54upip6m.png, https://tempfile.redpandaai.co/kieai/11635814/images/refs/1790691103458-4ov4v9rxgyq.jpg
+- параметри: 3:2 —
+- промпт: |
+    Re-frame the machine from the FIRST reference image (imes-icore CORiTEC 150i PRO on a grey drawer cabinet) with the EXACT composition of the SECOND reference image: the whole machine including the cabinet fully visible from top to the floor, the machine occupying only about 45 percent of the frame width and about 85 percent of the frame height, standing LEFT of centre (its centre at about 38 percent of the width), large empty pure black space on the right side, dark glossy reflective floor with a soft reflection of the cabinet, three-quarter view turned slightly to the right, soft studio light from the left, milling chamber window glowing cool blue. Keep the machine design identical to the first image. Pure black background, no text overlays, photorealistic.
+- payload: {"model": "nano-banana-2", "input": {"prompt": "Re-frame the machine from the FIRST reference image (imes-icore CORiTEC 150i PRO on a grey drawer cabinet) with the EXACT composition of the SECOND reference image: the whole machine including the cabinet fully visible from top to the floor, the machine occupying only about 45 percent of the frame width and about 85 percent of the frame height, standing LEFT of centre (its centre at about 38 percent of the width), large empty pure black space on the right side, dark glossy reflective floor with a soft reflection of the cabinet, three-quarter view turned slightly to the right, soft studio light from the left, milling chamber window glowing cool blue. Keep the machine design identical to the first image. Pure black background, no text overlays, photorealistic.", "aspect_ratio": "3:2", "resolution": "1K", "image_input": ["https://tempfile.redpandaai.co/kieai/11635814/images/refs/1790691102077-hfm54upip6m.png", "https://tempfile.redpandaai.co/kieai/11635814/images/refs/1790691103458-4ov4v9rxgyq.jpg"]}}
+- URL результату:
+    https://tempfile.aiquickdraw.com/h/917605086f0062229b54931c39dd0b9f_1790691135.png

@@ -177,6 +177,7 @@ def test_portrait_files_referenced_by_css_exist():
     css = (ROOT / "app/static/css/furnaces.css").read_text(encoding="utf-8")
     names = set(re.findall(r'img/(machine-portrait-[a-z0-9-]+\.jpg)', css))
     assert names == {"machine-portrait-350i.jpg", "machine-portrait-350i-loader.jpg",
-                     "machine-portrait-250i.jpg", "machine-portrait-250i-dry.jpg"}
+                     "machine-portrait-250i.jpg", "machine-portrait-250i-dry.jpg",
+                     "machine-portrait-150i.jpg"}
     for n in names:
         assert (ROOT / "app/static/img" / n).is_file(), n
