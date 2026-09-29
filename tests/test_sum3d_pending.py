@@ -223,7 +223,7 @@ def test_the_queue_row_keeps_the_warning_after_the_poll(app_db):  # noqa: F811
         db.commit()
     client = MiniClient(app)
     client.login(*ADMIN)
-    status, _, html = client.get("/")
+    status, _, html = client.get("/?ready=all")  # з 29.09.26 без фільтра — «Можна брати»
     assert status == 200, html[:500]
     assert html.count("is-sum3d-pending") == 1, "попередження мусить стояти рівно на недійшлому рядку"
     assert "Sum3D ще не в таблиці" in html

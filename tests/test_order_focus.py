@@ -225,8 +225,9 @@ def test_mine_filter_hides_everything_else_and_rides_the_poll_query(monkeypatch)
         db.commit()
 
         # sheet_tab у хелпері — сьогоднішній день, тож роботи в бакеті «today».
-        wide = queue_router.get_queue(request=_request(user.id), db=db)
-        narrow = queue_router.get_queue(request=_request(user.id), mine="1", db=db)
+        # ready="all": з 29.09.26 черга без фільтра відкривається на «Можна брати».
+        wide = queue_router.get_queue(request=_request(user.id), ready="all", db=db)
+        narrow = queue_router.get_queue(request=_request(user.id), ready="all", mine="1", db=db)
 
     assert len(wide["orders"]) == 2
     assert [o.id for o in narrow["orders"]] == [mine.id]
