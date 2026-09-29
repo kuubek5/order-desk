@@ -774,6 +774,34 @@ window.collectMailBatch = function () {
     });
   });
 
+  // «⋯» і «На уточнення» відкриваються ВГОРУ (CSS bottom:calc(100%+6px)) —
+  // правильно, коли над кнопкою є вікно браузера. Але сторінка з довгою
+  // карткою може бути прокручена так, що кнопці бракує місця зверху: попап
+  // тоді вилазить за верхній край вікна й лишається нечитабельним (живий
+  // кейс на цеховому ПК, 29.09.26: «не видно кнопок»). Клас .popover-flip-down
+  // (CSS) перевертає його вниз — вимірюємо ПІСЛЯ відкриття (`toggle`, а не
+  // клік по summary): доти <details> ще не встиг розкритись, і геометрія
+  // попапу/кнопки не порахована.
+  document.addEventListener(
+    "toggle",
+    (event) => {
+      const details = event.target.closest && event.target.closest(".mc-menu, .mc-hold");
+      if (!details || !details.hasAttribute("open")) return;
+      details.classList.remove("popover-flip-down"); // міряти в «природному» напрямі
+      const summary = details.querySelector("summary");
+      const body = details.querySelector(".mc-menu-body, .mc-hold-body");
+      if (!summary || !body) return;
+      const summaryRect = summary.getBoundingClientRect();
+      const bodyHeight = body.getBoundingClientRect().height || body.scrollHeight;
+      const spaceAbove = summaryRect.top;
+      const spaceBelow = window.innerHeight - summaryRect.bottom;
+      if (spaceAbove < bodyHeight + 12 && spaceBelow > spaceAbove) {
+        details.classList.add("popover-flip-down");
+      }
+    },
+    true, // capture: подія toggle на <details> НЕ спливає (специфікація)
+  );
+
   // «Зняти вибір» у шапці батч-панелі.
   document.addEventListener("click", (event) => {
     if (!event.target.closest("[data-batch-clear]")) return;
