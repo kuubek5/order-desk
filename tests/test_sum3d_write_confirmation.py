@@ -112,11 +112,11 @@ def test_success_toast_names_the_sheet(app_db):  # noqa: F811
         assert order.sum3d_pending == "12-01-45", "позначку не поставлено ДО запису"
 
 
-def test_email_order_never_claims_a_sheet_row(app_db):  # noqa: F811
-    """Робота з пошти рядка в таблиці не має — «записано в таблицю» було б
-    неправдою. Успіх там означає лише «збережено в порталі»."""
+def test_email_order_without_a_sheet_row_never_claims_one(app_db):  # noqa: F811
+    """Робота з пошти БЕЗ рядка в таблиці (старий лист, нотатку не записано) —
+    «записано в таблицю» було б неправдою. Успіх там — лише «збережено в порталі»."""
     app, session_factory = app_db
-    order_id = _order(session_factory, source="email", client_name="Vernigora")
+    order_id = _order(session_factory, source="email", client_name="Vernigora", row_number=None)
 
     status, headers, html = _save_sum3d(app, order_id)
 
@@ -125,6 +125,23 @@ def test_email_order_never_claims_a_sheet_row(app_db):  # noqa: F811
     assert toast["kind"] == "success", toast
     assert "таблиц" not in toast["message"].lower(), toast
     assert "is-written" not in html, "пошта не пише в таблицю — підтвердження зайве"
+
+
+def test_email_order_with_a_note_row_writes_sum3d_and_guards_it(app_db):  # noqa: F811
+    """Франчук 4788, 29.09.26: лист прийнято без Sum3D (рядок-нотатка в
+    таблиці вже є), ID вписали в черзі — і синк стирав його порожньою L, бо
+    для пошти запис у таблицю не йшов узагалі. Тепер іде, а до підтвердження
+    ID тримає позначка «ще не в таблиці» — синк його не зітре."""
+    app, session_factory = app_db
+    order_id = _order(session_factory, source="email", client_name="Франчук",
+                      work_order_no=None, job_code=None, row_number=85)
+
+    status, headers, html = _save_sum3d(app, order_id)
+
+    assert status == 200, status
+    assert "is-sum3d-pending" in html, "немає позначки «ще не в таблиці»"
+    with session_factory() as db:
+        assert db.get(Order, order_id).sum3d_pending == "12-01-45"
 
 
 def test_the_row_marks_the_id_as_not_yet_in_the_sheet(app_db):  # noqa: F811

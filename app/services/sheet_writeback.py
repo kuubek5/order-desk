@@ -163,10 +163,24 @@ def order_writes_to_sheet(order: Order) -> bool:
     rows ARE real sheet rows (matched back by row_number), so both write back.
 
     Окремий предикат, бо цю саму правду мусить знати ще й роут: він пише
-    операторові «записано в таблицю», і для роботи з пошти це було б неправдою —
-    там рядка в таблиці немає, а запис «успішний» рівно тому, що його не було.
+    операторові «записано в таблицю», і для роботи з пошти без рядка це було б
+    неправдою — запис «успішний» рівно тому, що його не було.
+
+    Робота з пошти, прийнята ПІСЛЯ появи рядків-нотаток, рядок МАЄ
+    (`append_mail_placeholder_row`: імʼя клієнта в E, `row_number` заданий), і
+    синк читає його як головне джерело Sum3D. Не писати туди означало, що
+    Sum3D, вписаний у черзі вже після прийняття листа, синк стирав порожньою
+    колонкою L — оператор вписував по десять разів (Франчук 4788, 29.09.26).
+    Тому такий рядок пишеться, як рядок вписаного клієнта: позиція звіряється
+    за іменем у E (`sheet_writer._identity_cell`), а до підтвердження Sum3D
+    тримає позначка `sum3d_pending`. Пошта без рядка (старі листи, нотатку не
+    записано) — як і раніше, не пише.
     """
-    return order.source in ("lab", "sheet_client") and bool(order.sheet_tab)
+    if not order.sheet_tab:
+        return False
+    if order.source in ("lab", "sheet_client"):
+        return True
+    return order.source == "email" and getattr(order, "row_number", None) is not None
 
 
 def write_sheet_fields(
