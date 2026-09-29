@@ -245,6 +245,35 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
    безглуздо. Нижче 140px стрічка нечитабельна — тоді перенос чесний. */
 .q2 .filters .date-strip{flex:1 1 140px;min-width:0;max-width:max-content}
 .q2 .date-strip::-webkit-scrollbar{display:none}
+/* ── Сітка фільтрів (власник 29.09.26: «на пів екрана — рівніше») ─────────────
+   Підписи в одній колонці, кнопки з однієї лінії: 2×2 —
+     Період | seg      Джерело | seg
+     Готовність | seg  Дні | смуга днів
+   Бракує місця на 2×2 — одна колонка «підпис | кнопки», підписи так само рівні.
+   Вирішує ширина САМОЇ панелі (контейнер .filters), не вікна. .fgroup —
+   display:contents: підпис і кнопки стають клітинками сітки. */
+.q2 .filters{display:block;container-type:inline-size;container-name:qfilters}
+.q2 .fgrid{display:grid;grid-template-columns:max-content max-content max-content minmax(0,1fr);column-gap:10px;row-gap:8px;align-items:center}
+.q2 .fgrid>.fgroup{display:contents}
+.q2 .fgrid .flabel{margin-right:0}
+.q2 .fgrid .seg,.q2 .fgrid .fg-cell{justify-self:start;min-width:0;max-width:100%}
+.q2 .fgrid .fg-cell{display:flex;align-items:center;gap:8px}
+.q2 .fgrid .fg-cell .date-strip{flex:0 1 auto}
+.q2 .fg-period>.flabel{grid-area:1/1}.q2 .fg-period>.seg{grid-area:1/2}
+.q2 .fg-source>.flabel{grid-area:1/3;margin-left:14px}.q2 .fg-source>.seg{grid-area:1/4}
+.q2 .fg-ready>.flabel{grid-area:2/1}.q2 .fg-ready>.seg{grid-area:2/2}
+.q2 .fg-days>.flabel{grid-area:2/3;margin-left:14px}.q2 .fg-days>.fg-cell{grid-area:2/4}
+/* Усе інше в смузі (чип «Прострочено», вимкнені зараз групи) — окремим рядком. */
+.q2 .fgrid>:not(.fgroup){grid-column:1/-1;justify-self:start}
+@container qfilters (max-width: 900px){
+  .q2 .fgrid{grid-template-columns:max-content minmax(0,1fr)}
+  .q2 .fg-period>.flabel{grid-area:1/1}.q2 .fg-period>.seg{grid-area:1/2}
+  .q2 .fg-source>.flabel{grid-area:2/1;margin-left:0}.q2 .fg-source>.seg{grid-area:2/2}
+  .q2 .fg-ready>.flabel{grid-area:3/1}.q2 .fg-ready>.seg{grid-area:3/2}
+  .q2 .fg-days>.flabel{grid-area:4/1;margin-left:0}.q2 .fg-days>.fg-cell{grid-area:4/2}
+  /* Сегмент ширший за рядок (телефон) — гортається вбік, а не ламає сітку. */
+  .q2 .fgrid .seg{overflow-x:auto;scrollbar-width:none}
+}
 .q2 .date-strip a,.q2 .date-strip span{flex:0 0 auto}
 .q2 .date-strip a,.q2 .date-strip span{
   height:26px;min-width:26px;padding:0 8px;border-radius:999px;font-size:var(--fs-1);color:var(--ink-2);

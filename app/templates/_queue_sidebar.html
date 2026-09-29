@@ -39,11 +39,12 @@
      hx-boost="true" hx-target="#queue-rows" hx-select="#queue-rows"
      hx-swap="outerHTML transition:true"
      hx-push-url="true">
+<div class="fgrid">
     {# Кожна пара «лейбл + seg» — один нерозривний .fgroup: flex-wrap не може
        відірвати лейбл від його кнопок (раніше «Готовність» лишалась сама на
        рядку, коли її seg переносився). Групи переносяться цілими, як і має
        бути на вужчому екрані. #}
-    <div class="fgroup">
+    <div class="fgroup fg-period">
     <span class="flabel">Період</span>
     <div class="seg">
         <a href="/?period=yesterday&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'yesterday' and not selected_date %}is-active{% endif %}">Вчора <span class="n">{{ counts.yesterday }}</span></a>
@@ -91,7 +92,7 @@
     </div>
     {% endif %}
 
-    <div class="fgroup">
+    <div class="fgroup fg-source">
     <span class="flabel">Джерело</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=all" class="{% if source == 'all' %}is-active{% endif %}">Усі <span class="n">{{ source_counts.all }}</span></a>
@@ -100,7 +101,7 @@
     </div>
     </div>
 
-    <div class="fgroup">
+    <div class="fgroup fg-ready">
     <span class="flabel">Готовність</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=all" class="{% if ready == 'all' %}is-active{% endif %}">Усі <span class="n">{{ ready_counts.all }}</span></a>
@@ -111,6 +112,13 @@
     </div>
 
 
+    {% if date_tabs or selected_date %}
+    {# Смуга днів — теж група з підписом (29.09.26): у сітці фільтрів вона стоїть
+       під «Джерелом», підпис тримає колонку рівною. Чип обраної дати — у тій
+       самій клітинці, щоб не розсипати сітку. #}
+    <div class="fgroup fg-days">
+    <span class="flabel">Дні</span>
+    <div class="fg-cell">
     {% if date_tabs %}
     {% set selected_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
     <div class="date-strip" aria-label="Дні з роботами">
@@ -131,15 +139,18 @@
         {% endif %}
     </div>
     {% endif %}
-
     {% if selected_date %}
     <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}" class="fchip" title="Прибрати фільтр дня">
         {{ selected_date.strftime('%d.%m.%y') }}<span class="x"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></span>
     </a>
+    {% endif %}
+    </div>
+    </div>
     {% endif %}
     {% if show_overdue %}
     <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}" class="fchip" title="Прибрати фільтр прострочених">
         Прострочено<span class="x"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg></span>
     </a>
     {% endif %}
+</div>
 </div>
