@@ -197,6 +197,23 @@ def test_lab_work_falls_back_to_the_order_number():
     assert view.machines[0].client == "Дента Люкс", "ім'я клієнта має перевагу"
 
 
+def test_lab_work_shows_the_technician_next_to_the_order_number():
+    """Власник 29.09.26: у лабораторної роботи — ще й імʼя техніка. У
+    клієнтської — ні (там уже імʼя замовника, техніка в листі немає)."""
+    lab = _order(None, "mono A3", "6", "анатомія")
+    lab.work_order_no = "24122"
+    lab.technician_name = "Коваленко"
+    view = _view([_card("A", "run", percent=10, sum3d="X", orders=[lab])])
+    work = view.machines[0].works[0]
+    assert (work.name, work.tech) == ("24122", "Коваленко")
+    assert view.machines[0].client == "24122", "наряд лишається головним"
+
+    client = _order("Дента Люкс", "mono A3", "6")
+    client.technician_name = "Коваленко"
+    view = _view([_card("A", "run", percent=10, sum3d="X", orders=[client])])
+    assert view.machines[0].works[0].tech == ""
+
+
 def test_printer_shows_the_end_time_the_machine_promised():
     """Час кінця друку — прогноз САМОЇ машини; свого ми не рахуємо."""
     card = _card("SISMA", "run", sisma=True, layers=(412, 780))

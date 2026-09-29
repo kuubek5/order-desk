@@ -44,8 +44,9 @@
             {# Імʼя другої роботи НЕ повторюємо, коли клієнт той самий: два
                однакові рядки з'їдали б місце, заради якого другу назву й
                виводять. Матеріал при цьому лишається свій у кожної. #}
-            {% if loop.first or wk.name != m.works[loop.index0 - 1].name %}
-              <div class="mc-cl">{{ wk.name or "—" }}</div>
+            {% if loop.first or wk.name != m.works[loop.index0 - 1].name or wk.tech != m.works[loop.index0 - 1].tech %}
+              {# Лабораторна робота: наряд · технік (власник 29.09.26). #}
+              <div class="mc-cl">{{ wk.name or "—" }}{% if wk.tech %}<span class="mc-tech"> · {{ wk.tech }}</span>{% endif %}</div>
             {% endif %}
             <div class="mc-mat">{{ wk.material }}{% if loop.last and m.extra %} · {{ m.extra }}{% endif %}</div>
           {% endfor %}

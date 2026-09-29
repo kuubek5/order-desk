@@ -110,6 +110,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .mc-last.is-act{color:var(--accent-c)}
 .mc-cl{margin-top:1vh;font:600 clamp(14px,1.4vw,28px)/1.18 var(--font-body);color:#cbbfae;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Технік лабораторної роботи — поруч із нарядом, тихіше: наряд лишається
+   головним, імʼя — підказкою, чия робота. */
+.mc-tech{font-weight:500;color:#9a8f7e}
 .mc-mat{margin-top:.3vh;font-size:clamp(12px,1.2vw,24px);line-height:1.2;color:#8d8272;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* Друга робота притиснута до першої: із загальним відступом .mc-cl вони
@@ -267,11 +270,6 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fc-o b{color:var(--ink)}
 
-.ft{flex:0 0 auto;display:flex;align-items:center;gap:1.2vw;padding:.5vh 1.4vw;
-  border-top:1px solid rgba(var(--accent-rgb),.16);background:#140d05;
-  font-family:var(--font-mono);font-size:clamp(9px,.78vw,16px);color:var(--ink-3)}
-.ft .rt{margin-left:auto}
-.ft .dot{width:9px;height:9px;background:var(--accent);flex:0 0 auto}
 .lost{margin:0 .7vw .6vh;padding:.7vh 1vw;border:1px solid rgba(var(--alarm-rgb),.5);
   background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink);
   font-size:clamp(11px,1vw,20px)}
@@ -279,8 +277,6 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 #shop-live{flex:1;display:flex;flex-direction:column;min-height:0}
 
 @media (prefers-reduced-motion:no-preference){
-  .ft .dot{animation:beat 2.8s ease-in-out infinite}
-  @keyframes beat{0%,100%{opacity:1}50%{opacity:.3}}
   .mc.t-done{animation:callme 2.4s ease-in-out infinite}
   @keyframes callme{50%{border-color:rgba(var(--accent-rgb),.28)}}
   /* Частіше за «завершено»: помилка — верстат стоїть і чекає. */
@@ -299,11 +295,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 
   {% include "_shop_board_cards.html" %}
 
-  <footer class="ft">
-    <span class="dot"></span><span id="shop-stamp">{{ view.now.strftime('%H:%M:%S') }}</span>
-    <span>·</span><span>дані з екранів обладнання, лише перегляд</span>
-    <span class="rt">порожнє поле = число не прочитано</span>
-  </footer>
+  {# Нижню смугу («дані з екранів обладнання, лише перегляд», годинник
+     оновлення) прибрано на прохання власника 29.09.26 — картки забирають її
+     місце. Про обрив звʼязку й далі каже червоний банер .lost. #}
 </main>
 <script>
 /* Годинник іде за часом СЕРВЕРА (київським), а не цього ПК: у телевізора
@@ -350,10 +344,6 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
       const fresh = document.getElementById("slm");
       if (canvas && fresh && fresh !== canvas) fresh.replaceWith(canvas);
       document.getElementById("shop-lost").hidden = true;
-      const stamp = document.getElementById("shop-stamp");
-      const now = new Date(Date.now() + offset);
-      const kyiv = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Kyiv" }));
-      if (stamp) stamp.textContent = pad(kyiv.getHours()) + ":" + pad(kyiv.getMinutes()) + ":" + pad(kyiv.getSeconds());
       syncOffset();
       tick();
     } catch (_e) {

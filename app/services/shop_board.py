@@ -61,6 +61,9 @@ class ShopWork:
 
     name: str = ""
     material: str = ""
+    # Технік — лише в лабораторної роботи (власник 29.09.26): поруч із
+    # нарядом, тихіше за нього. У клієнтської лишається порожнім.
+    tech: str = ""
 
 
 @dataclass
@@ -182,8 +185,10 @@ def _works_of(card, *, last: bool = False) -> tuple[list[ShopWork], str]:
         # «Верстати». Без запасного варіанта рядок лишався порожнім, і на
         # телевізорі було видно лише матеріал (скарга з цеху 14.09.26).
         name = (getattr(order, "client_name", "") or "").strip()
+        tech = ""
         if not name:
             name = (getattr(order, "work_order_no", "") or "").strip()
+            tech = (getattr(order, "technician_name", "") or "").strip()
         bits = [
             (getattr(order, "material_color", "") or "").strip(),
             (getattr(order, "quantity", "") or "").strip(),
@@ -194,7 +199,7 @@ def _works_of(card, *, last: bool = False) -> tuple[list[ShopWork], str]:
         # вона робила `has_work` істинним, і картка малювала «—» замість
         # пояснення стану.
         if name or material:
-            works.append(ShopWork(name=name, material=material))
+            works.append(ShopWork(name=name, material=material, tech=tech))
     shown = works[:MAX_NAMED_WORKS]
     rest = len(works) - len(shown)
     return shown, (f"ще {rest}" if rest else "")
