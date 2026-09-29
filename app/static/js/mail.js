@@ -831,6 +831,19 @@ window.collectMailBatch = function () {
     true, // capture: подія toggle на <details> НЕ спливає (специфікація)
   );
 
+  // Чіпи матеріалу під полем: `is-current` — варіант, що зараз стоїть у полі
+  // (у першого заливається кружечок-галочка). Сервер ставить його при
+  // рендері, а тут тримаємо живим, поки оператор друкує чи клацає інший чіп.
+  document.addEventListener("input", (event) => {
+    const input = event.target;
+    if (!input || input.id !== "mc-material") return;
+    const value = (input.value || "").trim().toLowerCase();
+    const card = input.closest("form") || document;
+    card.querySelectorAll(".mc-cands .wc-chip").forEach((chip) => {
+      chip.classList.toggle("is-current", (chip.dataset.mat || "").trim().toLowerCase() === value);
+    });
+  });
+
   // «Зняти вибір» у шапці батч-панелі.
   document.addEventListener("click", (event) => {
     if (!event.target.closest("[data-batch-clear]")) return;

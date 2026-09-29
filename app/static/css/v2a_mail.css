@@ -362,11 +362,24 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 .mailv2 .wc-chip{height:24px;padding:0 10px;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .34);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);font:inherit;font-size:var(--fs-1);cursor:pointer;transition:background var(--ui-speed) ease}
 .mailv2 .wc-chip:hover{background:rgba(var(--accent-base-rgb), .22)}
 /* Чіп матеріалу картки: латинський канон + бейдж категорії, як у ручному
-   додаванні. Найімовірніший (is-best) — залитий і з сильнішим контуром:
-   спершу правильна відповідь, а вже потім варіанти (власник 25.09.26). */
-.mailv2 .mc-cands .wc-chip{display:inline-flex;align-items:center;gap:6px;line-height:1}
-.mailv2 .mc-cands .wc-chip.is-best{background:rgba(var(--accent-base-rgb), .26);border-color:rgba(var(--accent-rgb), .8);color:var(--ink);font-weight:600}
-.mailv2 .mc-cands .wc-chip:not(.is-best){color:var(--ink-2)}
+   додаванні. ПЕРШИЙ (is-first) — головна відповідь (власник 25.09 і 29.09.26:
+   «перший завжди вірний — має відрізнятись, але симпатично»): вищий, чіткий
+   акцентний контур, мʼякий ореол і галочка в кружечку. Не залитий суцільно —
+   залита кнопка на екрані одна («Прийняти»). Решта — тихі: прозорий фон, тонка
+   лінія, приглушений текст; оживають під курсором. `is-current` — цей варіант
+   зараз у полі: у першого заливається кружечок, в інших зʼявляється контур. */
+.mailv2 .mc-cands .wc-chip{display:inline-flex;align-items:center;gap:6px;line-height:1;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease,box-shadow var(--ui-speed) ease}
+.mailv2 .mc-cands .wc-chip.is-first{height:28px;padding:0 12px 0 5px;font-size:var(--fs-1);font-weight:700;color:var(--ink);border-color:rgba(var(--accent-rgb), .85);background:linear-gradient(180deg,rgba(var(--accent-base-rgb), .26),rgba(var(--accent-base-rgb), .12));box-shadow:0 0 0 3px rgba(var(--accent-rgb), .10),0 6px 16px -10px rgba(var(--accent-rgb), .7)}
+.mailv2 .mc-cands .wc-chip.is-first:hover{background:linear-gradient(180deg,rgba(var(--accent-base-rgb), .34),rgba(var(--accent-base-rgb), .18));box-shadow:0 0 0 4px rgba(var(--accent-rgb), .14),0 6px 18px -10px rgba(var(--accent-rgb), .8)}
+.mailv2 .mc-cands .wc-chip.is-first .wc-chip-badge{color:var(--accent-c)}
+.mailv2 .wc-chip-ic{flex:0 0 auto;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(var(--accent-rgb), .7);color:var(--accent-c);transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .wc-chip-ic svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .mc-cands .wc-chip.is-first.is-current .wc-chip-ic{background:var(--accent-c);border-color:var(--accent-c);color:var(--bg)}
+.mailv2 .mc-cands .wc-chip:not(.is-first){height:24px;background:transparent;border-color:var(--line-2);color:var(--ink-2);font-weight:500}
+.mailv2 .mc-cands .wc-chip:not(.is-first):hover{border-color:rgba(var(--accent-rgb), .5);color:var(--ink);background:rgba(var(--accent-base-rgb), .08)}
+.mailv2 .mc-cands .wc-chip:not(.is-first).is-best{color:var(--ink)}
+.mailv2 .mc-cands .wc-chip:not(.is-first).is-current{border-color:rgba(var(--accent-rgb), .8);color:var(--ink)}
+.mailv2 .mc-cands-more{align-self:center;margin:0 1px 0 6px;font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
 .mailv2 .wc-chip-badge{font-size:var(--fs-0);font-weight:600;color:var(--ink-3);font-family:var(--font-mono)}
 .mailv2 .wpb-root{color:var(--ink-3)}
 .mailv2 .wpb-seg{padding:1px 6px;border-radius:5px;background:var(--raise);border:1px solid var(--line-2);color:var(--ink)}
@@ -848,7 +861,7 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    око мусять влучати без прицілювання. Ширина колонок теж піднята до 72px —
    на 58px «12-01-45» і тризначна к-сть обрізались. */
 .mailv2 .mc-fields .suminput{height:44px}
-.mailv2 .mc-cands{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.mailv2 .mc-cands{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
 /* Попередження про нескачані файли */
 .mailv2 .mc-warn{margin:0}
 /* warn + галка «прийняти без них» — візуальна пара, тримаємо їх тісніше за

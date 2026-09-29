@@ -344,14 +344,20 @@
                     <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
                 </div>
                 {# Латинський канон (material_suggest.canonical_suggestions): спершу
-                   НАЙІМОВІРНІШЕ — упізнаний матеріал × відтінок листа (підсвічене),
-                   далі варіанти. Клік підставляє й перераховує шлях теки. #}
+                   НАЙІМОВІРНІШЕ — упізнаний матеріал × відтінок листа, далі варіанти.
+                   Перший чіп — ГОЛОВНА відповідь (власник 29.09.26: «перший завжди
+                   вірний — має відрізнятись»): контур, ореол і галочка; решта —
+                   тихі чіпи після підпису «інші». Не залитий: залита кнопка на
+                   екрані одна — «Прийняти». `is-current` — цей варіант зараз у полі
+                   (mail.js тримає позначку живою під час набору). Клік підставляє й
+                   перераховує шлях теки. #}
                 {% if material_cands %}
                 <div class="mc-cands">
                     {% for cand in material_cands %}
-                    <button type="button" class="wc-chip mono{% if cand.kind == 'best' %} is-best{% endif %}" data-mat="{{ cand.text }}"
-                            title="{% if cand.kind == 'best' %}Найімовірніше з листа{% else %}Варіант{% endif %}: «{{ cand.text }}»{% if cand.count %} · {{ cand.count }} робіт за 90 днів{% endif %}"
-                            onclick="var m=document.getElementById('mc-material');m.value=this.dataset.mat;m.dispatchEvent(new Event('change',{bubbles:true}))">{{ cand.text }}{% if cand.badge %}<span class="wc-chip-badge">{{ cand.badge }}</span>{% endif %}</button>
+                    {% if loop.index == 2 %}<span class="mc-cands-more" aria-hidden="true">інші</span>{% endif %}
+                    <button type="button" class="wc-chip mono{% if loop.first %} is-first{% elif cand.kind == 'best' %} is-best{% endif %}{% if cand.text|lower == (material_color or '')|trim|lower %} is-current{% endif %}" data-mat="{{ cand.text }}"
+                            title="{% if loop.first %}Найімовірніше з листа{% else %}Варіант{% endif %}: «{{ cand.text }}»{% if cand.count %} · {{ cand.count }} робіт за 90 днів{% endif %}"
+                            onclick="var m=document.getElementById('mc-material');m.value=this.dataset.mat;m.dispatchEvent(new Event('input',{bubbles:true}));m.dispatchEvent(new Event('change',{bubbles:true}))">{% if loop.first %}<span class="wc-chip-ic" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4.5 8.3 2.3 2.2 4.7-5"/></svg></span>{% endif %}{{ cand.text }}{% if cand.badge %}<span class="wc-chip-badge">{{ cand.badge }}</span>{% endif %}</button>
                     {% endfor %}
                 </div>
                 {% endif %}
