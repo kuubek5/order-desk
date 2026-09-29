@@ -315,3 +315,27 @@ def test_client_and_server_agree_on_where_a_new_pin_lands():
     assert "body.insertBefore(row, body.firstElementChild)" not in js, (
         "вставка на початок повертає перемішування набору"
     )
+
+
+def test_batch_bar_route_appears_from_two_pinned_and_keeps_its_slot():
+    """Власник 29.09.26: смуга «Призначити всім» має зʼявлятись без оновлення
+    сторінки, щойно пришпилено більше ОДНІЄЇ роботи. Обгортка — завжди (її
+    перепитує `refresh-queue`), форма — від двох."""
+    with Session(_database()) as db:
+        user = _user(db)
+        first, second = _order(db, no="24122"), _order(db, no="24123")
+        toggle(db, first, user)
+        db.commit()
+
+        def bar():
+            return orders_router.order_focus_bar(request=_request(user.id), db=db).body.decode("utf-8")
+
+        one = bar()
+        assert 'id="sum3d-batch-slot"' in one and 'hx-trigger="refresh-queue from:body"' in one
+        assert "Призначити всім" not in one, "для однієї роботи смуга зайва"
+
+        toggle(db, second, user)
+        db.commit()
+        two = bar()
+        assert 'id="sum3d-batch-slot"' in two and "Призначити всім" in two
+        assert "<b>2</b> роботи" in two

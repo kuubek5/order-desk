@@ -45,6 +45,7 @@ POST /orders/{order_id}/found-units
 POST /orders/{order_id}/quantity
 GET /settings/materials/probe
 MOUNT /static
+GET /orders/focus/bar
 POST /orders/focus/clear
 GET /mail/queue-mirror
 POST /feedback/{feedback_id}/reopen

@@ -66,7 +66,7 @@ from app.services.sheet_writeback import (
     queue_sheet_fields,
     write_sheet_fields_warm,
 )
-from app.services.focus import clear_all as clear_focus, focused_ids, toggle as toggle_focus
+from app.services.focus import clear_all as clear_focus, count as focus_count, focused_ids, toggle as toggle_focus
 from app.services.undo import (
     UNDOABLE_ACTION_TYPES,
     UNDO_WINDOW_SECONDS,
@@ -653,6 +653,21 @@ def toggle_order_focus(request: Request, order_id: int, db: Session = Depends(ge
     )
     response.headers["HX-Trigger-After-Swap"] = json.dumps({"refresh-queue": True})
     return response
+
+
+@router.get("/orders/focus/bar", response_class=HTMLResponse)
+def order_focus_bar(request: Request, db: Session = Depends(get_db)):
+    """Смуга групового Sum3D для набору «мої зараз» — окремо від сторінки.
+
+    Обгортка смуги сама перепитує цей роут на `refresh-queue` (шпилька,
+    «зняти всі», груповий Sum3D), тож смуга зʼявляється й зникає без оновлення
+    сторінки (власник 29.09.26)."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(
+        request, "_sum3d_batch_bar.html", {"focus_count": focus_count(db, user)}
+    )
 
 
 @router.post("/orders/focus/clear")

@@ -9,7 +9,13 @@
    рядку збирає набір, а тут набір отримує мету — вписати отриманий у Sum3D
    time-id один раз на всю партію. Форма — звичайний POST (сторінка не на
    hx-boost), редірект назад зберігає фільтри й показує тост. #}
-{% if focus_count %}
+{# Обгортка є ЗАВЖДИ й сама себе перепитує на `refresh-queue` (власник
+   29.09.26: «щоб панель зʼявлялась при виділенні більше ніж одного без
+   оновлення сторінки»). Той сигнал уже шлють шпилька (`/orders/{id}/focus`),
+   «зняти всі» і груповий Sum3D — тож набір і смуга не розходяться. Сама смуга —
+   від ДВОХ пришпилених: для однієї роботи ID простіше вписати в її рядок. #}
+<div id="sum3d-batch-slot" hx-get="/orders/focus/bar" hx-trigger="refresh-queue from:body" hx-swap="outerHTML">
+{% if focus_count and focus_count >= 2 %}
 {% set _n = focus_count %}
 {% set _word = 'робота' if (_n % 10 == 1 and _n % 100 != 11) else ('роботи' if (_n % 10 in [2,3,4] and _n % 100 not in [12,13,14]) else 'робіт') %}
 <form class="sum3d-batch" method="post" action="/orders/sum3d-batch"
@@ -25,3 +31,4 @@
     <button type="submit" class="btn sm primary sb-go">Призначити всім</button>
 </form>
 {% endif %}
+</div>
