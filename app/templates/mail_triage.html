@@ -178,6 +178,24 @@
     </div>
     {% endif %}
 
+{% macro famchips_nav() %}
+            {% set _fam_base = '/mail?view=' ~ view ~ ('&period=all' if processed_all else '') ~ ('&service=' ~ service if service and service != 'all' else '') %}
+            <nav class="famchips" aria-label="Фільтр за матеріалом">
+                <a href="{{ _fam_base }}" class="famchip{% if not fam %} is-on{% endif %}"{% if not fam %} aria-current="true"{% endif %}>Усі</a>
+                {% for chip in family_chips %}
+                <span class="famchip-pair{% if chip.off %} is-off{% endif %}">
+                    <a href="{{ _fam_base }}{% if chip.toggle %}&amp;fam={{ chip.toggle }}{% endif %}"
+                       class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}{% if chip.off %} is-off{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
+                       title="{% if chip.on %}Прибрати {{ chip.label }} з вибраних{% elif fam and not chip.off and family_chips|selectattr('on')|list %}Додати {{ chip.label }} до вибраних{% else %}Лише {{ chip.label }}{% endif %}">
+                        <b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
+                    </a>
+                    <a href="{{ _fam_base }}{% if chip.drop %}&amp;fam={{ chip.drop }}{% endif %}"
+                       class="famchip-x" aria-label="{% if chip.off %}Повернути{% else %}Сховати{% endif %} {{ chip.label }}"
+                       title="{% if chip.off %}Повернути {{ chip.label }} у список{% else %}Усі, крім {{ chip.label }}{% endif %}">{% if chip.off %}↺{% else %}✕{% endif %}</a>
+                </span>
+                {% endfor %}
+            </nav>
+{% endmacro %}
     <div class="worklayout">
         <section class="list-panel" id="mail-list-panel" aria-labelledby="mail-list-title">
             {# The active tab above already names this list and counts it, so a
@@ -193,11 +211,20 @@
             {% if view != 'auto' %}
             <div class="mail-batchbar" id="mail-batchbar"{% if view == 'pending' %} data-conveyor="1"{% endif %}>
                 <label class="mb-selall">
-                    <input type="checkbox" id="mail-select-all"{% if view == 'pending' %} data-ready-only="1"{% endif %}
-                           aria-label="{% if view == 'pending' %}Обрати всі готові{% else %}Обрати всі{% endif %}">
-                    <span>{% if view == 'pending' %}Обрати всі готові{% else %}Обрати всі{% endif %}</span>
+                    <input type="checkbox" id="mail-select-all" aria-label="Обрати всі">
+                    <span>Обрати всі</span>
                 </label>
+                {# Панель списку (власник 29.09.26, варіант A): вибір | фільтр
+                   матеріалу | «N листів» — одна смуга, відділена від листів. На
+                   вузькому списку фільтр іде другим рядком тієї ж смуги
+                   (@container maillist у v2a_mail.css). #}
+                {% if family_chips %}
+                <span class="mb-sep" aria-hidden="true"></span>
+                {{ famchips_nav() }}
+                {% endif %}
                 <span class="mb-selcount" id="mail-sel-count" hidden></span>
+                {% set _n = emails|length %}
+                <span class="mb-total mono" id="mail-total">{{ _n }} {% if _n % 10 == 1 and _n % 100 != 11 %}лист{% elif _n % 10 in (2, 3, 4) and _n % 100 not in (12, 13, 14) %}листи{% else %}листів{% endif %}</span>
                 <form class="mb-actions" id="mail-bulk-form" method="post" action="/mail/bulk" hidden>
                     <input type="hidden" name="ids" value="">
                     <input type="hidden" name="folder" value="">
@@ -257,23 +284,8 @@
                (`chip.toggle` / `chip.drop`); фільтрує теж сервер, тож полл,
                сторінки й «+N нових» тримають вибір. Лічильники — з усього
                списку вкладки. #}
-            {% if family_chips %}
-            {% set _fam_base = '/mail?view=' ~ view ~ ('&period=all' if processed_all else '') ~ ('&service=' ~ service if service and service != 'all' else '') %}
-            <nav class="famchips" aria-label="Фільтр за матеріалом">
-                <a href="{{ _fam_base }}" class="famchip{% if not fam %} is-on{% endif %}"{% if not fam %} aria-current="true"{% endif %}>Усі</a>
-                {% for chip in family_chips %}
-                <span class="famchip-pair{% if chip.off %} is-off{% endif %}">
-                    <a href="{{ _fam_base }}{% if chip.toggle %}&amp;fam={{ chip.toggle }}{% endif %}"
-                       class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}{% if chip.off %} is-off{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
-                       title="{% if chip.on %}Прибрати {{ chip.label }} з вибраних{% elif fam and not chip.off and family_chips|selectattr('on')|list %}Додати {{ chip.label }} до вибраних{% else %}Лише {{ chip.label }}{% endif %}">
-                        <b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
-                    </a>
-                    <a href="{{ _fam_base }}{% if chip.drop %}&amp;fam={{ chip.drop }}{% endif %}"
-                       class="famchip-x" aria-label="{% if chip.off %}Повернути{% else %}Сховати{% endif %} {{ chip.label }}"
-                       title="{% if chip.off %}Повернути {{ chip.label }} у список{% else %}Усі, крім {{ chip.label }}{% endif %}">{% if chip.off %}↺{% else %}✕{% endif %}</a>
-                </span>
-                {% endfor %}
-            </nav>
+            {% if family_chips and view == 'auto' %}
+            {{ famchips_nav() }}
             {% endif %}
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}

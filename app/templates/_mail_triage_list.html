@@ -57,13 +57,22 @@
             {% set _dot = 'warn' %}
         {% endif %}
         {% set cb_locked = view in ('archive', 'processed', 'milled', 'gone') and (email.status == 'прийнято' or email.order_id) %}
+        {# Роздільник дня (власник 29.09.26) — перед першим листом дня; підпис і
+           лічильник рахує роутер (`_mark_mail_days`). Сторінки по 15 ховають його
+           разом із листами дня (mail.js). #}
+        {% if email.day_head %}
+        <div class="mail-day" role="separator"><b>{{ email.day_head.label }}</b> {{ email.day_head.date }}<span class="mail-day-n">· {{ email.day_head.count }}</span></div>
+        {% endif %}
+        {# Край рядка — матеріал, як у черзі (цирконію смуги нема свідомо).
+           Клас кольору — той самий, що в бейджа матеріалу рядка. #}
+        {% set _edge = email.mat_badge.cls if email.mat_badge and email.mat_badge.cls in ('mat-pmma', 'mat-ti', 'mat-wax', 'mat-slm') else '' %}
         <div class="mailrow{% if has_cb %} has-cb{% endif %}{% if view == 'pending' %} row-slim{% endif %}{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
              id="mailrow-{{ email.id }}"
              {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
              hx-get="/mail/{{ email.id }}?panel=1"
              hx-target="#mail-detail" hx-swap="innerHTML"
              hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']"
-             data-mail-id="{{ email.id }}">
+             data-mail-id="{{ email.id }}"{% if _edge %} data-edge="{{ _edge }}"{% endif %}>
             {% if has_cb %}
             {# stopPropagation, бо рядок сам відкривається на click/keyup. #}
             <span class="mailcb-wrap" onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">

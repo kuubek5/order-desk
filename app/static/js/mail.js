@@ -163,6 +163,27 @@ window.KMMailPager = (function () {
     list.forEach((r, i) => {
       r.hidden = !all && Math.floor(i / PAGE) !== page;
     });
+    // Роздільник дня видно, лише коли на сторінці є хоч один лист його дня.
+    document.querySelectorAll("#mail-list-rows .mail-day").forEach((day) => {
+      let next = day.nextElementSibling;
+      let shown = false;
+      while (next && !next.classList.contains("mail-day")) {
+        if (next.classList.contains("mailrow") && !next.hidden) {
+          shown = true;
+          break;
+        }
+        next = next.nextElementSibling;
+      }
+      day.hidden = !shown;
+    });
+    // «N листів» у панелі списку — з рядків, що є зараз (полл міг прибрати лист).
+    const total = document.getElementById("mail-total");
+    if (total) {
+      const n = list.length;
+      const word = n % 10 === 1 && n % 100 !== 11 ? "лист"
+        : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "листи" : "листів";
+      total.textContent = n + " " + word;
+    }
     // «Обрати всі» рахує лише видиму сторінку — хай перечитає свій стан.
     document.dispatchEvent(new Event("mailPagerChange"));
     if (!pager) return;
@@ -647,8 +668,9 @@ window.collectMailBatch = function () {
     return !!(bar && bar.dataset.conveyor);
   }
 
-  // Пул «Обрати всі»: у «Вхідні» — лише готові, в інших вкладках — усі
-  // незаблоковані. Лише ВИДИМА сторінка (як в ukr.net): «обрати всі» не має
+  // Пул «Обрати всі»: усі незаблоковані (власник 29.09.26 — «обрати всі»
+  // означає всі; конвеєр однаково приймає з обраних лише готові, readyIds).
+  // Атрибут data-ready-only лишається підтримуваним на випадок повернення. Лише ВИДИМА сторінка (як в ukr.net): «обрати всі» не має
   // тихо захоплювати листи на сторінках, яких оператор не бачить. На «Показати
   // всі» видимі — усі.
   function selectAllPool() {

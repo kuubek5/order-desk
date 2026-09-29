@@ -16,7 +16,7 @@
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app.archive_extract import is_archive
-from app.business_day import business_today, get_rollover
+from app.business_day import business_now, business_today, get_rollover
 from app.export_scanner import clear_export_cache
 from app.link_attachments import (
     LinkAttachment,
@@ -262,6 +262,46 @@ def _family_chips(emails, include: list[str], exclude: list[str]) -> list[dict]:
     return chips
 
 
+_WEEKDAYS = ("понеділок", "вівторок", "середа", "четвер", "пʼятниця", "субота", "неділя")
+
+
+def _mail_day_label(day: date, today: date) -> str:
+    if day == today:
+        return "Сьогодні"
+    if day == today - timedelta(days=1):
+        return "Вчора"
+    return _WEEKDAYS[day.weekday()]
+
+
+def _mark_mail_days(emails) -> None:
+    """Роздільники днів у списку листів (власник 29.09.26: «візуально
+    відокремлювати листи, ненавʼязливо»). Кожен лист несе `day_key`, а ПЕРШИЙ
+    лист дня — ще й `day_head` (підпис і скільки листів того дня в усій
+    вкладці). Список відсортований за часом приходу, тож дні — суцільні групи.
+    День — календарний (як час у рядку), а не робочий з межею 07:30: лист о
+    06:10 під «Вчора» читався б як помилка."""
+    today = business_now().date()
+    counts: dict = {}
+    for email in emails:
+        received = getattr(email, "received_at", None)
+        email.day_key = received.date() if received else None
+        counts[email.day_key] = counts.get(email.day_key, 0) + 1
+    previous = object()
+    for email in emails:
+        email.day_head = None
+        if email.day_key != previous and email.day_key is not None:
+            n = counts[email.day_key]
+            word = "лист" if n % 10 == 1 and n % 100 != 11 else (
+                "листи" if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else "листів"
+            )
+            email.day_head = {
+                "label": _mail_day_label(email.day_key, today),
+                "date": email.day_key.strftime("%d.%m"),
+                "count": f"{n} {word}",
+            }
+        previous = email.day_key
+
+
 def _row_badge(label: dict, old: dict | None) -> dict:
     """Чіп рядка з канону (`row_label`): символ категорії + `mono b1`. Клас
     кольору — зі старого чіпа, а без нього — за символом категорії."""
@@ -493,6 +533,7 @@ def get_mail(
             _email.material_known = bool(
                 best_material(db, _email.material_color_guess, _context)
             )
+    _mark_mail_days(emails)
     # How many pending letters are being held back from the frozen list.
     held_back_count = 0
     if since is not None and view == "pending":

@@ -1171,6 +1171,63 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .famchip{padding:3px 8px;gap:5px}
 .mailv2 .famchip-x{padding:0 6px}
 
+/* ── Панель списку (власник 29.09.26, варіант A) ─────────────────────────────
+   Вибір | фільтр матеріалу | «N листів» — одна смуга на власному тлі з лінією
+   знизу: керування окремо, листи окремо, око не зливає їх в одне ціле.
+   Фільтр — перемикач із секціями (як сегментований контрол), а не розсип
+   пігулок. Висота рядка смуги фіксована (min-height) — вибір листа міняє
+   вміст, а не висоту (25.09.26: «смикається весь модуль»). flex:0 0 auto —
+   список є flex-колонкою фіксованої висоти й інакше стискав смугу до 48px,
+   і другий рядок (фільтр на вузькому списку) налазив на листи. */
+.mailv2 .mail-batchbar{flex:0 0 auto;flex-wrap:wrap;row-gap:8px;column-gap:12px;min-height:48px;padding:7px 14px;background:var(--card-2);border-bottom:1px solid var(--line-2)}
+.mailv2 .mb-sep{flex:0 0 1px;align-self:center;height:18px;background:var(--line-2)}
+.mailv2 .mail-batchbar .famchips{flex:0 1 auto;min-width:0;display:inline-flex;flex-wrap:nowrap;gap:0;padding:0;border:1px solid var(--line-2);border-radius:8px;background:var(--bg-rail);overflow-x:auto;scrollbar-width:none}
+.mailv2 .mail-batchbar .famchips::-webkit-scrollbar{display:none}
+.mailv2 .mail-batchbar .famchips>.famchip,.mailv2 .mail-batchbar .famchip-pair{flex:0 0 auto;border-right:1px solid var(--line-2)}
+.mailv2 .mail-batchbar .famchips>:last-child{border-right:0}
+.mailv2 .mail-batchbar .famchip,.mailv2 .mail-batchbar .famchip-x{height:28px;border:0;border-radius:0;background:none;align-items:center}
+.mailv2 .mail-batchbar .famchip{padding:0 10px}
+.mailv2 .mail-batchbar .famchip-x{padding:0 8px 0 2px}
+.mailv2 .mail-batchbar .famchip:hover,.mailv2 .mail-batchbar .famchip-x:hover{background:color-mix(in srgb,var(--ink) 5%,transparent)}
+.mailv2 .mail-batchbar .famchip.is-on{background:color-mix(in srgb,var(--accent-b) 16%,transparent)}
+.mailv2 .mail-batchbar .famchip.is-on.mat-zr{background:color-mix(in srgb,var(--mat-zr) 16%,transparent)}
+.mailv2 .mail-batchbar .famchip.is-on.mat-pmma{background:color-mix(in srgb,var(--mat-pmma) 16%,transparent)}
+.mailv2 .mail-batchbar .famchip.is-on.mat-ti{background:color-mix(in srgb,var(--mat-ti) 16%,transparent)}
+.mailv2 .mail-batchbar .famchip.is-on.mat-wax{background:color-mix(in srgb,var(--mat-wax) 16%,transparent)}
+.mailv2 .mail-batchbar .famchip.is-on.mat-slm{background:color-mix(in srgb,var(--mat-slm) 16%,transparent)}
+.mailv2 .mail-batchbar .famchip-pair:has(.famchip.is-on) .famchip-x{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.mailv2 .mb-total{margin-left:auto;flex:0 0 auto;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap}
+.mailv2 .mail-batchbar.has-sel .mb-total{display:none}
+/* Лічильник вибору стискається (трикрапка), а не виштовхує кнопки дій у
+   новий рядок: flex-basis 0 — для переносу рахується нульова ширина, тож
+   «Перемістити / Відхилити» лишаються в першому рядку й смуга не росте. */
+.mailv2 .mail-batchbar .mb-selcount{flex:1 1 0}
+/* Перший рядок смуги одразу висотою з кнопки дій (32px): інакше поява
+   «Перемістити / Відхилити» при виборі листа робила його вищим, і список під
+   смугою смикався на 13px. */
+.mailv2 .mail-batchbar .mb-selall{min-height:32px}
+/* Вузький список (пів екрана, двопанельна пошта): фільтр — другим рядком тієї ж
+   смуги на всю ширину; не вміщається й там — гортається вбік, без переносу. */
+@container maillist (max-width: 599px){
+  .mailv2 .mb-sep{display:none}
+  .mailv2 .mail-batchbar .famchips{order:10;flex:1 1 100%}
+}
+
+/* ── Роздільник дня й край матеріалу в списку (власник 29.09.26) ───────────── */
+.mailv2 .mail-day{display:flex;align-items:center;gap:8px;padding:12px 16px 5px;font-size:var(--fs-0);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.mailv2 .mail-day::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line-2),transparent)}
+.mailv2 .mail-day b{color:var(--ink-2);font-weight:700}
+.mailv2 .mail-day-n{font-family:var(--font-mono);letter-spacing:0;text-transform:none;font-weight:500}
+.mailv2 .mail-day[hidden]{display:none}
+/* Край — матеріал, як у черзі (цирконію смуги нема свідомо). Через змінну, бо
+   активний рядок малює свою рамку тим самим box-shadow — сумуємо, не перебиваємо. */
+.mailv2 .mailrow[data-edge="mat-pmma"]{--row-edge:var(--mat-pmma)}
+.mailv2 .mailrow[data-edge="mat-ti"]{--row-edge:var(--mat-ti)}
+.mailv2 .mailrow[data-edge="mat-wax"]{--row-edge:var(--mat-wax)}
+.mailv2 .mailrow[data-edge="mat-slm"]{--row-edge:var(--mat-slm)}
+.mailv2 .mailrow[data-edge]{box-shadow:inset 3px 0 0 var(--row-edge)}
+.mailv2 .mailrow.active[data-edge]{box-shadow:inset 3px 0 0 var(--row-edge),inset 0 0 0 1px rgba(var(--accent-rgb), .45)}
+
 /* Дії картки завжди на видноті. На 1366×768 «Прийняти в чергу» стояв за
    нижнім краєм панелі — щоб прийняти лист, треба було прокрутити картку.
    Липка смуга внизу скролу панелі; попапи «⋯» і «На уточнення»
