@@ -415,6 +415,24 @@ def test_material_word_found_in_customer_text_when_guess_names_only_colour():
         assert best_material(session, "", "капа а2") == "kappa a2"
 
 
+def test_kapa_letter_without_colour_fills_the_field():
+    """Бойовий лист 29.09.26 (Клименко): «Фрезеровані капи … хочу замовити
+    фрезерування капи, без обробки». Капа кольору не має, а слово стоїть у
+    відмінку — поле лишалось порожнім, чіп «без матеріалу». Тепер — `kappa`."""
+    from app.services.material_suggest import best_material, row_label
+
+    text = "Фрезеровані капи\nВітаю, хочу замовити фрезерування капи, без обробки."
+    with _canon_session() as session:
+        assert best_material(session, None, text) == "kappa"
+        assert row_label(session, None, text)["text"] == "kappa"
+        for word in ("капу", "капи", "каппа", "splint"):
+            assert best_material(session, None, f"фрезерування {word}") == "kappa", word
+        # Колір названо — він лишається (як і було).
+        assert best_material(session, "", "капа а2") == "kappa a2"
+        # Матеріал із кольором без кольору в листі — як і було, не вгадуємо.
+        assert best_material(session, "Monolith", "Monolith, дякую") is None
+
+
 def test_russian_spelling_reaches_the_latin_line():
     """Бойовий лист 25.09.26 «Эмоушен а3» (Proton Mail): «э» не складалась у `e`,
     і чіп рядка лишався порожнім. Тепер — `emo a3`, як «емоушен а3»."""

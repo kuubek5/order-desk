@@ -42,7 +42,8 @@ from app.material_catalog import (
     resolve_material_id,
 )
 from app.material_classifier import match_key, match_keys
-from app.material_match import _CYRILLIC_SHADE, _SHADE_RE, _tokens as _mm_tokens
+from app.material_match import _CYRILLIC_SHADE, _SHADE_RE, _concepts, _forms, _stem
+from app.material_match import _tokens as _mm_tokens
 from app.models import Material, Order
 
 # Short badge per material category. Kept here (a display concern) rather than in
@@ -304,6 +305,25 @@ def _word_weights(session: Session) -> Counter[str]:
     return Counter({w: n for w, n in weight.items() if n >= _MIN_WORD_USES})
 
 
+def _same_word(token: str, word: str) -> bool:
+    """Те саме слово в іншому відмінку чи синонім (Клименко 29.09.26: «капи»,
+    «капу» не ставали `kappa`, ні «сплінт»). Рівність ОСНОВ, не префікс — інакше
+    `mono` → `mon` ловило б будь-яке слово на «мон». Правила ті самі, що в
+    зіставленні тек видачі (`material_match`)."""
+    token_forms, word_forms = _forms(token), _forms(word)
+    if _concepts(token_forms) & _concepts(word_forms):
+        return True
+    word_stems = {_stem(f) for f in word_forms if _stem(f) != f}
+    return any(_stem(f) != f and _stem(f) in word_stems for f in token_forms)
+
+
+def _is_shadeless(word: str) -> bool:
+    """Матеріал, у якого кольору не буває: капа (власник 29.09.26 — «фрезеровані
+    капи» мають ставати капою на фрезерування). Лише капа: титан і віск у полі
+    картки лишаються як були, доки власник не скаже інакше."""
+    return "kapa" in _concepts(_forms(word))
+
+
 def _match_word(
     token: str, weight: Counter[str], *, allow_short: bool, fuzzy: bool = False
 ) -> str | None:
@@ -322,7 +342,7 @@ def _match_word(
         else:
             hit = token.startswith(word) or word.startswith(token) or (
                 fuzzy and len(token) >= 4 and len(word) >= 4
-                and fuzz.ratio(token, word) >= _FUZZY_WORD
+                and (fuzz.ratio(token, word) >= _FUZZY_WORD or _same_word(token, word))
             )
         if hit and (best is None or (total, word) > best):
             best = (total, word)
@@ -400,9 +420,12 @@ def best_material(session: Session, guess: str | None, context: str | None = Non
     в тексті) і відтінок рівно один. Інакше None — поле лишається як було,
     вгадувати колір чи матеріал не можна."""
     wanted = _wanted_shades(guess, None, context)
-    if len(wanted) != 1:
+    word = canonical_material_word(session, guess, context)
+    if not word:
         return None
-    if not canonical_material_word(session, guess, context):
+    if not wanted and _is_shadeless(word):
+        return word  # капа: кольору немає — і не треба
+    if len(wanted) != 1:
         return None
     return canonical_material(session, guess, wanted[0], context)
 
