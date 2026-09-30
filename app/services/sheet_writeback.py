@@ -610,7 +610,7 @@ def set_client_row_fill(db: Session, order: Order, *, blue: bool) -> str | None:
     found) to mirror a handout status change in the shared sheet. No-op for
     orders that don't live in a sheet row. Returns an error string on failure
     (never raises — the local status change must stand regardless)."""
-    if not order_has_client_fill_row(order) or order.row_number is None:
+    if not order_has_client_fill_row(order) or not order.sheet_tab or order.row_number is None:
         return None
     try:
         spreadsheet = open_spreadsheet(db=db)
@@ -796,6 +796,7 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                     if (
                         order is None
                         or not order_has_client_fill_row(order)
+                        or not order.sheet_tab
                         or order.row_number is None
                     ):
                         # Рядка в таблиці немає взагалі — знімати нічого, і
@@ -890,7 +891,7 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
             order = bg.get(Order, order_id)
             if order is None:
                 continue
-            if not order_writes_to_sheet(order):
+            if not order_writes_to_sheet(order) or not order.sheet_tab:
                 continue
             by_tab.setdefault(order.sheet_tab, []).append((order, set(fields)))
 
@@ -1187,7 +1188,7 @@ def restore_sheet_row_warm(order_id: int) -> str | None:
         order = bg.get(Order, order_id)
         if order is None:
             return "роботи більше немає"
-        if not order_writes_to_sheet(order) or order.row_number is None:
+        if not order_writes_to_sheet(order) or not order.sheet_tab or order.row_number is None:
             return None  # never had a sheet row (email work without a row) — nothing to restore
         try:
             spreadsheet = open_spreadsheet(db=bg)
