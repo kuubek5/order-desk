@@ -37,7 +37,12 @@ from app.link_attachments import (
     undownloaded_links,
 )
 from app import perf
-from app.client_folder import preferred_client_folder, seed_client_name, sender_display_names
+from app.client_folder import (
+    ordered_export_folders,
+    preferred_client_folder,
+    seed_client_name,
+    sender_display_names,
+)
 from app.mail_export import (
     _contained_child,
     CARD_FOLDER_LIST_MAX_AGE,
@@ -986,6 +991,9 @@ def _card_dir_context(
     # імені клієнта (список поза фрагментом, що перемальовується) і тихо
     # відправила б файли в теку попереднього клієнта. Ручний вибір — перемагає.
     client_folder = preferred_client_folder(db, client_name, sender_hint)
+    existing_folders, suggested_folders = ordered_export_folders(
+        client_name, existing_folders, client_folder
+    )
     client_override, material_override = resolve_wizard_overrides(
         folder_pick, folder_new, material_folder
     )
@@ -1017,6 +1025,7 @@ def _card_dir_context(
         # коментар вище); тека клієнта за правилом — окремо, для підказок.
         "folder_pick": folder_pick,
         "client_folder": client_folder,
+        "suggested_folders": suggested_folders,
     }
 
 
@@ -1574,8 +1583,9 @@ def _wizard_context(
     )
     ctx["attachment_count"] = ctx["batch_count"]
     if step >= 2:
-        ctx["existing_folders"] = list_client_folders(
-            export_root, max_age=CARD_FOLDER_LIST_MAX_AGE
+        folders = list_client_folders(export_root, max_age=CARD_FOLDER_LIST_MAX_AGE)
+        ctx["existing_folders"], ctx["suggested_folders"] = ordered_export_folders(
+            client_name, folders, wizard_client_folder
         )
 
     return ctx

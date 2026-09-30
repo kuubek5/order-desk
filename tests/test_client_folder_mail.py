@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.client_folder import card_folder_for, preferred_client_folder
+from app.client_folder import card_folder_for, ordered_export_folders, preferred_client_folder
 from app.models import ClientNameAlias, ClientSenderMemory, Order
 from app.routers import mail as mail_router_mod
 from tests.test_mail_transaction_safety import _database, _letter, _request, _user, _wire
@@ -95,6 +95,41 @@ def test_card_folder_missing_on_disk_falls_back_to_fuzzy(tmp_path, monkeypatch):
         email, _ = _letter(db, mail_root / "u1")
         _accept(db, user, email)
     assert _landed_in(engine) == "Люмі-Дент"
+
+
+# ── Частина B: ранжування списку тек у майстрі (30.09.26) ──────────────────
+# Сотні тек в export роблять алфавітний <select> незручним для пошуку; пінована
+# тека (картка/пам'ять відправника) і найближчі нечіткі збіги підіймаються
+# наверх, решта лишається як була — без дублів.
+
+_FOLDERS = ["Іванов", "Петренко", "Кривовид", "Zагадка", "Іваненко Петро"]
+
+
+def test_ordered_export_folders_pins_known_folder_first():
+    ordered, suggested = ordered_export_folders("Хтось Новий", _FOLDERS, "Петренко")
+    assert ordered[0] == "Петренко"
+    assert suggested == ["Петренко"]
+    # решта лишається — жоден запис не загубився і не здублювався
+    assert sorted(ordered) == sorted(_FOLDERS)
+
+
+def test_ordered_export_folders_surfaces_fuzzy_matches_without_pin():
+    ordered, suggested = ordered_export_folders("Іваненко", _FOLDERS, None)
+    assert ordered[0] == "Іваненко Петро"
+    assert "Іваненко Петро" in suggested
+    assert sorted(ordered) == sorted(_FOLDERS)
+
+
+def test_ordered_export_folders_no_match_keeps_original_list():
+    ordered, suggested = ordered_export_folders("Зовсім Незнайомий", _FOLDERS, None)
+    assert suggested == []
+    assert ordered == _FOLDERS
+
+
+def test_ordered_export_folders_pin_not_on_disk_is_ignored():
+    ordered, suggested = ordered_export_folders("Хтось", _FOLDERS, "Тека Яку Стерли")
+    assert suggested == []
+    assert ordered == _FOLDERS
 
 
 def test_manual_pick_beats_the_card_folder(tmp_path, monkeypatch):

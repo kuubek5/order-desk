@@ -124,7 +124,7 @@
     <input type="hidden" name="quantity" value="{{ quantity }}">
     {% for aid in attachment_ids %}<input type="hidden" name="attachment_ids" value="{{ aid }}">{% endfor %}
 
-    {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "2", "closest form", "wiz") }}
+    {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "2", "closest form", "wiz", suggested_folders=suggested_folders) }}
 
     <div class="wiz-foot">
         <button type="submit" name="step" value="1" class="btn">← Назад</button>
@@ -161,7 +161,7 @@
        оператор бачить фінальний шлях і за потреби міняє папку клієнта чи підпапку
        матеріалу, не вертаючись на Крок 2. Кожна зміна перерендерює Крок 3 з новим
        шляхом (hx-post step=3), значення несуться в тому ж #wiz3form у /accept. #}
-    {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "3", "#wiz3form", "wiz3") }}
+    {{ dir_editor(email, preview, existing_folders, sender_hint, folder_pick, folder_new, material_folder, attachment_count, "3", "#wiz3form", "wiz3", suggested_folders=suggested_folders) }}
 
     {# Наполегливе попередження про НЕскачані файли (власник 24.09.26: «щоб
        пропускав, але було наполегливе повідомлення»). Два джерела:

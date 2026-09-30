@@ -22,6 +22,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.client_matcher import match_client_name
 from app.models import Client, ClientNameAlias, EmailMessage
 
 _EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -58,6 +59,49 @@ def preferred_client_folder(db: Session, client_name: str | None, sender_hint) -
         if not name or not hint_name or name == hint_name:
             return sender_hint.export_folder
     return None
+
+
+_SUGGEST_SCORE_FLOOR = 55.0
+_SUGGEST_LIMIT = 5
+
+
+def ordered_export_folders(
+    client_name: str | None,
+    existing_folders: list[str],
+    pinned: str | None,
+    *,
+    limit: int = _SUGGEST_LIMIT,
+) -> tuple[list[str], list[str]]:
+    """Наявні теки export, з найімовірнішими для ЦЬОГО клієнта спереду.
+
+    Сотні тек у `export` (CLAUDE.md §4) роблять звичайний алфавітний
+    `<select>` незручним, коли треба знайти ОДНУ конкретну — тож тека клієнта
+    з картки/памʼяті відправника (`pinned`) і найближчі за тим самим нечітким
+    зіставленням, що й видача (`app.client_matcher`, поріг 55 — той самий
+    попередній відсів, що й там), підіймаються наверх; решта лишається
+    алфавітним списком нижче, без дублів. Повертає (повний_список,
+    підняті_наверх) — друге лише для позначки в шаблоні (зірочка), перше —
+    вже готовий порядок для `<select>`.
+    """
+    suggested: list[str] = []
+    seen: set[str] = set()
+
+    def _add(name: str | None) -> None:
+        if name and name in existing_folders and name not in seen:
+            seen.add(name)
+            suggested.append(name)
+
+    _add(pinned)
+    name = (client_name or "").strip()
+    if name and existing_folders:
+        match = match_client_name(name, existing_folders, known_aliases={})
+        for folder, score in match.candidates:
+            if score >= _SUGGEST_SCORE_FLOOR:
+                _add(folder)
+
+    suggested = suggested[:limit]
+    rest = [f for f in existing_folders if f not in seen]
+    return suggested + rest, suggested
 
 
 def _sender_address(email) -> str | None:
