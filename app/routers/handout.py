@@ -529,6 +529,9 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                 "order": order,
                 "client_name": group["client_name"],
                 "client_label": group["client_label"],
+                # Імʼя при роботі веде на картку клієнта («Клієнти») — там
+                # прив'язка теки (власник 30.09.26).
+                "client_id": group["client_id"],
                 "issued_by": group["issued_by"],
                 # Номер клієнта в покажчику дня: клік по ньому в пласкому
                 # режимі веде до рядків саме цього клієнта (handout.js).

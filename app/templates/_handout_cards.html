@@ -54,7 +54,14 @@
         <div class="flatrow" data-nav="{{ row.position }}">
             {# Клієнт підписаний при кожній роботі: без картки навколо це
                єдине, що каже, чия це коронка. #}
+            {# Імʼя веде на картку клієнта — там тека (власник 30.09.26); повернення
+               в той самий день видачі, як у «Прив'язати папку». Без картки
+               (група «Без імені») — просто текст. #}
+            {% if row.client_id %}
+            <a class="flatclient client-link" href="/clients/{{ row.client_id }}?return_to={{ handout_return_to|urlencode }}" title="{{ row.client_label }} — відкрити картку клієнта">{{ row.client_label }}</a>
+            {% else %}
             <span class="flatclient" title="{{ row.client_label }}">{{ row.client_label }}</span>
+            {% endif %}
             {% include "_handout_work_row.html" %}
         </div>
         {% endfor %}
@@ -84,7 +91,7 @@
                 </button>
                 <h2>
                     {% if group.all_found %}<span class="doneicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{% endif %}
-                    {{ group.client_label }}
+                    {% if group.client_id %}<a class="client-link" href="/clients/{{ group.client_id }}?return_to={{ handout_return_to|urlencode }}" title="Відкрити картку клієнта">{{ group.client_label }}</a>{% else %}{{ group.client_label }}{% endif %}
                     {# Знак питання, а не галочка: таблиця каже «видано», але в
                        історії CRM ніхто цього не робив. Найчастіша причина —
                        видалили рядок вище, і заливка з'їхала. #}
