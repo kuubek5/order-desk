@@ -183,6 +183,22 @@ def order_writes_to_sheet(order: Order) -> bool:
     return order.source == "email" and getattr(order, "row_number", None) is not None
 
 
+def order_has_client_fill_row(order: Order) -> bool:
+    """Чи має ця робота СВОЮ синю заливку в таблиці — вужче за
+    `order_writes_to_sheet`: лабораторні («lab») рядки теж пишуть поля, але
+    заливка — сигнал видачі КЛІЄНТСЬКОЇ роботи (§2) і лаборторних рядків не
+    стосується (tests/test_handout_routes.py::
+    test_lab_orders_in_group_are_not_sent_to_clear_row_fills). «sheet_client»
+    завжди має заливку; «email» — лише відколи в неї є рядок-нотатка
+    (`append_mail_placeholder_row`, 29.09.26) — до того пошта рядка не мала
+    взагалі."""
+    if not order.sheet_tab:
+        return False
+    if order.source == "sheet_client":
+        return True
+    return order.source == "email" and getattr(order, "row_number", None) is not None
+
+
 def write_sheet_fields(
     db: Session, order: Order, fields: set[str],
     erase: frozenset[str] | set[str] = frozenset(),
@@ -594,7 +610,7 @@ def set_client_row_fill(db: Session, order: Order, *, blue: bool) -> str | None:
     found) to mirror a handout status change in the shared sheet. No-op for
     orders that don't live in a sheet row. Returns an error string on failure
     (never raises — the local status change must stand regardless)."""
-    if order.source != "sheet_client" or not order.sheet_tab or order.row_number is None:
+    if not order_has_client_fill_row(order) or order.row_number is None:
         return None
     try:
         spreadsheet = open_spreadsheet(db=db)
@@ -779,8 +795,7 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                     order = bg.get(Order, order_id)
                     if (
                         order is None
-                        or order.source != "sheet_client"
-                        or not order.sheet_tab
+                        or not order_has_client_fill_row(order)
                         or order.row_number is None
                     ):
                         # Рядка в таблиці немає взагалі — знімати нічого, і
@@ -840,7 +855,7 @@ def _remember_failed_fills(order_ids: list[int], value: str) -> None:
         with writeback_session() as bg:
             for order_id in order_ids:
                 order = bg.get(Order, order_id)
-                if order is not None and order.source == "sheet_client":
+                if order is not None and order_has_client_fill_row(order):
                     order.fill_pending = value
             bg.commit()
     except Exception:
@@ -875,7 +890,7 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
             order = bg.get(Order, order_id)
             if order is None:
                 continue
-            if order.source not in ("lab", "sheet_client") or not order.sheet_tab:
+            if not order_writes_to_sheet(order):
                 continue
             by_tab.setdefault(order.sheet_tab, []).append((order, set(fields)))
 
@@ -920,7 +935,7 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
                     continue
                 if fields:
                     plan.append((order, fields, row))
-                if order.source == "sheet_client":
+                if order_has_client_fill_row(order):
                     fill_rows.append((worksheet.id, row))
 
             if plan:
@@ -1172,15 +1187,15 @@ def restore_sheet_row_warm(order_id: int) -> str | None:
         order = bg.get(Order, order_id)
         if order is None:
             return "роботи більше немає"
-        if order.source not in ("lab", "sheet_client") or not order.sheet_tab or order.row_number is None:
-            return None  # never had a sheet row (email work) — nothing to restore
+        if not order_writes_to_sheet(order) or order.row_number is None:
+            return None  # never had a sheet row (email work without a row) — nothing to restore
         try:
             spreadsheet = open_spreadsheet(db=bg)
             worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
             if worksheet is None:
                 raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
             restore_order_row(worksheet, order)
-            if order.source == "sheet_client" and order.status not in ("видано", "знайдено при видачі"):
+            if order_has_client_fill_row(order) and order.status not in ("видано", "знайдено при видачі"):
                 # The sync reads the blue fill as the pending/issued flag, so a
                 # restore that skipped it would silently flip the work to «видано».
                 paint_row_fills(spreadsheet, [(worksheet.id, order.row_number + HEADER_ROWS)])

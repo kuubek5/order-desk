@@ -590,6 +590,66 @@ def test_mark_found_lab_order_skips_sheet_fill(monkeypatch):
         assert captured == {}  # no clear, no paint for a lab row
 
 
+def test_mark_found_mail_order_with_sheet_row_clears_fill(monkeypatch):
+    """Регресія 30.09.26: пошта, прийнята ПІСЛЯ появи рядків-нотаток
+    (`append_mail_placeholder_row`, 29.09.26), має РЯДОК у таблиці й тому синю
+    заливку — «знайдено» мусить її знімати так само, як у sheet_client, а не
+    мовчки пропускати (виявлено на живій видачі: галочка в CRM не знімала
+    заливку для жодної поштової роботи з рядком)."""
+    engine = _database()
+    captured = _stub_fills(monkeypatch)
+    from app.parser import HEADER_ROWS
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(
+            source="email", sheet_tab=YESTERDAY, row_number=60,
+            client_name="Basarab", material_color="Ti", quantity="1",
+            status="відфрезеровано",
+        ))
+        db.commit()
+        order = db.scalar(select(Order))
+        _inline_fill_background(monkeypatch, db)
+
+        resp = run_route(
+            handout_router_mod.mark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            )
+        )
+        assert resp.status_code == 303
+        db.refresh(order)
+        assert order.status == "знайдено при видачі"
+        assert captured["clear"] == [(42, 60 + HEADER_ROWS)]
+
+
+def test_mark_found_mail_order_without_sheet_row_skips_fill(monkeypatch):
+    """Стара пошта без рядка-нотатки (`row_number` порожній) ніколи не мала
+    заливки в таблиці — «знайдено» так само нічого там не чіпає, як і раніше."""
+    engine = _database()
+    captured = _stub_fills(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(
+            source="email", sheet_tab=YESTERDAY, row_number=None,
+            client_name="Basarab", material_color="Ti", quantity="1",
+            status="відфрезеровано",
+        ))
+        db.commit()
+        order = db.scalar(select(Order))
+        _inline_fill_background(monkeypatch, db)
+
+        resp = run_route(
+            handout_router_mod.mark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            )
+        )
+        assert resp.status_code == 303
+        db.refresh(order)
+        assert order.status == "знайдено при видачі"
+        assert captured == {}
+
+
 class TestMaterialMatching:
     """Per-row export-folder matching (get_handout): narrows a client's folders
     to the ones whose material matches a given work, an assist not an exact bind
