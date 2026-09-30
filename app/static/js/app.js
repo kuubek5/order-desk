@@ -112,6 +112,35 @@ window.openFolderOrCopy = async function openFolderOrCopy(url, body) {
   return "shown";
 };
 
+// Чіп верстата з ID RustDesk (власник 30.09.26). Посилання `rustdesk://` з
+// браузера відкриває з'єднання, але вікно лишається ЗА браузером — Windows не
+// дає йому забрати передній план. Тому спершу просимо сервер: на ПК, де стоїть
+// CRM, він сам запускає RustDesk і виносить вікно наперед, як із Провідником.
+// З іншого ПК сервер відповідає {opened:false} — тоді йдемо за посиланням, як
+// і раніше. Режим впорядкування чіпів клік глушить раніше (widgetedit.js,
+// фаза захоплення), тож сюди він не доходить.
+document.addEventListener("click", async (event) => {
+  const link = event.target.closest('a[href^="rustdesk://"][data-mid]');
+  if (!link || event.defaultPrevented || event.button !== 0) return;
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  const href = link.getAttribute("href");
+  try {
+    const response = await fetch("/machines/" + encodeURIComponent(link.dataset.mid) + "/rustdesk", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    const payload = response.ok ? await response.json() : null;
+    if (payload && payload.opened) {
+      if (window.showToast) window.showToast("Відкриваю RustDesk…", "success");
+      return;
+    }
+  } catch (_error) {
+    // Сервер недоступний — посилання однаково відкриє RustDesk.
+  }
+  window.location.href = href;
+});
+
 // Шлях до теки, коли скопіювати НЕ вдалось.
 //
 // На мережевій адресі (http://192.168…) браузер вважає сторінку незахищеною

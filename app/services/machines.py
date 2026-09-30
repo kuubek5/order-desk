@@ -169,9 +169,7 @@ class MachineTarget:
 
     @property
     def rustdesk_url(self) -> str:
-        """Посилання, яке відкриває з'єднання в RustDesk на ПК з браузером.
-        Без пароля свідомо: RustDesk бере збережений сам."""
-        return f"rustdesk://connection/new/{self.rustdesk_id}" if self.rustdesk_id else ""
+        return rustdesk_url_for(self.rustdesk_id)
 
     @property
     def key(self) -> str:
@@ -363,6 +361,13 @@ def target_of(machine: Machine) -> MachineTarget:
         show_on_board=bool(getattr(machine, "show_on_board", True)),
         rustdesk_id=getattr(machine, "rustdesk_id", "") or "",
     )
+
+
+def rustdesk_url_for(rustdesk_id: str | None) -> str:
+    """Посилання, яке відкриває з'єднання в RustDesk (чіп над чергою і роут
+    `/machines/{id}/rustdesk` беруть його звідси). Без пароля свідомо: RustDesk
+    бере збережений сам. Порожній ID — порожнє посилання."""
+    return f"rustdesk://connection/new/{rustdesk_id}" if rustdesk_id else ""
 
 
 # ID у RustDesk — цифри (у вікні RustDesk показані з пробілами) або свій

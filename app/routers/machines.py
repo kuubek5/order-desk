@@ -13,16 +13,21 @@ import threading
 import time
 from datetime import datetime, timedelta
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.machine_portraits import portrait_path
+from app.models import Machine
+from app.platform_windows import open_rustdesk
 from app.services import machine_link
 from app.settings_store import get_machine_calibration_path
 from app.routers.section_gate import blocked_response
-from app.routers.deps import get_current_user, login_redirect, get_db, is_trusted_request, TRUSTED_ONLY_DETAIL, templates
+from app.services.section_gate import blocked_for
+from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request, is_trusted_request, TRUSTED_ONLY_DETAIL, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
     calibration_status,
@@ -30,11 +35,14 @@ from app.services.machines import (
     configured_targets,
     day_timeline,
     machine_side_context,
+    rustdesk_url_for,
     sisma_context,
     poll_all,
     resolve_frame,
     snapshot,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -189,6 +197,40 @@ def machines_cards(request: Request, db: Session = Depends(get_db)):
 MANUAL_REFRESH_COOLDOWN_SECONDS = 3.0
 _last_manual_refresh = 0.0
 _manual_refresh_lock = threading.Lock()
+
+
+@router.post("/machines/{machine_id}/rustdesk")
+def open_machine_rustdesk(request: Request, machine_id: int, db: Session = Depends(get_db)):
+    """Клік по чіпу верстата над чергою (власник 30.09.26).
+
+    З ЦЬОГО ПК — сервер сам запускає RustDesk і виносить його вікно наперед
+    (`platform_windows.open_rustdesk`): з посилання в браузері вікно лишалось
+    за браузером, як колись Провідник. З іншого ПК — лише посилання: відкрити
+    вікно на чужому робочому столі не можна, браузер іде за ним сам.
+
+    Керування верстатом тут як і скрізь на цьому екрані немає: CRM нічого не
+    шле станку, лише запускає на цьому ПК RustDesk, як запустив би оператор."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if blocked_for(db, user, "machines") is not None:
+        raise HTTPException(status_code=403, detail="розділ «Верстати» зачинено")
+    machine = db.get(Machine, machine_id)
+    url = rustdesk_url_for(machine.rustdesk_id) if machine is not None else ""
+    if machine is None or not url:
+        raise HTTPException(status_code=404, detail="для верстата не задано ID RustDesk")
+    if not is_loopback_request(request):
+        return JSONResponse({"opened": False, "url": url})
+    try:
+        open_rustdesk(url, machine.rustdesk_id, machine.name)
+    except NotImplementedError:
+        return JSONResponse({"opened": False, "url": url})
+    except OSError:
+        # Немає RustDesk / не зареєстровано протокол — хай браузер спробує сам
+        # (і покаже своє «немає застосунку»), замість мовчазного нічого.
+        logger.exception("RustDesk не запустився для верстата %s", machine.name)
+        return JSONResponse({"opened": False, "url": url})
+    return JSONResponse({"opened": True})
 
 
 @router.post("/machines/refresh", response_class=HTMLResponse)
