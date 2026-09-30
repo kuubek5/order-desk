@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.business_day import aware_to_business, business_today
 from app.mail_filters import apply_filters_to_email
+from app.mail_inbox import inbox_state, mark_back_in_inbox
 from app.mail_parser import guess_fields_from_text, guess_service_type
 from app.material_catalog import ensure_seeded as ensure_materials_seeded, load_alias_rows
 from app.material_classifier import AliasRow
@@ -962,6 +963,7 @@ def _reflect_processed_folder(
             row.mailbox_folder = None
             row.mailbox_moved_at = None
             row.inbox_gone_at = None
+            mark_back_in_inbox(row, now)
             changed += 1
             continue
         mid = (row.message_id or "").strip()
@@ -1023,7 +1025,9 @@ def _reconcile_inbox_gone(
     Самовиправно: якщо лист знову зʼявився у Вхідних (той самий UID) — мітку
     знімаємо. Лист без `received_at` не чіпаємо (дати немає — не гадаємо).
     Не чіпаємо перенесені кнопкою (`mailbox_folder` задано) й уже архівні
-    (статус не «нове»). Повертає, скільки нових листів позначено."""
+    (статус не «нове») — крім прийнятого, повернутого у Вхідні прямо в пошті
+    (`reopened_at`, app/mail_inbox.py): він стоїть у «Вхідних» і мусить звідти
+    виходити так само. Повертає, скільки листів позначено."""
     now = datetime.now()
     cutoff_dt = datetime.combine(cutoff, datetime.min.time())
 
@@ -1036,10 +1040,14 @@ def _reconcile_inbox_gone(
             )
         ):
             row.inbox_gone_at = None
+            mark_back_in_inbox(row, now)
 
+    # Новий АБО прийнятий, повернутий у Вхідні прямо в пошті (app/mail_inbox.py):
+    # обидва стоять у «Вхідних» CRM, тож обидва мусять звідти й виходити, коли
+    # лист зник зі скриньки.
     candidates = session.scalars(
         select(EmailMessage).where(
-            EmailMessage.status == "нове",
+            inbox_state,
             EmailMessage.mailbox_folder.is_(None),
             EmailMessage.inbox_gone_at.is_(None),
         )
@@ -1308,6 +1316,9 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                 adopted.mailbox_folder = None
                 adopted.mailbox_moved_at = None
                 adopted.inbox_gone_at = None
+                # Прийнятий — у «Вхідні» CRM з позначкою, роботу не чіпати;
+                # відхилений — знову «нове» (власник 30.09.26, app/mail_inbox.py).
+                mark_back_in_inbox(returned, datetime.now())
                 if not adopted.from_name:
                     adopted.from_name = sender_display_name(msg)
                 session.commit()

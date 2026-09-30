@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import ColumnElement, and_ as sa_and, false as sa_false, func, select, text, update as sa_update
+from sqlalchemy import ColumnElement, and_ as sa_and, false as sa_false, func, not_ as sa_not, select, text, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
@@ -55,6 +55,7 @@ from app.mail_body_view import inline_parts, letter_segments, useful_text
 from app.mail_color_split import suggest_color_plan
 from app.mail_duplicates import find_duplicates, has_duplicate_files
 from app.mail_filters import apply_rule_retroactively
+from app.mail_inbox import in_inbox, reopened
 from app.mail_hold import (
     hold_label,
     not_on_hold,
@@ -481,17 +482,18 @@ def get_mail(
     elif view == "milled":
         status_clause = in_milled if processed_all else milled_today
     elif view == "archive":
-        status_clause = sa_and(EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved)
+        # Прийнятий, повернутий у Вхідні прямо в пошті, живе у «Вхідних» —
+        # лист в ОДНІЙ вкладці (app/mail_inbox.py).
+        status_clause = sa_and(
+            EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved, sa_not(reopened)
+        )
     elif view == "filtered":
         status_clause = sa_and(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None),
             not_moved, not_gone, not_on_hold,
         )
     else:
-        status_clause = sa_and(
-            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
-            not_moved, not_gone, not_on_hold,
-        )
+        status_clause = in_inbox
     # STABLE ORDER (pending view). The list polls every 15s; without this a
     # letter arriving mid-glance inserted itself and pushed every row down
     # under the operator's cursor — the same hazard the handout screen has a
@@ -552,10 +554,7 @@ def get_mail(
     # виключені звідусіль, крім своєї вкладки — інакше значок вкладки бреше
     # проти списку, який її фільтр показує.
     pending_count = db.scalar(
-        select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None),
-            not_moved, not_gone, not_on_hold,
-        )
+        select(func.count()).select_from(EmailMessage).where(in_inbox)
     ) or 0
     filtered_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
@@ -575,7 +574,7 @@ def get_mail(
     ) or 0
     archive_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved
+            EmailMessage.status.in_(_ARCHIVE_STATUSES), not_moved, sa_not(reopened)
         )
     ) or 0
     processed_count = db.scalar(
@@ -608,10 +607,7 @@ def get_mail(
     # "unread by me" highlight and the accent count on the pending tab.
     unread_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status == "нове",
-            EmailMessage.seen_at.is_(None),
-            EmailMessage.filter_category.is_(None),
-            not_moved, not_gone, not_on_hold,
+            in_inbox, EmailMessage.seen_at.is_(None),
         )
     ) or 0
 

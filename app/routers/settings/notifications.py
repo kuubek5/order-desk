@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
+from app.mail_inbox import in_inbox
 from app.models import EmailMessage, Order
 from app.routers.deps import get_current_user, get_db, toast_response
 from app.services.shift import open_note_count as open_shift_note_count
@@ -47,14 +48,9 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
             .select_from(Order)
             .where(Order.status != "видано", Order.archived_at.is_(None))
         ) or 0,
+        # Та сама умова, що вкладка «Вхідні» (app/mail_inbox.py).
         "mail_pending": db.scalar(
-            select(func.count())
-            .select_from(EmailMessage)
-            .where(
-                EmailMessage.status == "нове",
-                EmailMessage.filter_category.is_(None),
-                EmailMessage.hold_at.is_(None),
-            )
+            select(func.count()).select_from(EmailMessage).where(in_inbox)
         ) or 0,
         # Works a technician corrected in the sheet and nobody has acknowledged
         # yet. A rise means a fresh correction — the client toasts on that, so

@@ -30,11 +30,15 @@
     {% endif %}
     {% if emails %}
         {% for email in emails %}
+        {# Прийнятий лист, повернутий у Вхідні прямо в пошті (reopened_at,
+           app/mail_inbox.py): у «Вхідних» він з позначкою, а не з готовністю —
+           приймати нема чого, робота вже є. Конвеєр його не бере. #}
+        {% set _reopened = view == 'pending' and email.status == 'прийнято' %}
         {% set is_unread = view == 'pending' and email.seen_at is none %}
         {# Готовність рахуємо ОДИН раз на рядок (сканує файли на диску) — далі її
            беруть і чекбокс конвеєра, і бейдж праворуч. Два виклики = подвійний
            скан на кожному рядку й на 15-секундному поллі. #}
-        {% set rd = triage_readiness(email) if view == 'pending' else none %}
+        {% set rd = triage_readiness(email) if view == 'pending' and not _reopened else none %}
         {# Масові дії: галочка в кожній вкладці, крім «Авто» (там налаштування).
            Прийнятий лист / лист з роботою масово не повертається й не
            відхиляється (видалило б живі роботи) — галочка вимкнена; сервер
@@ -47,7 +51,9 @@
            лист готовий. Колір тут той самий, що в бейджі того самого рядка —
            два сигнали про один стан не мають говорити різними мовами. #}
         {% set _dot = none %}
-        {% if view == 'pending' %}
+        {% if _reopened %}
+            {% set _dot = 'ok' %}
+        {% elif view == 'pending' %}
             {% set _dot = 'ok' if rd.state == 'ready' else ('danger' if rd.state in ('no_files', '3d') else 'warn') %}
         {% elif view in ('archive', 'gone') %}
             {% set _dot = 'ok' if email.status == 'прийнято' else ('muted' if email.status == 'відхилено' else 'warn') %}
@@ -78,7 +84,7 @@
             <span class="mailcb-wrap" onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
                 <input type="checkbox" class="mailcb" data-cb-id="{{ email.id }}"
                        aria-label="Обрати лист"
-                       {% if view == 'pending' %}{% if rd.state == 'ready' %}data-ready="1"{% else %}title="Не готовий для конвеєра{% if rd.missing %} — {{ rd.missing|join(', ') }}{% elif rd.state == '3d' %} — схоже на 3D-друк{% endif %}; можна відхилити чи перенести"{% endif %}{% endif %}
+                       {% if _reopened %}title="Лист уже прийнято — у конвеєр не йде; можна перенести в папку"{% elif view == 'pending' %}{% if rd.state == 'ready' %}data-ready="1"{% else %}title="Не готовий для конвеєра{% if rd.missing %} — {{ rd.missing|join(', ') }}{% elif rd.state == '3d' %} — схоже на 3D-друк{% endif %}; можна відхилити чи перенести"{% endif %}{% endif %}
                        {% if cb_locked %}disabled title="Лист прийнято в роботу — повернення видалило б роботи, лише поштучно кнопкою ↩"{% endif %}>
             </span>
             {% endif %}
@@ -204,7 +210,9 @@
                        інформація (клієнт/матеріал/колір/файли), знак оклику —
                        коли чогось бракує. Причина лишається в title + для
                        читача екрана. #}
-                    {% if rd.state == 'ready' %}
+                    {% if _reopened %}
+                    <span class="reco ok" title="Лист уже прийнято в роботу, але в пошті його повернули у Вхідні{% if email.reopened_at %} ({{ email.reopened_at.strftime('%d.%m %H:%M') }}){% endif %}. Робота не змінена — вирішуй: дописати, переробка, чи перенести назад у папку.">↺ повернуто · прийнято</span>
+                    {% elif rd.state == 'ready' %}
                     <span class="reco ok reco-ic" title="Уся інформація є — можна приймати в чергу.">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                         <span class="sr-only">готово</span>

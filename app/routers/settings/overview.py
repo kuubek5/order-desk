@@ -19,6 +19,7 @@ from app.changelog import load_changelog
 from app.services.handout_qc import qc_checklist_enabled
 from app.services.health_snapshot import last_report
 from app.config import DB_PATH
+from app.mail_inbox import in_inbox
 from app.mail_spool import analyze_spool_cached
 from app.backup_parts import PARTS as BACKUP_PARTS
 from app.migration_files import summarize as migration_files_summary
@@ -364,14 +365,9 @@ def get_settings(
         "update_health": last_report(db),
         "state_nodes": [
             {
+                # Та сама умова, що вкладка «Вхідні» (app/mail_inbox.py).
                 "n": db.scalar(
-                    select(func.count())
-                    .select_from(EmailMessage)
-                    .where(
-                        EmailMessage.status == "нове",
-                        EmailMessage.filter_category.is_(None),
-                        EmailMessage.hold_at.is_(None),
-                    )
+                    select(func.count()).select_from(EmailMessage).where(in_inbox)
                 ) or 0,
                 "l": "Пошта",
                 "u": "у тріажі",

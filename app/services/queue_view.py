@@ -27,6 +27,7 @@ from app import perf
 
 from app import sync_control
 from app.business_day import business_tab_today, business_today, next_tab_day, prev_tab_day
+from app.mail_inbox import in_inbox
 from app.mail_sync_service import is_mail_sync_running
 from app.models import EmailMessage, Order
 from app.order_folder import (
@@ -393,15 +394,10 @@ def build_queue_view(
     # sort made the widget's top rows look like different letters).
     pending_emails = db.scalars(
         select(EmailMessage)
-        .where(
-            EmailMessage.status == "нове",
-            # Rule-filtered letters (3D print, accounting, spam) live on the
-            # triage screen's «Відфільтровані» tab — keep the queue widget to
-            # actual milling work.
-            EmailMessage.filter_category.is_(None),
-            # На паузі («На уточненні») — чекає відповіді замовника, не роботи.
-            EmailMessage.hold_at.is_(None),
-        )
+        # Той самий предикат, що й вкладка «Вхідні» (app/mail_inbox.py, власник
+        # 30.09.26): без перенесених у папку й зниклих зі скриньки, яких віджет
+        # раніше рахував, бо мав власну копію умови.
+        .where(in_inbox)
         .options(selectinload(EmailMessage.attachments))
         .order_by(
             EmailMessage.received_at.desc().nullslast(),

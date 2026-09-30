@@ -536,19 +536,13 @@ def pending_mail_count_uncached() -> int:
     try:
         from sqlalchemy import func, select
 
+        from app.mail_inbox import in_inbox
         from app.models import EmailMessage
 
         db = SessionLocal()
         try:
             return db.scalar(
-                select(func.count()).select_from(EmailMessage).where(
-                    EmailMessage.status == "нове",
-                    EmailMessage.filter_category.is_(None),
-                    EmailMessage.mailbox_folder.is_(None),
-                    EmailMessage.inbox_gone_at.is_(None),
-                    # «На уточненні» — не нові (mail_hold.not_on_hold).
-                    EmailMessage.hold_at.is_(None),
-                )
+                select(func.count()).select_from(EmailMessage).where(in_inbox)
             ) or 0
         finally:
             db.close()

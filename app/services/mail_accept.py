@@ -319,6 +319,9 @@ def _accept_letter_locked(
         if a.order_id is None and not _file_is_missing(a.saved_path)
     ]
     email.status = "нове" if remaining else "прийнято"
+    # Прийняли ще раз — позначка «повернуто у Вхідні з пошти» відпрацювала;
+    # інакше, якщо IMAP-перенос у папку не вдасться, лист висів би у «Вхідних».
+    email.reopened_at = None
     if not remaining:
         # Прийнятий лист більше не «на уточненні» — інакше відкат прийняття
         # повернув би його в стару паузу, а не у «Вхідні».

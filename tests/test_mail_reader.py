@@ -890,6 +890,78 @@ def test_returned_letter_is_adopted_by_message_id_not_duplicated(monkeypatch, tm
         assert row.status == "нове"
 
 
+def test_returned_accepted_letter_is_marked_reopened(monkeypatch, tmp_path):
+    """Власник 30.09.26: ПРИЙНЯТИЙ лист повернули зі «Скачено, просчитано» у
+    Вхідні прямо в пошті. Статус і робота не чіпаються, але лист позначено
+    `reopened_at` — інакше він лишався в «Архіві», а у «Вхідних» CRM його не
+    було."""
+    mailbox = FakeMailbox(
+        headers=[_header_with_name_and_mid("new77", "Клієнт", "<acc@x>")],
+        full_by_uid={},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(
+            uid="old7", uid_validity=None, from_address="client@example.test",
+            from_name="Клієнт", message_id="<acc@x>", subject="case", status="прийнято",
+            attachments_status="ready", mailbox_folder="Скачено, просчитано",
+        ))
+        session.commit()
+
+        assert fetch_new_emails(session, tmp_path) == 0
+        row = session.scalar(select(EmailMessage))
+        assert row.uid == "new77"
+        assert row.mailbox_folder is None
+        assert row.status == "прийнято"          # роботу не відкочуємо
+        assert row.reopened_at is not None       # але у «Вхідних» CRM
+
+
+def test_returned_rejected_letter_becomes_new_again(monkeypatch, tmp_path):
+    """Власник 30.09.26: відхилений лист, повернутий у Вхідні прямо в пошті, —
+    знову «нове», як робить кнопка «↩ У Вхідні» в CRM."""
+    mailbox = FakeMailbox(
+        headers=[_header_with_name_and_mid("new79", "Клієнт", "<rj@x>")],
+        full_by_uid={},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(
+            uid="old9", uid_validity=None, from_address="client@example.test",
+            from_name="Клієнт", message_id="<rj@x>", subject="case", status="відхилено",
+            attachments_status="ready", mailbox_folder="Скачено, просчитано",
+        ))
+        session.commit()
+        fetch_new_emails(session, tmp_path)
+        row = session.scalar(select(EmailMessage))
+        assert row.status == "нове"
+        assert row.mailbox_folder is None
+        assert row.reopened_at is None
+
+
+def test_returned_new_letter_is_not_marked_reopened(monkeypatch, tmp_path):
+    """Новий лист і так у «Вхідних» — позначка лише для прийнятих."""
+    mailbox = FakeMailbox(
+        headers=[_header_with_name_and_mid("new78", "Клієнт", "<nw@x>")],
+        full_by_uid={},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(
+            uid="old8", uid_validity=None, from_address="client@example.test",
+            from_name="Клієнт", message_id="<nw@x>", subject="case", status="нове",
+            attachments_status="ready", mailbox_folder="Скачено, просчитано",
+        ))
+        session.commit()
+        fetch_new_emails(session, tmp_path)
+        assert session.scalar(select(EmailMessage)).reopened_at is None
+
+
 def test_backfill_does_not_overwrite_an_existing_name(monkeypatch, tmp_path):
     mailbox = FakeMailbox(
         headers=[_header_with_name_and_mid("7", "Заголовкове Ім'я", "<z@x>")],
@@ -1287,6 +1359,61 @@ def test_inbox_gone_self_corrects_when_letter_returns():
         _reconcile_inbox_gone(db, {"10"}, _cutoff(), complete_fetch=True)
         db.refresh(e)
         assert e.inbox_gone_at is None
+
+
+def test_reopened_accepted_letter_leaves_inbox_when_gone_again():
+    """Повернутий прийнятий лист стоїть у «Вхідних» CRM — тож коли він знову
+    зникає зі скриньки (видалили, переклали в іншу папку), мусить так само
+    піти в «Покинули», а не висіти у «Вхідних» вічно."""
+    with _engine_session() as db:
+        e = _msg(db, "10", status="прийнято", received=_dt.combine(_bt(), _dt.min.time()))
+        e.reopened_at = _dt.now()
+        db.commit()
+        n = _reconcile_inbox_gone(db, {"99"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert n == 1 and e.inbox_gone_at is not None
+
+
+def test_accepted_letter_without_reopen_is_not_marked_gone():
+    """Звичайний прийнятий лист (не повертали) синк «покинув» не мітить — як
+    і до 30.09.26: він в Архіві, а не у Вхідних."""
+    with _engine_session() as db:
+        e = _msg(db, "10", status="прийнято", received=_dt.combine(_bt(), _dt.min.time()))
+        _reconcile_inbox_gone(db, {"99"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert e.inbox_gone_at is None
+
+
+def test_accepted_letter_back_under_same_uid_is_marked_reopened():
+    with _engine_session() as db:
+        e = _msg(db, "10", status="прийнято", received=_dt.combine(_bt(), _dt.min.time()),
+                 gone=_dt.now())
+        _reconcile_inbox_gone(db, {"10"}, _cutoff(), complete_fetch=True)
+        db.refresh(e)
+        assert e.inbox_gone_at is None and e.reopened_at is not None
+
+
+def test_inbox_predicate_shows_reopened_accepted_and_hides_it_from_archive():
+    """Один предикат «лист у Вхідних» (app/mail_inbox.py): повернутий прийнятий —
+    у Вхідних; той самий лист — НЕ в Архіві (лист в одній вкладці)."""
+    from sqlalchemy import and_, not_
+    from app.mail_inbox import in_inbox, reopened
+    with _engine_session() as db:
+        new = _msg(db, "1")
+        plain_acc = _msg(db, "2", status="прийнято")
+        back = _msg(db, "3", status="прийнято")
+        back.reopened_at = _dt.now()
+        back_moved = _msg(db, "4", status="прийнято", folder="Скачено, просчитано")
+        back_moved.reopened_at = _dt.now()
+        rejected = _msg(db, "5", status="відхилено")
+        db.commit()
+        inbox = {r.uid for r in db.scalars(select(EmailMessage).where(in_inbox))}
+        archive = {r.uid for r in db.scalars(select(EmailMessage).where(and_(
+            EmailMessage.status.in_(("прийнято", "відхилено")),
+            EmailMessage.mailbox_folder.is_(None), not_(reopened),
+        )))}
+        assert inbox == {new.uid, back.uid}
+        assert archive == {plain_acc.uid, rejected.uid}
 
 
 def test_inbox_gone_ignores_moved_and_dateless():
