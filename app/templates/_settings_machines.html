@@ -19,7 +19,7 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th title="Порядок на табло цеху й у віджеті">№</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Показувати картку на табло цеху (телевізор). Не зупиняє стеження за верстатом">Табло</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th title="Детальний журнал зв'язку: на кожному обриві стукати в порти ПК і зберігати покроковий доказ">Діагн.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th title="Порядок на табло цеху й у віджеті">№</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th title="ID цього ПК у RustDesk: клік по чіпу верстата над чергою відкриє його вікно в RustDesk. Порожньо — чіп веде на екран «Верстати»">RustDesk</th><th>Стежити</th><th title="Показувати картку на табло цеху (телевізор). Не зупиняє стеження за верстатом">Табло</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th title="Детальний журнал зв'язку: на кожному обриві стукати в порти ПК і зберігати покроковий доказ">Діагн.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
@@ -83,6 +83,8 @@
                         <td><input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono fu-col-port" name="port" value="{{ machine.port }}" inputmode="numeric"></td>
+                        <td><input form="machine-{{ machine.id }}" class="login-input mono" name="rustdesk_id" value="{{ machine.rustdesk_id or '' }}" maxlength="60" placeholder="ID" autocomplete="off"
+                                   aria-label="ID RustDesk верстата {{ machine.name }}"></td>
                         <td class="fu-col-mid">
                             <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
                                    aria-label="Стежити за верстатом {{ machine.name }}">

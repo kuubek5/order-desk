@@ -362,10 +362,12 @@ def update_machine(
     diagnose_link: str = Form(""),
     portrait_model: str = Form(""),
     show_on_board: str = Form(""),
+    rustdesk_id: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Змінити верстат. Порожній пароль/токен = не міняти; `-` = стерти
-    (той самий контракт, що в пічки)."""
+    (той самий контракт, що в пічки). ID RustDesk — звичайне поле рядка:
+    форма шле його завжди, тож порожнє = прибрати посилання."""
     require_settings_edit(request, db, "machines")
     machine = db.get(Machine, machine_id)
     if machine is None:
@@ -373,6 +375,7 @@ def update_machine(
 
     try:
         clean_host, clean_port = machines_service.validate_address(host, port)
+        clean_rustdesk = machines_service.normalize_rustdesk_id(rustdesk_id)
     except FurnaceConfigError as exc:
         request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
         return RedirectResponse("/settings#machines", status_code=303)
@@ -412,6 +415,7 @@ def update_machine(
     # Місце на телевізорі, а не «на ремонті»: `enabled` вище зупиняє саме
     # опитування, а цей прапорець лише прибирає картку з табло цеху.
     machine.show_on_board = show_on_board == "1"
+    machine.rustdesk_id = clean_rustdesk
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",

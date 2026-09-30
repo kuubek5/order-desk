@@ -473,6 +473,38 @@ def test_moving_a_machine_reorders_the_list(app_db):  # noqa: F811
     assert order()[0] == first, "верхній верстат лишився вгорі"
 
 
+def test_machine_rustdesk_id_is_saved_cleared_and_validated(app_db):  # noqa: F811
+    """ID RustDesk іде тією самою формою рядка: зберігається без пробілів,
+    порожнє поле прибирає посилання, недопустимі символи — помилка, і тоді
+    НЕ зберігається нічого з рядка (як з невалідною адресою)."""
+    from datetime import datetime as dt
+
+    from app.models import Machine
+
+    app, factory = app_db
+    with factory() as db:
+        m = Machine(name="350i", host="10.0.0.9", port=5900, created_at=dt(2026, 9, 30))
+        db.add(m)
+        db.commit()
+        mid = m.id
+
+    def rid():
+        with factory() as db:
+            return db.get(Machine, mid).rustdesk_id
+
+    client = MiniClient(app)
+    client.login(*ADMIN)
+    form = {"name": "350i", "host": "10.0.0.9", "port": "5900", "enabled": "1", "show_on_board": "1"}
+    assert client.post(f"/settings/machines/{mid}", {**form, "rustdesk_id": "123 456 789"})[0] == 303
+    assert rid() == "123456789"
+    client.post(f"/settings/machines/{mid}", {**form, "name": "змінено", "rustdesk_id": "12?password=x"})
+    assert rid() == "123456789"
+    with factory() as db:
+        assert db.get(Machine, mid).name == "350i", "невалідний ID не зберіг і решту рядка"
+    client.post(f"/settings/machines/{mid}", {**form, "rustdesk_id": ""})
+    assert rid() == ""
+
+
 def test_new_machine_appears_on_the_board_at_the_end(app_db):  # noqa: F811
     """Доданий верстат одразу видно на табло, і він стає ОСТАННІМ.
 

@@ -61,6 +61,7 @@ from app.machine_ocr import (
 from app.models import Machine, MachineLinkEvent, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
     _HOST_RE,
+    FurnaceConfigError,
     span_text,
     validate_address,
 )
@@ -163,6 +164,14 @@ class MachineTarget:
     # Чи показувати на табло цеху. Дефолт True, щоб ціль без рядка в базі
     # (тести, разові виклики) поводилась як звичайний верстат.
     show_on_board: bool = True
+    # ID у RustDesk (Machine.rustdesk_id); "" — посилання немає.
+    rustdesk_id: str = ""
+
+    @property
+    def rustdesk_url(self) -> str:
+        """Посилання, яке відкриває з'єднання в RustDesk на ПК з браузером.
+        Без пароля свідомо: RustDesk бере збережений сам."""
+        return f"rustdesk://connection/new/{self.rustdesk_id}" if self.rustdesk_id else ""
 
     @property
     def key(self) -> str:
@@ -352,7 +361,29 @@ def target_of(machine: Machine) -> MachineTarget:
         machine_id=machine.id,
         portrait_model=getattr(machine, "portrait_model", "") or "",
         show_on_board=bool(getattr(machine, "show_on_board", True)),
+        rustdesk_id=getattr(machine, "rustdesk_id", "") or "",
     )
+
+
+# ID у RustDesk — цифри (у вікні RustDesk показані з пробілами) або свій
+# буквено-цифровий ID сервера. Інших символів не пускаємо: значення стає
+# частиною посилання `rustdesk://…`.
+_RUSTDESK_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,40}")
+
+
+def normalize_rustdesk_id(raw: str | None) -> str:
+    """«123 456 789» → «123456789»; порожнє → "" (прибрати посилання).
+    Недопустимі символи — FurnaceConfigError з поясненням для оператора."""
+    # Не рядок (виклик роуту напряму, без форми) = поля не було = порожньо —
+    # так само мовчки, як решта полів рядка верстата.
+    value = "".join(raw.split()) if isinstance(raw, str) else ""
+    if not value:
+        return ""
+    if not _RUSTDESK_ID_RE.fullmatch(value):
+        raise FurnaceConfigError(
+            "ID RustDesk — лише цифри чи латинські літери (як у вікні RustDesk), до 40 знаків."
+        )
+    return value
 
 
 def configured_targets(db: Session) -> list[MachineTarget]:

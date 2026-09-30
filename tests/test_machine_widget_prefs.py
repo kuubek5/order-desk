@@ -103,6 +103,38 @@ def test_strip_variants_change_markup():
     assert "350i L" in ticker and "43" in ticker
 
 
+def test_strip_chip_opens_rustdesk_when_id_is_set():
+    """Власник 30.09.26: клік по чіпу верстата — його вікно в RustDesk. Без ID —
+    як і досі, екран «Верстати». Пароля в посиланні немає ніколи."""
+    now = datetime(2026, 9, 3, 12, 0, 0)
+
+    def card(name, host, rustdesk_id=""):
+        target = MachineTarget(name=name, host=host, machine_id=1, rustdesk_id=rustdesk_id)
+        state = MachineState(target=target, frame_at=now, percent=43, percent_at=now)
+        return MachineCard(target=target, state=state, now=now)
+
+    cards = [card("350i L", "10.0.0.1", "123456789"), card("250i", "10.0.0.2")]
+    for variant in ("segments", "ticker"):
+        html = _render({"machine_strip": variant}, cards=cards)
+        assert 'href="rustdesk://connection/new/123456789"' in html, variant
+        assert html.count('href="/machines"') == 2, variant   # підпис «Верстати» + 250i
+        assert "password" not in html
+        assert "клік — RustDesk" in html
+
+
+def test_normalize_rustdesk_id():
+    import pytest
+    from app.services.furnace import FurnaceConfigError
+    from app.services.machines import normalize_rustdesk_id
+
+    assert normalize_rustdesk_id("123 456 789") == "123456789"
+    assert normalize_rustdesk_id("  ") == ""
+    assert normalize_rustdesk_id("shop-350i_L") == "shop-350i_L"
+    for bad in ("123?password=x", "12/34", "<script>", "a" * 41):
+        with pytest.raises(FurnaceConfigError):
+            normalize_rustdesk_id(bad)
+
+
 def _database():
     engine = create_engine("sqlite://", poolclass=StaticPool)
     Base.metadata.create_all(engine)
