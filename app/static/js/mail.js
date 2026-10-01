@@ -59,11 +59,14 @@ document.addEventListener("htmx:afterSettle", (event) => {
   if (!el || el.id !== "mail-list-rows" || !finishedDownloads.size) return;
   const done = [...finishedDownloads];
   finishedDownloads.clear();
+  // Лише коли на екрані справді КАРТКА листа. Конвеєр (#mail-batch) теж живе
+  // в #mail-detail, а `.active` на рядку лишається від картки, відкритої до
+  // мультивибору, — підтягнути картку тоді означало б стерти Конвеєр разом
+  // з усім, що оператор вписав для обраних листів (рецензія 01.10.26).
   const card = document.querySelector("#mail-detail form#mail-card-form");
-  const openId = card && card.closest("#mail-detail").querySelector("[data-email-id]");
-  const id = openId ? openId.getAttribute("data-email-id") : null;
+  if (!card || document.querySelector("#mail-detail .mailbatch")) return;
   const active = document.querySelector("#mail-list-rows .mailrow.active");
-  const shownId = id || (active && active.dataset.mailId);
+  const shownId = active && active.dataset.mailId;
   if (!shownId || !done.includes(shownId)) return;
   if (card && card.dataset.dirty === "1") {
     if (window.showToast) window.showToast("Файли листа скачано — клікніть лист, щоб оновити картку", "info");
