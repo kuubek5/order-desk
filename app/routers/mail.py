@@ -125,7 +125,8 @@ from app.routers.deps import (
     templates,
 )
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, sender_key_for
-from app.services.mail_accept import accept_letter, resolve_wizard_overrides
+from app.services.mail_accept import accept_blocker, accept_letter, resolve_wizard_overrides
+from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
 from app.services.mail_mirror import mail_mirror_orders
 from app.services.focus import focused_ids
@@ -432,9 +433,18 @@ def get_mail(
             for eid in picked_ids
             if eid in by_id and by_id[eid].status == "нове"
         ]
+        summary = conveyor_summary([
+            ConveyorCard(
+                email_id=r["email"].id,
+                client=r.get("client_name") or "",
+                material=r.get("material_color") or "",
+                quantity=str(r.get("quantity") or ""),
+            )
+            for r in batch_rows
+        ])
         return templates.TemplateResponse(
             request, "_mail_batch_table.html",
-            {"batch_rows": batch_rows, "user": user},
+            {"batch_rows": batch_rows, "user": user, "summary": summary},
         )
 
     # Views: pending = "нове" NOT stamped by a filter rule; filtered = "нове"
@@ -2014,6 +2024,45 @@ def accept_email(
     return RedirectResponse(target, status_code=303)
 
 
+@router.post("/mail/batch-summary", response_class=HTMLResponse)
+def conveyor_batch_summary(
+    request: Request,
+    batch_email_id: list[int] = Form([]),
+    client_name: list[str] = Form([]),
+    material_color: list[str] = Form([]),
+    quantity: list[str] = Form([]),
+    db: Session = Depends(get_db),
+):
+    """Зведення Конвеєра з ПОТОЧНИМИ значеннями карток (мультипрорахунок).
+
+    Смуга перепитує себе на зміну будь-якого поля форми Конвеєра: оператор
+    виправив матеріал у картці — більшість і позначки «інший колір» мусять
+    перерахуватись. Нічого не пише; поля кожної картки йдуть у формі одним
+    блоком, тож списки вирівняні за порядком карток.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    def _at(values: list[str], i: int) -> str:
+        return values[i] if i < len(values) else ""
+
+    cards = [
+        ConveyorCard(
+            email_id=eid,
+            client=_at(client_name, i),
+            material=_at(material_color, i),
+            quantity=_at(quantity, i),
+        )
+        for i, eid in enumerate(batch_email_id)
+    ]
+    summary = conveyor_summary(cards)
+    return templates.TemplateResponse(
+        request, "_mail_batch_summary.html",
+        {"summary": summary, "oob": True,
+         "clear_ids": [c.email_id for c in cards if c.email_id not in summary.odd_ids]},
+    )
+
+
 @router.post("/mail/accept-batch", response_class=HTMLResponse)
 def accept_email_batch(
     request: Request,
@@ -2047,7 +2096,9 @@ def accept_email_batch(
     if not isinstance(rows, list) or not rows:
         raise HTTPException(status_code=400, detail="порожній батч")
 
-    results: list[dict] = []
+    # Листи батчу з тим, що відомо ДО прийняття: (item, eid, лист, підпис, причина
+    # відмови). Причина тут — лише те, що видно без переносу файлів.
+    checked: list[tuple[dict, int, EmailMessage | None, str, str | None]] = []
     for item in rows:
         if not isinstance(item, dict):
             continue
@@ -2059,18 +2110,14 @@ def accept_email_batch(
         except (TypeError, ValueError):
             continue
         email = db.get(EmailMessage, eid)
-        display = ""
-        if email is not None:
-            display = (item.get("client_name") or "").strip() or (
-                email.from_name or email.from_address or f"лист {eid}"
-            )
         if email is None:
-            results.append({"email_id": eid, "label": f"лист {eid}", "ok": False,
-                            "error": "лист не знайдено"})
+            checked.append((item, eid, None, f"лист {eid}", "лист не знайдено"))
             continue
+        display = (item.get("client_name") or "").strip() or (
+            email.from_name or email.from_address or f"лист {eid}"
+        )
         if email.status != "нове":
-            results.append({"email_id": eid, "label": display, "ok": False,
-                            "error": "лист уже оброблено"})
+            checked.append((item, eid, email, display, "лист уже оброблено"))
             continue
         # Конвеєр бере ВСІ нерозібрані файли листа. Якщо серед них однакові
         # (клієнт надіслав роботу двічі) чи тезки з різним вмістом — мовчки
@@ -2081,11 +2128,53 @@ def accept_email_batch(
             if a.order_id is None and Path(a.saved_path).exists()
         ])
         if dups:
-            results.append({
-                "email_id": eid, "label": display, "ok": False,
-                "error": "у листі однакові файли (схоже, клієнт надіслав роботу двічі) — "
-                         "відкрийте лист і оберіть, які брати",
+            checked.append((item, eid, email, display,
+                            "у листі однакові файли (схоже, клієнт надіслав роботу двічі) — "
+                            "відкрийте лист і оберіть, які брати"))
+            continue
+        checked.append((item, eid, email, display, None))
+
+    # Мультипрорахунок (власник 02.10.26): оператор тягне файли в Sum3D прямо зі
+    # спулу, розкладає диск і лише ПОТІМ приймає — з Sum3D у картках. Такий батч
+    # — один диск, і прийнятий наполовину він ламає облік: частина робіт із
+    # Sum3D у черзі, частина у «Вхідних». Тому, якщо хоч одна картка несе
+    # Sum3D, усі листи спершу проходять ті самі перевірки, що й прийняття
+    # (`accept_blocker`), і при БУДЬ-ЯКІЙ відмові не переноситься нічого. Без
+    # Sum3D — як і раніше: невдалий лист не зупиняє решту.
+    if any(str(item.get("sum3d_id") or "").strip() for item, *_ in checked):
+        problems = {}
+        for item, eid, email, display, error in checked:
+            reason = error or accept_blocker(
+                email, accept_anyway=bool(item.get("accept_anyway"))
+            )
+            if reason:
+                problems[eid] = reason
+        if problems:
+            # Конвеєр лишається на місці (картки з уже вписаним Sum3D і
+            # зміненими теками не губляться) — відповідь лягає в смугу
+            # попередження над картками. Зняв галочку з проблемного листа або
+            # докачав файл — і тисни «Прийняти» ще раз.
+            blocked = [
+                {"email_id": eid, "label": display, "error": problems[eid]}
+                for _item, eid, _email, display, _error in checked
+                if eid in problems
+            ]
+            response = templates.TemplateResponse(
+                request, "_mail_batch_preflight.html",
+                {"blocked": blocked, "total": len(checked)},
+            )
+            response.headers["HX-Retarget"] = "#mb-preflight"
+            response.headers["HX-Reswap"] = "innerHTML"
+            response.headers["HX-Trigger"] = json.dumps({
+                "toast": {"kind": "warning",
+                          "message": f"Нічого не прийнято: проблема в {len(blocked)} з {len(checked)} листів"},
             })
+            return response
+
+    results: list[dict] = []
+    for item, eid, email, display, error in checked:
+        if error:
+            results.append({"email_id": eid, "label": display, "ok": False, "error": error})
             continue
         result = accept_letter(
             db, user, email,

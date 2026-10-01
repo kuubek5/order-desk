@@ -27,7 +27,16 @@
         <button type="button" class="btn sm mb-clear" data-batch-clear>Зняти вибір</button>
     </div>
 
-    <form id="mail-batch-form" class="mb-form">
+    {% include "_mail_batch_summary.html" %}
+    {# Відмова передперевірки (мультипрорахунок) лягає СЮДИ — картки лишаються. #}
+    <div id="mb-preflight" aria-live="polite"></div>
+
+    {# НЕ <form> (02.10.26): htmx до POST будь-якого поля всередині форми
+       дочіплює ВСЮ форму, тож «змінити теку» чи правка клієнта в одній картці
+       слала поля всіх карток, а сервер брав значення ОСТАННЬОЇ — рядок «ляже
+       у» показував чужу теку. Картка сама себе включає (hx-include="closest
+       .mb-row"), payload прийняття збирає mail.js із карток. #}
+    <div id="mail-batch-form" class="mb-form">
         <div class="mb-list">
         {% for r in batch_rows %}
         {% set e = r.email %}
@@ -40,13 +49,27 @@
                 </button>
                 <span class="mb-from">{{ e.from_name or e.from_address or 'Відправник не визначений' }}</span>
                 {% if _subj and _subj|lower not in ('fwd:', 're:', 'fw:', 'fwd', 're') %}<span class="mb-subj" title="{{ _subj }}">{{ _subj }}</span>{% endif %}
+                <span class="mb-oddslot" id="mb-odd-{{ e.id }}">{% if e.id in summary.odd_ids %}<span class="mb-oddchip">інший колір</span>{% endif %}</span>
                 <span class="mb-filechip {% if r.undownloaded_files or r.undownloaded_links %}warn{% else %}ok{% endif %}">
                     {{ r.attachment_count }} файл.{% if r.undownloaded_links %} · 🔗{{ r.undownloaded_links|length }}{% endif %}
                 </span>
+                {# Мультипрорахунок: файли тягнуть у Sum3D прямо з теки листа в
+                   пулі, ДО прийняття. Той самий роут, що «Відкрити папку» в
+                   картці листа; ✓ — щоб на 6–8 листах було видно, кого вже
+                   перетягнув (mail.js, лише в браузері). У шапці, а не окремим
+                   рядком: диск із 8 листів не має розтягуватись. #}
+                <button type="button" class="btn sm mb-openpool" data-pool-id="{{ e.id }}"
+                        data-open-folder-url="/mail/{{ e.id }}/open-folder"
+                        title="Відкрити теку листа в пулі, щоб перетягнути файли в Sum3D">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
+                    <span class="mb-openpool-idle">Тека в пулі</span><span class="mb-openpool-done">Відкрито</span>
+                </button>
             </div>
 
             {# kind у Конвеєрі не показуємо — везеться здогадом. #}
             <input type="hidden" name="kind" value="{{ r.kind }}">
+            {# Для зведення (/mail/batch-summary): котра картка «іншого кольору». #}
+            <input type="hidden" name="batch_email_id" value="{{ e.id }}">
             <div class="mb-fields">
                 <label class="mb-f mb-f-wide"><span>Клієнт</span>
                     <input type="text" name="client_name" class="suminput" value="{{ r.client_name }}"
@@ -114,9 +137,18 @@
         </section>
         {% endfor %}
         </div>
-    </form>
+    </div>
 
     <div class="mb-foot">
+        {# Один Sum3D на весь диск: mail.js переносить його в кожну картку, де
+           Sum3D порожній або вписаний саме звідси; вписане в картку руками не
+           чіпає. Поле без name — у payload їде лише Sum3D карток. #}
+        <label class="mb-s3all">
+            <span>Sum3D усім</span>
+            <input type="text" id="mb-sum3d-all" class="suminput mono" placeholder="12-01-45"
+                   autocomplete="off" inputmode="numeric"
+                   title="Вписати один Sum3D ID у всі картки — якщо листи йдуть на один диск">
+        </label>
         <span class="mb-summary"><b>{{ n }}</b> {% if n == 1 %}робота{% elif n < 5 %}роботи{% else %}робіт{% endif %}, <b>{{ m }}</b> {% if m == 1 %}файл{% elif m % 10 in [2,3,4] and m % 100 not in [12,13,14] %}файли{% else %}файлів{% endif %} переїдуть</span>
         <button type="button" class="btn apex mb-accept"
                 hx-post="/mail/accept-batch" hx-target="#mail-detail" hx-swap="innerHTML"

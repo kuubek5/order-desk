@@ -104,6 +104,49 @@ def _letter_lock(email_id: int) -> Lock:
         return lock
 
 
+def accept_blocker(email: EmailMessage, *, accept_anyway: bool = False) -> str | None:
+    """Чому лист ЗАРАЗ не можна прийняти — текст для оператора, або None.
+
+    Одне джерело для `accept_letter` і передперевірки Конвеєра
+    (`/mail/accept-batch` з Sum3D): там ці самі умови перевіряються для ВСІХ
+    обраних листів ДО першого переносу, щоб диск, уже розкладений у Sum3D, не
+    прийнявся наполовину. Нічого не змінює ні на диску, ні в базі.
+    """
+    if email.attachments_status == "pending":
+        # Вкладення ще качаються (двофазний фетч, app.mail_reader). Прийняти
+        # зараз означало б створити роботу без жодного файлу, зняти статус
+        # «нове» (а він і є дозволом на повтор) і осиротити файли, які друга
+        # фаза збереже потім — перенести їх у export уже нікому.
+        return "Вкладення ще завантажуються, зачекайте і спробуйте ще раз"
+
+    # Файли за посиланням (Drive, ukr.net) не є вкладеннями листа, тому
+    # attachments_status їх не бачить: лист зі статусом «skipped» і трьома STL
+    # на Drive проходив прийняття мовчки, створюючи роботу БЕЗ жодного файлу.
+    unfetched = undownloaded_links(email)
+    if unfetched and not accept_anyway:
+        return (
+            f"Ще {len(unfetched)} файл(ів) за посиланням не скачано — "
+            "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
+        )
+
+    # Захист (власник 24.09.26): усі ВКЛАДЕННЯ листа мають бути на диску. Досі
+    # `unclaimed` нижче просто ВИКЛЮЧАВ відсутні файли — робота приймалась, лист
+    # позначався прийнятим, а не скачаний файл тихо лишався в спулі й губився.
+    # Тепер прийняття блокується, поки файл не скачають (кнопка у «Файли + STL»)
+    # або оператор свідомо не підтвердить (accept_anyway). `_file_is_missing`, а
+    # не `Path.exists()`: мережеве моргання UNC не має рахуватись як «не скачано».
+    missing_files = [
+        a for a in email.attachments
+        if a.order_id is None and _file_is_missing(a.saved_path)
+    ]
+    if missing_files and not accept_anyway:
+        return (
+            f"Ще {len(missing_files)} файл(ів) листа не скачано на диск — "
+            "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
+        )
+    return None
+
+
 def accept_letter(
     db: Session,
     user,
@@ -166,42 +209,9 @@ def _accept_letter_locked(
     """Тіло `accept_letter` під локом листа — див. коментар до `_letter_locks`."""
     attachment_ids = list(attachment_ids or [])
 
-    if email.attachments_status == "pending":
-        # Вкладення ще качаються (двофазний фетч, app.mail_reader). Прийняти
-        # зараз означало б створити роботу без жодного файлу, зняти статус
-        # «нове» (а він і є дозволом на повтор) і осиротити файли, які друга
-        # фаза збереже потім — перенести їх у export уже нікому.
-        return AcceptResult(error="Вкладення ще завантажуються, зачекайте і спробуйте ще раз")
-
-    # Файли за посиланням (Drive, ukr.net) не є вкладеннями листа, тому
-    # attachments_status їх не бачить: лист зі статусом «skipped» і трьома STL
-    # на Drive проходив прийняття мовчки, створюючи роботу БЕЗ жодного файлу.
-    unfetched = undownloaded_links(email)
-    if unfetched and not accept_anyway:
-        return AcceptResult(
-            error=(
-                f"Ще {len(unfetched)} файл(ів) за посиланням не скачано — "
-                "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
-            )
-        )
-
-    # Захист (власник 24.09.26): усі ВКЛАДЕННЯ листа мають бути на диску. Досі
-    # `unclaimed` нижче просто ВИКЛЮЧАВ відсутні файли — робота приймалась, лист
-    # позначався прийнятим, а не скачаний файл тихо лишався в спулі й губився.
-    # Тепер прийняття блокується, поки файл не скачають (кнопка у «Файли + STL»)
-    # або оператор свідомо не підтвердить (accept_anyway). `_file_is_missing`, а
-    # не `Path.exists()`: мережеве моргання UNC не має рахуватись як «не скачано».
-    missing_files = [
-        a for a in email.attachments
-        if a.order_id is None and _file_is_missing(a.saved_path)
-    ]
-    if missing_files and not accept_anyway:
-        return AcceptResult(
-            error=(
-                f"Ще {len(missing_files)} файл(ів) листа не скачано на диск — "
-                "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
-            )
-        )
+    blocker = accept_blocker(email, accept_anyway=accept_anyway)
+    if blocker:
+        return AcceptResult(error=blocker)
 
     target_tab, target_worksheet = _resolve_target_tab(db, email)
 

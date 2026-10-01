@@ -1,0 +1,19 @@
+{# Передперевірка Конвеєра з Sum3D (мультипрорахунок, 02.10.26): хоча б один
+   лист диска не можна прийняти — не прийнято НІЧОГО. Лягає в #mb-preflight
+   над картками (HX-Retarget), тож картки з уже вписаним Sum3D лишаються.
+   Потребує: blocked (email_id, label, error), total. #}
+<div class="mb-preflight-box" role="alert">
+    <div class="mb-res-head">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
+        Нічого не прийнято — диск приймається цілим
+    </div>
+    <ul class="mb-res-list">
+        {% for r in blocked %}
+        <li>
+            <span class="mb-res-name">{{ r.label }}</span>
+            <span class="mb-res-err">{{ r.error }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="mb-hint">Виправте ці листи або зніміть з них галочку — і натисніть «Прийняти» ще раз.</div>
+</div>

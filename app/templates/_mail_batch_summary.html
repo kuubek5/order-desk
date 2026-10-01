@@ -1,0 +1,28 @@
+{# Зведення Конвеєра (мультипрорахунок, 02.10.26): матеріал·колір більшості,
+   листи, одиниці, клієнти + хто з обраних іншого кольору. Текст складає
+   сервер (app/services/mail_conveyor.py); на зміну будь-якого поля картки
+   смуга перепитує себе з поточними значеннями (`/mail/batch-summary`).
+   Потребує: summary (ConveyorSummary). oob=True — ще й позначки «інший
+   колір» на картках (#mb-odd-<id>), коли відповідає роут. #}
+{% set s = summary %}
+<div class="mb-sum" id="mb-summary"
+     hx-post="/mail/batch-summary" hx-include="#mail-batch-form"
+     hx-trigger="change from:#mail-batch-form delay:200ms" hx-swap="outerHTML">
+    {% if s.label %}
+    <span class="mb-sum-chip mono">{{ s.label }}</span>
+    <span class="mb-sum-text">
+        {{ s.letters }} {% if s.letters == 1 %}лист{% elif s.letters % 10 in [2,3,4] and s.letters % 100 not in [12,13,14] %}листи{% else %}листів{% endif %}
+        · {% if s.units_unknown and not s.units %}к-сть не вписано{% else %}{{ s.units }}{% if s.units_unknown %}+?{% endif %} од.{% endif %}
+        · {{ s.clients }} {% if s.clients == 1 %}клієнт{% elif s.clients % 10 in [2,3,4] and s.clients % 100 not in [12,13,14] %}клієнти{% else %}клієнтів{% endif %}
+    </span>
+    {% for c in s.odd %}
+    <span class="mb-sum-odd" title="Матеріал чи колір відрізняється від більшості — перевірте, чи йде на цей диск">{{ c.client or 'Без імені' }} — {{ c.material }}</span>
+    {% endfor %}
+    {% else %}
+    <span class="mb-sum-text muted">Матеріал ще не вписано</span>
+    {% endif %}
+</div>
+{% if oob %}
+{% for c in s.odd %}<span class="mb-oddslot" id="mb-odd-{{ c.email_id }}" hx-swap-oob="true"><span class="mb-oddchip">інший колір</span></span>{% endfor %}
+{% for eid in clear_ids %}<span class="mb-oddslot" id="mb-odd-{{ eid }}" hx-swap-oob="true"></span>{% endfor %}
+{% endif %}

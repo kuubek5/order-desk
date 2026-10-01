@@ -772,6 +772,116 @@ window.collectMailBatch = function () {
     }
   }
 
+  // ── Мультипрорахунок (02.10.26) ─────────────────────────────────────────
+  // Оператор тягне файли в Sum3D зі спулу, бачить висоти й ЗНІМАЄ галочку з
+  // листа, що не влазить. Зняття перебудовує весь Конвеєр із сервера — без
+  // цього знімка зникали б уже вписані Sum3D, «Sum3D усім», змінені теки й ✓
+  // на відкритих теках. Знімок за id листа: картки, яких більше немає,
+  // просто пропускаються.
+  const BATCH_FIELDS = [
+    "client_name", "material_color", "quantity", "opak", "sum3d_id",
+    "folder_pick", "folder_new", "material_folder",
+  ];
+  // Поля, від яких залежить рядок «ляже у» — їх відновлення перераховує шлях.
+  const PATH_FIELDS = ["client_name", "material_color", "folder_pick", "folder_new", "material_folder"];
+  const openedPool = new Set();
+  let batchSnapshot = null;
+
+  function snapshotBatch() {
+    const form = document.getElementById("mail-batch-form");
+    if (!form) return;
+    const cards = {};
+    form.querySelectorAll(".mb-row[data-batch-id]").forEach((row) => {
+      const values = {};
+      BATCH_FIELDS.forEach((name) => {
+        const el = row.querySelector('[name="' + name + '"]');
+        if (el) values[name] = { value: el.value, fromAll: el.dataset.fromAll === "1" };
+      });
+      cards[row.dataset.batchId] = values;
+    });
+    const all = document.getElementById("mb-sum3d-all");
+    batchSnapshot = { cards: cards, all: all ? all.value : "" };
+  }
+
+  function restoreBatch() {
+    const form = document.getElementById("mail-batch-form");
+    if (!form) return;
+    const snap = batchSnapshot;
+    batchSnapshot = null;
+    if (snap) {
+      const all = document.getElementById("mb-sum3d-all");
+      if (all && snap.all) all.value = snap.all;
+      let touched = false;
+      form.querySelectorAll(".mb-row[data-batch-id]").forEach((row) => {
+        const saved = snap.cards[row.dataset.batchId];
+        if (!saved) return;
+        let pathChanged = false;
+        BATCH_FIELDS.forEach((name) => {
+          const el = row.querySelector('[name="' + name + '"]');
+          const s = saved[name];
+          if (!el || !s || el.value === s.value) return;
+          el.value = s.value;
+          touched = true;
+          if (PATH_FIELDS.indexOf(name) !== -1) pathChanged = true;
+        });
+        BATCH_FIELDS.forEach((name) => {
+          const el = row.querySelector('[name="' + name + '"]');
+          if (el && saved[name] && saved[name].fromAll) el.dataset.fromAll = "1";
+        });
+        // Рядок «ляже у» рахує сервер — перепитати його тим самим /wizard,
+        // що й ручна правка поля (hx-trigger="change" на полі клієнта).
+        if (pathChanged) {
+          const client = row.querySelector('[name="client_name"]');
+          if (client) client.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+      // Зведення над картками — теж із відновленими значеннями.
+      if (touched) form.dispatchEvent(new Event("change"));
+      // Нова картка, обрана вже ПІСЛЯ «Sum3D усім», отримує його одразу.
+      if (snap.all) applySum3dAll(snap.all);
+    }
+    form.closest("#mail-batch").querySelectorAll(".mb-openpool[data-pool-id]").forEach((btn) => {
+      btn.classList.toggle("is-done", openedPool.has(btn.dataset.poolId));
+    });
+  }
+
+  // «Sum3D усім»: у картку йде лише туди, де Sum3D порожній або вписаний саме
+  // звідси (data-from-all). Вписане в картку руками — рішення оператора.
+  function applySum3dAll(value) {
+    document.querySelectorAll('#mail-batch-form .mb-row [name="sum3d_id"]').forEach((el) => {
+      if (el.value === "" || el.dataset.fromAll === "1") {
+        el.value = value;
+        if (value) el.dataset.fromAll = "1";
+        else delete el.dataset.fromAll;
+      }
+    });
+  }
+
+  document.addEventListener("input", (event) => {
+    const el = event.target;
+    if (!el) return;
+    if (el.id === "mb-sum3d-all") {
+      applySum3dAll(el.value.trim());
+    } else if (el.name === "sum3d_id" && el.closest("#mail-batch-form")) {
+      delete el.dataset.fromAll; // правка руками — більше не «з усіх»
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest(".mb-openpool[data-pool-id]");
+    if (!btn) return;
+    // Саме відкриття — спільний обробник [data-open-folder-url] в app.js.
+    openedPool.add(btn.dataset.poolId);
+    btn.classList.add("is-done");
+  });
+
+  document.body.addEventListener("htmx:afterSettle", (event) => {
+    const target = event.detail && event.detail.target;
+    if (target && target.id === "mail-detail" && document.getElementById("mail-batch-form")) {
+      restoreBatch();
+    }
+  });
+
   function refreshPanel() {
     updateSelCount(selectedIds());
     if (!isConveyor()) return;
@@ -787,6 +897,7 @@ window.collectMailBatch = function () {
       return;
     }
     if (detailCache === null) detailCache = detail.innerHTML;
+    snapshotBatch();
     window.htmx.ajax("GET", "/mail?partial=batch&batch=" + ids.join(","), {
       target: "#mail-detail",
       swap: "innerHTML",

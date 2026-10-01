@@ -59,6 +59,7 @@ POST /settings/machines/{machine_id}/delete
 POST /mail/{email_id}/accept
 POST /mail/{email_id}/auto-download
 POST /mail/accept-batch
+POST /mail/batch-summary
 POST /mail/bulk
 GET /mail/move-folders
 POST /orders/{order_id}/sum3d-id
