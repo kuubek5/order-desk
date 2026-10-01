@@ -2927,10 +2927,10 @@ def snapshot(db: Session) -> list[MachineCard]:
         for card in cards:
             last_id = card.last_sum3d_id
             if last_id:
-                card.last_orders = by_id.get(last_id, [])
+                card.last_orders = _prefer_recent(by_id.get(last_id, []))
             if not card.sum3d_id:
                 continue
-            card.orders = by_id.get(card.sum3d_id, [])
+            card.orders = _prefer_recent(by_id.get(card.sum3d_id, []))
             if card.orders:
                 continue
             if card.sum3d_id in archived:
@@ -2938,6 +2938,27 @@ def snapshot(db: Session) -> list[MachineCard]:
             else:
                 card.match_note = "жодна робота в черзі не має цього ID"
     return cards
+
+
+def _prefer_recent(orders: list[Order], today: Optional[date] = None) -> list[Order]:
+    """Лише свіжі збіги за Sum3D, якщо вони є.
+
+    Sum3D ID — лише час доби й повторюється між днями. Табло цеху 01.10.26
+    показало на 150i-Olejka (програма `23-21-26`) поруч із сьогоднішнім
+    Середюком Ковальчука з 01.09.26: тієї роботи давно немає, але вона
+    неархівна (вкладка 01.09 ще в таблиці), а тут шукали серед УСІХ
+    неархівних. Вікно — те саме `SCREEN_PROGRAM_DAYS_BACK`, що й у прив'язці
+    програми з екрана. Свіжих немає — лишаємо всі, як було: краще показати
+    давню роботу, ніж нічого, коли інших кандидатів немає."""
+    if len(orders) < 2:
+        return orders
+    from app.business_day import business_today
+
+    today = today or business_today()
+    low = today - timedelta(days=SCREEN_PROGRAM_DAYS_BACK)
+    high = today + timedelta(days=1)
+    recent = [o for o in orders if low <= order_date(o) <= high]
+    return recent or orders
 
 
 # ── Історія стану за добу ───────────────────────────────────────────────────
