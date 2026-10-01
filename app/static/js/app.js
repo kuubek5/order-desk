@@ -119,16 +119,34 @@ window.openFolderOrCopy = async function openFolderOrCopy(url, body) {
 // З іншого ПК сервер відповідає {opened:false} — тоді йдемо за посиланням, як
 // і раніше. Режим впорядкування чіпів клік глушить раніше (widgetedit.js,
 // фаза захоплення), тож сюди він не доходить.
+//
+// Дві межі (рецензія 01.10.26). Браузер запускає зовнішній протокол лише
+// «свіжим» кліком — після довгого `await fetch` перехід за посиланням може
+// мовчки не відбутись. Тому: (1) на іншому ПК сервер однаково відповідає
+// {opened:false}, і питати його нема сенсу — посилання відкривається одразу,
+// як до 0.21.29; (2) на ПК із CRM чекаємо сервер не довше RUSTDESK_ASK_MS, а
+// далі йдемо за посиланням, поки клік ще «свіжий».
+const RUSTDESK_ASK_MS = 2000;
+
+function isLoopbackPage() {
+  const host = window.location.hostname;
+  return host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1";
+}
+
 document.addEventListener("click", async (event) => {
   const link = event.target.closest('a[href^="rustdesk://"][data-mid]');
   if (!link || event.defaultPrevented || event.button !== 0) return;
   if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (!isLoopbackPage()) return; // інший ПК — рідне посилання, як і було
   event.preventDefault();
   const href = link.getAttribute("href");
+  const abort = new AbortController();
+  const timer = window.setTimeout(() => abort.abort(), RUSTDESK_ASK_MS);
   try {
     const response = await fetch("/machines/" + encodeURIComponent(link.dataset.mid) + "/rustdesk", {
       method: "POST",
       credentials: "same-origin",
+      signal: abort.signal,
     });
     const payload = response.ok ? await response.json() : null;
     if (payload && payload.opened) {
@@ -136,7 +154,9 @@ document.addEventListener("click", async (event) => {
       return;
     }
   } catch (_error) {
-    // Сервер недоступний — посилання однаково відкриє RustDesk.
+    // Сервер недоступний або не встиг — посилання однаково відкриє RustDesk.
+  } finally {
+    window.clearTimeout(timer);
   }
   window.location.href = href;
 });
