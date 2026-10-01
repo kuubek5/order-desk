@@ -94,3 +94,20 @@ def test_pick_window_prefers_new_then_title_and_never_guesses():
     assert pick_rustdesk_window([(1, "RustDesk"), (5, "350i L")], {1, 5}, "555", "350i l") == (5, "за заголовком")
     # Нічого певного — нічого не піднімаємо (не чужу сесію й не головне вікно).
     assert pick_rustdesk_window(windows, {1, 2, 3}, "111", "250i") == (None, "")
+
+
+def test_pick_window_by_real_shop_titles():
+    """Заголовки з логу цеху 01.10.26: RustDesk пише `користувач@ПК@серійник -
+    Remote Desktop - RustDesk`, а не ID і не нашу назву — вікно лишалось позаду."""
+    olejka = (7, "150@Olejka@sn2023s1297 - Remote Desktop - RustDesk")
+    loader = (8, "350@Loaderr@350i - Remote Desktop - RustDesk")
+    main = (1, "RustDesk")
+    # Слово з назви верстата в заголовку.
+    assert pick_rustdesk_window([main, olejka, loader], {1, 7, 8}, "460103197", "150i-Olejka") == (7, "за словом назви")
+    assert pick_rustdesk_window([main, olejka, loader], {1, 7, 8}, "226462038", "350i Loader") == (8, "за словом назви")
+    # Єдине вікно сесії — нова вкладка відкрилась у ньому.
+    assert pick_rustdesk_window([main, loader], {1, 8}, "294387522", "250i-Sec") == (8, "єдине вікно сесії")
+    # Кілька сесій і слово не збіглось («Sec» закоротке) — не вгадуємо.
+    assert pick_rustdesk_window([main, olejka, loader], {1, 7, 8}, "294387522", "250i-Sec") == (None, "")
+    # Головне вікно RustDesk саме по собі сесією не є.
+    assert pick_rustdesk_window([main], {1}, "294387522", "250i-Sec") == (None, "")

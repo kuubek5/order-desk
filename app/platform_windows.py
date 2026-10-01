@@ -324,7 +324,13 @@ def pick_rustdesk_window(
     1. нове вікно (різниця зі знімком до запуску) — окреме вікно сесії;
     2. заголовок називає ID чи назву верстата — сесія відкрилась вкладкою в
        уже наявному вікні, і воно тепер показує її;
-    3. інакше — нічого: краще не підняти, ніж підняти чужу сесію."""
+    3. заголовок містить ЗНАЧУЩЕ слово з назви верстата («Olejka» з
+       «150i-Olejka»): RustDesk підписує вікно сесії `користувач@ПК@серійник -
+       Remote Desktop`, а не нашою назвою (лог цеху 01.10.26 —
+       `150@Olejka@sn2023s1297`, `350@Loaderr@350i`);
+    4. вікно сесії рівно ОДНЕ — нове з'єднання відкрилось вкладкою саме в
+       ньому, хоч заголовок ще показує попередню вкладку;
+    5. інакше — нічого: краще не підняти, ніж підняти чужу сесію."""
     fresh = [(h, t) for h, t in windows if h not in before]
     if fresh:
         return fresh[0][0], "нове вікно"
@@ -334,7 +340,29 @@ def pick_rustdesk_window(
         flat = "".join(title.split()).casefold()
         if (rid and rid in flat) or (label and label in title.casefold()):
             return hwnd, "за заголовком"
+    sessions = [(h, t) for h, t in windows if _RUSTDESK_SESSION_MARK in t.casefold()]
+    words = _name_words(label)
+    if words:
+        hits = [h for h, t in sessions if any(w in t.casefold() for w in words)]
+        if len(hits) == 1:
+            return hits[0], "за словом назви"
+    if len(sessions) == 1:
+        return sessions[0][0], "єдине вікно сесії"
     return None, ""
+
+
+# Так RustDesk підписує вікно віддаленої сесії (на відміну від головного
+# вікна «RustDesk»).
+_RUSTDESK_SESSION_MARK = "remote desktop"
+
+
+def _name_words(label: str) -> list[str]:
+    """Значущі слова назви верстата: від 4 літер і не самі цифри з моделлю
+    («150i», «350»). Коротке («Sec», «New») збігалося б із чим завгодно."""
+    import re
+
+    words = re.split(r"[^0-9a-zа-яіїєґ]+", label.casefold())
+    return [w for w in words if len(w) >= 4 and not re.fullmatch(r"\d+[a-z]?", w)]
 
 
 def _raise_rustdesk_window(remote_id: str, name: str, before: set,
