@@ -343,6 +343,9 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/v2a_handout.css",
     "/static/css/v2a_screens.css",
     "/static/css/update_overlay.css",
+    # «Спокійне оновлення» (01.10.26): лише власні класи `kload-`, кольори —
+    # токени теми, тож місце в каскаді — перед темами, щоб тема могла перебити.
+    "/static/css/loader.css",
     "/static/css/treatment-a.css",
     "/static/css/theme-forge.css",
     "/static/css/icon-styles.css",

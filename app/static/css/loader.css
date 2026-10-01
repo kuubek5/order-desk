@@ -1,0 +1,96 @@
+/* «Спокійне оновлення» — шкала завантаження поверх області, що оновлюється
+   (власник 01.10.26: вигляд D3 «шкала-блюпринт», 44 px; логіка — app.js,
+   блок «Спокійне оновлення»).
+
+   Сторінка під час оновлення НЕ змінюється: вміст області лишається на місці
+   й лише пригасає (тільки прозорість — жодних змін розміру, нічого не
+   зсувається), а по центру — шкала з 12 рисок у тонкому колі, по якій біжить
+   світло. Кольори — лише з токенів теми (`--accent`, `--accent-e`,
+   `--accent-rgb`, `--bg-rgb`), тож шкала сама бере будь-яку тему.
+
+   Поява — із затримкою (`--kload-delay`): швидка відповідь не показує нічого,
+   інакше вийшло б миготіння на кожен клік. Префікс `kload-` — CSS тут
+   глобальний (CLAUDE.md §15). */
+
+.kload-host { position: relative; }
+
+.kload-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 160ms ease, visibility 0s linear 160ms;
+}
+.kload-host.is-loading > .kload-veil {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 220ms ease var(--kload-delay, 300ms),
+              visibility 0s linear var(--kload-delay, 300ms);
+}
+/* Вміст під завісою пригасає, але лишається видимим і НЕ зсувається.
+   `transition` — ЛИШЕ на час завантаження: постійне правило на дітях
+   перебило б їхні власні переходи (наведення тощо). Повернення яскравості
+   тому миттєве — воно збігається з появою нових даних. */
+.kload-host.is-loading > :not(.kload-veil) {
+  opacity: 0.42;
+  transition: opacity 220ms ease var(--kload-delay, 300ms);
+}
+
+.kload {
+  display: block;
+  width: var(--kload-size, 44px);
+  height: var(--kload-size, 44px);
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.35));
+}
+/* Підкладка: мʼяке темне коло під шкалою, щоб текст рядка під нею не
+   просвічував крізь риски (на першому знімку шкала «сиділа» на слові
+   «анатомія» і читалась як бруд). Краї розмиті — це не картка, а тінь. */
+.kload-puck {
+  display: grid;
+  place-items: center;
+  padding: calc(var(--kload-size, 44px) * 0.55);
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side,
+    rgba(var(--bg-rgb), 0.92) 0%, rgba(var(--bg-rgb), 0.85) 62%, rgba(var(--bg-rgb), 0) 100%);
+}
+.kload line {
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  opacity: 0.16;
+  animation: kload-tick 1.1s linear infinite;
+}
+@keyframes kload-tick {
+  0%   { opacity: 1;    stroke: var(--accent-e); }
+  12%  { opacity: 0.95; stroke: var(--accent); }
+  40%  { opacity: 0.32; }
+  100% { opacity: 0.16; }
+}
+/* Обрамлення-«блюпринт»: тонке коло й дрібні риски довкола. */
+.kload .kload-ring { fill: none; stroke: rgba(var(--accent-rgb), 0.16); stroke-width: 0.6; }
+.kload .kload-minor line { animation: none; opacity: 0.22; stroke-width: 0.6; }
+
+/* Маленька шкала в самій кнопці (`data-kload="self"`): без підкладки, по
+   центру кнопки, текст кнопки пригасає. Для дій у вузьких місцях (банер),
+   де повна шкала з підкладкою не вміщається. */
+.kload-host.kload-mini { --kload-size: 18px; }
+/* Текст кнопки — вузол-текст, а не елемент, тож правило пригасання дітей
+   його не бере: ховаємо колір. Ширина кнопки лишається тією самою. */
+.kload-host.kload-mini.is-loading {
+  color: transparent;
+  transition: color 0s linear var(--kload-delay, 300ms);
+}
+.kload-mini .kload-puck { padding: 0; background: none; }
+.kload-mini .kload { filter: none; }
+.kload-mini .kload-ring,
+.kload-mini .kload-minor { display: none; }
+
+/* Людям, які вимкнули анімації в системі, — без бігу, просто шкала. */
+@media (prefers-reduced-motion: reduce) {
+  .kload line { animation: none; opacity: 0.55; }
+}

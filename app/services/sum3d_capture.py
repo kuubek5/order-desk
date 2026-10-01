@@ -137,6 +137,25 @@ def scan_projects(
     return found[:limit]
 
 
+def cached_projects(path: str | None, *, limit: int = 12) -> list[CapturedProject] | None:
+    """Те, що вже лежить у кеші, БЕЗ звернення до диска. None — кешу немає.
+
+    Для першого малюнка лотка в шапці черги (01.10.26): сторінка приходила з
+    порожнім лотком, він наповнювався окремим запитом після показу, кнопки
+    шапки ширшали, переносились на другий ряд — і вся черга їхала вниз на
+    48 px (заміряно layout-shift). Сканувати тут не можна (2–3 с на мережевій
+    теці, саме тому лоток і став «лінивим» 04.09.26), а кеш тримає гарячим
+    фоновий грійник (`warm_projects`), тож майже завжди він уже є."""
+    value = (path or "").strip()
+    if not value:
+        return None
+    with _cache_lock:
+        hit = _cache.get(value)
+    if hit and (monotonic() - hit[0]) < _CACHE_TTL_SECONDS:
+        return hit[1][:limit]
+    return None
+
+
 def warm_projects(path: str | None) -> int:
     """ПРИМУСОВО оновити кеш проєктів Sum3D — для фонового грійника.
 

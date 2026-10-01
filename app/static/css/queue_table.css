@@ -256,6 +256,15 @@
   flex: 0 0 auto;
 }
 
+/* Перший малюнок черги: таблиця невидима, поки не дочитана (queue.html,
+   клас ставить і знімає вбудований скрипт навколо _queue_rows.html).
+   Анімація — запобіжник: через 1.5 с таблиця видима за будь-яких умов. */
+html.q-parsing .q2 .tablewrap {
+  visibility: hidden;
+  animation: q-reveal 0s linear 1.5s forwards;
+}
+@keyframes q-reveal { to { visibility: visible; } }
+
 /* «Не дійшло в Google Таблицю» (_sheet_write_failures.html): список робіт
    ліворуч, «Записати зараз» праворуч. Черга й видача — той самий банер. */
 .swf-banner {

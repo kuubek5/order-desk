@@ -66,6 +66,8 @@ from app.services.queue import (
     sort_orders_by_column,
 )
 from app.services.sheet_stuck_writes import failed_sheet_writes
+from app.services.sum3d_capture import cached_projects
+from app.settings_store import get_sum3d_projects_path
 from app.services.shift import open_notes as open_shift_notes
 from app.services.system_load import snapshot as system_load_snapshot
 from app.sheet_sync_service import (
@@ -653,5 +655,10 @@ def build_queue_view(
         return QueueView("_queue_filter_swap.html", context)
 
     # Моно-лоток Sum3D — лише для повного рендера (у шапці, поза #queue-rows).
-    context["sum3d_projects"] = _s3
+    # Перший малюнок — з ГОТОВОГО кешу грійника, без скану (`cached_projects`):
+    # порожній лоток, що наповнювався після показу, переносив кнопки шапки на
+    # другий ряд і штовхав чергу вниз на 48 px (01.10.26). Кешу немає — як
+    # раніше, лоток підтягне себе сам по `load`. «Привид» у рядку (`_s3`
+    # вище) свідомо не чіпаємо.
+    context["sum3d_projects"] = cached_projects(get_sum3d_projects_path(db))
     return QueueView("queue.html", context)

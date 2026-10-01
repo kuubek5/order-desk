@@ -1221,6 +1221,141 @@ document.body.addEventListener("toast", (event) => {
   showToast(d.message || d.value || "", d.kind || "info", undefined, d.undoUrl);
 });
 
+// «Спокійне оновлення» (власник 01.10.26, вигляд D3 «шкала-блюпринт», 44 px;
+// CSS — static/css/loader.css). Сторінка під час оновлення НЕ змінюється:
+// вміст області лишається на місці й лише пригасає, а по центру — шкала. Лише
+// на ДІЇ людини: елемент або його предок несе `data-kload="<селектор області>"`
+// (або `data-kload="self"` — маленька шкала в самій кнопці). Фонові полли
+// (`every …` у hx-trigger) не показують нічого ніколи: оператор дивиться на
+// чергу весь день, і шкала щопівхвилини тягнула б погляд від лотка.
+// Поява — з затримкою в CSS (300 мс): швидка відповідь не блимає взагалі.
+const KLOAD_SVG = (() => {
+  let ticks = "";
+  for (let i = 0; i < 12; i += 1) {
+    // Затримка від’ємна: кожна риска стартує посеред свого циклу, тож світло
+    // біжить по колу за годинниковою стрілкою з першого ж кадру.
+    const delay = (-(12 - i) / 12 * 1.1).toFixed(3);
+    ticks += '<line x1="0" y1="-9.5" x2="0" y2="-16.5" transform="rotate(' + i * 30 +
+      ')" style="animation-delay:' + delay + 's"/>';
+  }
+  let minor = "";
+  for (let i = 0; i < 60; i += 1) {
+    if (i % 5 === 0) continue;
+    minor += '<line x1="0" y1="-19" x2="0" y2="-20.2" transform="rotate(' + i * 6 + ')"/>';
+  }
+  return '<svg class="kload" viewBox="-22 -22 44 44" aria-hidden="true">' +
+    '<circle class="kload-ring" r="20.5"/><g class="kload-minor">' + minor + "</g>" + ticks + "</svg>";
+})();
+
+const kloadActive = new Set();
+
+function kloadHostFor(elt) {
+  const owner = elt && elt.closest && elt.closest("[data-kload]");
+  if (!owner) return null;
+  const sel = owner.getAttribute("data-kload");
+  if (sel === "self") return owner;
+  return sel ? document.querySelector(sel) : null;
+}
+
+function kloadStart(host) {
+  if (!host) return;
+  const mini = host.getAttribute("data-kload") === "self";
+  if (!host.querySelector(":scope > .kload-veil")) {
+    host.insertAdjacentHTML("beforeend",
+      '<span class="kload-veil" aria-hidden="true"><span class="kload-puck">' + KLOAD_SVG + "</span></span>");
+  }
+  host.classList.add("kload-host", "is-loading");
+  if (mini) host.classList.add("kload-mini");
+  host.setAttribute("aria-busy", "true");
+  kloadActive.add(host);
+  // Запобіжник: відповідь могла не прийти зовсім (обрив, вкладку закрили).
+  // Вічно пригаслий список гірший за відсутню шкалу.
+  clearTimeout(host._kloadTimer);
+  host._kloadTimer = setTimeout(() => kloadStop(host), 30000);
+}
+
+function kloadStop(host) {
+  if (!host) return;
+  clearTimeout(host._kloadTimer);
+  host.classList.remove("is-loading");
+  host.removeAttribute("aria-busy");
+  kloadActive.delete(host);
+}
+
+function kloadStopAll() {
+  [...kloadActive].forEach(kloadStop);
+}
+
+// Шкала належить ЗАПИТУ, а не сторінці: фоновий полл, що завершився посеред
+// дії оператора (навантаження ПК — кожні 4 с), не має її знімати.
+const kloadByXhr = new WeakMap();
+
+// Два кліки підряд по фільтрах (рецензія 01.10.26): шкалу знімає лише
+// ОСТАННІЙ запит області. Перша відповідь, що прийшла раніше, інакше знімала
+// пригасання, поки друга ще в дорозі, — і на мить світився старий список.
+function kloadFinish(xhr) {
+  const host = xhr && kloadByXhr.get(xhr);
+  if (!host) return;
+  kloadByXhr.delete(xhr);
+  if (host._kloadLatest === xhr) kloadStop(host);
+}
+
+function kloadStopFor(event) {
+  kloadFinish(event.detail && event.detail.xhr);
+}
+
+document.body.addEventListener("htmx:beforeRequest", (event) => {
+  const elt = event.detail && event.detail.elt;
+  const trigger = (elt && elt.getAttribute && elt.getAttribute("hx-trigger")) || "";
+  if (/every\s/.test(trigger)) return;
+  const host = kloadHostFor(elt);
+  if (!host) return;
+  kloadStart(host);
+  const xhr = event.detail.xhr;
+  if (!xhr) return;
+  kloadByXhr.set(xhr, host);
+  host._kloadLatest = xhr;
+  // Запасний вихід — сам запит, а не події htmx. Події йдуть від елемента, з
+  // якого стартував запит, і коли того вже немає в документі (другий клік по
+  // фільтру: перша відповідь замінила смугу фільтрів разом із посиланням),
+  // до body вони не доходять — шкала висіла б до 30 с (спіймано наживо
+  // 01.10.26). Так само для дій без заміни (`hx-swap="none"`): afterSettle
+  // там не буває. `loadend` настає завжди (успіх, помилка, переривання);
+  // 350 мс — заміна вже на місці (settle ~20 мс, View Transition — кадр-два).
+  xhr.addEventListener("loadend", () => setTimeout(() => kloadFinish(xhr), 350));
+});
+// Звичайний шлях — одразу, щойно новий вміст на місці (afterSettle), щоб між
+// «зняли пригасання» і «прийшли нові дані» не було кадру зі старими даними
+// в повну яскравість. Провал — одразу (заміни не буде).
+document.body.addEventListener("htmx:afterSettle", kloadStopFor);
+document.body.addEventListener("htmx:afterRequest", (event) => {
+  if (!(event.detail || {}).successful) kloadStopFor(event);
+});
+
+// Звичайні переходи (дні видачі, «Синхронізувати» — повна сторінка, не htmx):
+// шкала живе від кліку до появи нової сторінки. Ctrl/середня кнопка відкриває
+// нову вкладку — тут сторінка лишається, і шкали не має бути.
+document.addEventListener("click", (event) => {
+  if (event.defaultPrevented || event.button !== 0) return;
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  const link = event.target.closest && event.target.closest("a[href]");
+  if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+  if (link.closest("[hx-boost='true']") || link.hasAttribute("hx-get")) return;
+  const host = kloadHostFor(link);
+  if (host) kloadStart(host);
+});
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (event.defaultPrevented || !form || form.hasAttribute("hx-post") || form.hasAttribute("hx-get")) return;
+  // Нова вкладка — ця сторінка лишається, шкалі не буде кому зникнути.
+  const target = (event.submitter && event.submitter.getAttribute("formtarget")) || form.target;
+  if (target === "_blank") return;
+  const host = kloadHostFor(form);
+  if (host) kloadStart(host);
+});
+// Повернення «Назад» віддає сторінку з кешу браузера разом зі шкалою.
+window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopAll(); });
+
 // Liquid segmented toggle for the mail-download mode. Shared by /settings and
 // the /mail triage header (same markup, one handler). The endpoint blindly
 // flips, so only a click on the INACTIVE side posts. The glass pill slides

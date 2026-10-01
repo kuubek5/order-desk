@@ -446,6 +446,8 @@ def test_banner_on_queue_page_and_in_its_poll(app_db):  # noqa: F811
     assert f"focus={order.id}" in html and "date=30.09.26" in html
     assert "виправте рядок у таблиці" in html
     assert 'hx-post="/sheets/write-failures/retry"' in html
+    # Маленька шкала в самій кнопці («Спокійне оновлення», app.js).
+    assert 'data-kload="self"' in html
 
     status, _, fragment = client.get("/sheets/write-failures")
     assert status == 200

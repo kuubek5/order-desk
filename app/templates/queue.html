@@ -274,7 +274,17 @@
                 </div>
             </form>
 
+            {# Таблицю не показуємо, поки браузер не дочитав її до кінця: на
+               200 рядках він малював перші рядки, а потім, дочитавши решту,
+               перебудовував колонки — «матеріал» стрибав зі 152 до 599 px
+               (заміряно layout-shift 01.10.26, 1440/1920 px). `visibility`
+               тримає місце, тож нижче нічого не зсувається; запобіжник у CSS
+               показує таблицю через 1.5 с, навіть якщо другий скрипт не
+               виконався. Лише перший малюнок сторінки — свапи полла й фільтрів
+               приходять цілими. #}
+            <script>document.documentElement.classList.add('q-parsing')</script>
             {% include "_queue_rows.html" %}
+            <script>document.documentElement.classList.remove('q-parsing')</script>
         </section>
 
         {# Секцію можна сховати тумблером у шестерні (hidden_widgets, ключ
@@ -369,7 +379,7 @@
                     </div>
                     {% endif %}
                     <div class="side-actions">
-                        <form method="post" action="/sheets/sync">
+                        <form method="post" action="/sheets/sync" data-kload=".queue-panel">
                             <button type="submit" class="btn sm primary" {% if sync_paused %}disabled{% endif %}>Синхронізувати зараз</button>
                         </form>
                         <form method="post" action="/sync/pause">

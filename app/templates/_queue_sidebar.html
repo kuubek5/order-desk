@@ -38,7 +38,8 @@
 <div class="filters" id="queue-filters" role="group" aria-label="Фільтри черги"{% if queue_oob %} hx-swap-oob="true"{% endif %}
      hx-boost="true" hx-target="#queue-rows" hx-select="#queue-rows"
      hx-swap="outerHTML transition:true"
-     hx-push-url="true">
+     hx-push-url="true"
+     data-kload=".queue-panel">
 <div class="fgrid">
     {# Кожна пара «лейбл + seg» — один нерозривний .fgroup: flex-wrap не може
        відірвати лейбл від його кнопок (раніше «Готовність» лишалась сама на
