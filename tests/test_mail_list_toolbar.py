@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app.material_catalog import ensure_seeded
 from app.models import EmailMessage
+from app.routers import mail as mail_router_mod
 from tests.test_mail_bulk import _letter
 from tests.test_mail_hold import _page
 from tests.test_settings_slabs_render import app_db  # noqa: F401 — фікстура
@@ -18,7 +19,10 @@ pytestmark = pytest.mark.usefixtures("weekday_clock")
 
 def test_toolbar_days_and_material_edge(app_db):  # noqa: F811
     app, session_factory = app_db
-    now = datetime.now()
+    # Той самий годинник, яким сторінка рахує «Сьогодні» (київський). Із
+    # `datetime.now()` тест падав у CI (UTC) щоночі 00:00–03:00 за Києвом:
+    # листи «щойно» лягали на вчорашню дату (реліз 0.21.36, 02.10.26).
+    now = mail_router_mod.business_now().replace(tzinfo=None)  # у базі час без зони
     with session_factory() as db:
         ensure_seeded(db)  # бібліотека матеріалів, як у живій базі — інакше бейджів немає
         db.commit()
