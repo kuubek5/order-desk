@@ -42,6 +42,7 @@ from app.sheet_writer import (
     write_rework_cells,
 )
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
+from app.services.sheet_stuck_writes import note_write_failed, note_write_ok
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,12 @@ def write_sheet_fields(
         # Очищення (порожній ID), що не дійшло, не тримаємо: у таблиці лишився
         # старий ID, і синк поверне його — оператор побачить, що не очистилось.
         order.sum3d_pending = order.sum3d_id if (error and order.sum3d_id) else None
+        # Сигнал оператору в CRM — з того самого рішення, що й позначка.
+        # Невдале ОЧИЩЕННЯ позначки не має, але й «дійшло» не є — тоді мовчимо.
+        if order.sum3d_pending:
+            note_write_failed("sum3d", order, error)
+        elif not error:
+            note_write_ok("sum3d", order.id)
     return error
 
 
@@ -445,7 +452,7 @@ def retry_pending_sum3d(db: Session, *, now: float | None = None) -> int:
         ).order_by(Order.id)
     ).all()
     alive = {order_id for order_id, _ in pending}
-    for stale in [key for key in _pending_sum3d_attempts if key not in alive]:
+    for stale in [key for key in list(_pending_sum3d_attempts) if key not in alive]:
         _pending_sum3d_attempts.pop(stale, None)
     submitted = 0
     for order_id, calculated in pending:
@@ -502,7 +509,7 @@ def retry_pending_fills(db: Session, *, now: float | None = None) -> int:
         ).order_by(Order.id)
     ).all()
     alive = {order_id for order_id, _ in pending}
-    for stale in [key for key in _pending_fill_attempts if key not in alive]:
+    for stale in [key for key in list(_pending_fill_attempts) if key not in alive]:
         _pending_fill_attempts.pop(stale, None)
     submitted = 0
     for order_id, wanted in pending:
@@ -518,6 +525,60 @@ def retry_pending_fills(db: Session, *, now: float | None = None) -> int:
         logger.info("Повторне фарбування рядків: поставлено %d (чекають усього %d)",
                     submitted, len(pending))
     return submitted
+
+
+def retry_failed_writes_now(
+    db: Session, sum3d_ids: set[int], fill_ids: set[int], *, now: float | None = None,
+) -> list:
+    """Кнопка «Записати зараз»: повторити ці записи НЕГАЙНО, повз 120-с
+    тротл фонового повтору. Повертає futures пулу — роут чекає на них коротко.
+
+    Ті самі записи, що й фоновий повтор (Sum3D — пачкою, як із черги, однією
+    звіркою на вкладку; заливка — `set_client_row_fill_background`), і той
+    самий предикат «ще не в таблиці»: роботу, яку тим часом дописали, повтор
+    не чіпає. Час спроби ставиться в тротл, щоб тік синку одразу за кнопкою не
+    поставив ту саму роботу вдруге. Пауза — у `submit_sheet_write`, як завжди.
+
+    Це другий потік, що пише словники тротлу (перший — воркер синку), тож
+    повтори обходять їх через `list(...)`: інакше вставка звідси посеред
+    обходу дала б «dictionary changed size during iteration» і тік пропустив
+    би свої повтори.
+    """
+    from time import monotonic
+
+    from sqlalchemy import select
+
+    now = monotonic() if now is None else now
+    futures = []
+    if sum3d_ids:
+        rows = db.execute(
+            select(Order.id, Order.calculated_raw).where(
+                Order.id.in_(sum3d_ids),
+                Order.sum3d_pending.is_not(None),
+                Order.sum3d_pending == Order.sum3d_id,
+                Order.archived_at.is_(None),
+            )
+        ).all()
+        batch: dict[int, tuple[set[str], set[str]]] = {}
+        for order_id, calculated in rows:
+            _pending_sum3d_attempts[order_id] = now
+            fields = {"sum3d_id", "calculated_raw"} if calculated else {"sum3d_id"}
+            batch[order_id] = (fields, set())
+        if batch:
+            futures.append(submit_sheet_write(write_fields_bulk, batch))
+    if fill_ids:
+        rows = db.execute(
+            select(Order.id, Order.fill_pending).where(
+                Order.id.in_(fill_ids),
+                Order.fill_pending.is_not(None),
+                Order.archived_at.is_(None),
+            )
+        ).all()
+        for order_id, wanted in rows:
+            _pending_fill_attempts[order_id] = now
+            futures.append(set_client_row_fill_background(order_id, blue=(wanted == "blue")))
+    logger.info("Записати зараз: Sum3D %d, заливка %d", len(sum3d_ids), len(fill_ids))
+    return futures
 
 
 def write_calculated_cell_warm(order_id: int, value: str) -> str | None:
@@ -633,7 +694,7 @@ def set_client_row_fill(db: Session, order: Order, *, blue: bool) -> str | None:
     return None
 
 
-def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
+def set_client_row_fill_background(order_id: int, *, blue: bool):
     """Перефарбувати рядок клієнта в таблиці, не тримаючи оператора.
 
     Раніше це робилось прямо в обробнику кліку — і не абиде, а на потоці
@@ -666,10 +727,16 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
                         "Заливку рядка для роботи %s не оновлено: %s", order_id, error
                     )
                 bg.commit()
+                if error:
+                    note_write_failed("fill", order, error)
+                else:
+                    note_write_ok("fill", order_id)
         except Exception:
             logger.exception("Фонова заливка рядка не вдалася для роботи %s", order_id)
 
-    submit_sheet_write(worker)
+    # Future віддаємо: «Записати зараз» чекає на нього коротко, решта
+    # викликачів його не бере.
+    return submit_sheet_write(worker)
 
 
 def clear_sheet_row_background(order_id: int):
@@ -786,6 +853,9 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
         # Доки не доведено протилежне, вважаємо кожен рядок НЕ знятим: краще
         # зайвий повтор (фарбування ідемпотентне), ніж мовчки лишене синє.
         unresolved = set(order_ids)
+        # Чому саме не знято — для сигналу оператору. Кого тут немає, а в
+        # `unresolved` він є, — до нього черга не дійшла (впало раніше).
+        reasons: dict[int, str] = {}
         try:
             with writeback_session() as bg:
                 fill_rows: list[tuple[int, int]] = []
@@ -806,6 +876,7 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                         spreadsheet = open_spreadsheet(db=bg)
                     worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
                     if worksheet is None:
+                        reasons[order_id] = f"вкладку '{order.sheet_tab}' не знайдено"
                         continue
                     # Позицію звіряємо перед тим, як білити: після видалення
                     # рядка вище збережений row_number показує на чужу живу
@@ -816,6 +887,7 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                             "Заливку рядка для роботи %s не знято: рядок не підтверджено",
                             order_id,
                         )
+                        reasons[order_id] = "рядок у таблиці не підтверджено — заливку не змінено"
                         continue
                     fill_rows.append((worksheet.id, row))
                     unresolved.discard(order_id)
@@ -823,41 +895,60 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                     # Пакетна правка або проходить уся, або кидає — тому
                     # знімаємо позначку лише ПІСЛЯ неї.
                     clear_row_fills(spreadsheet, fill_rows)
-                _apply_fill_pending(bg, order_ids, unresolved, "clear")
+                noted = _apply_fill_pending(bg, order_ids, unresolved, "clear")
                 bg.commit()
-        except Exception:
+                _note_fills(noted, reasons)
+        except Exception as exc:
             logger.exception("Фонове зняття заливки групи не вдалося")
             # Сесія вище вже відкотилась — позначку ставимо своєю. Без цього
             # найгірший випадок (обрив на пакетній правці) лишався б німим саме
             # тоді, коли синього в таблиці лишилось найбільше.
-            _remember_failed_fills(order_ids, "clear")
+            _remember_failed_fills(order_ids, "clear", str(exc))
 
     submit_sheet_write(worker)
 
 
 def _apply_fill_pending(
     db: Session, order_ids: list[int], unresolved: set[int], value: str
-) -> None:
-    """Проставити/зняти позначку розбіжності заливки для групи в ОДНІЙ сесії."""
+) -> list[tuple[Order, bool]]:
+    """Проставити/зняти позначку розбіжності заливки для групи в ОДНІЙ сесії.
+
+    Повертає (робота, чи лишилась позначка) — для сигналу оператору, який
+    ставиться вже ПІСЛЯ коміту."""
+    noted: list[tuple[Order, bool]] = []
     for order_id in order_ids:
         order = db.get(Order, order_id)
         if order is None:
             continue
         order.fill_pending = value if order_id in unresolved else None
+        noted.append((order, order.fill_pending is not None))
+    return noted
 
 
-def _remember_failed_fills(order_ids: list[int], value: str) -> None:
+def _note_fills(noted: list[tuple[Order, bool]], reasons: dict[int, str]) -> None:
+    for order, failed in noted:
+        if failed:
+            note_write_failed("fill", order, reasons.get(order.id))
+        else:
+            note_write_ok("fill", order.id)
+
+
+def _remember_failed_fills(order_ids: list[int], value: str, error: str | None = None) -> None:
     """Позначити групу як незафарбовану, коли основна сесія вже мертва.
 
     Власна сесія і власний `try`: це шлях аварії, і впасти тут означало б
     втратити єдиний слід про те, що заливка не доїхала."""
     try:
         with writeback_session() as bg:
+            marked = []
             for order_id in order_ids:
                 order = bg.get(Order, order_id)
                 if order is not None and order_has_client_fill_row(order):
                     order.fill_pending = value
+                    marked.append(order)
             bg.commit()
+            for order in marked:
+                note_write_failed("fill", order, error)
     except Exception:
         logger.exception("Не вдалося запам'ятати незняту заливку групи")
 
@@ -1072,6 +1163,7 @@ def write_fields_bulk(batch: dict[int, tuple[set[str], set[str]]]) -> str | None
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                         message=f"order {order.id}: {exc}",
                     ))
+                    _note_bulk_sum3d(order, fields, str(exc))
                 continue
 
             plan: list[tuple[Order, set[str], int]] = []
@@ -1087,6 +1179,7 @@ def write_fields_bulk(batch: dict[int, tuple[set[str], set[str]]]) -> str | None
                         ),
                     ))
                     error = error or f"робота {order.id}: рядок у таблиці не підтверджено"
+                    _note_bulk_sum3d(order, fields, "рядок у таблиці не підтверджено")
                     continue
                 plan.append((order, fields | erase, row))
 
@@ -1102,18 +1195,28 @@ def write_fields_bulk(batch: dict[int, tuple[set[str], set[str]]]) -> str | None
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                         message=f"order {order.id}: {exc}",
                     ))
+                    _note_bulk_sum3d(order, fields, str(exc))
             else:
                 for order, fields, _ in plan:
                     if "sum3d_id" in fields:
                         # Підтверджено таблицею — позначку знімаємо. Решта
                         # випадків (пропуск, збій) лишає її навмисно.
                         order.sum3d_pending = None
+                        note_write_ok("sum3d", order.id)
                     _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
                         message=f"order {order.id}: {', '.join(sorted(fields))}",
                     ))
         bg.commit()
     return error
+
+
+def _note_bulk_sum3d(order: Order, fields: set[str], error: str) -> None:
+    """Збій пачки — у сигнал оператору, але лише для Sum3D, що справді чекає
+    таблиці (той самий предикат, що в `retry_pending_sum3d`): решта полів
+    позначки не мають, і повтор їх не пише."""
+    if "sum3d_id" in fields and order.sum3d_pending and order.sum3d_pending == order.sum3d_id:
+        note_write_failed("sum3d", order, error)
 
 
 def write_rework_sum3d_fields(

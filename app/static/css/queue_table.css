@@ -256,6 +256,33 @@
   flex: 0 0 auto;
 }
 
+/* «Не дійшло в Google Таблицю» (_sheet_write_failures.html): список робіт
+   ліворуч, «Записати зараз» праворуч. Черга й видача — той самий банер. */
+.swf-banner {
+  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.swf-body { min-width: 0; flex: 1 1 auto; }
+.swf-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.swf-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  align-items: baseline;
+}
+.swf-link { font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.swf-tab, .swf-since { opacity: 0.75; }
+.swf-kind { opacity: 0.9; }
+.swf-more { margin-top: 2px; opacity: 0.75; }
+.swf-retry { flex: 0 0 auto; }
+
 .search-container {
   margin-top: var(--space-4);
   margin-bottom: var(--space-4);

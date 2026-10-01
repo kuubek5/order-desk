@@ -300,8 +300,8 @@ def _retry_pending_fills_tick(db: Session) -> None:
 
 
 def _stuck_writes_tick(db: Session) -> None:
-    """Запис у таблицю, що не дійшов за 5 хв, — банер, журнал і Telegram
-    власнику (app/services/sheet_stuck_writes.py). Після повторів, щоб
+    """Запис у таблицю, що не дійшов, — звірка банера з позначками в БД і
+    журнал на 5 хв (app/services/sheet_stuck_writes.py). Після повторів, щоб
     щойно дописане не рахувалось застряглим. Збій сторожа не зупиняє синк."""
     if not _sheets_configured(db):
         return

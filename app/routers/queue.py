@@ -46,7 +46,7 @@ from app.services.queue_view import (
     build_queue_view,
     live_sync_status,
 )
-from app.services.sheet_stuck_writes import stuck_sheet_writes
+from app.services import sheet_stuck_writes
 from app.sheet_sync_service import (
     SheetSyncError,
     header_mismatch_pending,
@@ -530,9 +530,96 @@ def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
             "user": user,
             "mass_vanish": mass_vanish_pending(),
             "header_mismatch": header_mismatch_pending(),
-            "stuck_writes": stuck_sheet_writes(),
         },
     )
+
+
+# Скільки «Записати зараз» чекає на таблицю, перш ніж відповісти. Роут
+# звичайний `def` (threadpool), тож event loop від цього не стоїть; запис, що
+# не встиг, лишається в пулі й дійде сам.
+_RETRY_NOW_WAIT_SECONDS = 25.0
+
+
+def _write_failures_response(request: Request, user, toast: dict | None = None):
+    response = templates.TemplateResponse(
+        request,
+        "_sheet_write_failures.html",
+        {"user": user, "write_failures": sheet_stuck_writes.failed_sheet_writes()},
+    )
+    if toast:
+        response.headers["HX-Trigger"] = json.dumps({"toast": toast})
+    return response
+
+
+@router.get("/sheets/write-failures", response_class=HTMLResponse)
+def sheet_write_failures_banner(request: Request, db: Session = Depends(get_db)):
+    """Самополл-банер «не дійшло в таблицю» (_sheet_write_failures.html) — на
+    черзі й на видачі. Лише стан у памʼяті сторожа, БД — тільки на вхід."""
+    user = get_current_user(request, db)
+    if user is None:
+        return HTMLResponse("")
+    return _write_failures_response(request, user)
+
+
+@router.post("/sheets/write-failures/retry", response_class=HTMLResponse)
+def sheet_write_failures_retry(request: Request, db: Session = Depends(get_db)):
+    """«Записати зараз»: негайний повтор усіх записів зі списку банера.
+
+    Список береться з сервера, а не з форми: банер міг застаріти на 15 с, а
+    повтор однаково перевіряє предикат «ще не в таблиці». Відповідь — свіжий
+    банер і тост із тим, що вийшло."""
+    from concurrent.futures import wait as wait_futures
+
+    from app.services.sheet_writeback import retry_failed_writes_now
+    from app.sheets import quota_is_tight
+
+    user = get_current_user(request, db)
+    if user is None:
+        return HTMLResponse("", status_code=401)
+
+    if sync_control.is_paused():
+        return _write_failures_response(request, user, {
+            "kind": "warning",
+            "message": "Синк на паузі — у таблицю зараз не пишемо. Зніміть паузу, і запис піде сам.",
+        })
+    if quota_is_tight():
+        return _write_failures_response(request, user, {
+            "kind": "warning",
+            "message": "Google просить зачекати (забагато запитів) — спробуйте за хвилину, повтор іде й сам.",
+        })
+
+    items = sheet_stuck_writes.failed_sheet_writes()
+    if not items:
+        return _write_failures_response(request, user, {
+            "kind": "success", "message": "Усе вже в таблиці — записувати нічого.",
+        })
+
+    futures = retry_failed_writes_now(
+        db,
+        {item.order_id for item in items if item.kind == "sum3d"},
+        {item.order_id for item in items if item.kind == "fill"},
+    )
+    # Транзакцію запиту закриваємо ДО очікування: пул комітить позначки у
+    # своїй сесії, і відкритий запис тут (вхід міг оновити сесію користувача)
+    # тримав би блокування SQLite всі 25 с — «database is locked» у пулі.
+    db.commit()
+    _, not_done = wait_futures(futures, timeout=_RETRY_NOW_WAIT_SECONDS)
+    # Свіжий погляд на позначки: записи комітили в своїх сесіях.
+    db.commit()
+    sheet_stuck_writes.observe(db)
+
+    left = sheet_stuck_writes.failed_sheet_writes()
+    if not_done:
+        toast = {"kind": "warning", "message": "Таблиця відповідає повільно — запис ще йде, список оновиться сам."}
+    elif not left:
+        toast = {"kind": "success", "message": f"Записано в таблицю: {len(items)}."}
+    else:
+        done = max(0, len(items) - len(left))
+        toast = {
+            "kind": "error",
+            "message": f"Записано {done} з {len(items)}. Не дійшло: {left[0].reason_text}.",
+        }
+    return _write_failures_response(request, user, toast)
 
 
 @router.get("/system/load", response_class=HTMLResponse)

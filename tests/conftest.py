@@ -127,6 +127,18 @@ def _fresh_absent_tab_streaks():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_sheet_write_failures():
+    """Список «не дійшло в таблицю» (app/services/sheet_stuck_writes) теж на
+    ПРОЦЕС: будь-який тест збою запису наповнює його, і банер зʼявлявся б у
+    рендері сторінок зовсім іншого файлу."""
+    from app.services import sheet_stuck_writes
+
+    sheet_stuck_writes.reset()
+    yield
+    sheet_stuck_writes.reset()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_log_throttle():
     """Глушник повторів у лозі (app/log_throttle) теж на ПРОЦЕС: без скидання
     тест, який перевіряє попередження, не побачить його через те, що інший

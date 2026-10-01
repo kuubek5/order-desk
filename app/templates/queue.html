@@ -123,6 +123,12 @@
          hx-get="/sheets/mass-vanish" hx-trigger="every 15s[!document.hidden]" hx-target="this" hx-swap="innerHTML">
         {% include "_mass_vanish_banner.html" %}
     </div>
+    {# «Не дійшло в таблицю» — власна самополл-обгортка, бо цей самий банер
+       стоїть і на видачі (_sheet_write_failures.html). #}
+    <div id="sheet-writes-slot"
+         hx-get="/sheets/write-failures" hx-trigger="every 15s[!document.hidden]" hx-target="this" hx-swap="innerHTML">
+        {% include "_sheet_write_failures.html" %}
+    </div>
 
     {# Верхня стрічка-статуслайн прихована на прохання (пошта ще не задіяна) —
        повернути, розкоментувавши цей include; сам _queue_kpi_row.html цілий. #}

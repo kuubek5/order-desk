@@ -1,0 +1,36 @@
+{# Запис у Google Таблицю, що не дійшов (app/services/sheet_stuck_writes.py).
+   Рішення власника 01.10.26: сигнал — у CRM, ОДРАЗУ при збої, зі списком
+   робіт, причиною й кнопкою «Записати зараз». Живе в самополл-обгортці
+   #sheet-writes-slot (черга й видача), полл — /sheets/write-failures, лише
+   стан у памʼяті. Порожньо, коли все в таблиці.
+   Перехід — на день роботи з ?focus=<id> (той самий механізм, що «Останні
+   дії»): ready/source=all, щоб робота не сховалась за фільтром.
+   `is defined` — партіал включають і з місць, що ключа не передають. #}
+{% if write_failures is defined and write_failures %}
+{% set _shown = write_failures[:8] %}
+<div class="sync-notice sync-notice-warn swf-banner" role="alert">
+    <div class="swf-body">
+        <div class="swf-head">⚠ Не дійшло в Google Таблицю — <b>{{ write_failures | length }}</b>.
+            У CRM усе збережено; таблиця (її бачать логісти) поки показує старе.</div>
+        <ul class="swf-list">
+            {% for f in _shown %}
+            <li class="swf-item">
+                <a class="swf-link" href="/?{{ {'ready': 'all', 'source': 'all', 'date': f.tab or '', 'focus': f.order_id} | urlencode }}"
+                   title="Перейти до рядка роботи">{{ f.who }}</a>
+                {% if f.tab %}<span class="mono swf-tab">{{ f.tab }}</span>{% endif %}
+                <span class="swf-kind">{{ f.kind_text }}</span>
+                <span class="swf-reason"{% if f.detail %} title="{{ f.detail }}"{% endif %}>— {{ f.reason_text }}</span>
+                <span class="mono swf-since">з {{ f.since.strftime('%H:%M') }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if write_failures | length > _shown | length %}
+        <div class="swf-more">і ще {{ write_failures | length - _shown | length }}</div>
+        {% endif %}
+    </div>
+    <button type="button" class="btn swf-retry"
+            hx-post="/sheets/write-failures/retry"
+            hx-target="#sheet-writes-slot" hx-swap="innerHTML"
+            hx-disabled-elt="this">Записати зараз</button>
+</div>
+{% endif %}

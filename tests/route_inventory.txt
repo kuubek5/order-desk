@@ -152,6 +152,8 @@ GET /settings/network/folder-helper
 GET /suggest/client
 GET /furnaces/side
 GET /sheets/mass-vanish
+GET /sheets/write-failures
+POST /sheets/write-failures/retry
 GET /setup
 POST /actions/undo-last
 GET /machines

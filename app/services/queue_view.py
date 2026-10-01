@@ -65,7 +65,7 @@ from app.services.queue import (
     queue_week_summary,
     sort_orders_by_column,
 )
-from app.services.sheet_stuck_writes import stuck_sheet_writes
+from app.services.sheet_stuck_writes import failed_sheet_writes
 from app.services.shift import open_notes as open_shift_notes
 from app.services.system_load import snapshot as system_load_snapshot
 from app.sheet_sync_service import (
@@ -529,9 +529,10 @@ def build_queue_view(
             # Зсув колонок у таблиці — той самий банер, той самий сенс:
             # синк свідомо стоїть, поки людина не гляне (синк H-6).
             "header_mismatch": header_mismatch_pending(),
-            # Запис у таблицю, що не дійшов за 5 хв (Sum3D, синя заливка) —
-            # той самий банер, стан у памʼяті сторожа (sheet_stuck_writes).
-            "stuck_writes": stuck_sheet_writes(),
+            # Запис у таблицю, що не дійшов (Sum3D, синя заливка) — власний
+            # самополл-банер `_sheet_write_failures.html`, стан у памʼяті
+            # сторожа (sheet_stuck_writes).
+            "write_failures": failed_sheet_writes(),
             "has_any_orders": bool(all_orders),
             "sheets_configured": sheets_configured(db),
             # Флеші живуть у сесії запиту, тобто на HTTP-рівні — їх домішує роут
