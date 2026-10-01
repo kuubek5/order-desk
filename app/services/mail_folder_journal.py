@@ -20,9 +20,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import EmailMessage, SyncLog
+from app.business_day import utc_now
+from app.models import EmailMessage, Order, SyncLog
 
 DIRECTION = "mail_folder"
 INBOX = "Вхідні"
@@ -44,6 +48,38 @@ def _describe(email: EmailMessage) -> str:
 def is_unaccepted(email: EmailMessage) -> bool:
     """Лист без роботи: не прийнятий і не привʼязаний до замовлення."""
     return email.status == "нове" and not email.order_id
+
+
+# Скільки пілот пошти в CRM вважається живим після останнього прийнятого листа.
+# Дві доби — щоб вихідні й нічна зміна без прийнять не вимикали попередження.
+MAIL_PILOT_ALIVE = timedelta(days=2)
+
+
+def mail_pilot_active(db: Session) -> bool:
+    """Чи ведуть зараз пошту через CRM: за `MAIL_PILOT_ALIVE` прийнято хоч один
+    лист (прийняття = робота з пошти; «Повернути в тріаж» роботу видаляє, тож
+    скасоване прийняття не рахується).
+
+    Навіщо (власник 01.10.26). Попередження «лист НЕ прийнято через пошту»
+    ловить коронку, яку переклали в пошті, але ніде не вписали. Коли ж УСЮ
+    пошту ведуть в ukr.net, а роботи вносять у таблицю руками (з 30.09 11:11),
+    воно висить на кожному листі — 124 за ніч — і нічого не ловить, лише
+    топить справжні проблеми в журналі. CRM рядок таблиці з листом не звʼязує,
+    тож відрізнити «вписали руками» від «загубили» тут не можна. Прийняли
+    знову лист через CRM — попередження повертаються самі.
+
+    `no_autoflush`: запис журналу лише додається в сесію, а синк пошти тримає
+    її поруч із зверненнями до IMAP — змивати незакомічене звідси не можна
+    (блокування SQLite на час мережі, CLAUDE.md §14 «Пошта»)."""
+    since = utc_now() - MAIL_PILOT_ALIVE
+    with db.no_autoflush:
+        found = db.scalar(
+            select(func.count()).select_from(Order).where(
+                Order.source_email_id.is_not(None),
+                Order.created_at >= since,
+            )
+        )
+    return bool(found)
 
 
 def log_folder_move(
@@ -76,6 +112,10 @@ def log_folder_move(
         how = "прямо в пошті (не через CRM)"
     # Ризиковий випадок: лист без роботи покидає Вхідні — у папку чи «в нікуди».
     risky = dst != INBOX and is_unaccepted(email)
+    # Перенос прямо в пошті, коли пілот CRM-пошти на паузі, — норма, а не
+    # ризик (див. `mail_pilot_active`). Рядок у журналі лишається, без «⚠».
+    if risky and via == VIA_MAILBOX and not mail_pilot_active(db):
+        risky = False
     message = f"{_describe(email)}: «{src}» → «{dst}» · {how}"
     if risky:
         # «Роботи немає» сказати не можна: її могли внести руками через

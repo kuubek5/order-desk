@@ -18,9 +18,9 @@ from datetime import date, datetime
 import pytest
 
 from app import mail_reader
-from app.models import EmailMessage, SyncLog
+from app.models import EmailMessage, Order, SyncLog
 from app.routers import mail as mail_router_mod
-from app.services.mail_folder_journal import VIA_ACCEPT, VIA_MAILBOX, log_folder_move
+from app.services.mail_folder_journal import VIA_ACCEPT, VIA_CRM, VIA_MAILBOX, log_folder_move
 from tests.asgi_client import MiniClient
 from tests.test_mail_bulk import _letter
 from tests.test_settings_slabs_render import OPERATOR, app_db  # noqa: F401 — фікстура
@@ -30,6 +30,19 @@ pytestmark = pytest.mark.usefixtures("weekday_clock")
 
 def _journal(db):
     return db.query(SyncLog).filter(SyncLog.direction == "mail_folder").order_by(SyncLog.id).all()
+
+
+def _pilot_alive(db, *, age=None):
+    """Пілот пошти в CRM живий: нещодавно з листа створено роботу
+    (`mail_folder_journal.mail_pilot_active`)."""
+    from app.business_day import utc_now
+
+    other = _letter(db, f"pilot-{age}", status="прийнято")
+    order = Order(source="email", source_email_id=other, client_name="Пілот")
+    if age is not None:
+        order.created_at = utc_now() - age
+    db.add(order)
+    db.commit()
 
 
 def test_crm_bulk_move_names_the_operator_and_flags_unaccepted(app_db, monkeypatch):  # noqa: F811
@@ -72,6 +85,7 @@ def test_sync_marks_a_move_made_directly_in_the_mailbox(app_db, monkeypatch):  #
     app, session_factory = app_db
     with session_factory() as db:
         email_id = _letter(db, "7", received_at=datetime.now())
+        _pilot_alive(db)
 
     def fake_ids(mailbox, folder, cutoff):
         return ({"<7@x>"} if folder == "Відфрезеровано" else set()), True
@@ -104,6 +118,40 @@ def test_accepted_letter_move_is_ok_and_same_folder_is_not_logged(app_db):  # no
         assert rows[0].status == "ok"
         assert "при прийнятті в чергу, Stis" in rows[0].message
         assert "НЕ прийнято" not in rows[0].message
+
+
+def test_mailbox_move_is_not_a_warning_while_the_pilot_is_paused(app_db):  # noqa: F811
+    """Власник 01.10.26: з 30.09 всю пошту ведуть в ukr.net, роботи вносять у
+    таблицю руками — «⚠ НЕ прийнято» висіло на кожному листі (124 за ніч).
+    Без прийнять через CRM за 2 доби перенос прямо в пошті — `ok`, рядок
+    лишається. Перенос через CRM попереджає, як і раніше."""
+    from datetime import timedelta
+
+    _, session_factory = app_db
+    with session_factory() as db:
+        _pilot_alive(db, age=timedelta(days=3))          # давно — не рахується
+        email = db.get(EmailMessage, _letter(db, "21"))
+        log_folder_move(db, email, None, "Відфрезеровано", via=VIA_MAILBOX)
+        log_folder_move(db, email, None, "Скачано, просчитано", via=VIA_CRM, user="Stis")
+        db.commit()
+        mailbox, crm = _journal(db)
+        assert mailbox.status == "ok"
+        assert "прямо в пошті (не через CRM)" in mailbox.message
+        assert "НЕ прийнято" not in mailbox.message
+        assert crm.status == "warning" and "НЕ прийнято" in crm.message
+
+
+def test_warning_returns_by_itself_when_a_letter_is_accepted_again(app_db):  # noqa: F811
+    _, session_factory = app_db
+    with session_factory() as db:
+        email = db.get(EmailMessage, _letter(db, "22"))
+        log_folder_move(db, email, None, "Відфрезеровано", via=VIA_MAILBOX)
+        _pilot_alive(db)                                  # прийняли лист через CRM
+        log_folder_move(db, email, "Відфрезеровано", "Скачано, просчитано", via=VIA_MAILBOX)
+        db.commit()
+        paused, alive = _journal(db)
+        assert paused.status == "ok"
+        assert alive.status == "warning" and "НЕ прийнято" in alive.message
 
 
 def test_return_to_inbox_is_journaled_as_ok(app_db):  # noqa: F811
