@@ -55,6 +55,18 @@ def test_dim_is_opacity_only_and_delayed():
     assert "prefers-reduced-motion" in LOADER_CSS
 
 
+def test_finished_download_row_is_not_kept_stale():
+    """Пошта 01.10.26: hx-preserve htmx вирішує за НОВОЮ відповіддю — докачаний
+    рядок (тепер із hx-preserve) лишав старий DOM із «завантаження…» до F5.
+    Рядок, що качається, мічено; mail.js знімає hx-preserve з відповіді для
+    таких рядків. Перевірено наживо (Edge + CDP): без цього рядок висить 40+ с."""
+    row = _tpl("_mail_triage_list.html")
+    assert "data-dl-pending" in row
+    mail_js = (ROOT / "app/static/js/mail.js").read_text(encoding="utf-8")
+    assert "unpreserveFinishedDownloads(event, target);" in mail_js
+    assert 'fresh.removeAttribute("hx-preserve")' in mail_js
+
+
 def test_colors_come_from_theme_tokens():
     import re
 

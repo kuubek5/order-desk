@@ -75,6 +75,10 @@
         <div class="mailrow{% if has_cb %} has-cb{% endif %}{% if view == 'pending' %} row-slim{% endif %}{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
              id="mailrow-{{ email.id }}"
              {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
+             {# Мітка «ще качається» — для mail.js: hx-preserve htmx вирішує за
+                НОВОЮ відповіддю, тож рядок, що докачався (тепер з hx-preserve),
+                інакше лишав би старий DOM із «завантаження…» до F5 (01.10.26). #}
+             {% if email.attachments_status == 'pending' %}data-dl-pending="1"{% endif %}
              hx-get="/mail/{{ email.id }}?panel=1"
              hx-target="#mail-detail" hx-swap="innerHTML"
              hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']"

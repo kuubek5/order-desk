@@ -25,6 +25,57 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   lastMailListResponse = incoming;
   const wrap = target.closest(".listwrap");
   savedMailScroll = wrap ? wrap.scrollTop : null;
+  unpreserveFinishedDownloads(event, target);
+});
+
+// Рядок, що докачався, мусить оновитись сам (власник 01.10.26: «бачу лише
+// анімацію, статус — тільки після перезавантаження»). htmx вирішує hx-preserve
+// за НОВОЮ відповіддю: докачаний рядок приходить із hx-preserve, і htmx лишав
+// старий DOM із «завантаження…» назавжди. Тут для рядків, які В ДОКУМЕНТІ ще
+// позначені `data-dl-pending`, знімаємо hx-preserve з відповіді — вони
+// приходять свіжими. Виділення (.active) повертаємо після заміни, а відкриту
+// картку цього листа підтягуємо, якщо в ній нічого не вписано.
+const finishedDownloads = new Set();
+
+function unpreserveFinishedDownloads(event, target) {
+  const pending = target.querySelectorAll(".mailrow[data-dl-pending]");
+  if (!pending.length || event.detail.serverResponse == null) return;
+  const tpl = document.createElement("template");
+  tpl.innerHTML = event.detail.serverResponse;
+  let changed = false;
+  pending.forEach((old) => {
+    const fresh = tpl.content.getElementById(old.id);
+    if (!fresh || fresh.hasAttribute("data-dl-pending")) return;  // ще качається
+    fresh.removeAttribute("hx-preserve");
+    if (old.classList.contains("active")) fresh.classList.add("active");
+    finishedDownloads.add(old.dataset.mailId);
+    changed = true;
+  });
+  if (changed) event.detail.serverResponse = tpl.innerHTML;
+}
+
+document.addEventListener("htmx:afterSettle", (event) => {
+  const el = event.detail && event.detail.elt;
+  if (!el || el.id !== "mail-list-rows" || !finishedDownloads.size) return;
+  const done = [...finishedDownloads];
+  finishedDownloads.clear();
+  const card = document.querySelector("#mail-detail form#mail-card-form");
+  const openId = card && card.closest("#mail-detail").querySelector("[data-email-id]");
+  const id = openId ? openId.getAttribute("data-email-id") : null;
+  const active = document.querySelector("#mail-list-rows .mailrow.active");
+  const shownId = id || (active && active.dataset.mailId);
+  if (!shownId || !done.includes(shownId)) return;
+  if (card && card.dataset.dirty === "1") {
+    if (window.showToast) window.showToast("Файли листа скачано — клікніть лист, щоб оновити картку", "info");
+    return;
+  }
+  if (window.htmx) window.htmx.ajax("GET", "/mail/" + shownId + "?panel=1", {target: "#mail-detail", swap: "innerHTML"});
+});
+
+// Оператор щось вписав у картку — свіжою її не підтягуємо (див. вище).
+document.addEventListener("input", (event) => {
+  const form = event.target.closest && event.target.closest("#mail-detail form#mail-card-form");
+  if (form) form.dataset.dirty = "1";
 });
 
 document.addEventListener("htmx:afterSettle", (event) => {
