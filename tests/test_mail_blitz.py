@@ -49,6 +49,45 @@ def test_conveyor_passes_opak_and_sum3d_to_accept(app_db, monkeypatch):  # noqa:
     assert seen["opak"] == "2" and seen["sum3d_id"] == "12-01-45"
 
 
+def test_conveyor_passes_the_changed_folder_to_accept(app_db, monkeypatch):  # noqa: F811
+    """01.10.26: у картці Конвеєра є «змінити теку» (той самий dir_editor, що
+    в картці листа) — вписана нова тека й підпапка матеріалу мусять дійти до
+    `accept_letter`, а не губитись, як доти (сервер підставляв порожні)."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        eid = _letter(db, "2")
+    seen = {}
+
+    def _fake_accept(db, user, email, **kw):
+        seen.update(kw)
+        return AcceptResult(error="зупинено в тесті")
+
+    monkeypatch.setattr(mail_router_mod, "accept_letter", _fake_accept)
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    payload = json.dumps([{
+        "email_id": eid, "client_name": "Клієнт", "material_color": "mono a3",
+        "folder_pick": "", "folder_new": "Клієнт Новий", "material_folder": "моно а3",
+    }])
+    client.post("/mail/accept-batch", {"payload": payload}, {"HX-Request": "true"})
+    assert seen["folder_new"] == "Клієнт Новий" and seen["material_folder"] == "моно а3"
+
+
+def test_conveyor_card_has_path_and_folder_editor(app_db):  # noqa: F811
+    """Картка Конвеєра: від кого, шлях «ляжуть у» і редактор теки на рядок."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        eid = _letter(db, "3")
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    status, _, html = client.get(f"/mail?partial=batch&batch={eid}")
+    assert status == 200, html[:300]
+    assert f'class="mb-row" data-batch-id="{eid}"' in html
+    assert f'id="bt-path-{eid}"' in html and "ляжуть у" in html
+    assert 'name="folder_new"' in html and 'name="material_folder"' in html
+    assert 'hx-include="closest .mb-row"' in html
+
+
 def test_changing_hold_reason_keeps_time_and_author():
     email = SimpleNamespace(status="нове", hold_at=None, hold_reason=None, hold_note=None, hold_by=None)
     put_on_hold(email, "", "", "Рома")

@@ -2094,7 +2094,10 @@ def accept_email_batch(
             kind=(item.get("kind") or ""),
             quantity=(item.get("quantity") or ""),
             folder_pick=(item.get("folder_pick") or ""),
-            folder_new="", material_folder="",
+            # «змінити теку» в картці Конвеєра (01.10.26) — те саме, що в
+            # одиночній картці: вписана нова тека й підпапка матеріалу.
+            folder_new=str(item.get("folder_new") or ""),
+            material_folder=str(item.get("material_folder") or ""),
             attachment_ids=[],
             accept_anyway=bool(item.get("accept_anyway")),
             sum3d_id=str(item.get("sum3d_id") or ""),

@@ -634,7 +634,12 @@ window.collectMailBatch = function () {
       opak: val("opak"),
       sum3d_id: val("sum3d_id"),
       kind: val("kind"),
+      // Тека — з редактора «змінити теку» в картці Конвеєра (той самий
+      // dir_editor, що в картці листа): вибрана наявна, вписана нова й
+      // підпапка матеріалу (01.10.26).
       folder_pick: val("folder_pick"),
+      folder_new: val("folder_new"),
+      material_folder: val("material_folder"),
     });
   });
   return JSON.stringify(out);

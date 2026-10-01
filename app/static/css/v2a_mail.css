@@ -1021,6 +1021,32 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .mb-move-opt span:first-of-type{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mailv2 .mb-move-tag{font-size:var(--fs-0);color:var(--accent-c);font-family:var(--font-mono)}
 
+/* Конвеєр картками (01.10.26): лист = картка, поля переносяться самі, шлях
+   на всю ширину з «змінити теку». Старі .mb-table* нижче лишились для
+   сумісності, розмітка їх більше не вживає. */
+.mailv2 .mb-list{display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0;padding-right:2px}
+/* Панель картки має межу висоти — прокручується лише список карток, а шапка
+   Конвеєра й низ із «Прийняти N в чергу» стоять на місці (інакше кнопка
+   ховалась під краєм панелі вже з двома листами). */
+.mailv2 .detail-panel>.mailbatch{flex:1 1 auto;min-height:0;overflow:hidden}
+.mailv2 .mailbatch>.mb-form{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.mailv2 .mailbatch .mb-list{flex:1 1 auto}
+.mailv2 .mb-row{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--bg-rail)}
+.mailv2 .mb-rhead{display:flex;align-items:center;gap:8px;min-width:0}
+.mailv2 .mb-from{font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
+.mailv2 .mb-subj{flex:1 1 auto;min-width:0;color:var(--ink-3);font-size:var(--fs-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mailv2 .mb-rhead .mb-filechip{margin-left:auto;flex:0 0 auto}
+.mailv2 .mb-fields{display:flex;flex-wrap:wrap;gap:8px}
+.mailv2 .mb-f{display:flex;flex-direction:column;gap:3px;flex:1 1 72px;min-width:0}
+.mailv2 .mb-f-wide{flex:2 1 160px}
+.mailv2 .mb-f>span{font-size:var(--fs-0);color:var(--ink-3)}
+.mailv2 .mb-f .suminput{height:30px;font-size:var(--fs-1);padding:0 8px;width:100%;min-width:0}
+.mailv2 .mb-pathline{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px dashed var(--line)}
+.mailv2 .mb-pathline .wph-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:var(--fs-0);line-height:1.5}
+/* Кнопка й редактор «змінити теку» — стилі картки листа (.mc-pathmore). */
+.mailv2 .mb-pathmore>summary{width:max-content}
+.mailv2 .mb-row>.mb-detailrow{padding:8px 10px;border-radius:8px;background:var(--card-2)}
+
 /* Таблиця батчу в панелі #mail-detail */
 .mailv2 .mailbatch{display:flex;flex-direction:column;gap:12px;padding:14px 16px;min-height:0}
 .mailv2 .mb-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
