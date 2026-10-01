@@ -24,9 +24,13 @@
    зроблено з рештою періодичних поллів; єдиний свідомий виняток — пульс
    видачі (handout.html), він мусить бити САМЕ тоді, коли оператор пішов
    фарбувати рядки в Google Таблиці. #}
+{# `sheet-recheck` — власна подія ЛИШЕ цього елемента: ранній перепит, поки в
+   черзі висить «ще не в таблиці» (queue.js). Не `refresh-queue from:body`
+   навмисно: той слухає й смуга групового Sum3D, і автоматичний перепит
+   перемальовував би її під пальцями оператора, що саме друкує груповий ID. #}
 <div id="queue-rows"
      hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
-     hx-trigger="load, every {{ poll_seconds|default(sync_screen_seconds|default(15)) }}s[!document.hidden], refresh-queue from:body"
+     hx-trigger="load, every {{ poll_seconds|default(sync_screen_seconds|default(15)) }}s[!document.hidden], refresh-queue from:body, sheet-recheck"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">

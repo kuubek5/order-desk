@@ -487,17 +487,20 @@ def _is_mass_vanish(previous, value) -> bool:
     return lost > 5 and lost > was * 0.25
 
 
-def _store(key: tuple, value):
+def _store(key: tuple, value, *, count: bool = True):
     """Покласти результат у кеш, якщо він не схожий на обрив звʼязку.
 
     Підозріле значення НЕ затирає попереднє: краще показати трохи застарілий
     список тек, ніж порожній. Штамп часу теж не оновлюємо — інакше наступний
     прохід вважав би дані свіжими й не спробував би ще раз.
+
+    ``count=False`` — для грійника: лічильники міряють рендер екрана.
     """
     with _cache_lock:
         hit = _cache.get(key)
         if hit is not None and _is_mass_vanish(hit[1], value):
-            _counters["kept"] += 1
+            if count:
+                _counters["kept"] += 1
             logger.warning(
                 "Сканер export: різке падіння (%d → %d) для %s — схоже на "
                 "недоступну шару, лишаю попередній результат",
@@ -557,6 +560,61 @@ def _background_refresh(key: tuple, producer) -> None:
         with _cache_lock:
             _refreshing.discard(key)
     _store(key, value)
+
+
+def _refresh_if_older(key: tuple, producer, older_than: float):
+    """Для ГРІЙНИКА: оновити ключ синхронно, якщо він старший за ``older_than``
+    (або його ще немає), і віддати значення.
+
+    Звичайний `_cached` оновлює лише ПРОТУХЛЕ, і лише коли його хтось прочитав:
+    грійник раз на 120 с читав ключ, який ще жив (<180 с), і не чіпав його —
+    ключ протухав між проходами, і першим його читав уже оператор. Бойовий лог
+    30.09.26: рендер видачі на протухлому кеші 1.4–2.8 с замість 0.1–0.5 с,
+    зранку приблизно кожна сьома галочка «знайдено». Тут грійник оновлює
+    СВОЇ ключі наперед, тож вони не доживають до TTL.
+
+    Лічильники влучань не чіпаємо: вони вимірюють рендер екрана (різниця
+    до/після), і фонові проходи їх лише спотворили б. Запобіжник від «шара
+    відпала» — той самий `_store`: підозріле значення не затирає попереднє.
+    """
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < older_than:
+            return hit[1]
+        lock = _producer_locks.setdefault(key, threading.Lock())
+    with lock:
+        # Поки чекали на лок, екран чи попередній прохід могли вже оновити.
+        with _cache_lock:
+            hit = _cache.get(key)
+            if hit is not None and time.monotonic() - hit[0] < older_than:
+                return hit[1]
+        value = producer()
+        _store(key, value, count=False)
+        with _cache_lock:
+            fresh = _cache.get(key)
+        return fresh[1] if fresh is not None else value
+
+
+def refresh_export_client(
+    root: Path, client_folder_name: str, not_before: datetime | None, *, older_than: float
+) -> list[ExportEntry]:
+    """`scan_export_client_cached` для грійника — той самий ключ кешу."""
+    return _refresh_if_older(
+        ("client", str(root), client_folder_name, not_before),
+        lambda: scan_export_client(root, client_folder_name, not_before),
+        older_than,
+    )
+
+
+def refresh_export_client_latest(
+    root: Path, client_folder_name: str, *, older_than: float, count: int = 3
+) -> list[ExportEntry]:
+    """`scan_export_client_latest_cached` для грійника — той самий ключ кешу."""
+    return _refresh_if_older(
+        ("client-latest", str(root), client_folder_name, count),
+        lambda: scan_export_client_latest(root, client_folder_name, count),
+        older_than,
+    )
 
 
 def list_export_client_names_cached(root: Path) -> list[str]:

@@ -559,6 +559,41 @@ def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -
     return True
 
 
+def write_rework_cells(
+    worksheet: gspread.Worksheet, order: Order, value: str, letter: str | None
+) -> bool:
+    """ID переробки (W) і, коли ``letter`` не None, літеру (X) — ОДНІЄЮ звіркою
+    рядка й ОДНИМ записом.
+
+    До 30.09.26 це були `write_rework_sum3d` + `write_rework_calculated`
+    поспіль: дві звірки того самого рядка й два записи, ~1.7 с на Sum3D
+    переробки в цеху. Правило звірки те саме (`_resolve_row`): не підтвердили
+    рядок — не пишемо НІЧОГО, обидві клітинки разом. Раніше між двома
+    записами рядок міг «загубитись», і W лягала без X."""
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        return False
+    updates = [{
+        "range": gspread.utils.rowcol_to_a1(row, COL_REDO_SUM3D_ID),
+        "values": [[value or ""]],
+    }]
+    if letter is not None:
+        updates.append({
+            "range": gspread.utils.rowcol_to_a1(row, COL_REDO_CALCULATED),
+            "values": [[letter or ""]],
+        })
+    # Ідемпотентно: повтор запише ті самі значення в ті самі клітинки.
+    # RAW — текстом, як основний Sum3D у L (`write_order_fields`). До 01.10.26
+    # ці клітинки писав `update_cell` у режимі USER_ENTERED, і Google читав
+    # `17-05-21` як ДАТУ 17.05.2021 (під капотом число 44333; на екрані
+    # показував як набрали, тож помітно не було). Рішення власника 01.10.26:
+    # ID переробки — такий самий текст, як основний.
+    call_with_retry(lambda: worksheet.batch_update(
+        updates, value_input_option=gspread.utils.ValueInputOption.raw,
+    ))
+    return True
+
+
 def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> bool:
     """Write the operator letter into the rework "Прорахував" cell (column X) —
     who calculated the REDO in Sum3D, the БРАК-block counterpart of column М.
@@ -744,12 +779,12 @@ def _row_is_occupied(row: list[str]) -> bool:
     return bool(b or c or e)
 
 
-def _next_client_row(
-    worksheet: gspread.Worksheet, start_row: int, end_row: int
-) -> int:
+def _next_client_row(raw_rows: list, start_row: int, end_row: int) -> int:
     """Row directly below the last populated row in the client region — client
-    files stack contiguously top-to-bottom, no gap (CLAUDE.md workflow)."""
-    raw_rows = call_with_retry(lambda: worksheet.get(f"B{start_row}:E{end_row}"))
+    files stack contiguously top-to-bottom, no gap (CLAUDE.md workflow).
+
+    ``raw_rows`` — уже прочитаний зріз зони від ``start_row`` (B:N): читання
+    одне на все додавання, див. `append_manual_work_rows`."""
     last_filled = start_row - 1
     for offset, row in enumerate(raw_rows):
         if _row_is_occupied(row):
@@ -762,7 +797,7 @@ def _next_client_row(
     return row_number
 
 
-def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) -> int:
+def _next_lab_row(raw_rows: list, lab_start: int, lab_end: int) -> int:
     """Row one empty gap below the last populated lab row inside the main lab
     table above the client region — leaves one blank row of separation.
 
@@ -771,8 +806,9 @@ def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) ->
     — it is often filled in later — and such a row was invisible to a B-only
     scan, so every later manual add resolved to that SAME row and overwrote it.
     Column A is excluded on purpose: the lab pre-numbers it 1..N for the whole
-    day, so A is never empty and would push every add past the region."""
-    raw_rows = call_with_retry(lambda: worksheet.get(f"B{lab_start}:E{lab_end}"))
+    day, so A is never empty and would push every add past the region.
+
+    ``raw_rows`` — уже прочитаний зріз зони від ``lab_start`` (B:N)."""
     last_lab = None
     for offset, row in enumerate(raw_rows):
         if _row_is_occupied(row):
@@ -984,47 +1020,59 @@ def append_manual_work_rows(
     if not works:
         return []
     n = len(works)
-    end_row = start_row + max_search_rows
     if placement == "lab":
-        first = _next_lab_row(
-            worksheet, lab_start=HEADER_ROWS + 1, lab_end=CLIENT_REGION_START - 1
-        )
+        scan_start, scan_end = HEADER_ROWS + 1, CLIENT_REGION_START - 1
+    else:
+        scan_start, scan_end = start_row, start_row + max_search_rows
+
+    # ОДНЕ читання зони B:N — і для вибору позиції, і для перевірки цільових
+    # рядків. До 30.09.26 їх було два поспіль: скан B:E, потім перевірочне
+    # читання B:N саме цільового блока. Друге ловило рядок, що зʼявився МІЖ
+    # двома читаннями, але вікно між читанням і записом лишалось тим самим —
+    # один запит до Google. Тепер вікно те саме (читання → запис), а запит
+    # один: ~0.4 с з кожного додавання (заміри з цеху: запис 1.1–1.6 с, з них
+    # третина — друге читання).
+    #
+    # Технік, що вписує рядок руками рівно в цю мить, лишається ризиком — як і
+    # до зміни: незахищене вікно тоді й тепер однакове, один запит до Google.
+    # Ширше його не робити: між читанням і `batch_update` нижче не має бути
+    # жодних інших звернень.
+    #
+    # Помилка читання НЕ пропускає запис наосліп: виняток летить нагору і
+    # запис не відбувається — неперевірений рядок гірший за пропущений запис
+    # (те саме правило, що на `_resolve_row`, CLAUDE.md §14).
+    region = call_with_retry(lambda: worksheet.get(f"B{scan_start}:N{scan_end}")) or []
+
+    if placement == "lab":
+        first = _next_lab_row(region, lab_start=scan_start, lab_end=scan_end)
         last = first + n - 1
         if last > CLIENT_REGION_START - 1:
             raise RuntimeError(
                 f"лабораторна зона не вміщає {n} рядків до клієнтської зони"
             )
     else:
-        first = _next_client_row(worksheet, start_row, end_row)
+        first = _next_client_row(region, scan_start, scan_end)
         last = first + n - 1
-        if last > end_row:
+        if last > scan_end:
             raise RuntimeError(f"клієнтська зона не вміщає {n} рядків")
 
     rows = list(range(first, last + 1))
 
-    # ПЕРЕВІРОЧНЕ ЧИТАННЯ перед записом. Позиція блока вибрана з ОДНОГО читання
-    # вище, а між ним і записом минає час: у таблицю в цю мить пише технік
-    # руками, і його рядок ляже саме туди, куди ми зібрались писати. Тоді наш
-    # batch_update мовчки затер би живу клієнтську роботу — без сліду, бо
-    # заміщені значення ніде не збереглись (аудит 08.09.26).
-    #
-    # Ціна — один додатковий запит на ручне додавання, а їх кілька на день.
-    # Ціна помилки — зникла коронка, знайдена аж на видачі.
-    #
-    # Помилка читання НЕ пропускає запис: неперевірений рядок гірший за
-    # пропущений запис — те саме правило, що на `_resolve_row` (CLAUDE.md §14).
-    #
-    # Читаємо до N, а не до E: зайнятість і далі вирішують B/C/E, але L:N
-    # (Sum3D, «Прорахував», «Відфрезерував») без роботи в рядку — це залишок,
-    # і нова робота його УСПАДКУВАЛА б: синк прочитав би її прорахованою з
-    # чужим Sum3D. Так лежав рядок 60 вкладки 18.09.26 після видалення
-    # пробної роботи (17.09, 19:50) — його стирання чистило лише A:K.
-    guard_rows = call_with_retry(lambda: worksheet.get(f"B{first}:N{last}"))
+    # Перевірка цільових рядків — з того самого читання. Зайнятість вирішують
+    # B/C/E, але L:N (Sum3D, «Прорахував», «Відфрезерував») без роботи в рядку
+    # — це залишок, і нова робота його УСПАДКУВАЛА б: синк прочитав би її
+    # прорахованою з чужим Sum3D. Так лежав рядок 60 вкладки 18.09.26 після
+    # видалення пробної роботи (17.09, 19:50) — його стирання чистило лише A:K.
     leftovers: list[int] = []
-    for offset, row in enumerate(guard_rows or []):
+    for row_number in rows:
+        offset = row_number - scan_start
+        row = region[offset] if 0 <= offset < len(region) else []
         if _row_is_occupied(row):
+            # Вибір позиції бере рядки ПІСЛЯ останнього зайнятого, тож сюди
+            # потрапити не мав би. Лишено як запобіжник: якщо правило вибору
+            # колись зміниться, запис у живий рядок не пройде мовчки.
             raise RuntimeError(
-                f"рядок {first + offset} у таблиці вже зайнятий — хтось писав "
+                f"рядок {row_number} у таблиці вже зайнятий — хтось писав "
                 "у цю вкладку одночасно з вами. Спробуйте ще раз."
             )
         marks = [c for c in row[_GUARD_MARKS] if isinstance(c, str)]
@@ -1032,9 +1080,9 @@ def append_manual_work_rows(
             logger.warning(
                 "Ручне додавання: рядок %s без роботи мав залишок у L:N %r — стираю, "
                 "інакше нова робота його успадкує",
-                first + offset, marks,
+                row_number, marks,
             )
-            leftovers.append(first + offset)
+            leftovers.append(row_number)
 
     # Values + blue fill in ONE spreadsheets.batchUpdate — one fewer proxy
     # round-trip than a separate values write + format. Blue paints only A:K,

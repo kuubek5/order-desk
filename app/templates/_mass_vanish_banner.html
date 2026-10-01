@@ -16,6 +16,18 @@
     </span>
 </div>
 {% endif %}
+{# Запис у таблицю, що не дійшов за 5 хв (app/services/sheet_stuck_writes.py).
+   База значення тримає й повтор іде сам — банер лише каже людям, що спільна
+   таблиця зараз НЕ показує того, що в CRM: логіст дивиться саме туди.
+   `is defined` — партіал рендерять і з місць, що цього ключа не передають. #}
+{% if stuck_writes is defined and stuck_writes %}
+<div class="sync-notice sync-notice-warn stuck-writes-banner" role="alert">
+    <span>⚠ Не дійшло в Google Таблицю понад 5 хв:
+        {% if stuck_writes.sum3d %}Sum3D — <b>{{ stuck_writes.sum3d }}</b>{% endif %}{% if stuck_writes.sum3d and stuck_writes.fill %}, {% endif %}{% if stuck_writes.fill %}синя заливка — <b>{{ stuck_writes.fill }}</b>{% endif %}.
+        У CRM усе збережено, програма дописує сама кожні 2 хв. Які саме роботи —
+        у Журналі синку.</span>
+</div>
+{% endif %}
 {# Вміст банера масового видалення. Живе у самополл-обгортці #mass-vanish-slot
    (queue.html), яка оновлює його кожні 15с через /sheets/mass-vanish — тому банер
    з'являється/зникає наживо, не чекаючи повного перезавантаження сторінки.

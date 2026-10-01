@@ -793,6 +793,15 @@ class TestExportPrewarm:
             "scan_export_client_cached",
             lambda root, folder, not_before: calls.append((str(root), folder, not_before)) or [],
         )
+        # Грійник з 30.09.26 оновлює наперед (`refresh_export_client`) — той
+        # самий ключ кешу, тому записуємо його тим самим кортежем.
+        monkeypatch.setattr(
+            handout_service,
+            "refresh_export_client",
+            lambda root, folder, not_before, *, older_than: calls.append(
+                (str(root), folder, not_before)
+            ) or [],
+        )
         return calls
 
     def test_prewarm_hits_the_same_cache_keys_as_the_screen(self, monkeypatch):
@@ -872,6 +881,99 @@ class TestExportPrewarm:
             "прогрів не покрив те, що читає екран — оператор платитиме за обхід сам: "
             f"непрогріте {from_screen - from_warm}"
         )
+
+    def _seed_days(self, db):
+        """Два клієнти на чотирьох днях — «усі дні» мають власну межу за датою."""
+        _user(db)
+        days = ("31.08.26", "01.09.26", "02.09.26", "03.09.26")
+        for i, tab in enumerate(days):
+            for j, who in enumerate(("Basarab", "Кривовид")):
+                db.add(_client_order(
+                    client_name=who, status="прийнято",
+                    sheet_tab=tab, row_number=70 + i * 2 + j,
+                ))
+        db.commit()
+
+    def test_prewarm_covers_the_all_days_view(self, monkeypatch):
+        """Бойовий лог 30.09.26: видача працює у вигляді «усі дні», а грійник
+        його не грів — кожні ~3 хв рендер влітав у протухлий кеш (1.4–2.8 с
+        замість 0.1–0.5 с), зранку приблизно кожна сьома галочка."""
+        from app.services.handout import HANDOUT_ALL_DAYS
+
+        engine = _database()
+        with Session(engine) as db:
+            self._seed_days(db)
+            user_id = db.scalar(select(User.id))
+
+            screen_calls = self._record_scans(monkeypatch)
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            handout_router_mod.get_handout(request=_request(user_id), day=HANDOUT_ALL_DAYS, db=db)
+            from_screen = set(screen_calls)
+
+            warm_calls = self._record_scans(monkeypatch)
+            web.export_warm_once(db)
+            from_warm = set(warm_calls)
+
+        assert from_screen, "екран мусить звертатися до сховища — інакше тест ні про що"
+        assert from_screen <= from_warm, (
+            f"«усі дні» не прогріто — непрогріте {from_screen - from_warm}"
+        )
+
+    def test_prewarm_refreshes_ahead_instead_of_only_reading(self, monkeypatch):
+        """Грійник, що лише ЧИТАЄ кеш, не рятує: ключ доживає до TTL між
+        проходами, і протухле першим отримує оператор (бойовий лог 30.09.26).
+        Тому прохід мусить іти через оновлення наперед, і з межею, меншою за
+        інтервал проходів — інакше оновлення пропускало б прохід."""
+        engine = _database()
+        with Session(engine) as db:
+            self._seed(db)
+            for mod in (web, handout_router_mod):
+                monkeypatch.setattr(
+                    mod, "list_export_client_names_cached", lambda root: ["Basarab", "Кривовид"]
+                )
+                monkeypatch.setattr(mod, "get_export_folder_path", lambda db: "Z:\\")
+            read_only, ahead = [], []
+            monkeypatch.setattr(
+                handout_service, "scan_export_client_cached",
+                lambda root, folder, not_before: read_only.append(folder) or [],
+            )
+            monkeypatch.setattr(
+                handout_service, "refresh_export_client",
+                lambda root, folder, not_before, *, older_than: ahead.append(older_than) or [],
+            )
+            web.export_warm_once(db)
+
+        assert ahead, "грійник не оновлює наперед"
+        assert read_only == [], "грійник знову лише читає кеш"
+        assert all(limit < web.EXPORT_WARM_INTERVAL_SECONDS for limit in ahead)
+
+    def test_prewarm_skips_a_huge_all_days_view(self, monkeypatch):
+        """Понад поріг «усі дні» не гріються — серпневі 262 клієнти й 511 с обходу
+        фоном кожні дві хвилини були б гіршими за рідкий повільний клік."""
+        from app.services.handout import HANDOUT_ALL_DAYS
+
+        monkeypatch.setattr(web, "EXPORT_WARM_ALL_DAYS_MAX_CLIENTS", 1)
+        engine = _database()
+        with Session(engine) as db:
+            self._seed_days(db)
+            user_id = db.scalar(select(User.id))
+
+            screen_calls = self._record_scans(monkeypatch)
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            handout_router_mod.get_handout(request=_request(user_id), day=HANDOUT_ALL_DAYS, db=db)
+            from_screen = set(screen_calls)
+
+            warm_calls = self._record_scans(monkeypatch)
+            web.export_warm_once(db)
+            from_warm = set(warm_calls)
+
+        assert from_screen - from_warm, "понад поріг «усі дні» гріти не можна"
 
     def test_prewarm_skips_an_unreachable_export_root(self, monkeypatch):
         engine = _database()

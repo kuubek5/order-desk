@@ -30,7 +30,12 @@ from app.client_matcher import (
     match_client_name_cached,
     matcher_cache_key,
 )
-from app.export_scanner import scan_export_client_cached, scan_export_client_latest_cached
+from app.export_scanner import (
+    refresh_export_client,
+    refresh_export_client_latest,
+    scan_export_client_cached,
+    scan_export_client_latest_cached,
+)
 from app.material_match import materials_match
 from app.services.clients import quantity_units
 from app.services.folder_merge import folder_sibling_map
@@ -469,33 +474,46 @@ def handout_not_before(eligible: list[Order]) -> datetime | None:
 
 
 def scan_export_for_clients(
-    root: Path, folders_by_client: dict[str, str], not_before: datetime | None
+    root: Path, folders_by_client: dict[str, str], not_before: datetime | None,
+    *, refresh_older_than: float | None = None,
 ) -> dict[str, list]:
     """Обхід сховища для показаних клієнтів, паралельно — див.
-    EXPORT_SCAN_WORKERS. Кеш сканера потокобезпечний."""
+    EXPORT_SCAN_WORKERS. Кеш сканера потокобезпечний.
+
+    ``refresh_older_than`` — лише для грійника: оновити ключі, старші за це
+    число секунд, наперед (`refresh_export_client`), а не чекати, поки вони
+    протухнуть під кліком оператора. Екран його не передає."""
     if not folders_by_client:
         return {}
     names = list(folders_by_client)
+    if refresh_older_than is None:
+        def scan(folder):
+            return scan_export_client_cached(root, folder, not_before)
+    else:
+        def scan(folder):
+            return refresh_export_client(root, folder, not_before, older_than=refresh_older_than)
     with ThreadPoolExecutor(max_workers=min(EXPORT_SCAN_WORKERS, len(names))) as pool:
-        results = pool.map(
-            lambda folder: scan_export_client_cached(root, folder, not_before),
-            (folders_by_client[name] for name in names),
-        )
+        results = pool.map(scan, (folders_by_client[name] for name in names))
         return dict(zip(names, results))
 
 
 def scan_export_latest_for_clients(
-    root: Path, folders_by_client: dict[str, str]
+    root: Path, folders_by_client: dict[str, str],
+    *, refresh_older_than: float | None = None,
 ) -> dict[str, list]:
-    """Найновіші партії — для клієнтів, у яких вікно за датою дало порожньо."""
+    """Найновіші партії — для клієнтів, у яких вікно за датою дало порожньо.
+    ``refresh_older_than`` — як у `scan_export_for_clients`, лише для грійника."""
     if not folders_by_client:
         return {}
     names = list(folders_by_client)
+    if refresh_older_than is None:
+        def scan(folder):
+            return scan_export_client_latest_cached(root, folder)
+    else:
+        def scan(folder):
+            return refresh_export_client_latest(root, folder, older_than=refresh_older_than)
     with ThreadPoolExecutor(max_workers=min(EXPORT_SCAN_WORKERS, len(names))) as pool:
-        results = pool.map(
-            lambda folder: scan_export_client_latest_cached(root, folder),
-            (folders_by_client[name] for name in names),
-        )
+        results = pool.map(scan, (folders_by_client[name] for name in names))
         return dict(zip(names, results))
 
 

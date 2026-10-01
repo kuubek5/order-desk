@@ -646,6 +646,107 @@ def test_concurrent_misses_scan_the_share_once():
     assert all(r == ["один", "два"] for r in results)
 
 
+class TestWarmerRefreshesAhead:
+    """Грійник оновлює СВОЇ ключі наперед (30.09.26).
+
+    Звичайний кеш оновлює лише протухле й лише під читанням: грійник раз на
+    120 с читав ще живий ключ (<180 с) і не чіпав його, ключ протухав між
+    проходами, і першим протухле читав оператор — 1.4–2.8 с на рендер видачі."""
+
+    def _age(self, key, seconds):
+        from app import export_scanner
+
+        with export_scanner._cache_lock:
+            stamped, value = export_scanner._cache[key]
+            export_scanner._cache[key] = (stamped - seconds, value)
+
+    def test_young_key_is_left_alone(self):
+        from app import export_scanner
+
+        _reset_cache()
+        key = ("names", "молодий")
+        export_scanner._cached(key, lambda: ["a"])
+        calls = []
+        got = export_scanner._refresh_if_older(key, lambda: calls.append(1) or ["b"], older_than=90)
+        assert got == ["a"] and calls == []
+
+    def test_key_older_than_the_limit_is_refreshed_synchronously_and_restamped(self):
+        from app import export_scanner
+
+        _reset_cache()
+        key = ("names", "старий")
+        export_scanner._cached(key, lambda: ["a"])
+        self._age(key, 100)  # ще живий для екрана (<180), але старший за 90
+
+        got = export_scanner._refresh_if_older(key, lambda: ["b"], older_than=90)
+
+        assert got == ["b"], "оновлення мусить бути синхронним — у тому ж проході"
+        with export_scanner._cache_lock:
+            stamped, value = export_scanner._cache[key]
+        assert value == ["b"]
+        assert time.monotonic() - stamped < 5, "штамп часу мусить оновитись"
+        # Екран після цього читає свіже — без протухання й фонового переобходу.
+        before = export_scanner.cache_counters()
+        assert export_scanner._cached(key, lambda: ["c"]) == ["b"]
+        after = export_scanner.cache_counters()
+        assert after["hit"] - before["hit"] == 1 and after["stale"] == before["stale"]
+
+    def test_missing_key_is_produced(self):
+        from app import export_scanner
+
+        _reset_cache()
+        assert export_scanner._refresh_if_older(("names", "новий"), lambda: ["x"], older_than=90) == ["x"]
+
+    def test_screen_counters_are_not_touched(self):
+        """Лічильники міряють рендер екрана різницею до/після; фоновий прохід,
+        що їх рухає, дав би в лозі видачі чужі числа."""
+        from app import export_scanner
+
+        _reset_cache()
+        key = ("names", "лічильники")
+        export_scanner._cached(key, lambda: ["a"])
+        self._age(key, 100)
+        before = export_scanner.cache_counters()
+        export_scanner._refresh_if_older(key, lambda: ["b"], older_than=90)
+        assert export_scanner.cache_counters() == before
+
+    def test_dropped_share_does_not_overwrite_and_stays_due(self):
+        """Шара відпала посеред проходу: порожнеча не затирає кеш (той самий
+        запобіжник `_store`), а штамп не оновлюється — наступний прохід
+        спробує знову, замість вважати порожнечу свіжою."""
+        from app import export_scanner
+
+        _reset_cache()
+        key = ("names", "обрив")
+        full = [f"клієнт-{i}" for i in range(40)]
+        export_scanner._cached(key, lambda: full)
+        self._age(key, 100)
+
+        before = export_scanner.cache_counters()
+        got = export_scanner._refresh_if_older(key, lambda: [], older_than=90)
+
+        assert got == full
+        assert export_scanner.cache_counters() == before, (
+            "запобіжник спрацював у грійнику — `kept` рендера видачі чіпати не можна"
+        )
+        with export_scanner._cache_lock:
+            stamped, _ = export_scanner._cache[key]
+        assert time.monotonic() - stamped >= 99
+
+    def test_refresh_helpers_use_the_screen_cache_keys(self, tmp_path):
+        """Оновлення має влучати рівно в ті ключі, що читає екран, — інакше
+        грійник гріє повз."""
+        from app import export_scanner
+
+        _reset_cache()
+        export_scanner.refresh_export_client(tmp_path, "Клієнт", None, older_than=90)
+        export_scanner.refresh_export_client_latest(tmp_path, "Клієнт", older_than=90)
+        with export_scanner._cache_lock:
+            keys = set(export_scanner._cache)
+        assert ("client", str(tmp_path), "Клієнт", None) in keys
+        assert ("client-latest", str(tmp_path), "Клієнт", 3) in keys
+
+
 class TestBatchWithoutMaterialFolder:
     """Список з робочого ПК 11.09.26: 42 партії за 60 днів, де файли лежать
     просто в партії («Новая папка (N)», `kappa`, `pmma a1`). Видача їх не

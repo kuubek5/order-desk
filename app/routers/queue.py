@@ -46,6 +46,7 @@ from app.services.queue_view import (
     build_queue_view,
     live_sync_status,
 )
+from app.services.sheet_stuck_writes import stuck_sheet_writes
 from app.sheet_sync_service import (
     SheetSyncError,
     header_mismatch_pending,
@@ -529,6 +530,7 @@ def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
             "user": user,
             "mass_vanish": mass_vanish_pending(),
             "header_mismatch": header_mismatch_pending(),
+            "stuck_writes": stuck_sheet_writes(),
         },
     )
 

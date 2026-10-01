@@ -74,6 +74,63 @@ document.addEventListener("htmx:afterSettle", (event) => {
   }
 });
 
+// Позначка «ще не в таблиці» (Sum3D стоїть у пачці на запис) знімається лише
+// після підтвердження Google — а воно приходить за 1–2 с. Звичайний полл
+// показав би це аж через 15 с, і весь цей час рядок казав би «не записано»,
+// хоча ID уже в таблиці (30.09.26). Тому, поки в черзі є така позначка,
+// перепитуємо чергу раніше: через 2, 4 і 8 с. Далі — звичайний полл: запис,
+// що не дійшов за 14 с, застряг, і про це вже кажуть сама позначка й банер.
+// Даних це не міняє — той самий GET, що й полл, з тими самими запобіжниками
+// (фокус у полі, незмінна відповідь, скрол), і чіпає ЛИШЕ #queue-rows.
+const PENDING_RECHECK_DELAYS = [2000, 4000, 8000];
+let pendingRecheckStep = 0;
+let pendingRecheckTimer = null;
+let pendingMarkCount = 0;
+
+function hasPendingSheetMark() {
+  return !!document.querySelector("#queue-rows .is-sum3d-pending");
+}
+
+function schedulePendingRecheck() {
+  // Позначок стало БІЛЬШЕ — це новий Sum3D, і він заслуговує на свої ранні
+  // перепити, навіть якщо поруч давно висить інша, «застрягла» позначка:
+  // інакше та одна мовчки вимикала б прискорення для всіх наступних.
+  const count = document.querySelectorAll("#queue-rows .is-sum3d-pending").length;
+  if (count > pendingMarkCount) pendingRecheckStep = 0;
+  pendingMarkCount = count;
+  if (pendingRecheckTimer) return;
+  if (!count) {
+    pendingRecheckStep = 0; // позначок немає — наступна почне відлік спочатку
+    return;
+  }
+  if (pendingRecheckStep >= PENDING_RECHECK_DELAYS.length) return;
+  const delay = PENDING_RECHECK_DELAYS[pendingRecheckStep];
+  pendingRecheckStep += 1;
+  pendingRecheckTimer = setTimeout(() => {
+    pendingRecheckTimer = null;
+    if (!hasPendingSheetMark()) {
+      pendingRecheckStep = 0; // встигло підтвердитись саме — відлік спочатку
+      return;
+    }
+    if (document.hidden) return;
+    // Власна подія самої черги, НЕ `refresh-queue` на body: на ту реагує й
+    // смуга групового Sum3D (outerHTML), і автоматичний перепит стирав би
+    // груповий ID, який оператор саме друкує. Елемент шукаємо щоразу — полл
+    // підміняє #queue-rows цілком.
+    const rows = document.getElementById("queue-rows");
+    if (rows) htmx.trigger(rows, "sheet-recheck");
+  }, delay);
+}
+
+// Два моменти, коли могла зʼявитись позначка: після свапу (відповідь на
+// Sum3D, полл зі зміною) і після запиту полла без свапу — незмінна відповідь
+// свап пропускає (див. вище), а позначка все ще висить і чекає перепиту.
+document.addEventListener("htmx:afterSettle", schedulePendingRecheck);
+document.addEventListener("htmx:afterRequest", (event) => {
+  const elt = event.detail && event.detail.elt;
+  if (elt && elt.id === "queue-rows") schedulePendingRecheck();
+});
+
 // Inline comment textarea: grow to fit the full text while focused/typing so a
 // long technician comment is readable and editable, collapse back to one line
 // on blur. Enter saves (blurs → the form's hx-trigger=change fires), Shift+Enter

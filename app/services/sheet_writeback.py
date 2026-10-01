@@ -39,8 +39,7 @@ from app.sheet_writer import (
     take_last_erased,
     write_calculated,
     write_order_fields,
-    write_rework_calculated,
-    write_rework_sum3d,
+    write_rework_cells,
 )
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
 
@@ -1130,9 +1129,8 @@ def write_rework_sum3d_fields(
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-        written = write_rework_sum3d(worksheet, order, value)
-        if letter is not None and written:
-            written = write_rework_calculated(worksheet, order, letter)
+        # Одна звірка рядка й один запис на обидві клітинки (W і X).
+        written = write_rework_cells(worksheet, order, value, letter)
         if not written:
             # Той самий контракт, що у write_sheet_fields: пропуск видно
             # окремо від успіху (S.8).

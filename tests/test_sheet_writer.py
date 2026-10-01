@@ -366,16 +366,13 @@ class TestStatusMarkers:
 
 
 def _scan_then_free(rows):
-    """Аркуш-двійник, який відповідає на ДВА читання, а не на одне.
+    """Аркуш-двійник для читання зони перед ручним додаванням.
 
-    Аудит 08.09.26 додав перевірочне читання цільового блока безпосередньо
-    перед записом: позиція вибирається з одного читання, а між ним і записом
-    у таблицю може встигнути написати технік руками — і `batch_update` мовчки
-    затер би живу клієнтську роботу без жодного сліду.
-
-    Тому перше читання — скан зайнятості (повертає `rows`), друге — перевірка
-    цільових рядків (порожньо = вільні). Тестам, яким треба показати ЗАЙНЯТИЙ
-    цільовий рядок, досить задати власний side_effect.
+    Перше читання віддає `rows` (зона B:N від першого рядка), будь-яке
+    наступне — порожньо. З 30.09.26 додавання читає зону РІВНО раз (див.
+    `TestManualAddDoesNotOverwriteALiveRow`); «наступне порожньо» лишено, щоб
+    тест, який випадково почне читати двічі, впав на своїй перевірці, а не
+    на StopIteration.
     """
     answers = iter([rows])
 
@@ -401,7 +398,7 @@ class TestAppendMailPlaceholderRow:
         )
 
         assert row_number == 60
-        assert fake_ws.get.call_args_list[0][0][0] == ("B60:E260")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B60:N260")
         fake_ws.spreadsheet.batch_update.assert_called_once()
         assert _written(fake_ws) == {
             (60, 3): "5",       # Кількість
@@ -418,12 +415,14 @@ class TestAppendMailPlaceholderRow:
         fake_ws = MagicMock()
         fake_ws.id = 5
         leftover = ["", "", "", "", "", "", "", "", "", "", "12-45-45", "V"]
-        fake_ws.get.side_effect = [[], [leftover]]
+        # Одне читання зони: рядок 60 вільний за B/C/E, але несе залишок у L:M.
+        fake_ws.get.side_effect = [[leftover]]
 
         row_number = append_mail_placeholder_row(fake_ws, "Вова", "5", "емо а3", start_row=60)
 
         assert row_number == 60
-        assert fake_ws.get.call_args_list[1][0][0] == "B60:N60"
+        assert fake_ws.get.call_count == 1
+        assert fake_ws.get.call_args_list[0][0][0] == "B60:N260"
         requests = fake_ws.spreadsheet.batch_update.call_args[0][0]["requests"]
         blank = requests[0]["updateCells"]
         assert blank["range"]["startRowIndex"] == 59
@@ -497,7 +496,7 @@ class TestAppendMailPlaceholderRow:
         )
 
         assert row_number == 100
-        assert fake_ws.get.call_args_list[0][0][0] == ("B100:E300")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B100:N300")
 
 
 class TestManualPlacement:
@@ -523,7 +522,7 @@ class TestManualPlacement:
         )
 
         assert row_number == 64  # directly under the last record, no gap-filling
-        assert fake_ws.get.call_args_list[0][0][0] == ("B60:E260")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B60:N260")
 
     def test_client_empty_window_uses_start_row(self):
         fake_ws = MagicMock()
@@ -537,7 +536,7 @@ class TestManualPlacement:
 
     def test_lab_leaves_one_gap_after_last_lab_row(self):
         """Last lab row is row 30 → new lab row lands at 32, leaving row 31
-        blank as a separator. Scans only the lab region, B:E of rows 7..59."""
+        blank as a separator. Scans only the lab region, B:N of rows 7..59."""
         fake_ws = MagicMock()
         # B7:E59 = 53 rows; наряд filled in the first 24 (rows 7..30).
         rows = [["24000", "1", "", "анатомія"]] * 24 + [[]] * 29
@@ -550,7 +549,7 @@ class TestManualPlacement:
         )
 
         assert row_number == 32  # last lab 30, gap 31, write 32
-        assert fake_ws.get.call_args_list[0][0][0] == ("B7:E59")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B7:N59")
         assert _blue_range(fake_ws) is None  # lab rows never painted blue
         written = _written(fake_ws)
         assert written[(32, 2)] == "99001"  # наряд col B
@@ -882,6 +881,85 @@ class TestResolveRowGuardsAgainstShift:
         ws.update_cell.assert_not_called()
 
 
+class TestWriteReworkCells:
+    """ID переробки (W) і літера (X) — одна звірка рядка, один запис (30.09.26).
+    Доти дві пари «звірка + update_cell»: ~1.7 с на Sum3D переробки в цеху."""
+
+    def test_id_and_letter_in_one_call_after_one_check(self):
+        from app.sheet_writer import COL_REDO_CALCULATED, COL_REDO_SUM3D_ID, write_rework_cells
+        order = _lab_order(work_order_no="A", row_number=2)  # рядок 8
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="A")
+
+        assert write_rework_cells(ws, order, "17-05-21", "K") is True
+
+        assert ws.cell.call_count == 1  # одна звірка
+        ws.batch_update.assert_called_once()  # один запис
+        ws.update_cell.assert_not_called()
+        updates = ws.batch_update.call_args[0][0]
+        assert updates == [
+            {"range": gspread.utils.rowcol_to_a1(8, COL_REDO_SUM3D_ID), "values": [["17-05-21"]]},
+            {"range": gspread.utils.rowcol_to_a1(8, COL_REDO_CALCULATED), "values": [["K"]]},
+        ]
+
+    def test_id_goes_as_text_like_the_main_sum3d(self):
+        """ID переробки — текстом (RAW), як основний Sum3D. У режимі USER_ENTERED
+        Google читав `17-05-21` як дату 17.05.2021 (перевірено наживо 30.09.26
+        на тестовій таблиці: 44333). Рішення власника 01.10.26."""
+        from app.sheet_writer import write_rework_cells
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="A")
+
+        write_rework_cells(ws, order, "17-05-21", "K")
+
+        assert ws.batch_update.call_args.kwargs["value_input_option"] == (
+            gspread.utils.ValueInputOption.raw
+        )
+
+    def test_no_letter_writes_only_the_id(self):
+        from app.sheet_writer import COL_REDO_SUM3D_ID, write_rework_cells
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="A")
+
+        write_rework_cells(ws, order, "17-05-21", None)
+
+        updates = ws.batch_update.call_args[0][0]
+        assert [u["range"] for u in updates] == [gspread.utils.rowcol_to_a1(8, COL_REDO_SUM3D_ID)]
+
+    def test_empty_letter_clears_the_cell(self):
+        """Очищення ID переробки стирає й літеру: "" — це «стерти», None — «не чіпати»."""
+        from app.sheet_writer import write_rework_cells
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="A")
+
+        write_rework_cells(ws, order, "", "")
+
+        assert [u["values"] for u in ws.batch_update.call_args[0][0]] == [[[""]], [[""]]]
+
+    def test_unconfirmed_row_writes_neither_cell(self):
+        from app.sheet_writer import write_rework_cells
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="B")  # чужий рядок
+        ws.col_values.return_value = [""] * 6 + ["X"]      # нашого наряду нема
+
+        assert write_rework_cells(ws, order, "17-05-21", "K") is False
+        ws.batch_update.assert_not_called()
+        ws.update_cell.assert_not_called()
+
+    def test_failed_check_read_writes_nothing(self):
+        from app.sheet_writer import write_rework_cells
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.side_effect = OSError("проксі")
+
+        assert write_rework_cells(ws, order, "17-05-21", "K") is False
+        ws.batch_update.assert_not_called()
+
+
 class TestRestoreOrderRow:
     """restore_order_row re-fills a row that clear_placeholder_row blanked (the
     sheet half of undoing a delete). Its guard is safety-critical: the lab reuses
@@ -1008,29 +1086,48 @@ class TestRestoreGuardAndCalculatedSkip:
 
 
 class TestManualAddDoesNotOverwriteALiveRow:
-    """Перевірочне читання перед записом (аудит 08.09.26).
+    """Перевірка цільових рядків перед записом (аудит 08.09.26).
 
-    Позиція блока вибирається з одного читання. Між ним і записом у ту саму
-    вкладку пише технік руками — і його рядок лягає туди, куди ми зібрались
-    писати. Раніше `batch_update` мовчки затирав живу клієнтську роботу, і
-    відновити її не було з чого: заміщені значення ніде не збереглись.
+    До 30.09.26 це було ДРУГЕ читання — скан B:E, потім перевірка B:N
+    цільового блока. Тепер обидва з одного читання B:N: незахищене вікно
+    «прочитали → записали» лишилось тим самим одним запитом до Google, а
+    зайвий запит (~0.4 с з кожного додавання) пішов. Тести тримають те, що
+    мусить лишитись: одне читання ПЕРЕД записом, живі рядки не зачіпаються,
+    збій читання блокує запис.
     """
 
-    def test_write_is_refused_when_the_target_row_got_taken(self):
+    def test_exactly_one_read_then_one_write(self):
         fake_ws = MagicMock()
-        # Перше читання: зона порожня, беремо рядок 60. Друге (перевірочне):
-        # рядок уже зайнятий — хтось написав у цю мить.
-        fake_ws.get.side_effect = [[], [["24999", "2", "цирконій", "анатомія"]]]
+        fake_ws.get.side_effect = [[["", "1", "x", "Наявний"]]]  # рядок 60 зайнятий
 
-        with pytest.raises(RuntimeError) as err:
-            append_manual_work_rows(
-                fake_ws,
-                [{"quantity": "1", "material_color": "мono a3", "e_value": "Клієнт"}],
-                start_row=60,
-            )
+        rows = append_manual_work_rows(
+            fake_ws,
+            [{"quantity": "1", "material_color": "mono a3", "e_value": "Клієнт"}],
+            start_row=60,
+        )
 
-        assert "зайнятий" in str(err.value)
-        fake_ws.spreadsheet.batch_update.assert_not_called()
+        assert rows == [61]
+        assert fake_ws.get.call_count == 1
+        assert fake_ws.get.call_args_list[0][0][0] == "B60:N260"
+        fake_ws.spreadsheet.batch_update.assert_called_once()
+
+    def test_a_live_row_in_the_read_is_never_written_over(self):
+        """Живий рядок із того самого читання: запис лягає ПІД нього, а його
+        клітинки в пакеті запису не фігурують зовсім."""
+        fake_ws = MagicMock()
+        fake_ws.get.side_effect = [[
+            ["", "1", "x", "Наявний"],                # 60
+            ["24999", "2", "цирконій", "анатомія"],   # 61 — щойно вписав технік
+        ]]
+
+        rows = append_manual_work_rows(
+            fake_ws,
+            [{"quantity": "1", "material_color": "mono a3", "e_value": "Клієнт"}],
+            start_row=60,
+        )
+
+        assert rows == [62]
+        assert {row for row, _ in _written(fake_ws)} == {62}
 
     def test_free_target_still_writes(self):
         """Перевірка не має заважати нормальному додаванню."""
@@ -1050,7 +1147,7 @@ class TestManualAddDoesNotOverwriteALiveRow:
         """Неперевірений рядок гірший за пропущений запис — те саме правило,
         що на `_resolve_row` (CLAUDE.md §14)."""
         fake_ws = MagicMock()
-        fake_ws.get.side_effect = [[], OSError("шара недоступна")]
+        fake_ws.get.side_effect = OSError("шара недоступна")
 
         with pytest.raises(Exception):
             append_manual_work_rows(

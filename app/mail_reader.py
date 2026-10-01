@@ -13,6 +13,7 @@ from imap_tools import AND, MailBox
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app import log_throttle
 from app.business_day import aware_to_business, business_today
 from app.mail_filters import apply_filters_to_email
 from app.mail_inbox import inbox_state, mark_back_in_inbox
@@ -1391,10 +1392,18 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     # phase 2 (deleted/moved elsewhere) — nothing to fetch.
                     # Leave it "pending"; a future run will see the same
                     # thing and skip it again rather than crash.
-                    logger.warning(
-                        "Mail sync: uid %s no longer found on server, skipping",
-                        email_message.uid,
-                    )
+                    #
+                    # Через глушник (CLAUDE.md §14 «Шум у лозі»): такий лист
+                    # пропускається на КОЖНОМУ синку пошти, і 30.09.26 один
+                    # uid писав цей рядок кожні 2 хв годинами. Ключ — сам uid,
+                    # щоб один зниклий лист не глушив попередження про інший.
+                    skipped = log_throttle.due(f"mail.uid_gone:{email_message.uid}")
+                    if skipped is not None:
+                        logger.warning(
+                            "Mail sync: uid %s no longer found on server, skipping%s",
+                            email_message.uid,
+                            f" (ще {skipped} разів відтоді)" if skipped else "",
+                        )
                     continue
                 _apply_attachments(
                     session,

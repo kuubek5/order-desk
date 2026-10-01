@@ -215,6 +215,36 @@ def test_phase_one_creates_pending_rows_without_attachments(monkeypatch, tmp_pat
         assert session.query(Attachment).count() == 0
 
 
+def test_vanished_uid_is_logged_once_per_uid_not_every_sync(monkeypatch, tmp_path, caplog):
+    """Бойовий лог 30.09.26: лист стерли в пошті між фазами, і рядок
+    «uid 158034 no longer found on server» писався на КОЖНОМУ синку — кожні
+    2 хв годинами. Тепер через глушник: перший раз пишемо, далі мовчимо; а
+    інший зниклий uid — окрема подія, про яку скажемо одразу."""
+    import logging
+
+    from app import log_throttle
+
+    log_throttle.reset_for_tests()
+    mailbox = FakeMailbox(
+        headers=[_header_message("9"), _header_message("10")],
+        full_by_uid={},  # обидва зникли до повного читання
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with caplog.at_level(logging.WARNING, logger="app.mail_reader"):
+        with _engine_session() as session:
+            for _ in range(3):
+                fetch_new_emails(session, tmp_path)
+
+    gone = [r.getMessage() for r in caplog.records if "no longer found" in r.getMessage()]
+    assert gone == [
+        "Mail sync: uid 9 no longer found on server, skipping",
+        "Mail sync: uid 10 no longer found on server, skipping",
+    ]
+    log_throttle.reset_for_tests()
+
+
 def test_phase_two_downloads_attachments_and_marks_ready(monkeypatch, tmp_path):
     attachment = _fake_attachment(filename="case.stl", payload=b"stl-bytes")
     mailbox = FakeMailbox(

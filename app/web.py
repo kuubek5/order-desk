@@ -130,6 +130,8 @@ from app.services.handout import (
     scan_export_for_clients as _scan_export_for_clients,
     scan_export_latest_for_clients as _scan_export_latest_for_clients,
 )
+from app.services.sheet_stuck_writes import observe as _observe_stuck_writes
+from app.services.sheet_stuck_writes import reset as _reset_stuck_writes
 from app.services.sheet_writeback import (
     retry_pending_fills,
     retry_pending_sum3d,
@@ -297,6 +299,19 @@ def _retry_pending_fills_tick(db: Session) -> None:
         logger.exception("Повторне фарбування рядків не поставлено")
 
 
+def _stuck_writes_tick(db: Session) -> None:
+    """Запис у таблицю, що не дійшов за 5 хв, — банер, журнал і Telegram
+    власнику (app/services/sheet_stuck_writes.py). Після повторів, щоб
+    щойно дописане не рахувалось застряглим. Збій сторожа не зупиняє синк."""
+    if not _sheets_configured(db):
+        return
+    try:
+        _observe_stuck_writes(db)
+    except Exception:
+        logger.exception("Сторож застряглих записів у таблицю не спрацював")
+        db.rollback()
+
+
 def _sheet_sync_worker(stop_event: Event) -> None:
     """Poll Google Sheets without occupying the web request loop or delaying
     shutdown — same shape as _mail_sync_worker above. Table rows are entered
@@ -335,6 +350,9 @@ def _sheet_sync_worker(stop_event: Event) -> None:
             # "skipped" саме для цього: рухає час спроби, не перебиваючи
             # попередній результат.
             _record_sync_heartbeat("sheet", status="skipped")
+            # Записи на паузі не йдуть СВІДОМО — банер «не дійшло» тут
+            # брехав би, а відлік після паузи має початись заново.
+            _reset_stuck_writes()
             stop_event.wait(speed["hot"])
             continue
         run_full = monotonic() >= next_full
@@ -353,6 +371,7 @@ def _sheet_sync_worker(stop_event: Event) -> None:
                         next_wide = monotonic() + speed.get("wide", speed["hot"])
                 _retry_pending_sum3d_tick(db)
                 _retry_pending_fills_tick(db)
+                _stuck_writes_tick(db)
         except Exception:
             logger.exception("Unexpected background sheet sync failure")
             _record_sync_heartbeat(
@@ -847,8 +866,9 @@ def export_warm_once(db: Session) -> int:
     # тому прогрів одного дефолтного дня лишав сусідні чіпи холодними, і
     # кожен клік по «вчора» ішов у синхронний SMB-обхід прямо в запиті
     # (скарга власника 31.08.26: «довго переходить між вкладками»).
-    # «Усі дні» свідомо НЕ гріємо: це повний обхід сотень клієнтів (бойовий
-    # лог: 511 с) кожні дві хвилини — дорожче, ніж рідкий клік по «усі».
+    # «Усі дні» гріємо окремо нижче й ЛИШЕ до EXPORT_WARM_ALL_DAYS_MAX_CLIENTS:
+    # у серпні це був повний обхід сотень клієнтів (бойовий лог: 511 с), а
+    # 30.09.26 — 36 клієнтів, і видача працює саме в цьому вигляді.
     default_day = _handout_select_day(day_options, "")
     if default_day is not None:
         size = min(HANDOUT_DAY_WINDOW, len(day_options))
@@ -861,30 +881,71 @@ def export_warm_once(db: Session) -> int:
     started = time.monotonic()
     total_folders = 0
     total_rows = 0
+
+    def _warm(eligible) -> None:
+        nonlocal total_folders, total_rows
+        not_before = _handout_not_before(eligible)
+        client_names = {o.client_name for o in eligible if o.client_name}
+        folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
+        # Оновлюємо НАПЕРЕД, а не «якщо протухло»: інакше ключ доживав до TTL
+        # між проходами, і протухле першим читав оператор (див. константу).
+        scanned = _scan_export_for_clients(
+            root, folders, not_before, refresh_older_than=EXPORT_WARM_REFRESH_AFTER_SECONDS,
+        )
+        # Той самий запасний шлях, що й на екрані — інакше перший, хто
+        # відкриє видачу, платив би за нього сам.
+        empty = {name: folder for name, folder in folders.items() if not scanned.get(name)}
+        scanned.update(_scan_export_latest_for_clients(
+            root, empty, refresh_older_than=EXPORT_WARM_REFRESH_AFTER_SECONDS,
+        ))
+        total_folders += len(folders)
+        total_rows += sum(len(v) for v in scanned.values())
+
     for day in warm_days or [None]:
         eligible = all_eligible
         if day is not None:
             eligible = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == day]
         if not eligible:
             continue
-        not_before = _handout_not_before(eligible)
-        client_names = {o.client_name for o in eligible if o.client_name}
-        folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
-        scanned = _scan_export_for_clients(root, folders, not_before)
-        # Той самий запасний шлях, що й на екрані — інакше перший, хто
-        # відкриє видачу, платив би за нього сам.
-        empty = {name: folder for name, folder in folders.items() if not scanned.get(name)}
-        scanned.update(_scan_export_latest_for_clients(root, empty))
-        total_folders += len(folders)
-        total_rows += sum(len(v) for v in scanned.values())
+        _warm(eligible)
+
+    # «Усі дні» — вигляд, у якому видача насправді працює (бойовий лог
+    # 30.09.26: 36 клієнтів, партії від 22.09). Його ключ кешу свій: межа за
+    # датою рахується від найстаршого дня, а не від показаного. Без прогріву
+    # він протухав раз на TTL (180 с), і першому рендеру після цього діставався
+    # переобхід тек: 1.4–2.8 с замість 0.1–0.5 с — зранку приблизно кожна
+    # сьома галочка «знайдено». Гріємо лише невеликий вигляд: у серпні «усі»
+    # були 262 клієнти й 511 с обходу, і фоном кожні дві хвилини такого не
+    # треба. Один день — той самий ключ, що вже прогрітий вище.
+    all_names = {o.client_name for o in all_eligible if o.client_name}
+    warmed_all = len(day_options) > 1 and len(all_names) <= EXPORT_WARM_ALL_DAYS_MAX_CLIENTS
+    if warmed_all:
+        _warm(all_eligible)
+
     logger.info(
-        "Export prewarm: %d дн., %d тек, %d записів, %.2fс",
+        "Export prewarm: %d дн.%s, %d тек, %d записів, %.2fс",
         len(warm_days),
+        " + усі дні" if warmed_all else "",
         total_folders,
         total_rows,
         time.monotonic() - started,
     )
     return total_folders
+
+
+# Грійник оновлює свої ключі, старші за це, СИНХРОННО й наперед. Проходи йдуть
+# раз на EXPORT_WARM_INTERVAL_SECONDS (120 с), тож на кожному проході ключ
+# старший за 90 с і оновлюється — найстаріший ключ ~120 с + тривалість
+# проходу, далеко під TTL кешу (180 с, app/export_scanner.py). Доти грійник
+# лише ЧИТАВ кеш, ключ доживав до TTL між проходами, і протухле першим
+# отримував оператор: 1.4–2.8 с на рендер видачі замість 0.1–0.5 с (бойовий
+# лог 30.09.26). Ціна — обхід прогрітих тек раз на 2 хв замість ~4 хв, фоном.
+EXPORT_WARM_REFRESH_AFTER_SECONDS = 90.0
+
+# Скільки клієнтів у вигляді «усі дні» грійник ще бере на себе. Бойовий
+# вигляд 30.09.26 — 36 клієнтів (~2 с обходу фоном); 262 клієнти серпня —
+# це вже 511 с, тож поріг з великим запасом над першим і далеко під другим.
+EXPORT_WARM_ALL_DAYS_MAX_CLIENTS = 80
 
 
 FOLDER_BINDING_INITIAL_DELAY_SECONDS = 30.0
