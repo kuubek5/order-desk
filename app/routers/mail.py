@@ -63,6 +63,7 @@ from app.mail_hold import (
     put_on_hold,
     release_hold,
 )
+from app.services.machines import machine_side_context, sisma_context
 from app.services.opak import letter_opak_hint
 from app.services.material_suggest import (
     best_material,
@@ -722,6 +723,10 @@ def get_mail(
         request,
         "mail_triage.html",
         {
+            # Смуги верстатів і Sisma над тріажем — той самий контекст, що в
+            # черзі (лише памʼять процесу, до верстатів не ходить).
+            **machine_side_context(db),
+            **sisma_context(db),
             "page_title": "Нові з пошти",
             "emails": emails,
             "open_panel_html": open_panel_html,

@@ -7,6 +7,8 @@
    в «Додати роботу» на черзі). materialsuggest.js глобальний; тут потрібен лише
    стиль випадаючого списку. #}
 <link rel="stylesheet" href="/static/css/suggest.css?v={{ static_ver('css/suggest.css') }}">
+{# Стилі смуг верстатів і Sisma над тріажем — там же, де для черги. #}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -55,6 +57,17 @@
                 </button>
             </form>
         </div>
+    </div>
+
+    {# Смуги Sisma й верстатів — ТІ САМІ партіали й полли, що над чергою
+       (власник 01.10.26: «лаконічно зверху, якщо активовано»). Видимість
+       керують ті самі налаштування: вигляд у кабінеті й тумблери «Верстати» /
+       «Sisma» в шестерні черги. Обгортка `.q2` — бо стилі смуги задані під
+       `.q2 .mstrip` (furnaces.css); на звичайному блоці `.q2` дає лише змінні
+       розміру контролів, розкладку пошти не чіпає. #}
+    <div class="q2 m-machines">
+        {% include "_sisma_widget.html" %}
+        {% include "_machine_strip.html" %}
     </div>
 
     {% if synced is not none %}

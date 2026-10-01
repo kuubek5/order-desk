@@ -1353,6 +1353,20 @@ document.addEventListener("submit", (event) => {
   const host = kloadHostFor(form);
   if (host) kloadStart(host);
 });
+// Смуги верстатів і Sisma над тріажем пошти (mail_triage.html): їхня висота
+// міняється (кількість верстатів, перенос у два ряди, вимкнено в шестерні),
+// а панелі пошти мусять закінчуватись у межах екрана. Висоту обгортки
+// віддаємо в CSS-змінну --m-strips-h (v2a_mail.css). Обгортка не свапається
+// (свапаються смуги всередині), тож один спостерігач на всю сторінку.
+(function watchMailStrips() {
+  const wrap = document.querySelector(".mailv2 .m-machines");
+  const page = wrap && wrap.closest(".mailv2");
+  if (!wrap || !page || !window.ResizeObserver) return;
+  const apply = () => page.style.setProperty("--m-strips-h", wrap.offsetHeight + "px");
+  new ResizeObserver(apply).observe(wrap);
+  apply();
+})();
+
 // Повернення «Назад» віддає сторінку з кешу браузера разом зі шкалою.
 window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopAll(); });
 
