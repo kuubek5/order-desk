@@ -2144,9 +2144,13 @@ def accept_email_batch(
     if any(str(item.get("sum3d_id") or "").strip() for item, *_ in checked):
         problems = {}
         for item, eid, email, display, error in checked:
-            reason = error or accept_blocker(
-                email, accept_anyway=bool(item.get("accept_anyway"))
-            )
+            reason: str | None
+            if email is None:
+                reason = error or "лист не знайдено"
+            else:
+                reason = error or accept_blocker(
+                    email, accept_anyway=bool(item.get("accept_anyway"))
+                )
             if reason:
                 problems[eid] = reason
         if problems:
@@ -2173,8 +2177,9 @@ def accept_email_batch(
 
     results: list[dict] = []
     for item, eid, email, display, error in checked:
-        if error:
-            results.append({"email_id": eid, "label": display, "ok": False, "error": error})
+        if error or email is None:
+            results.append({"email_id": eid, "label": display, "ok": False,
+                            "error": error or "лист не знайдено"})
             continue
         result = accept_letter(
             db, user, email,
