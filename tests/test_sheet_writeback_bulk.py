@@ -114,6 +114,17 @@ def test_write_order_fields_bulk_is_one_write_and_keeps_live_markers():
     assert second.calculated_raw == "вже вписано", "живе значення повертається в об'єкт"
 
 
+def test_write_order_fields_bulk_writes_quantity_as_a_number():
+    """Кількість у пачці — та сама колонка C і те саме число, що й поодинці."""
+    ws = FakeWorksheet({})
+    order = _client_order(1, 1, "Клієнт1")
+    order.quantity = "4"
+
+    write_order_fields_bulk(ws, [(order, {"quantity"}, 7)])
+
+    assert ws.updates == [{"range": "C7", "values": [[4]]}]
+
+
 def test_write_order_fields_bulk_skips_markers_when_live_read_fails():
     ws = FakeWorksheet({})
     ws.col_values = MagicMock(side_effect=RuntimeError("timeout"))

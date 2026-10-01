@@ -67,6 +67,35 @@ def make_order(id=1, row_number=1, sheet_tab="27.07.26", sum3d_id="SUM123",
     )
 
 
+class TestWriteQuantity:
+    """Кількість у колонку C (01.10.26). Правка кількості кликала запис із
+    полем `quantity`, якого не було в мапі колонок, — кожен запис падав з
+    `'quantity'` (робота 4919), а тести роуту підміняли сам запис і цього не
+    бачили. Тут — справжній `write_order_fields`."""
+
+    def test_digits_go_as_a_number_into_column_c(self):
+        order = make_order(row_number=1)
+        order.quantity = "3"
+        fake_ws = MagicMock()
+
+        write_order_fields(fake_ws, order, {"quantity"})
+
+        [update] = fake_ws.batch_update.call_args[0][0]
+        assert update["range"] == gspread.utils.rowcol_to_a1(1 + HEADER_ROWS, 3)
+        assert update["values"] == [[3]], "числом, інакше випадає з суми вкладки"
+
+    def test_non_digits_stay_text_and_empty_clears(self):
+        order = make_order(row_number=1)
+        order.quantity = "2+1"
+        fake_ws = MagicMock()
+        write_order_fields(fake_ws, order, {"quantity"})
+        assert fake_ws.batch_update.call_args[0][0][0]["values"] == [["2+1"]]
+
+        order.quantity = None
+        write_order_fields(fake_ws, order, {"quantity"})
+        assert fake_ws.batch_update.call_args[0][0][0]["values"] == [[""]]
+
+
 class TestWriteOrderFieldsSingleField:
     """Test writing a single field to the worksheet."""
 

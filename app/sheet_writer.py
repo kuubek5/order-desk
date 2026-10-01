@@ -214,6 +214,28 @@ def resolve_rows_bulk(
     return resolved
 
 
+# Поля, які CRM пише в рядок таблиці точково, і їхні колонки. ОДНА мапа для
+# одиночного й пакетного запису. «Кількість» (C) додано 01.10.26: правка
+# кількості клієнтської роботи (`/orders/{id}/quantity`, з 23.09.26) і її
+# «Крок назад» кликали запис із полем `quantity`, якого тут не було, — кожен
+# запис падав з `'quantity'` (бойовий випадок: робота 4919, 01.10 00:49–00:57),
+# і в таблиці лишалась стара кількість, хоча докстрінг роуту обіцяв колонку C.
+_WRITABLE_COLUMNS = {
+    "cam_comment": COL_CAM_COMMENT,
+    "sum3d_id": COL_SUM3D_ID,
+    "calculated_raw": COL_CALCULATED,
+    "milled_raw": COL_MILLED,
+    "quantity": COL_QUANTITY,
+}
+
+
+def _writable_value(order: Order, field: str):
+    """Значення поля для клітинки. Кількість — числом (`sheet_quantity`), як
+    при дописуванні рядка: текстом вона випадає з суми внизу вкладки."""
+    value = getattr(order, field) or ""
+    return sheet_quantity(value) if field == "quantity" else value
+
+
 def write_order_fields_bulk(
     worksheet: gspread.Worksheet, plan: list[tuple[Order, set[str], int]]
 ) -> None:
@@ -228,12 +250,7 @@ def write_order_fields_bulk(
     персонал міг вписати щось у спільну таблицю після нього — живе значення
     виграє й повертається в обʼєкт, а не затирається.
     """
-    column_by_field = {
-        "cam_comment": COL_CAM_COMMENT,
-        "sum3d_id": COL_SUM3D_ID,
-        "calculated_raw": COL_CALCULATED,
-        "milled_raw": COL_MILLED,
-    }
+    column_by_field = _WRITABLE_COLUMNS
     marker_columns = {
         field: column_by_field[field]
         for _, fields, _ in plan
@@ -254,7 +271,7 @@ def write_order_fields_bulk(
     for order, fields, row in plan:
         for field in fields:
             col = column_by_field[field]
-            value = getattr(order, field) or ""
+            value = _writable_value(order, field)
             if field in STATUS_MARKER_FIELDS:
                 column = live.get(col)
                 if column is None:
@@ -517,17 +534,12 @@ def write_order_fields(
         # than write sum3d/markers onto a neighbour's row. The DB keeps the value
         # (sum3d_id is fill-only on read); the next sync re-links row_number.
         return False
-    column_by_field = {
-        "cam_comment": COL_CAM_COMMENT,
-        "sum3d_id": COL_SUM3D_ID,
-        "calculated_raw": COL_CALCULATED,
-        "milled_raw": COL_MILLED,
-    }
+    column_by_field = _WRITABLE_COLUMNS
 
     updates = []
     for field in fields:
         col = column_by_field[field]
-        value = getattr(order, field) or ""
+        value = _writable_value(order, field)
 
         # Status markers are generated from the last DB snapshot, but staff may
         # have filled the shared sheet since that snapshot. Preserve the live
