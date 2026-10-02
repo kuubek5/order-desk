@@ -264,6 +264,17 @@ def _glyphs_in_zone(zone_image: Image.Image) -> Optional[list[_Glyph]]:
     glyphs: list[_Glyph] = []
     for top, bottom in _runs(name.any(axis=1)):
         line = name[top:bottom]
+        # Тривалість ПІД назвою (250i-Tolik, 02.10.26): назва
+        # «PMMA16_16-A2-X184_2026-10-02_03-02-10.ISO» довга, і «2H 08MIN»
+        # переноситься на другий рядок, вирівняний праворуч. BLOCK_GAP її не
+        # відсікає (вона під назвою, не збоку), і хвіст, який береться з КІНЦЯ,
+        # читався з «…ISO2H08MIN» — «цифра №1» виходила літерою I. Продовження
+        # самої назви починалося б від лівого краю; рядок, що стартує далі за
+        # три висоти символу від нього, — уже не назва.
+        if glyphs:
+            start = np.flatnonzero(line.any(axis=0))
+            if start.size and start[0] > 3 * (bottom - top):
+                continue
         # Базова лінія — останній рядок пікселів, де чорнило стоїть багатьма
         # окремими відрізками (низи всіх символів). Нижче лишається лише `_`.
         pieces = [len(_runs(row)) for row in line]

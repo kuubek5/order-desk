@@ -60,6 +60,10 @@ SHOP_FRAMES = {
     "newgen_250i_16-29-24.png": ("2026-09-17", "16-29-24"),
     "newgen_250i_12-26-09.png": ("2026-09-17", "12-26-09"),
     "newgen_150i_18-07-50.png": ("2026-09-17", "18-07-50"),
+    # 02.10.26, 250i-Tolik, диск мультипрорахунку (Середюк ×2 + Басараб).
+    # Назва довга, і тривалість «2H 08MIN» перенеслась ПІД неї — хвіст
+    # читався з «…ISO2H08MIN», табло не знало, що фрезерується.
+    "newgen_250i_03-02-10.png": ("2026-10-02", "03-02-10"),
 }
 READABLE = {
     FRAME_250I.name: ("2026-09-04", "12-57-22"),
@@ -325,6 +329,8 @@ def test_unreadable_screen_puts_the_native_crop_into_the_inbox(db, monkeypatch):
 @pytest.mark.parametrize("name, expected_chars", [
     ("newgen_150i_11-16-16.png", len("1_18-EMOTIONS-A2-X354_2026-09-13_11-16-16.ISO".replace("_", ""))),
     ("newgen_250i_16-29-49.png", len("2_16-MONOLITH-A3-5-X46_2026-09-13_16-29-49.ISO".replace("_", ""))),
+    # Тривалість ПІД назвою, а не збоку (02.10.26).
+    ("newgen_250i_03-02-10.png", len("PMMA16_16-A2-X184_2026-10-02_03-02-10.ISO".replace("_", ""))),
 ])
 def test_duration_is_not_glued_to_the_program_name(name, expected_chars):
     """У рядок назви не сміє потрапити тривалість («00H 38MIN»).
