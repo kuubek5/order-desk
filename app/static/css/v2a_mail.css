@@ -1105,6 +1105,15 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .mb-openpool.is-done .mb-openpool-done::before{content:"✓ "}
 .mailv2 .mb-s3all{display:flex;align-items:center;gap:8px;font-size:var(--fs-1);color:var(--ink-2)}
 .mailv2 .mb-s3all .suminput{height:34px;width:130px;padding:0 10px;font-size:var(--fs-1)}
+/* Обраний, але неготовий лист у Конвеєрі: причина + «Скачати/Докачати». */
+.mailv2 .mb-title-note{font-weight:400;color:var(--ink-3);font-size:var(--fs-1)}
+.mailv2 .mb-row-blocked{border-style:dashed;border-color:rgba(var(--warn-rgb),.45);gap:8px}
+.mailv2 .mb-blocked-tag{margin-left:auto;flex:0 0 auto;padding:1px 8px;border-radius:999px;background:rgba(var(--warn-rgb),.14);color:var(--warn-ink);font-size:var(--fs-0);white-space:nowrap}
+.mailv2 .mb-blocked-body{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mailv2 .mb-blocked-reason{flex:1 1 180px;min-width:0;color:var(--warn-ink);font-size:var(--fs-1)}
+.mailv2 .mb-blocked-dl .mb-dl-busy{display:none}
+.mailv2 .mb-blocked-dl.htmx-request .mb-dl-idle{display:none}
+.mailv2 .mb-blocked-dl.htmx-request .mb-dl-busy{display:inline}
 #mb-preflight:empty{display:none}
 .mailv2 .mb-preflight-box{border:1px solid rgba(var(--danger-rgb,220 90 90),.45);border-radius:var(--r-card);padding:10px 12px;background:var(--bg-rail);display:flex;flex-direction:column;gap:6px}
 .mailv2 .mb-preflight-box .mb-res-head svg{color:var(--danger,#dc5a5a)}

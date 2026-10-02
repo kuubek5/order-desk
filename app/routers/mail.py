@@ -270,6 +270,38 @@ def _family_chips(emails, include: list[str], exclude: list[str]) -> list[dict]:
     return chips
 
 
+def _conveyor_blocked(email: EmailMessage) -> dict:
+    """Обраний, але неготовий лист у Конвеєрі: ЧОМУ і чим це виправити.
+
+    `action` — яку кнопку показати в картці: "download" (вкладення пропущено
+    фільтром довірених), "redownload" (частини файлів немає на диску), або
+    None — тоді лише «Відкрити лист» (посилання, дублі, матеріал вирішуються
+    в картці листа). Скачування з Конвеєра шле той самий `mailFilesChanged`,
+    що й картка: рядок списку позеленіє, і лист сам стане звичайною карткою.
+    """
+    unclaimed = [a for a in email.attachments if a.order_id is None]
+    on_disk = sum(1 for a in unclaimed if a.saved_path and Path(a.saved_path).exists())
+    links = len(undownloaded_links(email))
+    action = None
+    if email.attachments_status == "pending":
+        reason = "Файли ще завантажуються"
+    elif email.attachments_status == "skipped":
+        reason = "Вкладення ще не скачано"
+        action = "download"
+    elif unclaimed and on_disk < len(unclaimed):
+        reason = f"Скачано {on_disk} з {len(unclaimed)} файлів"
+        action = "redownload"
+    elif links:
+        reason = f"{links} файл(ів) за посиланням не скачано — відкрийте лист"
+    elif has_duplicate_files(email.attachments):
+        reason = "Однакові файли в листі — оберіть потрібні в картці листа"
+    elif not (email.material_color_guess or "").strip():
+        reason = "Не розпізнано матеріал — відкрийте лист"
+    else:
+        reason = "Лист не готовий — відкрийте його"
+    return {"email": email, "reason": reason, "action": action}
+
+
 _WEEKDAYS = ("понеділок", "вівторок", "середа", "четвер", "пʼятниця", "субота", "неділя")
 
 
@@ -379,6 +411,7 @@ def get_mail(
     open: int | None = None,
     since: int | None = None,
     batch: str | None = None,
+    ready: str | None = None,
     period: str = "",
     fam: str = "",
 ):
@@ -428,10 +461,23 @@ def get_mail(
         # Порядок — той, у якому клієнт надіслав id (порядок списку згори вниз),
         # щоб рядки батчу читались так само, як список. Лише листи «нове»: батч —
         # інструмент тріажу, уже оброблений лист сюди не потрапляє.
+        #
+        # `ready` — які з обраних список вважає готовими (галочка data-ready).
+        # Решту Конвеєр не приймає, але й не ховає мовчки (власник 02.10.26:
+        # «обрано два, а в Конвеєрі один»): вони йдуть окремими картками з
+        # причиною і кнопкою скачування. Без `ready` (стара сторінка) — усі
+        # обрані вважаються готовими, як і було.
+        ready_ids = set(_parse_id_list(ready)) if ready is not None else None
+        live = [eid for eid in picked_ids if eid in by_id and by_id[eid].status == "нове"]
         batch_rows = [
             _mail_panel_context(db, by_id[eid], user)
-            for eid in picked_ids
-            if eid in by_id and by_id[eid].status == "нове"
+            for eid in live
+            if ready_ids is None or eid in ready_ids
+        ]
+        blocked_rows = [
+            _conveyor_blocked(by_id[eid])
+            for eid in live
+            if ready_ids is not None and eid not in ready_ids
         ]
         summary = conveyor_summary([
             ConveyorCard(
@@ -444,7 +490,8 @@ def get_mail(
         ])
         return templates.TemplateResponse(
             request, "_mail_batch_table.html",
-            {"batch_rows": batch_rows, "user": user, "summary": summary},
+            {"batch_rows": batch_rows, "blocked_rows": blocked_rows,
+             "user": user, "summary": summary},
         )
 
     # Views: pending = "нове" NOT stamped by a filter rule; filtered = "нове"

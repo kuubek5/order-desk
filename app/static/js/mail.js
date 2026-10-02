@@ -36,6 +36,10 @@ document.addEventListener("htmx:beforeSwap", (event) => {
 // приходять свіжими. Виділення (.active) повертаємо після заміни, а відкриту
 // картку цього листа підтягуємо, якщо в ній нічого не вписано.
 const finishedDownloads = new Set();
+// Перемальовані рядки, на яких стояла галочка: її переносимо в свіжий рядок, а
+// Конвеєр перебудовуємо — лист міг стати готовим (власник 02.10.26: «докачав
+// файли, і лише після перезавантаження зʼявилась зелена галочка»).
+const reselectedRows = new Set();
 
 function unpreserveFinishedDownloads(event, target) {
   const pending = target.querySelectorAll(".mailrow[data-dl-pending]");
@@ -48,11 +52,50 @@ function unpreserveFinishedDownloads(event, target) {
     if (!fresh || fresh.hasAttribute("data-dl-pending")) return;  // ще качається
     fresh.removeAttribute("hx-preserve");
     if (old.classList.contains("active")) fresh.classList.add("active");
+    const oldCb = old.querySelector(".mailcb");
+    const freshCb = fresh.querySelector(".mailcb");
+    if (oldCb && oldCb.checked && freshCb && !freshCb.disabled) {
+      freshCb.setAttribute("checked", "");
+      reselectedRows.add(old.dataset.mailId);
+    }
     finishedDownloads.add(old.dataset.mailId);
     changed = true;
   });
   if (changed) event.detail.serverResponse = tpl.innerHTML;
 }
+
+// Файли листа змінились (скачування, докачування, розпакування) — рядок
+// списку мусить показати нову готовність ОДРАЗУ, а не після F5. Рядок несе
+// hx-preserve, тож полл його не чіпає; мітка data-dl-pending каже beforeSwap
+// узяти свіжий рядок (той самий шлях, що для листа, який докачався сам), а
+// список перепитуємо зараз, не чекаючи 15-секундного полла.
+let listRefreshTimer = null;
+document.body.addEventListener("mailFilesChanged", (event) => {
+  const d = (event && event.detail) || {};
+  const row = d.id && document.getElementById("mailrow-" + d.id);
+  const list = document.getElementById("mail-list-rows");
+  if (!row || !list || !list.getAttribute("hx-get") || !window.htmx) return;
+  row.setAttribute("data-dl-pending", "1");
+  clearTimeout(listRefreshTimer);
+  listRefreshTimer = setTimeout(() => {
+    const rows = document.getElementById("mail-list-rows");
+    if (rows) window.htmx.ajax("GET", rows.getAttribute("hx-get"), { target: "#mail-list-rows", swap: "outerHTML" });
+  }, 400);
+});
+
+document.addEventListener("htmx:afterSettle", (event) => {
+  const el = event.detail && event.detail.elt;
+  if (!el || el.id !== "mail-list-rows" || !reselectedRows.size) return;
+  const ids = [...reselectedRows];
+  reselectedRows.clear();
+  // Обраний лист повертається в Конвеєр — картку цього листа (якщо оператор
+  // відкрив її з неготової картки й скачав там) підтягувати не треба: інакше
+  // два запити наввипередки малювали б у ту саму панель.
+  ids.forEach((id) => finishedDownloads.delete(id));
+  // Один change — Конвеєр (initMailBatch) перечитає всі галочки сам.
+  const cb = document.querySelector('.mailcb[data-cb-id="' + ids[0] + '"]');
+  if (cb) cb.dispatchEvent(new Event("change", { bubbles: true }));
+});
 
 document.addEventListener("htmx:afterSettle", (event) => {
   const el = event.detail && event.detail.elt;
@@ -806,8 +849,11 @@ window.collectMailBatch = function () {
   function restoreBatch() {
     const form = document.getElementById("mail-batch-form");
     if (!form) return;
+    // Знімок НЕ обнуляємо: Конвеєр може піти з панелі («Відкрити лист» у
+    // неготовій картці) і повернутись, коли лист докачається. Чиститься він
+    // після прийняття й на «Зняти вибір» — інакше «Sum3D усім» старого диска
+    // підставився б у наступний.
     const snap = batchSnapshot;
-    batchSnapshot = null;
     if (snap) {
       const all = document.getElementById("mb-sum3d-all");
       if (all && snap.all) all.value = snap.all;
@@ -882,6 +928,33 @@ window.collectMailBatch = function () {
     }
   });
 
+  // Будь-яка заміна панелі, на якій зараз Конвеєр (перебудова, «Відкрити
+  // лист»), спершу знімає вписане — інакше воно пропало б разом із DOM.
+  document.body.addEventListener("htmx:beforeSwap", (event) => {
+    const target = event.detail && event.detail.target;
+    if (!target || target.id !== "mail-detail" || !target.querySelector("#mail-batch-form")) return;
+    // Прийняття замінює Конвеєр результатом — знімати тут нічого: диск пішов.
+    const cfg = event.detail.requestConfig;
+    if (cfg && String(cfg.path || "").indexOf("/mail/accept-batch") !== -1) return;
+    snapshotBatch();
+  });
+
+  // «Скачати / Докачати» в неготовій картці Конвеєра: відповідь (картку листа)
+  // не малюємо. Успіх видно за `mailFilesChanged` — рядок списку оновиться, і
+  // лист прийде сюди звичайною карткою. Без нього — скачати не вдалось, і
+  // мовчати не можна: оператор чекав би вічно.
+  document.body.addEventListener("htmx:afterRequest", (event) => {
+    const elt = event.detail && event.detail.elt;
+    if (!elt || !elt.closest || !elt.closest("[data-conveyor-dl]")) return;
+    const xhr = event.detail.xhr;
+    const trig = (xhr && xhr.getResponseHeader("HX-Trigger")) || "";
+    if (!event.detail.successful || trig.indexOf("mailFilesChanged") === -1) {
+      if (window.showToast) {
+        window.showToast("Не вдалося скачати файли — відкрийте лист, там видно причину", "error");
+      }
+    }
+  });
+
   function refreshPanel() {
     updateSelCount(selectedIds());
     if (!isConveyor()) return;
@@ -898,10 +971,15 @@ window.collectMailBatch = function () {
     }
     if (detailCache === null) detailCache = detail.innerHTML;
     snapshotBatch();
-    window.htmx.ajax("GET", "/mail?partial=batch&batch=" + ids.join(","), {
-      target: "#mail-detail",
-      swap: "innerHTML",
-    });
+    // Усі обрані + які з них готові: неготові Конвеєр показує картками з
+    // причиною, а не ховає мовчки (власник 02.10.26). Відкривається він, як і
+    // раніше, лише коли є хоч один готовий — масові дії над неготовими
+    // («Відхилити», «Перемістити») Конвеєра не потребують.
+    window.htmx.ajax(
+      "GET",
+      "/mail?partial=batch&batch=" + selectedIds().join(",") + "&ready=" + ids.join(","),
+      { target: "#mail-detail", swap: "innerHTML" },
+    );
   }
 
   // Галочка рядка змінилась → перебудувати панель.
@@ -1042,6 +1120,7 @@ window.collectMailBatch = function () {
     document.querySelectorAll(".mailcb:checked").forEach((cb) => {
       cb.checked = false;
     });
+    batchSnapshot = null;
     refreshPanel();
   });
 
@@ -1071,6 +1150,8 @@ window.collectMailBatch = function () {
     });
     // Панель уже свопнута сервером на результат — не тримати старий кеш картки.
     detailCache = null;
+    // Диск прийнято — його «Sum3D усім» і поля не мають перейти в наступний.
+    if (accepted.length) batchSnapshot = null;
     updateSelCount(selectedIds());
     if (accepted.length && window.htmx) {
       // Прийняті роботи зʼявились у дзеркалі «Прийняте з пошти» — оновити його.

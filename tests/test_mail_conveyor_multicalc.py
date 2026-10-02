@@ -143,6 +143,60 @@ def test_conveyor_shows_summary_pool_button_and_sum3d_for_all(app_db):  # noqa: 
     assert 'id="mail-batch-form"' in html and '<form id="mail-batch-form"' not in html
 
 
+def test_not_ready_letter_shows_as_blocked_card_not_silently_dropped(app_db, tmp_path):  # noqa: F811
+    """Власник 02.10.26: обрано два листи одного клієнта, а в Конвеєрі один —
+    другий «1 з 2 файл.». Неготовий лист — окрема картка з причиною й «Докачати»,
+    у прийняття не йде."""
+    from app.models import Attachment
+
+    app, session_factory = app_db
+    with session_factory() as db:
+        ready = _letter(db, "1", subject="pmma a2")
+        half = _letter(db, "2", subject="pmma a2")
+        have = tmp_path / "crown.stl"
+        have.write_bytes(b"STL")
+        db.add(Attachment(email_message_id=half, filename="crown.stl", saved_path=str(have), size_bytes=3))
+        db.add(Attachment(email_message_id=half, filename="bridge.stl",
+                          saved_path=str(tmp_path / "bridge.stl"), size_bytes=3))
+        db.commit()
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    status, _, html = client.get(f"/mail?partial=batch&batch={ready},{half}&ready={ready}")
+    assert status == 200, html[:300]
+    assert f'data-batch-id="{ready}"' in html
+    assert f'data-batch-id="{half}"' not in html  # у payload прийняття не потрапить
+    assert f'data-blocked-id="{half}"' in html
+    assert "Скачано 1 з 2 файлів" in html
+    assert f'hx-post="/mail/{half}/redownload"' in html and 'hx-swap="none"' in html
+    assert "обрано <b>2</b>" in html and "готових 1" in html
+    assert "Прийняти 1 в чергу" in html
+
+
+def test_skipped_letter_offers_download_and_no_accept_without_ready(app_db):  # noqa: F811
+    app, session_factory = app_db
+    with session_factory() as db:
+        skipped = _letter(db, "1", attachments_status="skipped")
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    _, _, html = client.get(f"/mail?partial=batch&batch={skipped}&ready=")
+    assert "Вкладення ще не скачано" in html
+    assert f'hx-post="/mail/{skipped}/download-attachments"' in html
+    assert "mb-accept" not in html and "Готових листів ще немає" in html
+
+
+def test_without_ready_param_every_letter_is_a_normal_card(app_db):  # noqa: F811
+    """Стара сторінка (без `ready`) — поведінка як і була."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        a = _letter(db, "1")
+        b = _letter(db, "2", attachments_status="skipped")
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    _, _, html = client.get(f"/mail?partial=batch&batch={a},{b}")
+    assert f'data-batch-id="{a}"' in html and f'data-batch-id="{b}"' in html
+    assert "data-blocked-id" not in html
+
+
 def test_summary_route_recounts_with_current_card_values(app_db):  # noqa: F811
     app, _ = app_db
     client = MiniClient(app)
