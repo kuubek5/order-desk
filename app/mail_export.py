@@ -175,6 +175,26 @@ def _unique_material_folder(batch_dir: Path, material_name: str) -> Path:
         n += 1
 
 
+def _joinable_material_dir(export_root: Path, rel: str | None) -> Path | None:
+    """Тека матеріалу, у яку Конвеєр докладає наступний лист групи, або None.
+
+    Лише існуюча тека рівно на глибині клієнт/партія/матеріал (як її пише
+    прийняття) і лише всередині export — шлях приходить із бази, але
+    перевіряємо його так само, як вписаний руками.
+    """
+    text = (rel or "").strip().strip("/\\")
+    if not text:
+        return None
+    parts = [p for p in text.replace("\\", "/").split("/") if p]
+    if len(parts) != 3 or any(p in (".", "..") for p in parts):
+        return None
+    root = export_root.resolve()
+    candidate = root.joinpath(*parts).resolve()
+    if candidate.parent.parent.parent != root or not candidate.is_dir():
+        return None
+    return candidate
+
+
 def _entry_is_dir(entry: os.DirEntry) -> bool:
     try:
         return entry.is_dir()
@@ -381,8 +401,16 @@ def save_attachments_to_export(
     today: date | None = None,
     moved_out: list[tuple[Path, Path]] | None = None,
     preferred_client_folder: str | None = None,
+    join_material_dir: str | None = None,
 ) -> list[Path]:
     """Moves each file in attachment_paths into export_root/<client>/<date>/<material>/.
+
+    `join_material_dir` — групування Конвеєра (власник 02.10.26): листи одного
+    клієнта з тим самим матеріалом, прийняті РАЗОМ, лягають в одну теку.
+    Перший лист групи створює теку як завжди, наступні докладаються в неї —
+    сюди приходить її шлях відносно export (`Order.export_folder_path`
+    першого). Тека мусить уже існувати всередині export; інакше — звичайна
+    логіка з нумерацією, а не тека «навмання».
 
     The batch folder is named for the download date (dd.mm.yy). Same-day
     drop-offs for one client reuse that date folder as long as each new email
@@ -437,7 +465,9 @@ def save_attachments_to_export(
     # а не плодить нові дата-теки (рішення власника 24.09.26). Див.
     # _unique_material_folder.
     batch_dir = _contained_child(client_dir, base)
-    material_dir = _unique_material_folder(batch_dir, material_name)
+    material_dir = _joinable_material_dir(export_root, join_material_dir) or _unique_material_folder(
+        batch_dir, material_name
+    )
     missing = [path for path in attachment_paths if not path.is_file()]
     if missing:
         raise FileNotFoundError(f"вкладення не знайдено: {missing[0]}")

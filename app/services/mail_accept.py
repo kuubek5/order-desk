@@ -28,6 +28,7 @@ from app.export_scanner import clear_export_cache
 from app.link_attachments import undownloaded_links
 from app.mail_hold import release_hold
 from app.mail_export import (
+    preview_export_target,
     save_attachments_to_export,
     undo_moves,
 )
@@ -163,8 +164,13 @@ def accept_letter(
     accept_anyway: bool = False,
     sum3d_id: str = "",
     opak: str = "",
+    join_export_folder: str = "",
 ) -> AcceptResult:
     """Прийняти лист (або одну кольорову партію з нього) у чергу.
+
+    `join_export_folder` — лише Конвеєр: тека (відносно export), у яку вже
+    ліг попередній лист того самого клієнта й матеріалу з цього ж прийняття.
+    Порожньо — тека обирається як завжди.
 
     Часткове прийняття — норма: багатокольоровий лист приймають партіями, і
     поки в ньому лишаються нерозібрані файли, він тримається в тріажі зі
@@ -184,6 +190,7 @@ def accept_letter(
             quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
             material_folder=material_folder, attachment_ids=attachment_ids,
             accept_anyway=accept_anyway, sum3d_id=sum3d_id, opak=opak,
+            join_export_folder=join_export_folder,
         )
     finally:
         lock.release()
@@ -205,6 +212,7 @@ def _accept_letter_locked(
     accept_anyway: bool = False,
     sum3d_id: str = "",
     opak: str = "",
+    join_export_folder: str = "",
 ) -> AcceptResult:
     """Тіло `accept_letter` під локом листа — див. коментар до `_letter_locks`."""
     attachment_ids = list(attachment_ids or [])
@@ -294,6 +302,7 @@ def _accept_letter_locked(
                 folder_pick=folder_pick, folder_new=folder_new,
                 material_folder=material_folder,
                 moved_out=moved_pairs,
+                join_export_folder=join_export_folder,
             )
         except Exception as exc:  # noqa: BLE001 — файли могли поїхати, треба відкотити
             # Не лише OSError/ValueError: усе між переносом і поверненням —
@@ -506,6 +515,7 @@ def _move_attachments(
     folder_new: str,
     material_folder: str,
     moved_out: list[tuple[Path, Path]] | None = None,
+    join_export_folder: str = "",
 ) -> list[tuple[Path, Path]]:
     """Перенести файли партії в `export` і привʼязати їх до роботи.
 
@@ -547,6 +557,7 @@ def _move_attachments(
             preferred_client_folder=preferred_client_folder(
                 db, new_order.client_name, lookup_sender(db, email)
             ),
+            join_material_dir=join_export_folder or None,
         )
         moved_pairs = list(zip(old_paths, new_paths))
         # Файли переїхали — кеш обходу export більше не відповідає диску.
@@ -573,6 +584,45 @@ def _move_attachments(
     ))
     remember_sender(db, email, new_order.client_name or "", used_folder)
     return moved_pairs
+
+
+def planned_export_rel(
+    db: Session,
+    email: EmailMessage,
+    *,
+    client_name: str,
+    material_color: str = "",
+    folder_pick: str = "",
+    folder_new: str = "",
+    material_folder: str = "",
+) -> str | None:
+    """Куди ЗАРАЗ ліг би лист (`клієнт/партія/матеріал`), нічого не чіпаючи.
+
+    Ключ групування Конвеєра: листи з однаковим ключем, порахованим ДО першого
+    переносу, — той самий клієнт, день і тека матеріалу. Рахувати мусить
+    ПЕРЕД прийняттям усіх: після першого листа другий уже отримав би « (2)».
+    Ті самі входи, що в `_move_attachments` (перекриття оператора, тека з
+    картки клієнта), — інакше ключ і фактична тека розійшлись би. None — export
+    недоступний: тоді не групуємо, а не вгадуємо.
+    """
+    try:
+        client_override, material_override = resolve_wizard_overrides(
+            folder_pick, folder_new, material_folder
+        )
+        client = client_name.strip()
+        preview = preview_export_target(
+            Path(get_export_folder_path(db)),
+            client,
+            material_color.strip(),
+            client_override,
+            material_override,
+            preferred_client_folder=preferred_client_folder(
+                db, client or None, lookup_sender(db, email)
+            ),
+        )
+    except (OSError, ValueError):
+        return None
+    return preview.get("rel_path") or None
 
 
 def _material_family(db: Session, material_id: int | None) -> str:

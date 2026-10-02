@@ -125,7 +125,12 @@ from app.routers.deps import (
     templates,
 )
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, sender_key_for
-from app.services.mail_accept import accept_blocker, accept_letter, resolve_wizard_overrides
+from app.services.mail_accept import (
+    accept_blocker,
+    accept_letter,
+    planned_export_rel,
+    resolve_wizard_overrides,
+)
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
 from app.services.mail_mirror import mail_mirror_orders
@@ -2222,12 +2227,36 @@ def accept_email_batch(
             })
             return response
 
+    # Групування (власник 02.10.26): листи одного клієнта з тим самим
+    # матеріалом, прийняті РАЗОМ цим Конвеєром, лягають в одну теку, а не в
+    # `pmma a2` і `pmma a2 (2)`. Лише в межах одного прийняття: лист, прийнятий
+    # окремо (зранку один, увечері другий), як і раніше, отримує нову теку —
+    # нові файли не змішуються з уже прорахованими. Ключ — тека, куди лист ліг
+    # би ЗАРАЗ, порахована для всіх ДО першого переносу (після нього другий
+    # отримав би « (2)»). Перший лист групи лягає як завжди; наступні — у
+    # фактичну теку першого (`Order.export_folder_path`), тож видача покаже обом
+    # рядкам одну теку, а таблиця — як і раніше, рядок на лист.
+    planned = {
+        eid: planned_export_rel(
+            db, email,
+            client_name=(item.get("client_name") or ""),
+            material_color=(item.get("material_color") or ""),
+            folder_pick=(item.get("folder_pick") or ""),
+            folder_new=str(item.get("folder_new") or ""),
+            material_folder=str(item.get("material_folder") or ""),
+        )
+        for item, eid, email, _display, error in checked
+        if email is not None and not error
+    }
+    group_folder: dict[str, str] = {}
+
     results: list[dict] = []
     for item, eid, email, display, error in checked:
         if error or email is None:
             results.append({"email_id": eid, "label": display, "ok": False,
                             "error": error or "лист не знайдено"})
             continue
+        key = planned.get(eid)
         result = accept_letter(
             db, user, email,
             client_name=(item.get("client_name") or ""),
@@ -2243,7 +2272,12 @@ def accept_email_batch(
             accept_anyway=bool(item.get("accept_anyway")),
             sum3d_id=str(item.get("sum3d_id") or ""),
             opak=str(item.get("opak") or ""),
+            join_export_folder=group_folder.get(key, "") if key else "",
         )
+        if result.ok and key and key not in group_folder:
+            landed = getattr(result.order, "export_folder_path", None)
+            if landed:
+                group_folder[key] = landed
         results.append({
             "email_id": eid,
             "label": display,
