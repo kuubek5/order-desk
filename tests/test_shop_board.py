@@ -565,3 +565,45 @@ def test_settings_page_shows_the_shop_link(app_db):  # noqa: F811
     copied = set(re.findall(r'data-copy="(http[^"]+)"', html))
     assert any(u.endswith(f"/t/{token}") for u in copied), "посилання логістів зникло"
     assert any(u.endswith(f"/t/{token}/shop") for u in copied), "немає посилання на табло цеху"
+
+
+def test_dancing_cat_shows_over_100_percent_only(app_db, monkeypatch):  # noqa: F811
+    """Котик (власник 02.10.26): танцює лише над числом «100%». Над «зняти» —
+    ні («не над зняти, а над 100%»), на інших відсотках і на помилці — теж ні.
+
+    Два котики накладені в одній картці (по черзі перемикає клас на body), а
+    `data-cat` — ключ верстата, за яким живого котика переносять при
+    оновленні шматка. Обидві картинки мусять реально віддаватись табло —
+    інакше над числом був би порожній квадрат."""
+    from app.routers.furnace_board import create_board_app
+    from app.services import furnace_board as fb
+    from app.services import machines as machines_mod
+    from tests.test_furnace_board import _enable
+
+    _, factory = app_db
+    token = _enable(factory)
+    monkeypatch.setattr("app.db.SessionLocal", factory)
+    monkeypatch.setattr(machines_mod, "snapshot", lambda db: [
+        _card("M-done", "done", percent=100),
+        _card("M-100", "run", percent=100),
+        _card("M-63", "run", percent=63),
+        _card("M-bad", "fault", percent=100, word="помилка"),
+    ])
+    monkeypatch.setattr(fb, "board_view", lambda db, now=None, cards=None: SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso=""))
+
+    board = MiniClient(create_board_app())
+    status, _, frag = board.get(f"/t/{token}/shop/cards")
+    assert status == 200
+    parts = {name: frag.split(name, 1)[1].split('class="mc ', 1)[0]
+             for name in ("M-done", "M-100", "M-63", "M-bad")}
+    assert 'class="mc-cat"' in parts["M-100"]
+    assert 'class="mc-cat"' not in parts["M-done"], "над «зняти» котика немає"
+    assert 'class="mc-cat"' not in parts["M-63"]
+    assert 'class="mc-cat"' not in parts["M-bad"], "на помилці котик не танцює"
+    assert "shop-cat-a.webp" in parts["M-100"] and "shop-cat-b.webp" in parts["M-100"]
+
+    for name in ("shop-cat-a.webp", "shop-cat-b.webp"):
+        status, headers, _ = board.get(f"/static/img/{name}")
+        assert status == 200, name
+        assert headers.get("content-type", "").startswith("image/webp"), name

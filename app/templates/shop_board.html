@@ -146,6 +146,15 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
    саме місце й мусить читатись із тієї самої відстані. */
 .take{font:700 clamp(20px,2.6vw,52px)/.95 var(--font-display);letter-spacing:.04em;
   text-transform:uppercase;color:var(--accent-c)}
+/* Танцюючий котик над «100%» (власник 02.10.26). Прозорий анімований WebP;
+   два котики накладені, видно один — `body.cat-b` перемикає їх по черзі
+   (скрипт унизу). Стоїть у правому нижньому куті, над самим числом. */
+.mc-bot{position:relative}
+.mc-cat{position:absolute;bottom:100%;right:-.3vw;width:clamp(80px,16vh,260px);aspect-ratio:1;
+  margin-bottom:.4vh;pointer-events:none;z-index:3}
+.mc-cat img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .5s}
+.mc-cat .cb,body.cat-b .mc-cat .ca{opacity:0}
+body.cat-b .mc-cat .cb{opacity:1}
 /* Помилка на екрані верстата — окремо від «немає зв'язку», хоч тон у них
    спільний (`t-bad`): до зв'язку йти нема сенсу, а до помилки — треба
    (власник 18.09.26). Тому своя картка: густіший червоний контур, тло з
@@ -339,10 +348,18 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
       const html = await resp.text();
       const live = document.getElementById("shop-live");
       const canvas = document.getElementById("slm");
+      // Живі котики — за ключем верстата: свіжий шматок приносить нові картинки,
+      // і без переносу танець щопівхвилини починався б спочатку.
+      const cats = {};
+      document.querySelectorAll(".mc-cat[data-cat]").forEach((el) => { cats[el.dataset.cat] = el; });
       if (live) live.outerHTML = html;
       // Повернути ЖИВЕ полотно на місце свіжого, ще не мальованого.
       const fresh = document.getElementById("slm");
       if (canvas && fresh && fresh !== canvas) fresh.replaceWith(canvas);
+      document.querySelectorAll(".mc-cat[data-cat]").forEach((el) => {
+        const old = cats[el.dataset.cat];
+        if (old && old !== el) el.replaceWith(old);
+      });
       document.getElementById("shop-lost").hidden = true;
       syncOffset();
       tick();
@@ -355,6 +372,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   tick();
   setInterval(tick, 20000);
   setInterval(refresh, REFRESH);
+  // Котики по черзі: один танець (~12 с) — один котик, далі інший. Клас
+  // на body, тож однаково на всіх картках і переживає оновлення шматка.
+  setInterval(() => document.body.classList.toggle("cat-b"), 12000);
 })();
 </script>
 <script src="/static/js/shop_board_slm.js" defer></script>

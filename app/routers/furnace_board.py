@@ -30,6 +30,8 @@ _IMAGES = {
     "machine-portrait-350i.jpg", "machine-portrait-350i-loader.jpg",
     "machine-portrait-250i.jpg", "machine-portrait-250i-dry.jpg",
     "machine-portrait-150i.jpg",
+    # Танцюючі котики над «100» / «зняти» (власник 02.10.26), по черзі.
+    "shop-cat-a.webp", "shop-cat-b.webp",
 }
 _JS = {"shop_board_slm.js"}
 
@@ -122,7 +124,10 @@ def create_board_app() -> FastAPI:
     def board_image(name: str):
         if name not in _IMAGES:
             return _not_found()
-        return FileResponse(static_root / "img" / name, media_type="image/jpeg")
+        # Тип за розширенням: котики — анімований WebP із прозорістю; віддані
+        # як image/jpeg вони б не намалювались зовсім.
+        media = "image/webp" if name.endswith(".webp") else "image/jpeg"
+        return FileResponse(static_root / "img" / name, media_type=media)
 
     @app.get("/static/js/{name}")
     def board_js(name: str):
