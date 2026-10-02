@@ -991,3 +991,28 @@ def test_masks_agree_with_the_pixel_predicates():
                 assert bool(mask[y, x]) is bool(predicate(px[x, y])), (
                     f"{predicate.__name__} розійшовся з маскою в ({x}, {y}): {px[x, y]}"
                 )
+
+
+def test_low_percent_is_read_even_when_a_fake_bar_shadows_the_real_one():
+    """350i Loader, 02.10.26 (бойовий кадр 1152×864): на екрані «3%», а табло
+    писало «не бачу відсотка». Заливка справжньої смуги — 3 px, тож детектор
+    узяв за смугу синій текст координати «X -32.06» (контейнер 57 px, «30%»),
+    правильно відкинув його як завузький без підпису — і мовчав. Тепер у такому
+    разі пробується той самий запасний шлях, що й без смуги: білий трек +
+    обовʼязковий підпис. Підпис або читається, або ні — вигаданого числа не буде."""
+    from pathlib import Path
+
+    image = Image.open(Path(__file__).parent / "fixtures" / "remicore_loader_3pct.png").convert("RGB")
+    fake = find_progress_bar(image)
+    assert fake is not None and fake.container_width < 100, "кадр мав би нести саме хибну смугу"
+    assert read_progress_percent(image) == 3
+
+
+def test_zero_under_a_fake_bar_stays_silent():
+    """Той самий запасний шлях НЕ дає «0%»: на Loader нуль під хибною смугою —
+    це й діалог помилки RemiCORE (18.09.26), який мусить іти в скриньку
+    невідомих, а не малюватись «фрезерує, 0%»."""
+    from pathlib import Path
+
+    image = Image.open(Path(__file__).parent / "fixtures" / "remicore_error_dialog.png").convert("RGB")
+    assert read_progress_percent(image) is None
