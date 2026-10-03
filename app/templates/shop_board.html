@@ -139,8 +139,12 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .bar i{display:block;height:100%;background:linear-gradient(180deg,#ffd489,var(--accent))}
 .bar::after{content:"";position:absolute;inset:2px;pointer-events:none;
   background:repeating-linear-gradient(90deg,rgba(0,0,0,0) 0 calc(5% - 3px),#0a0704 calc(5% - 3px) 5%)}
+/* Ширина числа ОДНАКОВА на всіх картках (місце під «100%», вирівнювання
+   праворуч): смужка займає решту рядка, і з «3%» вона була помітно довша,
+   ніж із «100%» — на телевізорі сусідні шкали різної довжини (власник
+   03.10.26). */
 .pc{font:600 clamp(22px,2.9vw,58px)/.95 var(--font-mono);font-variant-numeric:tabular-nums;
-  color:var(--accent-c);letter-spacing:-.03em}
+  color:var(--accent-c);letter-spacing:-.03em;min-width:3.6ch;text-align:right;flex:0 0 auto}
 .pc small{font-size:.46em;color:rgba(var(--accent-rgb),.6);margin-left:.14em}
 /* Слово замість смуги у завершеного. Розмір як у відсотка — воно займає те
    саме місце й мусить читатись із тієї самої відстані. */
