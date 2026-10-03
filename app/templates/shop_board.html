@@ -146,15 +146,14 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
    саме місце й мусить читатись із тієї самої відстані. */
 .take{font:700 clamp(20px,2.6vw,52px)/.95 var(--font-display);letter-spacing:.04em;
   text-transform:uppercase;color:var(--accent-c)}
-/* Танцюючий котик над «100%» (власник 02.10.26). Прозорий анімований WebP;
-   два котики накладені, видно один — `body.cat-b` перемикає їх по черзі
-   (скрипт унизу). Стоїть у правому нижньому куті, над самим числом. */
+/* Танцюючий котик над «100%» (власник 02.10.26). Прозорий анімований WebP,
+   ОДНА картинка — котика в ній по черзі міняє скрипт унизу. Розміри явні
+   (без aspect-ratio/inset): браузер телевізора може бути старим, і тоді
+   котик зникав би або двоївся. Стоїть над смужкою «100%», праворуч. */
 .mc-bot{position:relative}
-.mc-cat{position:absolute;bottom:100%;right:-.3vw;width:clamp(80px,16vh,260px);aspect-ratio:1;
-  margin-bottom:.4vh;pointer-events:none;z-index:3}
-.mc-cat img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .5s}
-.mc-cat .cb,body.cat-b .mc-cat .ca{opacity:0}
-body.cat-b .mc-cat .cb{opacity:1}
+.mc-cat{position:absolute;bottom:100%;right:0;width:clamp(56px,12vh,190px);
+  height:clamp(56px,12vh,190px);margin-bottom:.2vh;pointer-events:none;z-index:3}
+.mc-cat img{display:block;width:100%;height:100%;object-fit:contain}
 /* Помилка на екрані верстата — окремо від «немає зв'язку», хоч тон у них
    спільний (`t-bad`): до зв'язку йти нема сенсу, а до помилки — треба
    (власник 18.09.26). Тому своя картка: густіший червоний контур, тло з
@@ -341,6 +340,15 @@ body.cat-b .mc-cat .cb{opacity:1}
     });
   }
 
+  // `getAttribute`, не `.src`: та сама адреса не перепризначається, і танець
+  // поточного котика не перезапускається на кожному оновленні.
+  function applyCat() {
+    const want = CATS[catIdx];
+    document.querySelectorAll(".mc-cat img").forEach((img) => {
+      if (img.getAttribute("src") !== want) img.setAttribute("src", want);
+    });
+  }
+
   async function refresh() {
     try {
       const resp = await fetch(location.pathname.replace(/\/$/, "") + "/cards", { cache: "no-store" });
@@ -360,6 +368,7 @@ body.cat-b .mc-cat .cb{opacity:1}
         const old = cats[el.dataset.cat];
         if (old && old !== el) el.replaceWith(old);
       });
+      applyCat();
       document.getElementById("shop-lost").hidden = true;
       syncOffset();
       tick();
@@ -372,9 +381,12 @@ body.cat-b .mc-cat .cb{opacity:1}
   tick();
   setInterval(tick, 20000);
   setInterval(refresh, REFRESH);
-  // Котики по черзі: один танець (~12 с) — один котик, далі інший. Клас
-  // на body, тож однаково на всіх картках і переживає оновлення шматка.
-  setInterval(() => document.body.classList.toggle("cat-b"), 12000);
+  // Котики по черзі: один танець (~12 с) — один котик, далі інший. Міняємо
+  // саму картинку (у картці вона одна), однаково на всіх картках; новий
+  // котик зі свіжого шматка одразу отримує поточного (applyCat у refresh).
+  const CATS = ["/static/img/shop-cat-a.webp", "/static/img/shop-cat-b.webp"];
+  let catIdx = 0;
+  setInterval(() => { catIdx = 1 - catIdx; applyCat(); }, 12000);
 })();
 </script>
 <script src="/static/js/shop_board_slm.js" defer></script>

@@ -601,7 +601,10 @@ def test_dancing_cat_shows_over_100_percent_only(app_db, monkeypatch):  # noqa: 
     assert 'class="mc-cat"' not in parts["M-done"], "над «зняти» котика немає"
     assert 'class="mc-cat"' not in parts["M-63"]
     assert 'class="mc-cat"' not in parts["M-bad"], "на помилці котик не танцює"
-    assert "shop-cat-a.webp" in parts["M-100"] and "shop-cat-b.webp" in parts["M-100"]
+    # Один котик у картці — одна картинка; другого підставляє скрипт по черзі
+    # (два накладені на телевізорі показувались обидва, власник 03.10.26).
+    cat = parts["M-100"].split('class="mc-cat"', 1)[1].split("</span>", 1)[0]
+    assert cat.count("<img") == 1 and "shop-cat-a.webp" in cat
 
     for name in ("shop-cat-a.webp", "shop-cat-b.webp"):
         status, headers, _ = board.get(f"/static/img/{name}")
