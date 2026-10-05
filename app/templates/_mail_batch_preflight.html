@@ -1,7 +1,10 @@
 {# Передперевірка Конвеєра з Sum3D (мультипрорахунок, 02.10.26): хоча б один
    лист диска не можна прийняти — не прийнято НІЧОГО. Лягає в #mb-preflight
    над картками (HX-Retarget), тож картки з уже вписаним Sum3D лишаються.
-   Потребує: blocked (email_id, label, error), total. #}
+   Потребує: blocked (email_id, label, error, overridable), total.
+   `overridable` — лист тримає лише нескачаний файл: галочка ставить
+   accept_anyway у його картці Конвеєра (mail.js), як «прийняти без цих
+   файлів» у картці листа. #}
 <div class="mb-preflight-box" role="alert">
     <div class="mb-res-head">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
@@ -12,8 +15,13 @@
         <li>
             <span class="mb-res-name">{{ r.label }}</span>
             <span class="mb-res-err">{{ r.error }}</span>
+            {% if r.overridable %}
+            <label class="wiz-anyway mc-anyway mb-anyway">
+                <input type="checkbox" data-accept-anyway="{{ r.email_id }}"><span>Прийняти без нескачаних файлів</span>
+            </label>
+            {% endif %}
         </li>
         {% endfor %}
     </ul>
-    <div class="mb-hint">Виправте ці листи або зніміть з них галочку — і натисніть «Прийняти» ще раз.</div>
+    <div class="mb-hint">{% if blocked|selectattr('overridable')|list %}Скачайте файли, поставте галочку «Прийняти без нескачаних файлів» або зніміть лист із вибору — і натисніть «Прийняти» ще раз.{% else %}Виправте ці листи або зніміть з них галочку — і натисніть «Прийняти» ще раз.{% endif %}</div>
 </div>

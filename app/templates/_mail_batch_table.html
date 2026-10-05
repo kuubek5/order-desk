@@ -99,6 +99,9 @@
                     <input type="text" name="sum3d_id" class="suminput mono" placeholder="—" autocomplete="off"
                            title="Sum3D ID (напр. 12-01-45), якщо вже прораховано">
                 </label>
+                {# «Прийняти без нескачаних файлів» — ставить галочка в смузі
+                   передперевірки (_mail_batch_preflight.html), mail.js. #}
+                <input type="hidden" name="accept_anyway" value="">
             </div>
 
             <div class="mb-pathline">

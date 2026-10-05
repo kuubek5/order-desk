@@ -134,3 +134,27 @@ def test_conveyor_with_everything_filled_does_not_ask(shop):
         a = _letter(db, shop.spool, "a1")
         out = _batch(db, user, [_card(a, quantity="2", sum3d_id="10-00-01")])
         assert out.template == "_mail_batch_result.html"
+
+
+def test_conveyor_missing_file_can_be_accepted_consciously(shop):
+    """Власник 05.10.26: Конвеєр з Sum3D писав «підтвердіть прийняття без
+    них», а галочки не було. Тепер блок передперевірки позначає такий лист
+    `overridable`, і картка з accept_anyway приймається."""
+    from app.models import Attachment
+
+    with Session(shop.engine, expire_on_commit=False) as db:
+        user = _user(db)
+        a = _letter(db, shop.spool, "a1")
+        db.add(Attachment(email_message_id=a.id, filename="lost.stl",
+                          saved_path=str(shop.spool / "a1" / "lost.stl")))
+        db.commit()
+        card = _card(a, quantity="2", sum3d_id="10-00-01")
+        out = _batch(db, user, [card], confirm="1")
+        assert out.template == "_mail_batch_preflight.html"
+        (row,) = out.context["blocked"]
+        assert row["overridable"] is True and "не скачано" in row["error"]
+        assert db.scalars(select(Order)).all() == []
+
+        out = _batch(db, user, [dict(card, accept_anyway="1")], confirm="1")
+        assert out.template == "_mail_batch_result.html"
+        assert len(db.scalars(select(Order)).all()) == 1

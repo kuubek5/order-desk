@@ -730,6 +730,7 @@ window.collectMailBatch = function () {
       quantity: val("quantity"),
       opak: val("opak"),
       sum3d_id: val("sum3d_id"),
+      accept_anyway: val("accept_anyway"),
       kind: val("kind"),
       // Тека — з редактора «змінити теку» в картці Конвеєра (той самий
       // dir_editor, що в картці листа): вибрана наявна, вписана нова й
@@ -937,6 +938,17 @@ window.collectMailBatch = function () {
     const cfg = event.detail.requestConfig;
     if (cfg && String(cfg.path || "").indexOf("/mail/accept-batch") !== -1) return;
     snapshotBatch();
+  });
+
+  // Галочка «Прийняти без нескачаних файлів» у смузі передперевірки:
+  // ставить accept_anyway у картці ЦЬОГО листа (сервер приймає лист без
+  // відсутнього файлу свідомо, як галочка в картці листа).
+  document.body.addEventListener("change", (event) => {
+    const box = event.target && event.target.closest && event.target.closest("[data-accept-anyway]");
+    if (!box) return;
+    const row = document.querySelector('#mail-batch-form .mb-row[data-batch-id="' + box.dataset.acceptAnyway + '"]');
+    const field = row && row.querySelector('[name="accept_anyway"]');
+    if (field) field.value = box.checked ? "1" : "";
   });
 
   // Кнопка прийняття Конвеєра, що ЛИШИЛАСЬ на екрані (передперевірка Sum3D чи

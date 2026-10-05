@@ -2239,8 +2239,15 @@ def accept_email_batch(
             # зміненими теками не губляться) — відповідь лягає в смугу
             # попередження над картками. Зняв галочку з проблемного листа або
             # докачав файл — і тисни «Прийняти» ще раз.
+            # Причину «не всі файли скачані» оператор може свідомо обійти —
+            # як галочкою «прийняти без цих файлів» у картці листа. Інші
+            # (лист ще качається, уже оброблено) — ні.
             blocked = [
-                {"email_id": eid, "label": display, "error": problems[eid]}
+                {"email_id": eid, "label": display, "error": problems[eid],
+                 "overridable": bool(
+                     _email is not None and not _error
+                     and accept_blocker(_email, accept_anyway=True) is None
+                 )}
                 for _item, eid, _email, display, _error in checked
                 if eid in problems
             ]
