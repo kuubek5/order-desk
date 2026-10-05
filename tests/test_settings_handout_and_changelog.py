@@ -24,6 +24,7 @@ from app.db import Base
 from app.models import User
 from app.services.settings_status import _slab_handout
 from tests.asgi_client import MiniClient
+from tests.test_settings_slabs_render import app_db  # noqa: F401 — фікстура
 
 ADMIN = ("qcadmin", "Qc@dmin-Pass-1")
 
@@ -155,3 +156,16 @@ def test_mail_merge_toggle_is_its_own_form_and_does_not_touch_qc(client):
     sec = _section(html, "handout")
     assert 'name="mail_merge_rows" value="1" >' in sec
     assert 'name="handout_qc" value="1" checked' in sec
+
+
+def test_operator_does_not_see_the_mail_merge_toggle(app_db):  # noqa: F811
+    """Перемикач зведення бачить і змінює лише адміністратор (власник 05.10.26):
+    у оператора на екрані немає ні форми, ні стану."""
+    from tests.test_settings_slabs_render import OPERATOR, _open_settings
+
+    app, _ = app_db
+    html = _open_settings(app, who=OPERATOR)
+    assert "mail-merge-rows" not in html
+    assert "Один рядок на клієнта" not in html
+    admin_html = _open_settings(app)
+    assert 'action="/settings/mail-merge-rows"' in admin_html
