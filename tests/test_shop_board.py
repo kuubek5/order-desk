@@ -338,6 +338,20 @@ def test_grid_columns_follow_the_number_of_machines():
     assert _view([_card(str(i), "run") for i in range(3)]).columns == 3
 
 
+def test_sisma_fills_the_free_cells_of_the_last_row():
+    """Власник 05.10.26: 8 верстатів + SISMA = 9 карток у 5 колонках — одна
+    клітинка вільна, SISMA займає дві. Додали верстат (10 карток) — вільних
+    немає, SISMA знову одна. Без SISMA — нічого не тягнеться."""
+    sis = _card("SISMA", "run", sisma=True, layers=(10, 100))
+    nine = _view([_card(str(i), "run") for i in range(8)] + [sis])
+    assert (nine.columns, nine.sisma_span) == (5, 2)
+    ten = _view([_card(str(i), "run") for i in range(9)] + [sis])
+    assert (ten.columns, ten.sisma_span) == (5, 1)
+    seven = _view([_card(str(i), "run") for i in range(6)] + [sis])
+    assert (seven.columns, seven.sisma_span) == (4, 2)
+    assert _view([_card(str(i), "run") for i in range(8)]).sisma_span == 1
+
+
 def test_board_app_serves_shop_only_with_the_right_secret(monkeypatch):
     """Секрет той самий, що в печей; чужа адреса — 404, як і раніше."""
     from app.routers import furnace_board as router

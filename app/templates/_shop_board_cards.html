@@ -94,7 +94,8 @@
          Малювати рух на завершеному друці означає казати «працює» про те, що
          вже стоїть (скарга з цеху 15.09.26). Читається ЩОКАДРУ, бо цей шматок
          свапається кожні 30 с, а полотно переїжджає в нову розмітку. #}
-      <div class="mc sis t-{{ s.tone }}" data-printing="{{ '1' if s.state == 'run' else '' }}">
+      {# Розтягується на вільні клітинки останнього ряду (`sisma_span`). #}
+      <div class="mc sis t-{{ s.tone }}" data-printing="{{ '1' if s.state == 'run' else '' }}"{% if view.sisma_span > 1 %} style="grid-column: span {{ view.sisma_span }}"{% endif %}>
         <div class="mc-top"><b>{{ s.name }}</b><span class="sub">SLM</span>
           <em>{{ s.word or "друкує" }}</em></div>
         {# Сюди JS повертає живе полотно після кожного оновлення. #}

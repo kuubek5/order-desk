@@ -140,6 +140,18 @@ class ShopView:
             return (total + 1) // 2
         return (total + 2) // 3
 
+    @property
+    def sisma_span(self) -> int:
+        """Скільки клітинок займає картка SISMA. Вона завжди остання в сітці,
+        тож забирає вільні клітинки останнього ряду (власник 05.10.26: «якщо
+        одна клітинка вільна — нехай сісма займає вільне місце»). Немає
+        вільних (додали верстат) — звичайна одна клітинка."""
+        if not self.sisma:
+            return 1
+        total = len(self.machines) + 1
+        free = (-total) % self.columns
+        return 1 + free
+
 
 def shop_links(db: Session) -> list[str]:
     """Посилання на табло цеху — ті самі адреси й секрет, що в печей.
