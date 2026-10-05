@@ -262,7 +262,11 @@ def test_undo_of_milled_merged_work_is_refused(shop):
 
 def test_row_is_written_even_if_conveyor_breaks_midway(shop):
     """Непередбачений виняток на другому листі групи: робота першого вже в
-    базі — її рядок мусить лягти в таблицю, а не лишитись без рядка."""
+    базі — її рядок мусить лягти в таблицю, а не лишитись без рядка.
+
+    З 05.10.26 виняток листа не спливає з Конвеєра 500-ю, а стає невдалим
+    листом (`_accept_one_batch_letter`, MULTICALC_SAFETY_BRIEF.md п.2) — тому
+    тут більше немає `pytest.raises`; перевірка рядка лишилась та сама."""
     real_accept = mail_router_mod.accept_letter
     calls = {"n": 0}
 
@@ -278,8 +282,9 @@ def test_row_is_written_even_if_conveyor_breaks_midway(shop):
         user = _user(db)
         a = _letter(db, shop.spool, "a1")
         b = _letter(db, shop.spool, "b1")
-        with pytest.raises(RuntimeError):
-            _batch(shop.monkeypatch, db, user, [_card(a, quantity="2"), _card(b, quantity="3")])
+        _batch(shop.monkeypatch, db, user, [_card(a, quantity="2"), _card(b, quantity="3")])
+        db.refresh(b)
+        assert b.status == "нове"  # невдалий лист лишився у Вхідних
         (order,) = db.scalars(select(Order)).all()
         assert order.row_number is not None
     assert [r["quantity"] for r in shop.appended] == ["2"]

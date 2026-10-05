@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app import log_throttle
 from app.business_day import aware_to_business, business_today
+from app.fs_probe import ABSENT, PRESENT, path_state
 from app.mail_filters import apply_filters_to_email
 from app.mail_inbox import inbox_state, mark_back_in_inbox
 from app.mail_parser import guess_fields_from_text, guess_service_type
@@ -493,23 +494,23 @@ def _file_is_missing(raw_path: str | None) -> bool:
     диску сиротою без рядка, а докачана копія отримує ім'я «(1)» — на видачі
     оператор бачить двійника і не знає, який справжній.
 
-    Тому: кілька спроб із паузою, і втратою вважається ЛИШЕ чистий
-    FileNotFoundError на останній спробі. Будь-яка інша OSError — це
-    «шара недоступна», і вкладення не чіпаємо.
+    Тому: кілька спроб із паузою, і втратою вважається ЛИШЕ «файла немає» на
+    останній спробі. Недоступну шару Windows віддає ТЕЖ як FileNotFoundError
+    (WinError 53/67), тож розрізняє `fs_probe.path_state`, а не тип винятку:
+    раніше обрив шари тут читався як видалений файл (05.10.26).
     """
     if not raw_path:
         return True
-    path = Path(raw_path)
     missing = True
     for attempt in range(MISSING_FILE_RETRIES):
-        try:
-            path.stat()
+        state = path_state(raw_path)
+        if state == PRESENT:
             return False
-        except FileNotFoundError:
+        if state == ABSENT:
             missing = True
-        except OSError as exc:
+        else:
             # Недоступність, а не відсутність — краще нічого не робити.
-            logger.warning("Не вдалося перевірити %s: %s", raw_path, exc)
+            logger.warning("Не вдалося перевірити %s: шара недоступна", raw_path)
             missing = False
         if attempt + 1 < MISSING_FILE_RETRIES:
             time.sleep(MISSING_FILE_RETRY_DELAY)

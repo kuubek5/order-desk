@@ -100,6 +100,7 @@ from app.models import (
     MailFilterCategory,
     MailFilterRule,
     Order,
+    SyncLog,
 )
 from app.order_folder import (
     attach_email_preview_tokens,
@@ -126,6 +127,7 @@ from app.routers.deps import (
 )
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, sender_key_for
 from app.services.mail_accept import (
+    AcceptResult,
     accept_blocker,
     accept_letter,
     missing_accept_fields,
@@ -2395,24 +2397,8 @@ def _accept_batch_letters(
         key = planned.get(eid)
         mkey = merge_plan.group_of.get(eid) if merge_plan else None
         merge_into = merge_order.get(mkey) if mkey else None
-        result = accept_letter(
-            db, user, email,
-            client_name=(item.get("client_name") or ""),
-            material_color=(item.get("material_color") or ""),
-            kind=(item.get("kind") or ""),
-            quantity=(item.get("quantity") or ""),
-            folder_pick=(item.get("folder_pick") or ""),
-            # «змінити теку» в картці Конвеєра (01.10.26) — те саме, що в
-            # одиночній картці: вписана нова тека й підпапка матеріалу.
-            folder_new=str(item.get("folder_new") or ""),
-            material_folder=str(item.get("material_folder") or ""),
-            attachment_ids=[],
-            accept_anyway=bool(item.get("accept_anyway")),
-            sum3d_id=str(item.get("sum3d_id") or ""),
-            opak=str(item.get("opak") or ""),
-            join_export_folder=group_folder.get(key, "") if key else "",
-            merge_into=merge_into,
-            merge_primary=bool(mkey) and merge_into is None,
+        result = _accept_one_batch_letter(
+            db, user, email, item, key, group_folder, merge_into, mkey,
         )
         if result.ok and key and key not in group_folder:
             landed = getattr(result.order, "export_folder_path", None)
@@ -2446,6 +2432,52 @@ def _accept_batch_letters(
                 db, merge_email[mkey], merge_order[mkey], merge_fields.get(mkey, set())
             )
             merge_done.add(mkey)
+
+
+def _accept_one_batch_letter(
+    db: Session, user, email: EmailMessage, item: dict, key, group_folder: dict,
+    merge_into, mkey,
+) -> AcceptResult:
+    """Один лист Конвеєра. Непередбачений виняток (не `AcceptResult.error`)
+    стає невдалим листом зі слідом у журналі синку, а не 500-ю: попередні
+    листи вже закомічені, і без відповіді браузер не прибрав би їхні картки —
+    повторне «Прийняти» диска з Sum3D тоді відмовило б усім («лист уже
+    оброблено»). Файли листа тут не губляться: перенос і коміт мають власні
+    відкати всередині `accept_letter` (MULTICALC_SAFETY_BRIEF.md, п.2)."""
+    try:
+        return accept_letter(
+            db, user, email,
+            client_name=(item.get("client_name") or ""),
+            material_color=(item.get("material_color") or ""),
+            kind=(item.get("kind") or ""),
+            quantity=(item.get("quantity") or ""),
+            folder_pick=(item.get("folder_pick") or ""),
+            # «змінити теку» в картці Конвеєра (01.10.26) — те саме, що в
+            # одиночній картці: вписана нова тека й підпапка матеріалу.
+            folder_new=str(item.get("folder_new") or ""),
+            material_folder=str(item.get("material_folder") or ""),
+            attachment_ids=[],
+            accept_anyway=bool(item.get("accept_anyway")),
+            sum3d_id=str(item.get("sum3d_id") or ""),
+            opak=str(item.get("opak") or ""),
+            join_export_folder=group_folder.get(key, "") if key else "",
+            merge_into=merge_into,
+            merge_primary=bool(mkey) and merge_into is None,
+        )
+    except Exception as exc:  # noqa: BLE001 — див. докстрінг
+        eid = email.id
+        db.rollback()
+        logger.exception("Конвеєр: непередбачена помилка прийняття листа %s", eid)
+        try:
+            db.add(SyncLog(
+                direction="mail_to_export", status="error",
+                message=f"email {eid}: непередбачена помилка прийняття в Конвеєрі: {exc}",
+            ))
+            db.commit()
+        except Exception:  # noqa: BLE001 — слід важливий, але не важливіший за відповідь
+            db.rollback()
+            logger.exception("Конвеєр: не вдалося записати слід помилки листа %s", eid)
+        return AcceptResult(error=f"Непередбачена помилка: {exc}")
 
 
 def _finish_merged_row(db: Session, email: EmailMessage, order: Order, fields: set[str]) -> None:

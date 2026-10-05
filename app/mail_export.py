@@ -18,6 +18,7 @@ from pathlib import Path
 
 from app.business_day import business_today
 from app.client_matcher import match_client_name
+from app.fs_probe import ABSENT, PRESENT, UNREACHABLE, path_state
 from app.safe_names import avoid_reserved_device_name
 
 _ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -289,27 +290,70 @@ def preview_export_target(
     }
 
 
-def _move_file(source: Path, destination: Path) -> None:
-    """shutil.move that never leaves a truncated file behind.
+# Обрізок незавершеної міжтомової копії. Не `.stl` — видача (export_scanner)
+# його не покаже, і повторне прийняття не отримає «crown (2).stl» поруч.
+PART_SUFFIX = ".kmill-part"
 
-    Across volumes (spool on C:, export on a Synology UNC share) shutil.move is
-    copy2 + unlink. A copy that dies halfway — network blip, full disk — leaves a
-    partial file at `destination` that no rollback list knows about, and the
-    morning handout would show it as real work. Delete the fragment, then let the
-    caller's rollback run.
-    """
+
+def _same_volume(source: Path, destination: Path) -> bool:
+    """Один том (той самий диск чи та сама шара) — перенос є перейменуванням,
+    атомарним і без обрізків. Інакше — копія + видалення."""
+    return os.path.splitdrive(os.path.abspath(source))[0].casefold() == (
+        os.path.splitdrive(os.path.abspath(destination))[0].casefold()
+    )
+
+
+def _drop_quietly(path: Path) -> None:
     try:
-        shutil.move(str(source), str(destination))
+        path.unlink()
+    except (OSError, ValueError):
+        pass
+
+
+def _move_file(source: Path, destination: Path) -> None:
+    """Перенести файл так, щоб під справжнім іменем ніколи не лежала половина.
+
+    Той самий том — `shutil.move` (перейменування). Різні томи (спул на C:,
+    export на шарі Synology) — копія в `<ім'я>.kmill-part`, звірка розміру,
+    перейменування в справжнє ім'я, і лише тоді видалення джерела. Раніше тут
+    був `shutil.move` і для різних томів: обірвана копія лежала під іменем
+    коронки, а прибирав її `exists()`, який при обриві шари каже «немає» —
+    обрізок лишався й видача показувала його як роботу (05.10.26).
+
+    Джерело не відпускають (Sum3D тримає файл) — копію прибираємо: лишається
+    одна копія, у спулі, як до спроби.
+    """
+    if _same_volume(source, destination):
+        try:
+            shutil.move(str(source), str(destination))
+        except Exception:
+            if path_state(destination) == PRESENT and path_state(source) == PRESENT:
+                # Джерело на місці → копія вмерла на півдорозі; у призначенні
+                # обрізок, а не файл. (Якщо джерела вже немає, перенос відбувся
+                # і падіння прийшло звідкись іще — тоді призначення єдина копія
+                # і чіпати її НЕ можна.)
+                _drop_quietly(destination)
+            raise
+        return
+
+    if path_state(destination) != ABSENT:
+        # Ім'я обирає `_unique_destination`, тож зайняте воно лише через гонку
+        # або недоступну шару — в обох випадках не перезаписуємо.
+        raise FileExistsError(17, "файл у призначенні вже є або шара недоступна", str(destination))
+    part = destination.with_name(destination.name + PART_SUFFIX)
+    try:
+        shutil.copy2(str(source), str(part))
+        copied, original = part.stat().st_size, source.stat().st_size
+        if copied != original:
+            raise OSError(f"копія неповна ({copied} з {original} байт): {destination}")
+        os.replace(part, destination)
     except Exception:
-        if destination.exists() and source.exists():
-            # Source still there → the copy died mid-flight; the leftover at the
-            # destination is a fragment, not the file. (If the source is already
-            # gone the move completed and the failure came from elsewhere — then
-            # the destination is the only copy and must NOT be touched.)
-            try:
-                destination.unlink()
-            except OSError:
-                pass
+        _drop_quietly(part)
+        raise
+    try:
+        source.unlink()
+    except Exception:
+        _drop_quietly(destination)
         raise
 
 
@@ -325,7 +369,15 @@ def undo_moves(moved: list[tuple[Path, Path]]) -> list[str]:
     errors: list[str] = []
     for source, destination in reversed(moved):
         try:
-            if not destination.exists() or source.exists():
+            if path_state(source) == PRESENT:
+                continue
+            state = path_state(destination)
+            if state == ABSENT:
+                continue
+            if state == UNREACHABLE:
+                # Не «не переїжджав», а «не бачу»: файл, найімовірніше, лежить
+                # в export. Мовчки пропустити = загубити його без сліду.
+                errors.append(f"{destination}: шара недоступна, файл міг лишитись тут")
                 continue
             source.parent.mkdir(parents=True, exist_ok=True)
             _move_file(destination, source)
@@ -356,7 +408,12 @@ def restore_attachments_to_spool(
     completed: list[tuple[Path, Path]] = []
     try:
         for source, destination in moves:
-            if source.is_file():
+            state = path_state(source)
+            if state == UNREACHABLE:
+                # Не «файла немає» — шара не відповідає. Пропустити означало б
+                # переписати saved_path у спул, поки файл лежить в export.
+                raise OSError(f"шара недоступна: {source}")
+            if state == PRESENT and source.is_file():
                 _move_file(source, destination)
                 completed.append((source, destination))
     except Exception:
@@ -367,7 +424,10 @@ def restore_attachments_to_spool(
         rollback_errors = []
         for source, destination in reversed(completed):
             try:
-                if destination.exists():
+                state = path_state(destination)
+                if state == UNREACHABLE:
+                    rollback_errors.append(f"{destination}: шара недоступна")
+                elif state == PRESENT:
                     _move_file(destination, source)
             except Exception as rollback_error:  # noqa: BLE001 — повідомляємо, не кидаємо
                 rollback_errors.append(f"{destination}: {rollback_error}")
@@ -500,7 +560,13 @@ def save_attachments_to_export(
         rollback_errors = []
         for source, destination in reversed(completed):
             try:
-                if destination.exists():
+                state = path_state(destination)
+                if state == UNREACHABLE:
+                    # Шара впала: файл не видно, але він там. Лишається в
+                    # переліку — викликач запише слід (05.10.26).
+                    rollback_errors.append(f"{destination}: шара недоступна")
+                    continue
+                if state == PRESENT:
                     _move_file(destination, source)
                 # Знімаємо з переліку і тоді, коли файла в призначенні вже
                 # немає: в export його однаково нема, а зайвий запис змусив би
