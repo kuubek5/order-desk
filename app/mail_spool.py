@@ -12,7 +12,9 @@ themselves and clean the mailbox directly) keep theirs forever.
 `DEFAULT_PRUNE_AFTER_DAYS` днів тому:
 
   * порожня тека — завжди (прийнятий лист: файли вже в export);
-  * тека без листа в базі — завжди;
+  * тека без листа в базі — завжди, ЯКЩО в ній не лежать файли
+    незавершеного листа (`Attachment.saved_path`): ім'я теки — з UID, але
+    після «Повернути в тріаж» файли лишаються в теці за старим UID (05.10.26);
   * прийнятий лист — від моменту, коли покинув Вхідні (інакше від приходу);
   * відхилений — від приходу листа;
   * неприйнятий лист, що ПОКИНУВ Вхідні (переклали в папку чи видалили в
@@ -33,13 +35,13 @@ from datetime import datetime, timedelta
 from threading import Lock
 from time import monotonic
 import logging
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import shutil
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import EmailMessage
+from app.models import Attachment, EmailMessage
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +203,32 @@ def analyze_spool(
         for name in folder_candidates(row.uid, row.uid_validity):
             letters.setdefault(name, []).append(done)
 
+    # Теки, у яких лежать файли НЕЗАВЕРШЕНОГО листа, — за `saved_path`, а не за
+    # іменем. Ім'я теки береться з UID, але файли бувають і в теці під іншим
+    # ім'ям: «Повернути в тріаж» кладе їх у теку за старим UID, а лист у пошті
+    # отримує новий. Прибиральник, що дивився лише на ім'я, стирав файли
+    # листа, який ще у «Вхідних» (MULTICALC_SAFETY_BRIEF.md п.4, 05.10.26).
+    # Порівнюємо імена складових шляху, а не повний шлях: `saved_path` буває
+    # UNC, а корінь спулу — з літерою диска (§14 «Шляхи»). Зайвий збіг імені
+    # лише вбереже теку, а не зітре чужу.
+    live_parts: set[str] = set()
+    for row in session.execute(
+        select(
+            Attachment.saved_path,
+            EmailMessage.status, EmailMessage.received_at,
+            EmailMessage.mailbox_folder, EmailMessage.mailbox_moved_at,
+            EmailMessage.inbox_gone_at, EmailMessage.hold_at,
+        ).join(EmailMessage, Attachment.email_message_id == EmailMessage.id)
+    ).all():
+        if not row.saved_path:
+            continue
+        done = _finished_at(
+            row.status, row.received_at, row.mailbox_folder,
+            row.mailbox_moved_at, row.inbox_gone_at, row.hold_at,
+        )
+        if done is None or done >= cutoff:
+            live_parts.update(part.casefold() for part in PureWindowsPath(row.saved_path).parts[:-1])
+
     total_bytes = 0
     total_dirs = 0
     prunable_bytes = 0
@@ -212,6 +240,8 @@ def analyze_spool(
         size = _dir_size(child)
         total_bytes += size
 
+        if child.name.casefold() in live_parts:
+            continue  # файли незавершеного листа — див. `live_parts`
         entries = letters.get(child.name)
         if not entries:
             # No letter row owns this folder any more.

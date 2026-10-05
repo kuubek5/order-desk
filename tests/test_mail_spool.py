@@ -257,3 +257,52 @@ def test_daily_tick_prunes_and_leaves_a_journal_line(tmp_path, db_session, monke
     assert not gone.exists() and kept.exists()
     line = db.query(SyncLog).filter(SyncLog.direction == "mail_spool").one()
     assert "прибрано тек 1" in line.message
+
+
+# ── Тека, на яку дивиться ЖИВИЙ лист, не прибирається (05.10.26) ─────────────
+# Ім'я теки — з UID листа, але файли можуть лежати в теці під ІНШИМ ім'ям:
+# «Повернути в тріаж» кладе їх у теку за старим UID, а лист у пошті отримує
+# новий; тестові й ручні теки теж. Прибиральник дивився лише на ім'я — і стирав
+# файли листа, який ще у «Вхідних» (наживо на dev 05.10.26).
+
+
+def _attach(db, uid, path):
+    from sqlalchemy import select
+
+    from app.models import Attachment
+
+    email = db.scalars(select(EmailMessage).where(EmailMessage.uid == uid)).one()
+    db.add(Attachment(email_message_id=email.id, filename=path.name, saved_path=str(path)))
+    db.commit()
+
+
+def test_folder_with_files_of_a_live_letter_is_kept_whatever_its_name(tmp_path, db_session):
+    db = db_session
+    _mail(db, "31")  # лист у «Вхідних», UID уже новий
+    old_uid_dir = _spool_dir(tmp_path, "7_17", ("crown.stl", b"X"))
+    _attach(db, "31", old_uid_dir / "crown.stl")
+
+    assert old_uid_dir not in set(analyze_spool(db, tmp_path).prunable_dirs)
+    prune_spool(db, tmp_path)
+    assert (old_uid_dir / "crown.stl").exists()
+
+
+def test_folder_of_a_live_letter_is_kept_even_if_a_finished_letter_owns_the_name(tmp_path, db_session):
+    """Ім'я теки збіглось з UID старого завершеного листа (UIDVALIDITY), а файли
+    в ній — живого листа."""
+    db = db_session
+    _mail(db, "40", mailbox_folder="Відфрезеровано",
+          mailbox_moved_at=datetime.now() - timedelta(days=10))
+    _mail(db, "41")
+    shared = _spool_dir(tmp_path, "40", ("crown.stl", b"X"))
+    _attach(db, "41", shared / "crown.stl")
+    assert shared not in set(analyze_spool(db, tmp_path).prunable_dirs)
+
+
+def test_orphan_folder_referenced_only_by_a_finished_letter_still_goes(tmp_path, db_session):
+    db = db_session
+    _mail(db, "50", mailbox_folder="Відфрезеровано",
+          mailbox_moved_at=datetime.now() - timedelta(days=10))
+    stray = _spool_dir(tmp_path, "7_50_old", ("crown.stl", b"X"))
+    _attach(db, "50", stray / "crown.stl")
+    assert stray in set(analyze_spool(db, tmp_path).prunable_dirs)
