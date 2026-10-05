@@ -203,6 +203,11 @@ class MachineState:
     # без цього прапорця завершений верстат виглядав так само, як зупинений
     # («—»), — а для цеху це різні речі: завершений треба розвантажити.
     completed: bool = False
+    # «Завершено» тримається, поки верстат не почне нову роботу. Екран підсумку
+    # зникає, щойно оператор прибрав роботу з черги, а далі верстат виглядав би
+    # «стоїть» — інакше картки на телевізорі різнились (власник 05.10.26: 150i
+    # мав бути як інші). Знімається, коли відсоток знову в роботі (0 < % < 100).
+    done_latched: bool = False
     # Верстат ПЕРЕВІРЯЄ програму перед стартом (екран VALIDATE JOBS). Окремий
     # стан від «стоїть»: смуга внизу того екрана рахує перевірку, а не
     # фрезерування, тож числа звідти ми не беремо — беремо слово.
@@ -1984,6 +1989,10 @@ def poll_target(
         state.percent = percent
         state.percent_at = now
         state.completed = completed
+        if completed:
+            state.done_latched = True
+        elif percent is not None and 0 < percent < 100:
+            state.done_latched = False
         state.validating = validating
         state.idle_known = idle_known
         state.fault = fault
@@ -2555,7 +2564,7 @@ class MachineCard:
         кадру — те саме хибне число, якого ми уникаємо."""
         if not self.state or self.stale or self.has_problem:
             return False
-        return _program_finished(self.state, self.now)
+        return _program_finished(self.state, self.now) or self.state.done_latched
 
     @property
     def is_validating(self) -> bool:

@@ -1275,3 +1275,34 @@ def test_every_state_has_one_wording_everywhere():
         assert f">{word}<" not in side, (
             f"слово стану «{word}» зашите в шаблон — беріть `card.state_word`"
         )
+
+
+def test_finished_machine_stays_done_after_its_summary_screen_is_gone(db_session, monkeypatch, tmp_path):
+    """150i-Olejka, 05.10.26: оператор прибрав роботу з черги, екран підсумку
+    зник, і картка переходила в «стоїть», тоді як інші верстати показували
+    «ЗНЯТИ». Справжній прохід опитування: підсумок → порожня черга → нова робота
+    знімає завершення (відсоток знову в роботі)."""
+    from PIL import Image
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "host_answers_at_all", lambda host, *a, **k: True)
+    target = service.MachineTarget(name="150i-Olejka", host="10.0.0.82", port=8765, agent_token="t")
+    frame = Image.new("RGB", (200, 120), "black")
+
+    meanings = iter(["done", None, None])
+    percents = iter([None, None, 40])
+    monkeypatch.setattr(service, "screen_meaning", lambda _f: next(meanings))
+    monkeypatch.setattr(service, "read_progress_percent", lambda _f: next(percents))
+
+    state = service.poll_target(db_session, target, None, frame=frame)
+    assert state.completed is True
+    assert service.MachineCard(target=target, state=state).state_key == "done"
+
+    state = service.poll_target(db_session, target, None, frame=frame)
+    assert state.completed is False
+    assert service.MachineCard(target=target, state=state).state_key == "done",         "після очищеної черги верстат мусить лишатись «ЗНЯТИ»"
+
+    state = service.poll_target(db_session, target, None, frame=frame)
+    assert state.percent == 40
+    assert service.MachineCard(target=target, state=state).state_key == "run",         "нова робота мусить зняти завершення"
