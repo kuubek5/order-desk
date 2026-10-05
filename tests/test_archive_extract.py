@@ -2,6 +2,7 @@ import io
 import zipfile
 from pathlib import Path
 
+import py7zr
 import pytest
 
 from app.archive_extract import ArchiveExtractError, extract_archive, is_archive
@@ -16,6 +17,7 @@ def _make_zip(path: Path, entries: dict[str, bytes]):
 def test_is_archive():
     assert is_archive("work.zip") is True
     assert is_archive("WORK.RAR") is True
+    assert is_archive("work.7z") is True
     assert is_archive("crown.stl") is False
     assert is_archive("") is False
     assert is_archive(None) is False
@@ -71,8 +73,38 @@ def test_extract_empty_archive_raises(tmp_path):
         extract_archive(arc, dest)
 
 
-def test_extract_unsupported_format_raises(tmp_path):
+def _make_7z(path: Path, entries: dict[str, bytes]):
+    with py7zr.SevenZipFile(path, "w") as sz:
+        for name, data in entries.items():
+            sz.writestr(data, name)
+
+
+def test_extract_7z_writes_files(tmp_path):
     arc = tmp_path / "work.7z"
+    _make_7z(arc, {"crown.stl": b"CROWN", "sub/bridge.stl": b"BRIDGE"})
+    dest = tmp_path / "spool"
+    dest.mkdir()
+
+    written = extract_archive(arc, dest)
+
+    names = sorted(p.name for p in written)
+    assert names == ["bridge.stl", "crown.stl"]
+    assert (dest / "bridge.stl").read_bytes() == b"BRIDGE"
+
+
+def test_extract_corrupt_7z_raises(tmp_path):
+    arc = tmp_path / "broken.7z"
+    arc.write_bytes(b"not a real 7z archive")
+    dest = tmp_path / "spool"
+    dest.mkdir()
+
+    with pytest.raises(ArchiveExtractError, match="7z"):
+        extract_archive(arc, dest)
+    assert list(dest.iterdir()) == []
+
+
+def test_extract_unsupported_format_raises(tmp_path):
+    arc = tmp_path / "work.tar"
     arc.write_bytes(b"not a real archive")
     dest = tmp_path / "spool"
     dest.mkdir()

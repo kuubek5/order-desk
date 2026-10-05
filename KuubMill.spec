@@ -12,6 +12,8 @@ hiddenimports = (
     # Знімок екрана печі по VNC: asyncvnc імпортується ліниво (тільки коли
     # печі налаштовані), тому статичний аналіз його не бачить.
     + ["asyncvnc", "keysymdef"]
+    # 7z від клієнтів: py7zr імпортується ліниво в archive_extract.
+    + ["py7zr"]
 )
 datas = [
     ("app/templates", "app/templates"),

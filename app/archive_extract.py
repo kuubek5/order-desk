@@ -13,16 +13,22 @@ Security posture (archives are untrusted email content):
 RAR needs the `rarfile` package AND an external UnRAR/7z binary on the machine
 (rarfile shells out to it). When that's missing, RAR extraction raises a clear
 ArchiveExtractError; ZIP always works (stdlib).
+
+7z is pure Python (`py7zr`), so it needs no external binary. Its entries are
+unpacked into a private temp folder first (py7zr refuses `..`/absolute paths
+itself), then copied out by basename like every other format.
 """
 
 import os
 from pathlib import Path
 from shutil import which
+import shutil
+import tempfile
 import zipfile
 
 from app.mail_reader import safe_attachment_filename, unique_destination
 
-_ARCHIVE_SUFFIXES = {".zip", ".rar"}
+_ARCHIVE_SUFFIXES = {".zip", ".rar", ".7z"}
 _MAX_ENTRIES = 2000
 _MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB uncompressed
 _CHUNK_BYTES = 65536
@@ -67,6 +73,61 @@ def is_archive(filename: str) -> bool:
     return Path(filename or "").suffix.lower() in _ARCHIVE_SUFFIXES
 
 
+class _SevenZipView:
+    """Інтерфейс як у `zipfile`: `open(name)` віддає файл, уже розпакований у
+    тимчасову теку. `close()` прибирає цю теку разом із розпакованим вмістом."""
+
+    def __init__(self, sevenzip, root: Path):
+        self._sevenzip = sevenzip
+        self._root = root
+
+    def open(self, name: str):
+        return open(self._root / name, "rb")
+
+    def close(self) -> None:
+        self._sevenzip.close()
+        shutil.rmtree(self._root, ignore_errors=True)
+
+
+def _open_seven_zip(archive_path: Path):
+    try:
+        import py7zr
+    except ImportError as exc:
+        raise ArchiveExtractError(
+            "розпакування 7z недоступне: не встановлено бібліотеку py7zr"
+        ) from exc
+    try:
+        sevenzip = py7zr.SevenZipFile(archive_path)
+    except Exception as exc:  # noqa: BLE001 — normalized below
+        raise ArchiveExtractError(f"пошкоджений 7z: {exc}") from exc
+    try:
+        entries = [
+            (info.filename, info.uncompressed)
+            for info in sevenzip.list()
+            if not info.is_directory
+        ]
+        # Check the DECLARED sizes before anything is written: unlike the
+        # per-file loop in extract_archive, extractall() has no chance to stop
+        # midway, so a zip bomb must be refused up front.
+        declared = sum(size or 0 for _name, size in entries)
+        if len(entries) > _MAX_ENTRIES or declared > _MAX_TOTAL_BYTES:
+            sevenzip.close()
+            raise ArchiveExtractError("архів завеликий для розпакування")
+        root = Path(tempfile.mkdtemp(prefix="kmill-7z-"))
+        try:
+            sevenzip.extractall(path=root)
+        except Exception as exc:  # noqa: BLE001 — normalized below
+            sevenzip.close()
+            shutil.rmtree(root, ignore_errors=True)
+            raise ArchiveExtractError(f"пошкоджений 7z: {exc}") from exc
+    except ArchiveExtractError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — normalized below
+        sevenzip.close()
+        raise ArchiveExtractError(f"пошкоджений 7z: {exc}") from exc
+    return _SevenZipView(sevenzip, root), entries
+
+
 def _open_archive(archive_path: Path):
     """Return (archive_object, entries) where entries is a list of
     (member_name, uncompressed_size) for FILES only (dirs skipped). Raises
@@ -106,6 +167,8 @@ def _open_archive(archive_path: Path):
         except Exception as exc:  # noqa: BLE001
             raise ArchiveExtractError(f"пошкоджений RAR: {exc}") from exc
         return archive, entries
+    if suffix == ".7z":
+        return _open_seven_zip(archive_path)
     raise ArchiveExtractError(f"непідтримуваний формат архіву: {suffix or '—'}")
 
 
