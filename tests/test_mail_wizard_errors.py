@@ -61,7 +61,7 @@ def _letter(db, **kw):
 
 
 def _accept(db, user, email, request):
-    return mail_router_mod.accept_email(
+    return mail_router_mod.accept_email(confirm_missing="1",
         request=request, email_id=email.id,
         client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="7",
         folder_pick="", folder_new="", material_folder="",
@@ -142,7 +142,7 @@ class TestAcceptErrorStaysInTheWizard:
             ))
             db.commit()
 
-            mail_router_mod.accept_email(
+            mail_router_mod.accept_email(confirm_missing="1",
                 request=_request(user.id, htmx=True), email_id=email.id,
                 client_name="Люмі-Дент", material_color="моно а3", kind="",
                 quantity="7", folder_pick="", folder_new="", material_folder="",

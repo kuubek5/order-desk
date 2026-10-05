@@ -30,6 +30,23 @@
                         <p class="stand-note">Зараз: <strong>{% if handout_qc %}увімкнено{% else %}вимкнено{% endif %}</strong>. Змінює адміністратор.</p>
                         {% endif %}
                     </div>
+                    <div class="stand-cell w6">
+                        <h3>Один рядок на клієнта й колір у Конвеєрі</h3>
+                        <p class="stand-note">Мультипрорахунок: кілька листів одного клієнта з одним кольором, що лягли в одну теку з тим самим Sum3D, стають однією роботою. Кількість сумується, у Google Таблиці один рядок і одна синя заливка, у черзі й на видачі теж один рядок. Інші клієнти Конвеєра лишаються окремими. Відкат листа повертає лише цей лист і зменшує кількість у рядку.</p>
+                        {% if can_edit(user, 'handout') %}
+                        <form method="post" action="/settings/mail-merge-rows">
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="mail_merge_rows" value="1" {{ 'checked' if mail_merge_rows else '' }}>
+                                Зводити листи одного клієнта й кольору в один рядок
+                            </label>
+                            <div class="settings-check-row">
+                                <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                            </div>
+                        </form>
+                        {% else %}
+                        <p class="stand-note">Зараз: <strong>{% if mail_merge_rows %}увімкнено{% else %}вимкнено{% endif %}</strong>. Змінює адміністратор.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </section>

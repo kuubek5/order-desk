@@ -27,7 +27,7 @@ pytestmark = pytest.mark.usefixtures("weekday_clock")
 def _accept(app, cards):
     client = MiniClient(app)
     client.login(*OPERATOR)
-    return client.post("/mail/accept-batch", {"payload": json.dumps(cards)}, {"HX-Request": "true"})
+    return client.post("/mail/accept-batch", {"payload": json.dumps(cards), "confirm_missing": "1"}, {"HX-Request": "true"})
 
 
 def _headers(result):

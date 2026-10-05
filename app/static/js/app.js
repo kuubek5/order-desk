@@ -1145,6 +1145,10 @@ const HTMX_SLOW_PATHS = [
   // поіменно, яка перевірка сьогодні довша за десять секунд.
   /^\/settings(?:\/|$)/,
   /^\/mail\/\d+\/(?:download-attachments|redownload|fetch-link|extract-archives|accept)$/,
+  // Конвеєр: кілька листів підряд, кожен — перенос файлів по SMB і рядок у
+  // таблиці; на 10-й секунді браузер кинув би тост про помилку, а сервер
+  // тим часом приймав би далі.
+  /^\/mail\/accept-batch$/,
   /^\/(?:furnaces|machines)\/refresh$/,
   /^\/handout\/cards$/,
   /^\/vyrobitok\/day-sync$/,

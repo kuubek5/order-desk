@@ -939,6 +939,20 @@ window.collectMailBatch = function () {
     snapshotBatch();
   });
 
+  // Кнопка прийняття Конвеєра, що ЛИШИЛАСЬ на екрані (передперевірка Sum3D чи
+  // «не вписано кількість/Sum3D» лягає в #mb-preflight, а не замінює панель),
+  // залипала зі спінером: у htmx 1.9.10 `hx-indicator` і `hx-disabled-elt` на
+  // ОДНОМУ елементі ділять лічильник `requestCount`, тож після відповіді він
+  // падає 2→1 і клас `htmx-request` не знімається (disabled знімається).
+  // Лічильник тут уже 0, тож прибрати клас руками — узгоджено з htmx.
+  document.body.addEventListener("htmx:afterRequest", (event) => {
+    const elt = event.detail && event.detail.elt;
+    if (!elt || !elt.classList) return;
+    if (elt.classList.contains("mb-accept") || elt.classList.contains("mb-accept-anyway")) {
+      elt.classList.remove("htmx-request");
+    }
+  });
+
   // «Скачати / Докачати» в неготовій картці Конвеєра: відповідь (картку листа)
   // не малюємо. Успіх видно за `mailFilesChanged` — рядок списку оновиться, і
   // лист прийде сюди звичайною карткою. Без нього — скачати не вдалось, і

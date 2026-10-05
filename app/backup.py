@@ -60,6 +60,7 @@ from app.models import (
     MaterialAlias,
     MaterialShortcut,
     Order,
+    OrderEmail,
     OrderFocus,
     ReworkRecord,
     SavedQueueView,
@@ -170,6 +171,9 @@ _TABLE_MODELS: list[Any] = [
     Order,
     EmailMessage,
     Attachment,
+    # Внесок листів у зведені роботи (Конвеєр, 05.10.26): після Order і
+    # EmailMessage, бо посилається на обидві.
+    OrderEmail,
     StatusEvent,
     ActionLog,
     Comment,
@@ -231,7 +235,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 5  # whats_wrong_mutes (17.09.26)
+_NEW_SINCE_FLAG = 6  # order_emails (05.10.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:

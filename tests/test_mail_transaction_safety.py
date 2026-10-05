@@ -91,7 +91,7 @@ def _letter(db: Session, spool_dir: Path) -> tuple[EmailMessage, Path]:
 
 
 def _accept(db, user, email):
-    return mail_router_mod.accept_email(
+    return mail_router_mod.accept_email(confirm_missing="1",
         request=_request(user.id), email_id=email.id,
         client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
         folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db,
@@ -225,7 +225,7 @@ def _accept_with_sheet(monkeypatch, db, user, email, material_color="моно а
         mail_accept_svc, "latest_worksheet_on_or_before",
         lambda *args, **kwargs: SimpleNamespace(title="01.01.26"),
     )
-    response = mail_router_mod.accept_email(
+    response = mail_router_mod.accept_email(confirm_missing="1",
         request=_request(user.id), email_id=email.id,
         client_name="Люмі-Дент", material_color=material_color, kind="", quantity="2",
         folder_pick="", folder_new="", material_folder="", attachment_ids=[],

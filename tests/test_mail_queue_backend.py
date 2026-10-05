@@ -1415,7 +1415,7 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         db.commit()
 
         # 1. accept with a typed client name → memory row created, folder recorded
-        mail_router_mod.accept_email(
+        mail_router_mod.accept_email(confirm_missing="1",
             request=_request(user.id), email_id=first.id,
             client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
             folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db,
@@ -1496,7 +1496,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         a1_id, a2_id = a1.id, a2.id
 
         # accept only file 1 as "моно а3"
-        mail_router_mod.accept_email(
+        mail_router_mod.accept_email(confirm_missing="1",
             request=_request(user.id), email_id=email.id, client_name="Клієнт",
             material_color="моно а3", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
@@ -1510,7 +1510,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         first_order = a1.order_id
 
         # accept the rest as "цирконій"
-        mail_router_mod.accept_email(
+        mail_router_mod.accept_email(confirm_missing="1",
             request=_request(user.id), email_id=email.id, client_name="Клієнт",
             material_color="цирконій", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a2_id], db=db,
@@ -1557,7 +1557,7 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
         f.write_bytes(b"A")
         db.add(Attachment(email_message_id=email.id, filename="one.stl", saved_path=str(f)))
         db.commit()
-        mail_router_mod.accept_email(
+        mail_router_mod.accept_email(confirm_missing="1",
             request=_request(user.id), email_id=email.id, client_name="C",
             material_color="моно", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[], db=db,
@@ -1658,7 +1658,7 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
         db.commit()
         a1_id = a1.id
 
-        resp = mail_router_mod.accept_email(
+        resp = mail_router_mod.accept_email(confirm_missing="1",
             request=_request(user.id), email_id=email.id, client_name="C",
             material_color="моно", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
@@ -1697,7 +1697,7 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
 
         req = _request(user.id)
         # partial: one file, one remains
-        mail_router_mod.accept_email(
+        mail_router_mod.accept_email(confirm_missing="1",
             request=req, email_id=email.id, client_name="C", material_color="моно",
             kind="", quantity="", folder_pick="", folder_new="", material_folder="",
             attachment_ids=[a1_id], db=db,
@@ -1707,7 +1707,7 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
         assert "збережено 1" in flash["message"] and "Лишилось 1" in flash["message"]
 
         # finish: last file, full accept
-        mail_router_mod.accept_email(
+        mail_router_mod.accept_email(confirm_missing="1",
             request=req, email_id=email.id, client_name="C", material_color="цирконій",
             kind="", quantity="", folder_pick="", folder_new="", material_folder="",
             attachment_ids=[a2_id], db=db,

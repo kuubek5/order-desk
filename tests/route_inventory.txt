@@ -81,6 +81,7 @@ GET /clients/export-peek
 GET /clients/duplicates
 GET /clients/duplicates/folders
 POST /settings/handout-qc
+POST /settings/mail-merge-rows
 POST /settings/google-oauth/disconnect
 POST /discs/basket
 POST /mail/senders/add

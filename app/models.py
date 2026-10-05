@@ -275,6 +275,12 @@ class Order(Base):
         "ReworkRecord", back_populates="order", cascade="all, delete-orphan"
     )
     material: Mapped[Optional["Material"]] = relationship("Material")
+    # Листи, зведені в цю роботу одним рядком (Конвеєр, `mail_merge`). Порожньо
+    # для всіх робіт, крім зведених. Каскад — бо робота без них не має сенсу, а
+    # FK на orders не дав би видалити роботу при відкаті останнього листа.
+    email_links: Mapped[list["OrderEmail"]] = relationship(
+        "OrderEmail", back_populates="order", cascade="all, delete-orphan"
+    )
 
     @property
     def active_rework(self) -> Optional["ReworkRecord"]:
@@ -824,6 +830,32 @@ class Attachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     email_message: Mapped["EmailMessage"] = relationship("EmailMessage", back_populates="attachments")
+
+
+class OrderEmail(Base):
+    """Внесок одного листа у ЗВЕДЕНУ роботу (Конвеєр, власник 05.10.26).
+
+    Кілька листів одного клієнта з одним кольором, що лягли в одну теку з тим
+    самим Sum3D, стають ОДНІЄЮ роботою й одним рядком у таблиці з сумою
+    кількості (`app/services/mail_merge.py`). Рядок тут — на КОЖЕН лист групи,
+    головний теж: відкат одного листа віднімає саме його внесок і не чіпає
+    роботу інших листів. Без цього запасний `EmailMessage.order_id` у відкаті
+    вів би другий лист на спільну роботу й видалив би її разом з усіма.
+
+    Для незведених робіт рядків тут немає — їх код іде старою дорогою.
+    """
+
+    __tablename__ = "order_emails"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
+    email_message_id: Mapped[int] = mapped_column(ForeignKey("email_messages.id"), index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    opak_units: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Локальний час: серверний дефолт func.now() на SQLite пише UTC (§14).
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.now)
+
+    order: Mapped["Order"] = relationship("Order", back_populates="email_links")
 
 
 class ShiftNote(Base):

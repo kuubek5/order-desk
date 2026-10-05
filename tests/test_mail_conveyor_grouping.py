@@ -44,7 +44,7 @@ def _batch(monkeypatch, db, user, cards):
         lambda request, template, context: SimpleNamespace(headers={}, context=context),
     )
     return mail_router_mod.accept_email_batch(
-        request=_request(user.id), payload=json.dumps(cards), db=db
+        request=_request(user.id), payload=json.dumps(cards), confirm_missing="1", db=db
     )
 
 

@@ -17,6 +17,7 @@ from app import sync_control
 from app.business_day import set_rollover
 from app.changelog import load_changelog
 from app.services.handout_qc import qc_checklist_enabled
+from app.services.mail_merge import merge_enabled
 from app.services.health_snapshot import last_report
 from app.config import DB_PATH
 from app.mail_inbox import in_inbox
@@ -263,6 +264,7 @@ def get_settings(
         "changelog": load_changelog(),
         # Правила видачі: QC-чеклист перед «знайдено» (розділ «Ранкова видача»).
         "handout_qc": qc_checklist_enabled(db),
+        "mail_merge_rows": merge_enabled(db),
         # Popup-notification preferences («Спливаючі сповіщення»).
         "notify_style": get_notify_style(db),
         "notify_position": get_notify_position(db),

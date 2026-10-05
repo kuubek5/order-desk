@@ -41,13 +41,14 @@ from app.material_catalog import (
 from app.mail_reader import _file_is_missing, move_message_to_folder
 from app.models import EmailMessage, Order, StatusEvent, SyncLog
 from app.services.mail_folder_journal import VIA_ACCEPT, log_folder_move
+from app.services.mail_merge import add_contribution, link_primary
 from app.parser import HEADER_ROWS
 from app.client_folder import preferred_client_folder
 from app.sender_memory import lookup_sender, remember_sender
 from app.services.opak import format_opak, opak_units
 from app.settings_store import get_export_folder_path, get_setting
 from app.sheet_writer import append_mail_placeholder_row
-from app.sheets import latest_worksheet_on_or_before, open_spreadsheet
+from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
 from app.statuses import STATUS_CALCULATED, STATUS_NEW
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,24 @@ def _letter_lock(email_id: int) -> Lock:
             lock = Lock()
             _letter_locks[email_id] = lock
         return lock
+
+
+def missing_accept_fields(quantity: object, sum3d_id: object) -> list[str]:
+    """Що оператор не вписав перед прийняттям (власник 05.10.26: «щоб не
+    забував»). Порожня кількість чи Sum3D — не помилка: роботу можна прийняти
+    й до прорахунку. Але майже завжди це забули, тож прийняття спершу
+    попереджає і чекає свідомого «Так, прийняти без …». Один список на картку
+    й Конвеєр — інакше два екрани питали б різне."""
+    missing = []
+    if not str(quantity or "").strip():
+        missing.append("кількість")
+    if not str(sum3d_id or "").strip():
+        missing.append("Sum3D")
+    return missing
+
+
+def missing_accept_message(missing: list[str]) -> str:
+    return "Не вписано " + " і ".join(missing) + ". Впишіть або підтвердіть, що приймаєте без цього."
 
 
 def accept_blocker(email: EmailMessage, *, accept_anyway: bool = False) -> str | None:
@@ -165,12 +184,23 @@ def accept_letter(
     sum3d_id: str = "",
     opak: str = "",
     join_export_folder: str = "",
+    merge_into: Order | None = None,
+    merge_primary: bool = False,
 ) -> AcceptResult:
     """Прийняти лист (або одну кольорову партію з нього) у чергу.
 
     `join_export_folder` — лише Конвеєр: тека (відносно export), у яку вже
     ліг попередній лист того самого клієнта й матеріалу з цього ж прийняття.
     Порожньо — тека обирається як завжди.
+
+    Зведення в один рядок (лише Конвеєр з увімкненим перемикачем,
+    `app/services/mail_merge.py`):
+      * `merge_primary` — перший лист групи: робота створюється як завжди, але
+        рядок у таблицю НЕ пишеться (його пише Конвеєр після останнього листа
+        групи, уже з сумою — `write_merged_row`), і внесок листа записується;
+      * `merge_into` — наступні листи: нова робота НЕ створюється, файли й
+        кількість ідуть до `merge_into`, рядок у таблицю не пишеться.
+    Обидва порожні — рівно стара дорога.
 
     Часткове прийняття — норма: багатокольоровий лист приймають партіями, і
     поки в ньому лишаються нерозібрані файли, він тримається в тріажі зі
@@ -191,6 +221,7 @@ def accept_letter(
             material_folder=material_folder, attachment_ids=attachment_ids,
             accept_anyway=accept_anyway, sum3d_id=sum3d_id, opak=opak,
             join_export_folder=join_export_folder,
+            merge_into=merge_into, merge_primary=merge_primary,
         )
     finally:
         lock.release()
@@ -213,6 +244,8 @@ def _accept_letter_locked(
     sum3d_id: str = "",
     opak: str = "",
     join_export_folder: str = "",
+    merge_into: Order | None = None,
+    merge_primary: bool = False,
 ) -> AcceptResult:
     """Тіло `accept_letter` під локом листа — див. коментар до `_letter_locks`."""
     attachment_ids = list(attachment_ids or [])
@@ -220,6 +253,21 @@ def _accept_letter_locked(
     blocker = accept_blocker(email, accept_anyway=accept_anyway)
     if blocker:
         return AcceptResult(error=blocker)
+
+    if merge_into is not None:
+        # Наступний лист зведеної групи: роботи не створюємо — файли, кількість
+        # і опак ідуть до роботи першого листа. Статус роботи не міняється,
+        # тож і StatusEvent немає; вкладка таблиці теж не потрібна.
+        new_order = merge_into
+        target_worksheet = None
+        add_contribution(db, new_order, email, quantity, opak)
+        db.flush()
+        return _accept_files_and_commit(
+            db, user, email, new_order, target_worksheet,
+            attachment_ids=attachment_ids, folder_pick=folder_pick,
+            folder_new=folder_new, material_folder=material_folder,
+            join_export_folder=join_export_folder, write_row=False,
+        )
 
     target_tab, target_worksheet = _resolve_target_tab(db, email)
 
@@ -270,7 +318,38 @@ def _accept_letter_locked(
             status=new_order.status, actor=user.username,
         )
     )
+    if merge_primary:
+        link_primary(db, new_order, email, quantity, opak)
 
+    return _accept_files_and_commit(
+        db, user, email, new_order, target_worksheet,
+        attachment_ids=attachment_ids, folder_pick=folder_pick,
+        folder_new=folder_new, material_folder=material_folder,
+        join_export_folder=join_export_folder, write_row=not merge_primary,
+    )
+
+
+def _accept_files_and_commit(
+    db: Session,
+    user,
+    email: EmailMessage,
+    new_order: Order,
+    target_worksheet,
+    *,
+    attachment_ids: list[int],
+    folder_pick: str,
+    folder_new: str,
+    material_folder: str,
+    join_export_folder: str,
+    write_row: bool,
+) -> AcceptResult:
+    """Друга половина прийняття: файли → база → таблиця → папка пошти.
+
+    Винесено без змін зі `_accept_letter_locked`, щоб наступний лист зведеної
+    групи (`merge_into`) пройшов той самий перенос, ті самі відкати й ту саму
+    папку пошти, що й звичайний. `write_row=False` — рядок-нотатку не пишемо:
+    для зведеної групи його пише Конвеєр один раз, з сумою.
+    """
     # Часткове прийняття: рухаються лише файли, обрані для ЦЬОГО кольору.
     # «Нерозібрані» = ще не забрані попередньою партією (order_id is None).
     # Порожній вибір означає «усі, що лишились» — типовий однокольоровий лист.
@@ -377,14 +456,15 @@ def _accept_letter_locked(
     # SyncLog, але задля цього ж SyncLog-рядка й `new_order.row_number`
     # потрібен ще один коміт; його невдача лише логується, прийняття листа
     # назад не відкочуємо.
-    _write_placeholder_row(db, email, new_order, target_worksheet)
-    try:
-        db.commit()
-    except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
-        db.rollback()
-        logger.exception(
-            "Could not persist placeholder-row bookkeeping for email %s", email.id
-        )
+    if write_row:
+        _write_placeholder_row(db, email, new_order, target_worksheet)
+        try:
+            db.commit()
+        except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
+            db.rollback()
+            logger.exception(
+                "Could not persist placeholder-row bookkeeping for email %s", email.id
+            )
 
     # Робота пішла в роботу → лист переносимо в папку «оброблено» скриньки, щоб
     # CRM і пошта лишались синхронні (рішення власника 24.09.26). Лише при
@@ -402,6 +482,29 @@ def _accept_letter_locked(
         material_label=(new_order.material_color or "").strip() or "без матеріалу",
         partial=bool(remaining),
     )
+
+
+def write_merged_row(db: Session, email: EmailMessage, order: Order) -> None:
+    """Рядок-нотатка зведеної роботи — ОДИН раз, після останнього листа групи,
+    уже з сумою кількості (Конвеєр, `app/services/mail_merge.py`).
+
+    Не append на першому листі з переписуванням потім: це був би зайвий запис
+    і вікно, коли в спільній таблиці стоїть неповна кількість. Вкладка — та,
+    яку робота отримала при прийнятті першого листа (`order.sheet_tab`). Як і
+    звичайний рядок-нотатка, прийняття ніколи не блокує: збій іде в SyncLog.
+    """
+    worksheet = None
+    if order.sheet_tab:
+        try:
+            worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
+        except Exception as exc:  # noqa: BLE001 — проблеми таблиці не блокують прийняття
+            logger.warning("Could not open sheet tab for merged order %s: %s", order.id, exc)
+    _write_placeholder_row(db, email, order, worksheet)
+    try:
+        db.commit()
+    except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
+        db.rollback()
+        logger.exception("Could not persist merged-row bookkeeping for order %s", order.id)
 
 
 def _move_letter_to_processed_folder(

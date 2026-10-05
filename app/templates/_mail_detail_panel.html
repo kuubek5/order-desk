@@ -371,11 +371,11 @@
                в «Прорахував» і статус «прораховано». Обидва необовʼязкові. #}
             <div class="field mc-f-opak">
                 <label for="mc-opak">Опак</label>
-                <input type="text" id="mc-opak" name="opak" class="suminput mono" inputmode="numeric" placeholder="—" title="Кількість опаків, якщо є" autocomplete="off">
+                <input type="text" id="mc-opak" name="opak" class="suminput mono" inputmode="numeric" value="{{ opak or '' }}" placeholder="—" title="Кількість опаків, якщо є" autocomplete="off">
             </div>
             <div class="field mc-f-sum3d">
                 <label for="mc-sum3d">Sum3D</label>
-                <input type="text" id="mc-sum3d" name="sum3d_id" class="suminput mono" placeholder="—" title="Sum3D ID (напр. 12-01-45), якщо вже прораховано" autocomplete="off">
+                <input type="text" id="mc-sum3d" name="sum3d_id" class="suminput mono" value="{{ sum3d_id or '' }}" placeholder="—" title="Sum3D ID (напр. 12-01-45), якщо вже прораховано" autocomplete="off">
             </div>
         </div>
 
@@ -393,6 +393,14 @@
         </div>
         <label class="wiz-anyway mc-anyway">
             <input type="checkbox" name="accept_anyway" value="1"><span>Так, прийняти без цих файлів</span>
+        </label>
+        {% endif %}
+
+        {# Забули кількість чи Sum3D (власник 05.10.26). Сервер повертає картку з
+           `missing`; галочка — свідоме «так», як «без цих файлів» вище. #}
+        {% if missing %}
+        <label class="wiz-anyway mc-anyway">
+            <input type="checkbox" name="confirm_missing" value="1"><span>Так, прийняти без: {{ missing|join(', ') }}</span>
         </label>
         {% endif %}
 

@@ -97,7 +97,7 @@ from .materials import (
 from .mcp_access import regenerate_mcp_token, toggle_mcp_gateway
 from .notifications import api_notify_state, save_notification_prefs
 from .overview import check_path_status, check_settings_path, get_settings, post_settings
-from .handout import save_handout_qc
+from .handout import save_handout_qc, save_mail_merge_rows
 from .sections import save_section_state, save_vyrobitok_pin
 from .update import check_update, install_update, update_install_status
 from .users import (
@@ -182,6 +182,7 @@ __all__ = [
     "test_feedback_push",
     # sections
     "save_handout_qc",
+    "save_mail_merge_rows",
     "save_section_state",
     "save_vyrobitok_pin",
 ]

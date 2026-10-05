@@ -1,7 +1,9 @@
 {# Результат конвеєра (блок B): що сталося з кожним листом батчу. Свопається в
    #mail-detail після POST /mail/accept-batch. Прийняті рядки прибирає зі списку
    mail.js за подією mailBatchDone (заголовок HX-Trigger); тут — лише зведення.
-   Потребує: results (усі), accepted, failed. #}
+   Потребує: results (усі), accepted, failed. Рядок із `merged` — лист, доданий
+   до рядка свого клієнта (зведення, `mail_merge`): окремої роботи в черзі він
+   не дав, тож у лічильник робіт не входить. #}
 <div class="mailbatch mb-result">
     <div class="mb-head">
         <span class="mb-title">Конвеєр — результат</span>
@@ -11,13 +13,14 @@
     <div class="mb-res-block ok">
         <div class="mb-res-head">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-            Прийнято в чергу — <b>{{ accepted|length }}</b>
+            {% set _merged = accepted|selectattr('merged')|list|length %}
+            Прийнято в чергу — <b>{{ accepted|length - _merged }}</b>{% if _merged %} {% if accepted|length - _merged == 1 %}робота{% elif accepted|length - _merged < 5 %}роботи{% else %}робіт{% endif %} з {{ accepted|length }} листів{% endif %}
         </div>
         <ul class="mb-res-list">
             {% for r in accepted %}
             <li>
                 <span class="mb-res-name">{{ r.label }}</span>
-                <span class="mb-res-note mono">{{ r.material_label }}{% if r.saved_files %} · {{ r.saved_files }} файл.{% endif %}{% if r.partial %} · частково{% endif %}</span>
+                <span class="mb-res-note mono">{% if r.merged %}↳ у рядок клієнта · {% endif %}{{ r.material_label }}{% if r.saved_files %} · {{ r.saved_files }} файл.{% endif %}{% if r.partial %} · частково{% endif %}</span>
             </li>
             {% endfor %}
         </ul>

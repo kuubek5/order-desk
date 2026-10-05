@@ -26,7 +26,7 @@ def _bind(db, name, folder, confirmed=True):
 
 
 def _accept(db, user, email, client_name="Люмі-Дент", folder_pick=""):
-    return mail_router_mod.accept_email(
+    return mail_router_mod.accept_email(confirm_missing="1",
         request=_request(user.id), email_id=email.id,
         client_name=client_name, material_color="моно а3", kind="", quantity="",
         folder_pick=folder_pick, folder_new="", material_folder="", attachment_ids=[], db=db,

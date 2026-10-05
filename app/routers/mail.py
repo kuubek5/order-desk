@@ -128,9 +128,14 @@ from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sende
 from app.services.mail_accept import (
     accept_blocker,
     accept_letter,
+    missing_accept_fields,
+    missing_accept_message,
     planned_export_rel,
     resolve_wizard_overrides,
+    write_merged_row,
 )
+from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
+from app.services.sheet_writeback import write_sheet_fields
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
 from app.services.mail_mirror import mail_mirror_orders
@@ -1106,6 +1111,9 @@ def _mail_panel_context(
     material_folder: str = "",
     attachment_ids: list[int] | None = None,
     error: str | None = None,
+    sum3d_id: str = "",
+    opak: str = "",
+    missing: list[str] | None = None,
 ) -> dict:
     """Shared render context for the triage detail CARD (блок A, «Стрічка»):
     seeded work fields, material candidates, whitelisted download links and the
@@ -1224,6 +1232,14 @@ def _mail_panel_context(
         "opak_hint": letter_opak_hint(material_ctx),
         "kind": kind,
         "quantity": quantity,
+        # Sum3D і опак зберігаються в картці після невдалої спроби прийняти, як
+        # решта полів: інакше попередження «не вписано кількість» стирало б уже
+        # вписаний Sum3D.
+        "sum3d_id": sum3d_id,
+        "opak": opak,
+        # Що оператор забув вписати (власник 05.10.26) — попередження з
+        # галочкою «Так, прийняти без …» над кнопкою прийняття.
+        "missing": missing or [],
         "folder_pick": folder_pick,
         "folder_new": folder_new,
         "material_folder": material_folder,
@@ -1975,9 +1991,14 @@ def accept_email(
     accept_anyway: str = Form(""),
     sum3d_id: str = Form(""),
     opak: str = Form(""),
+    confirm_missing: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Прийняти лист (або одну кольорову партію) у чергу.
+
+    Запобіжник (власник 05.10.26): порожня кількість або Sum3D — не помилка,
+    але майже завжди забули. Тоді картка повертається з попередженням і
+    галочкою «Так, прийняти без …» (`confirm_missing`), як «без цих файлів».
 
     Тут лишився ЛИШЕ HTTP: форма, фрагмент візарда з помилкою, тост і куди
     вести далі. Уся доменна робота — створення роботи, перенос файлів у
@@ -2002,7 +2023,12 @@ def accept_email(
     if email.status != "нове":
         raise HTTPException(status_code=409, detail="лист уже оброблено")
 
-    def _accept_failed(message: str):
+    # При прямому виклику функції (тести) пропущене поле — обʼєкт Form, не рядок.
+    sum3d_id = sum3d_id if isinstance(sum3d_id, str) else ""
+    opak = opak if isinstance(opak, str) else ""
+    confirm_missing = confirm_missing if isinstance(confirm_missing, str) else ""
+
+    def _accept_failed(message: str, missing: list[str] | None = None):
         """Помилка прийняття — назад у ТУ САМУ картку з поясненням, а не редіректом
         зі сторінки.
 
@@ -2024,9 +2050,13 @@ def accept_email(
                 client_name=client_name, material_color=material_color, kind=kind,
                 quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
                 material_folder=material_folder, attachment_ids=attachment_ids,
-                error=message,
+                error=message, sum3d_id=sum3d_id, opak=opak, missing=missing,
             ),
         )
+
+    missing = missing_accept_fields(quantity, sum3d_id)
+    if missing and not confirm_missing:
+        return _accept_failed(missing_accept_message(missing), missing)
 
     result = accept_letter(
         db, user, email,
@@ -2034,10 +2064,8 @@ def accept_email(
         quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
         material_folder=material_folder, attachment_ids=attachment_ids,
         accept_anyway=bool(accept_anyway),
-        # Необовʼязкові; при прямому виклику функції (тести) пропущене поле —
-        # обʼєкт Form, не рядок.
-        sum3d_id=sum3d_id if isinstance(sum3d_id, str) else "",
-        opak=opak if isinstance(opak, str) else "",
+        sum3d_id=sum3d_id,
+        opak=opak,
     )
     if not result.ok:
         return _accept_failed(result.error)
@@ -2119,6 +2147,7 @@ def conveyor_batch_summary(
 def accept_email_batch(
     request: Request,
     payload: str = Form(...),
+    confirm_missing: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Конвеєр (блок B): прийняти кілька листів одним натиском.
@@ -2227,6 +2256,31 @@ def accept_email_batch(
             })
             return response
 
+    # Запобіжник (власник 05.10.26): забута кількість чи Sum3D. Не помилка —
+    # роботу можна прийняти й до прорахунку, — тому не відмова, а зупинка з
+    # переліком і кнопкою «Прийняти все одно» (`confirm_missing`). Нічого не
+    # переноситься, картки з уже вписаним лишаються на місці.
+    if not (confirm_missing if isinstance(confirm_missing, str) else ""):
+        forgot = [
+            {"email_id": eid, "label": display,
+             "missing": missing_accept_fields(item.get("quantity"), item.get("sum3d_id"))}
+            for item, eid, email, display, error in checked
+            if email is not None and not error
+        ]
+        forgot = [r for r in forgot if r["missing"]]
+        if forgot:
+            response = templates.TemplateResponse(
+                request, "_mail_batch_missing.html",
+                {"forgot": forgot, "total": len(checked)},
+            )
+            response.headers["HX-Retarget"] = "#mb-preflight"
+            response.headers["HX-Reswap"] = "innerHTML"
+            response.headers["HX-Trigger"] = json.dumps({
+                "toast": {"kind": "warning",
+                          "message": f"Не вписано кількість або Sum3D у {len(forgot)} з {len(checked)} листів"},
+            })
+            return response
+
     # Групування (власник 02.10.26): листи одного клієнта з тим самим
     # матеріалом, прийняті РАЗОМ цим Конвеєром, лягають в одну теку, а не в
     # `pmma a2` і `pmma a2 (2)`. Лише в межах одного прийняття: лист, прийнятий
@@ -2250,13 +2304,88 @@ def accept_email_batch(
     }
     group_folder: dict[str, str] = {}
 
+    # Зведення в один рядок (власник 05.10.26, перемикач адміністратора,
+    # `app/services/mail_merge.py`). Вимкнено — `merge_plan` None, і цикл нижче
+    # іде рівно старою дорогою: лист = робота = рядок у таблиці.
+    merge_plan = plan_merge(
+        db,
+        [(item, eid, email) for item, eid, email, _d, error in checked
+         if email is not None and not error],
+        planned,
+    ) if merge_enabled(db) else None
+    merge_order: dict[tuple[str, str], Order] = {}
+    merge_email: dict[tuple[str, str], EmailMessage] = {}
+    merge_written: set[tuple[str, str]] = set()
+
     results: list[dict] = []
+    try:
+        _accept_batch_letters(
+            db, user, checked, planned, group_folder, results,
+            merge_plan, merge_order, merge_email, merge_written,
+        )
+    finally:
+        # Рядок зведеної групи мусить лягти в таблицю, навіть якщо цикл
+        # обірвався посередині (непередбачений виняток): інакше робота
+        # лишилась би без рядка, а синк не мав би з чим її звірити.
+        for mkey, order in merge_order.items():
+            if mkey not in merge_written:
+                write_merged_row(db, merge_email[mkey], order)
+
+    accepted = [r for r in results if r["ok"]]
+    failed = [r for r in results if not r["ok"]]
+    merged_n = sum(1 for r in accepted if r.get("merged"))
+
+    response = templates.TemplateResponse(
+        request, "_mail_batch_result.html",
+        {"results": results, "accepted": accepted, "failed": failed},
+    )
+    # Клієнт (mail.js) прибирає прийняті рядки зі списку, знімає їх галочки й
+    # оновлює дзеркало черги — за списком id у тригері.
+    triggers: dict = {
+        "mailBatchDone": {
+            "accepted": [r["email_id"] for r in accepted],
+            "failed": [r["email_id"] for r in failed],
+        }
+    }
+    if accepted:
+        # Робіт у черзі менше, ніж листів, коли листи зведено в рядок клієнта.
+        n = len(accepted) - merged_n
+        word = "роботу" if n == 1 else ("роботи" if n < 5 else "робіт")
+        msg = f"Прийнято {n} {word} в чергу"
+        if merged_n:
+            msg += f"; ще {merged_n} лист. додано до рядка свого клієнта"
+        if failed:
+            msg += f"; {len(failed)} не вдалося"
+        triggers["toast"] = {"kind": "success" if not failed else "warning", "message": msg}
+    # ensure_ascii=True (за замовчуванням): значення заголовка HTTP мусить бути
+    # latin-1, а тости українською — інакше 500 на кодуванні (як у
+    # _files_changed_response).
+    response.headers["HX-Trigger"] = json.dumps(triggers)
+    return response
+
+
+def _accept_batch_letters(
+    db: Session,
+    user,
+    checked: list,
+    planned: dict,
+    group_folder: dict[str, str],
+    results: list[dict],
+    merge_plan,
+    merge_order: dict,
+    merge_email: dict,
+    merge_written: set,
+) -> None:
+    """Цикл прийняття листів Конвеєра (`accept_email_batch`). Наповнює
+    `results`; зведені групи — через `merge_*` (див. `mail_merge`)."""
     for item, eid, email, display, error in checked:
         if error or email is None:
             results.append({"email_id": eid, "label": display, "ok": False,
                             "error": error or "лист не знайдено"})
             continue
         key = planned.get(eid)
+        mkey = merge_plan.group_of.get(eid) if merge_plan else None
+        merge_into = merge_order.get(mkey) if mkey else None
         result = accept_letter(
             db, user, email,
             client_name=(item.get("client_name") or ""),
@@ -2273,11 +2402,18 @@ def accept_email_batch(
             sum3d_id=str(item.get("sum3d_id") or ""),
             opak=str(item.get("opak") or ""),
             join_export_folder=group_folder.get(key, "") if key else "",
+            merge_into=merge_into,
+            merge_primary=bool(mkey) and merge_into is None,
         )
         if result.ok and key and key not in group_folder:
             landed = getattr(result.order, "export_folder_path", None)
             if landed:
                 group_folder[key] = landed
+        if result.ok and mkey and merge_into is None and result.order is not None:
+            # Перший УСПІШНИЙ лист групи стає головним. Не вдався перший —
+            # головним стає наступний, а не група розсипається.
+            merge_order[mkey] = result.order
+            merge_email[mkey] = email
         results.append({
             "email_id": eid,
             "label": display,
@@ -2286,35 +2422,12 @@ def accept_email_batch(
             "material_label": result.material_label,
             "saved_files": result.saved_files,
             "partial": result.partial,
+            "merged": bool(result.ok and merge_into is not None),
         })
-
-    accepted = [r for r in results if r["ok"]]
-    failed = [r for r in results if not r["ok"]]
-
-    response = templates.TemplateResponse(
-        request, "_mail_batch_result.html",
-        {"results": results, "accepted": accepted, "failed": failed},
-    )
-    # Клієнт (mail.js) прибирає прийняті рядки зі списку, знімає їх галочки й
-    # оновлює дзеркало черги — за списком id у тригері.
-    triggers: dict = {
-        "mailBatchDone": {
-            "accepted": [r["email_id"] for r in accepted],
-            "failed": [r["email_id"] for r in failed],
-        }
-    }
-    if accepted:
-        n = len(accepted)
-        word = "роботу" if n == 1 else ("роботи" if n < 5 else "робіт")
-        msg = f"Прийнято {n} {word} в чергу"
-        if failed:
-            msg += f"; {len(failed)} не вдалося"
-        triggers["toast"] = {"kind": "success" if not failed else "warning", "message": msg}
-    # ensure_ascii=True (за замовчуванням): значення заголовка HTTP мусить бути
-    # latin-1, а тости українською — інакше 500 на кодуванні (як у
-    # _files_changed_response).
-    response.headers["HX-Trigger"] = json.dumps(triggers)
-    return response
+        if mkey and merge_plan.last_of.get(mkey) == eid and mkey in merge_order:
+            # Останній лист групи (хай навіть невдалий) — рядок із сумою.
+            write_merged_row(db, merge_email[mkey], merge_order[mkey])
+            merge_written.add(mkey)
 
 
 @router.post("/mail/{email_id}/move-processed", response_class=HTMLResponse)
@@ -3127,21 +3240,33 @@ def _unaccept_email(
     sheet placeholder row, and delete the orders. Raises on a filesystem error
     (the move has its own rollback) so the caller can abort cleanly; sheet
     blanking is best-effort. Side effects first, DB mutations last."""
-    orders = db.scalars(
-        select(Order).where(Order.source_email_id == email.id)
-    ).all()
-    # Legacy safety net: pre-0012 accepts linked only via email.order_id.
-    if not orders and email.order_id:
-        legacy = db.get(Order, email.order_id)
-        if legacy is not None:
-            orders = [legacy]
+    # Лист зведеної групи (Конвеєр, `mail_merge`), яку тримають ще й ІНШІ
+    # листи: робота лишається, відкат лише віднімає внесок цього листа.
+    # Перевірка стоїть ПЕРШОЮ і не залежить від перемикача: інакше запасний
+    # `email.order_id` нижче повів би цей лист на спільну роботу й видалив би її
+    # разом із файлами решти листів.
+    merged_link = detachable_link(db, email)
+    merged_order = merged_link.order if merged_link is not None else None
+    orders: list[Order] = []
+    if merged_order is None:
+        orders = list(db.scalars(
+            select(Order).where(Order.source_email_id == email.id)
+        ).all())
+        # Legacy safety net: pre-0012 accepts linked only via email.order_id.
+        if not orders and email.order_id:
+            legacy = db.get(Order, email.order_id)
+            if legacy is not None:
+                orders = [legacy]
 
     # Відкат — лише поки робота на етапі прийняття. Відфрезеровану чи видану
     # роботу «повернути в тріаж» означало б видалити її разом з історією
     # (StatusEvent/Comment/ReworkRecord — cascade), а §5 вимагає точної історії
     # «хто що зробив». Далі — лише «Видалити з черги» в паспорті роботи, з
     # окремим підтвердженням (ревʼю 07.09.26, mail CRITICAL-4).
-    advanced = [o for o in orders if o.status not in UNACCEPT_ALLOWED_STATUSES]
+    advanced = [
+        o for o in [*orders, *([merged_order] if merged_order is not None else [])]
+        if o.status not in UNACCEPT_ALLOWED_STATUSES
+    ]
     if advanced:
         labels = ", ".join(f"{o.work_order_no or o.client_name or o.id} ({o.status})" for o in advanced)
         raise ValueError(
@@ -3223,6 +3348,13 @@ def _unaccept_email(
     db.flush()
     for order in orders:
         db.delete(order)
+    if merged_link is not None and merged_order is not None:
+        # Файли цього листа вже повернуті в спул (вище — лише ЙОГО вкладення,
+        # бо вони належать листу). Лишилось відняти кількість і опак, передати
+        # головність, якщо це був головний лист, і переписати рядок таблиці.
+        _order, changed = detach_letter(db, merged_link, email)
+        db.flush()
+        _rewrite_merged_row(db, merged_order, email, changed)
     email.status = "нове"
     email.attachments_status = "ready"
     # Симетрія до прийняття: якщо accept переніс лист у папку «оброблено»,
@@ -3240,6 +3372,28 @@ def _unaccept_email(
                 "Відкат листа %s: не вдалося повернути з папки у Вхідні", email.id
             )
     return moved_pairs
+
+
+def _rewrite_merged_row(
+    db: Session, order: Order, email: EmailMessage, fields: set[str]
+) -> None:
+    """Після відкату одного листа зведеної групи — нова кількість (і опак) у
+    рядку таблиці. Позиція рядка звіряється всередині (`write_sheet_fields` →
+    `write_order_fields`), чужий рядок не чіпається. Best-effort, як стирання
+    рядка у звичайному відкаті: збій таблиці відкат не зупиняє, а потрапляє в
+    журнал синку й у банер «не дійшло в таблицю»."""
+    if order.row_number is None:
+        return
+    try:
+        error = write_sheet_fields(db, order, fields)
+    except Exception:  # noqa: BLE001 — sheet update must not block the undo
+        logger.exception("Відкат листа %s: не вдалося оновити рядок зведеної роботи", email.id)
+        return
+    if error:
+        logger.warning(
+            "Відкат листа %s: кількість зведеної роботи %s у таблиці не оновлено: %s",
+            email.id, order.id, error,
+        )
 
 
 @router.post("/mail/{email_id}/restore")

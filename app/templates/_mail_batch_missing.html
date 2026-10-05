@@ -1,0 +1,26 @@
+{# Запобіжник Конвеєра (власник 05.10.26): у картках не вписано кількість або
+   Sum3D. Нічого не прийнято; лягає в #mb-preflight над картками (HX-Retarget),
+   тож вписане не губиться. «Прийняти все одно» шле той самий payload з
+   confirm_missing — свідоме «так», як галочка в картці листа.
+   Потребує: forgot (email_id, label, missing), total. #}
+<div class="mb-preflight-box" role="alert">
+    <div class="mb-res-head">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
+        Не вписано кількість або Sum3D — нічого не прийнято
+    </div>
+    <ul class="mb-res-list">
+        {% for r in forgot %}
+        <li>
+            <span class="mb-res-name">{{ r.label }}</span>
+            <span class="mb-res-err">немає: {{ r.missing|join(', ') }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="mb-hint">Впишіть у картках і натисніть «Прийняти» ще раз — або прийміть як є.</div>
+    <button type="button" class="btn mb-accept-anyway"
+            hx-post="/mail/accept-batch" hx-target="#mail-detail" hx-swap="innerHTML"
+            hx-vals='js:{payload: window.collectMailBatch(), confirm_missing: "1"}'
+            hx-indicator="this" hx-disabled-elt="this">
+        Прийняти все одно
+    </button>
+</div>

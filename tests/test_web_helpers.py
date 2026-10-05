@@ -400,7 +400,7 @@ def test_accept_email_stays_in_triage_after_full_accept():
     with patch("app.services.mail_accept.open_spreadsheet"), patch(
         "app.routers.mail.get_worksheet_by_name", return_value=None
     ):
-        response = accept_email(
+        response = accept_email(confirm_missing="1",
             request=request,
             email_id=email.id,
             client_name="Клієнт",
@@ -471,7 +471,7 @@ def test_accept_email_links_order_to_appended_sheet_row():
     with patch("app.services.mail_accept.open_spreadsheet"), \
          patch("app.services.mail_accept.latest_worksheet_on_or_before", return_value=fake_ws), \
          patch("app.services.mail_accept.append_mail_placeholder_row", return_value=70):
-        accept_email(
+        accept_email(confirm_missing="1",
             request=request, email_id=email.id,
             client_name="Клієнт", material_color="моно A2", kind="анатомія", quantity="1", attachment_ids=[], db=db,
         )
@@ -510,7 +510,7 @@ def test_accept_email_refuses_while_attachments_still_downloading():
     db = FakeDb()
     request = SimpleNamespace(session={"user_id": user.id})
 
-    response = accept_email(
+    response = accept_email(confirm_missing="1",
         request=request,
         email_id=email.id,
         client_name="Клієнт",

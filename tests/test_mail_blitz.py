@@ -45,7 +45,7 @@ def test_conveyor_passes_opak_and_sum3d_to_accept(app_db, monkeypatch):  # noqa:
         "email_id": eid, "client_name": "Клієнт", "material_color": "mono a3",
         "opak": "2", "sum3d_id": "12-01-45",
     }])
-    client.post("/mail/accept-batch", {"payload": payload}, {"HX-Request": "true"})
+    client.post("/mail/accept-batch", {"payload": payload, "confirm_missing": "1"}, {"HX-Request": "true"})
     assert seen["opak"] == "2" and seen["sum3d_id"] == "12-01-45"
 
 
@@ -69,7 +69,7 @@ def test_conveyor_passes_the_changed_folder_to_accept(app_db, monkeypatch):  # n
         "email_id": eid, "client_name": "Клієнт", "material_color": "mono a3",
         "folder_pick": "", "folder_new": "Клієнт Новий", "material_folder": "моно а3",
     }])
-    client.post("/mail/accept-batch", {"payload": payload}, {"HX-Request": "true"})
+    client.post("/mail/accept-batch", {"payload": payload, "confirm_missing": "1"}, {"HX-Request": "true"})
     assert seen["folder_new"] == "Клієнт Новий" and seen["material_folder"] == "моно а3"
 
 

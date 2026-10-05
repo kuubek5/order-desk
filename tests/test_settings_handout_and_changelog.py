@@ -131,3 +131,27 @@ def test_settings_page_carries_only_a_preview_of_the_changelog(client):
     # Кнопки «Показати всі» у повному фрагменті бути не має (текст «Показати
     # всі» трапляється і в самому журналі змін, тому шукаємо клас кнопки).
     assert "scon-rel-more" not in fragment
+
+
+def test_mail_merge_toggle_is_its_own_form_and_does_not_touch_qc(client):
+    """Зведення листів Конвеєра (05.10.26) — окрема форма: незазначена галочка
+    не приходить, тож спільна з QC форма вимикала б сусіда (§14)."""
+    _, _, html = client.get("/settings")
+    sec = _section(html, "handout")
+    assert 'action="/settings/mail-merge-rows"' in sec
+    assert 'name="mail_merge_rows" value="1" >' in sec  # за замовчуванням вимкнено
+
+    client.post("/settings/handout-qc", {"handout_qc": "1"})
+    status, headers, _ = client.post("/settings/mail-merge-rows", {"mail_merge_rows": "1"})
+    assert status == 303 and "#handout" in dict(headers).get("location", "")
+
+    _, _, html = client.get("/settings")
+    sec = _section(html, "handout")
+    assert 'name="mail_merge_rows" value="1" checked' in sec
+    assert 'name="handout_qc" value="1" checked' in sec  # QC не зачепило
+
+    client.post("/settings/mail-merge-rows", {})
+    _, _, html = client.get("/settings")
+    sec = _section(html, "handout")
+    assert 'name="mail_merge_rows" value="1" >' in sec
+    assert 'name="handout_qc" value="1" checked' in sec
