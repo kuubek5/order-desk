@@ -130,6 +130,7 @@ from app.services.handout import (
     scan_export_for_clients as _scan_export_for_clients,
     scan_export_latest_for_clients as _scan_export_latest_for_clients,
 )
+from app.services.mail_row_retry import retry_pending_mail_rows
 from app.services.sheet_stuck_writes import observe as _observe_stuck_writes
 from app.services.sheet_stuck_writes import reset as _reset_stuck_writes
 from app.services.sheet_writeback import (
@@ -299,6 +300,18 @@ def _retry_pending_fills_tick(db: Session) -> None:
         logger.exception("Повторне фарбування рядків не поставлено")
 
 
+def _retry_pending_mail_rows_tick(db: Session) -> None:
+    """Дописати рядок-нотатку поштової роботи, що не ліг у таблицю
+    (Order.sheet_row_pending, app/services/mail_row_retry.py). Поруч із
+    повторами Sum3D і заливки з тієї самої причини. Збій не зупиняє синк."""
+    if not _sheets_configured(db):
+        return
+    try:
+        retry_pending_mail_rows(db)
+    except Exception:
+        logger.exception("Повтор рядків поштових робіт не поставлено")
+
+
 def _stuck_writes_tick(db: Session) -> None:
     """Запис у таблицю, що не дійшов, — звірка банера з позначками в БД і
     журнал на 5 хв (app/services/sheet_stuck_writes.py). Після повторів, щоб
@@ -371,6 +384,7 @@ def _sheet_sync_worker(stop_event: Event) -> None:
                         next_wide = monotonic() + speed.get("wide", speed["hot"])
                 _retry_pending_sum3d_tick(db)
                 _retry_pending_fills_tick(db)
+                _retry_pending_mail_rows_tick(db)
                 _stuck_writes_tick(db)
         except Exception:
             logger.exception("Unexpected background sheet sync failure")

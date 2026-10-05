@@ -570,6 +570,7 @@ def sheet_write_failures_retry(request: Request, db: Session = Depends(get_db)):
     банер і тост із тим, що вийшло."""
     from concurrent.futures import wait as wait_futures
 
+    from app.services.mail_row_retry import retry_pending_mail_rows_now
     from app.services.sheet_writeback import retry_failed_writes_now
     from app.sheets import quota_is_tight
 
@@ -598,6 +599,11 @@ def sheet_write_failures_retry(request: Request, db: Session = Depends(get_db)):
         db,
         {item.order_id for item in items if item.kind == "sum3d"},
         {item.order_id for item in items if item.kind == "fill"},
+    )
+    # Рядок-нотатка поштової роботи (MULTICALC_SAFETY_BRIEF.md п.1): спершу
+    # пошук рядка, чия відповідь загубилась, і лише тоді дозапис.
+    futures += retry_pending_mail_rows_now(
+        db, {item.order_id for item in items if item.kind == "row"},
     )
     # Транзакцію запиту закриваємо ДО очікування: пул комітить позначки у
     # своїй сесії, і відкритий запис тут (вхід міг оновити сесію користувача)

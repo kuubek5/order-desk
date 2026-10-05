@@ -68,12 +68,12 @@ REASON_TEXT = {
     "unknown": "таблиця ще не підтвердила запис — повтор іде сам",
 }
 
-KIND_TEXT = {"sum3d": "Sum3D", "fill": "синя заливка"}
+KIND_TEXT = {"sum3d": "Sum3D", "fill": "синя заливка", "row": "рядок роботи"}
 
 
 @dataclass(frozen=True)
 class FailedWrite:
-    kind: str          # "sum3d" | "fill"
+    kind: str          # "sum3d" | "fill" | "row" (рядок-нотатка поштової роботи)
     order_id: int
     who: str           # клієнт, наряд або #id — як людина шукає рядок
     tab: str | None    # вкладка (дд.мм.рр), щоб перехід відкрив її день
@@ -95,10 +95,11 @@ class StuckWrites:
     """Підсумок «висить довше 5 хв» — для журналу синку."""
     sum3d: int
     fill: int
+    row: int = 0
 
     @property
     def total(self) -> int:
-        return self.sum3d + self.fill
+        return self.sum3d + self.fill + self.row
 
 
 _lock = threading.Lock()
@@ -220,6 +221,12 @@ def _pending(db: Session) -> dict[tuple[str, int], Order]:
         )
     ):
         found[("fill", order.id)] = order
+    # Поштова робота без рядка-нотатки — той самий предикат, що в повторі
+    # (`mail_row_retry.pending_row_clause`).
+    from app.services.mail_row_retry import pending_row_clause
+
+    for order in db.scalars(select(Order).where(*pending_row_clause())):
+        found[("row", order.id)] = order
     return found
 
 
@@ -268,6 +275,7 @@ def observe(db: Session, *, now: float | None = None, wall: datetime | None = No
             StuckWrites(
                 sum3d=sum(1 for kind, _ in stuck if kind == "sum3d"),
                 fill=sum(1 for kind, _ in stuck if kind == "fill"),
+                row=sum(1 for kind, _ in stuck if kind == "row"),
             )
             if stuck else None
         )
@@ -293,6 +301,8 @@ def _describe(snapshot: StuckWrites) -> str:
         parts.append(f"Sum3D — {snapshot.sum3d}")
     if snapshot.fill:
         parts.append(f"синя заливка — {snapshot.fill}")
+    if snapshot.row:
+        parts.append(f"рядок поштової роботи — {snapshot.row}")
     return ", ".join(parts)
 
 

@@ -549,6 +549,14 @@ def _relink_moved_rows(
     for order in candidates:
         if id(order) not in in_map and order.archived_at is not None:
             continue
+        if order.row_number is None and not (
+            order.sheet_row_pending is not None and order.archived_at is None
+        ):
+            # Робота без рядка зчіплюється з рядком, лише коли САМА його чекає
+            # (поштова, чия нотатка не ліг чи чия відповідь загубилась). Стара
+            # поштова робота без рядка не мусить забрати рядок, вписаний
+            # людиною.
+            continue
         key = _order_identity(order)
         if key is not None:
             orders_by_key.setdefault(key, []).append(order)
@@ -568,13 +576,32 @@ def _relink_moved_rows(
         # (двійники на одному рядку) лишається порядок `all_orders`, тобто за
         # id. Тому рядок дістається СТАРШІЙ роботі: на ній історія статусів,
         # Sum3D і коментарі оператора, а зайвий молодший дубль іде в Архів.
-        korders_sorted = sorted(korders, key=lambda o: o.row_number)
+        # Робота, що ЧЕКАЄ рядок (`row_number` None), — у кінці групи: рядки
+        # спершу дістаються тим, у кого вони вже є, а «нічий» лишок — їй.
+        # Ключ без None ще й тому, що None не порівнюється з числом: група
+        # «поштова без рядка + її двійник» валила синк вкладки TypeError-ом
+        # на кожному проході (мультипрорахунок, 05.10.26).
+        korders_sorted = sorted(
+            korders, key=lambda o: (o.row_number is None, o.row_number or 0)
+        )
         for order, row in zip(korders_sorted, krows_sorted):
             if order.id is not None:
                 paired_ids.add(order.id)
             pairs.append((order, row.row_number))
 
-    movers = [(order, new_row) for order, new_row in pairs if order.row_number != new_row]
+    # Рядок, знайдений для роботи, що його чекала, — не зсув рядків: інакше
+    # прохід вважав би, що таблицю зсунули, і знімав би довіру до заливок.
+    movers = [
+        (order, new_row) for order, new_row in pairs
+        if order.row_number is not None and order.row_number != new_row
+    ]
+    for order, _ in pairs:
+        if order.row_number is None:
+            order.sheet_row_pending = None
+            logger.info(
+                "Синк: робота %s отримала свій рядок-нотатку (запис, чия відповідь загубилась)",
+                order.id,
+            )
 
     # Two phases so movers that swap slots don't clobber each other: free every
     # mover's old slot first, then place each at its paired row. A non-mover

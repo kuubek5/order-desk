@@ -274,6 +274,291 @@ def test_cross_volume_never_overwrites_an_existing_file(tmp_path, cross_volume):
     assert dst.read_bytes() == b"OLD" and src.read_bytes() == b"NEW"
 
 
+# ── Поштова робота без рядка в таблиці і синк ─────────────────────────────
+# Рядок-нотатка не ліг (мережа) або ліг, але відповідь загубилась: робота є,
+# `row_number` порожній. Мультипрорахунок дає кілька робіт ОДНОГО клієнта з тим
+# самим кольором і к-стю 1 — однаковий ключ identity.
+
+
+def _mail_order(session, **kw):
+    from datetime import datetime
+
+    from app.models import Order
+
+    values = dict(source="email", sheet_tab="22.06.26", row_number=None,
+                  client_name="Басараб", material_color="mono a3", quantity="1",
+                  sum3d_id="10-19-48", status="прораховано",
+                  sheet_row_pending=datetime.now())
+    values.update(kw)
+    order = Order(**values)
+    session.add(order)
+    session.flush()
+    return order
+
+
+def test_sync_survives_a_rowless_mail_order_next_to_its_twin():
+    """Поштова робота без рядка + інша робота з тим самим ключем у вкладці.
+    `_relink_moved_rows` сортував групу за `row_number` — None проти числа
+    дає TypeError, і синк вкладки падав на кожному проході."""
+    from tests.test_sync import make_client_row, make_session
+    from app.sync import sync_tab
+
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)])
+        session.commit()
+        mail = _mail_order(session)
+        legacy = _mail_order(session, sheet_row_pending=None)
+        session.commit()
+
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)])
+        session.commit()
+
+        # Рядок лишився за тим, у кого він був; поштова й далі чекає свій.
+        assert mail.row_number is None and mail.sheet_row_pending is not None
+        assert legacy.row_number is None
+
+
+def test_legacy_rowless_mail_order_does_not_take_a_human_row():
+    """Стара поштова робота без рядка (без позначки «чекає») не забирає рядок,
+    який людина вписала з тим самим клієнтом і кольором."""
+    from sqlalchemy import select as _select
+    from tests.test_sync import make_client_row, make_session
+    from app.models import Order
+    from app.sync import sync_tab
+
+    with make_session() as session:
+        legacy = _mail_order(session, sheet_row_pending=None)
+        session.commit()
+        sync_tab(session, "22.06.26", [make_client_row(row_number=7)])
+        session.commit()
+        assert legacy.row_number is None
+        assert len(session.scalars(_select(Order)).all()) == 2
+
+
+def test_sync_binds_an_orphan_row_to_the_rowless_mail_order_not_a_duplicate():
+    """Відповідь на запис загубилась: рядок у таблиці є, робота про нього не
+    знає. Синк мусить зчепити рядок із цією роботою, а не завести другу."""
+    from sqlalchemy import select as _select
+    from tests.test_sync import make_client_row, make_session
+    from app.models import Order
+    from app.sync import sync_tab
+
+    with make_session() as session:
+        mail = _mail_order(session)
+        session.commit()
+
+        sync_tab(session, "22.06.26", [make_client_row(row_number=7)])
+        session.commit()
+
+        orders = session.scalars(_select(Order)).all()
+        assert [o.id for o in orders] == [mail.id], "з рядка заведено дубль"
+        assert mail.row_number == 7 and mail.source == "email"
+        assert mail.sheet_row_pending is None
+
+
+def test_two_rowless_mail_twins_take_two_orphan_rows():
+    from sqlalchemy import select as _select
+    from tests.test_sync import make_client_row, make_session
+    from app.models import Order
+    from app.sync import sync_tab
+
+    with make_session() as session:
+        first = _mail_order(session)
+        second = _mail_order(session)
+        session.commit()
+
+        sync_tab(session, "22.06.26", [make_client_row(row_number=7), make_client_row(row_number=8)])
+        session.commit()
+
+        assert len(session.scalars(_select(Order)).all()) == 2
+        assert {first.row_number, second.row_number} == {7, 8}
+
+
+# ── Рядок-нотатка: позначка, банер, повтор ────────────────────────────────
+
+
+@pytest.fixture
+def rowdb(monkeypatch):
+    """База в памʼяті, яку бачать і тест, і «воркер» write-back."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session as _Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.db import Base
+    from app.services import sheet_stuck_writes, sheet_writeback
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(
+        sheet_writeback, "writeback_session",
+        lambda: _Session(bind=engine, autoflush=False, expire_on_commit=False),
+    )
+    sheet_stuck_writes.reset()
+    yield engine
+    sheet_stuck_writes.reset()
+
+
+def _client_line(client, material, qty, sum3d=""):
+    line = [""] * 14
+    line[2], line[3], line[4], line[11] = qty, material, client, sum3d
+    return line
+
+
+def _raw(*lines):
+    """Вкладка: 6 рядків заголовків (порожні — звірка структури мовчить),
+    далі рядки даних; рядок даних N = `lines[N-1]`."""
+    return [[""] * 14 for _ in range(6)] + [list(x) for x in lines]
+
+
+class _FakeSheet:
+    def __init__(self, raw):
+        self.raw = raw
+
+    def get_all_values(self):
+        return self.raw
+
+
+def _wire_sheet(monkeypatch, raw, appended):
+    from app import sheets
+    from app.services import mail_accept as mail_accept_svc
+
+    sheet = _FakeSheet(raw)
+    monkeypatch.setattr(sheets, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(sheets, "get_worksheet_by_name", lambda ss, name: sheet)
+    monkeypatch.setattr(sheets, "call_with_retry", lambda fn: fn())
+
+    def append(worksheet, client, qty, material, **kw):
+        appended.append((client, qty, material, kw.get("sum3d_id")))
+        sheet.raw.append(_client_line(client, material, qty, kw.get("sum3d_id", "")))
+        return len(sheet.raw)  # номер рядка АРКУША (1-based)
+
+    monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", append)
+    return sheet
+
+
+def _pending_mail(engine, **kw):
+    from sqlalchemy.orm import Session as _Session
+
+    with _Session(engine, expire_on_commit=False) as db:
+        order = _mail_order(db, **kw)
+        db.commit()
+        return order.id
+
+
+def test_failed_note_keeps_the_work_waiting_and_shows_it_in_the_banner(rowdb, monkeypatch):
+    from sqlalchemy.orm import Session as _Session
+    from types import SimpleNamespace
+
+    from app.models import Order
+    from app.services import mail_accept as mail_accept_svc
+    from app.services.sheet_stuck_writes import failed_sheet_writes
+
+    def boom(*a, **kw):
+        raise ConnectionError("Connection aborted")
+
+    monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", boom)
+    order_id = _pending_mail(rowdb)
+    with _Session(rowdb) as db:
+        order = db.get(Order, order_id)
+        mail_accept_svc._write_placeholder_row(db, SimpleNamespace(id=7), order, object())
+        db.commit()
+        assert order.row_number is None and order.sheet_row_pending is not None
+    items = failed_sheet_writes()
+    assert [(i.kind, i.order_id, i.reason) for i in items] == [("row", order_id, "net")]
+    assert items[0].kind_text == "рядок роботи"
+
+
+def test_successful_note_clears_the_wait(rowdb, monkeypatch):
+    from sqlalchemy.orm import Session as _Session
+    from types import SimpleNamespace
+
+    from app.models import Order
+    from app.services import mail_accept as mail_accept_svc
+
+    monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", lambda *a, **kw: 13)
+    order_id = _pending_mail(rowdb)
+    with _Session(rowdb) as db:
+        order = db.get(Order, order_id)
+        mail_accept_svc._write_placeholder_row(db, SimpleNamespace(id=7), order, object())
+        db.commit()
+        assert order.row_number == 7 and order.sheet_row_pending is None
+
+
+def test_retry_waits_for_the_sync_first_then_submits(rowdb, monkeypatch):
+    from datetime import datetime, timedelta
+    from sqlalchemy.orm import Session as _Session
+
+    from app import sheets
+    from app.services import mail_row_retry, sheet_writeback
+
+    submitted = []
+    monkeypatch.setattr(sheet_writeback, "submit_sheet_write", lambda fn, *a: submitted.append(a))
+    monkeypatch.setattr(sheets, "quota_is_tight", lambda: False)
+    mail_row_retry._attempts.clear()
+    since = datetime.now()
+    order_id = _pending_mail(rowdb, sheet_row_pending=since)
+    with _Session(rowdb) as db:
+        assert mail_row_retry.retry_pending_mail_rows(db, now=0.0, wall=since + timedelta(seconds=60)) == 0
+        assert mail_row_retry.retry_pending_mail_rows(db, now=1.0, wall=since + timedelta(seconds=200)) == 1
+        # тротл: та сама робота не ставиться вдруге за 2 хв
+        assert mail_row_retry.retry_pending_mail_rows(db, now=30.0, wall=since + timedelta(seconds=230)) == 0
+    assert submitted == [(order_id,)]
+
+
+def test_retry_binds_the_orphan_row_instead_of_writing_a_second_one(rowdb, monkeypatch):
+    """Запис дійшов, відповідь загубилась: у таблиці вже є рядок цієї роботи.
+    Двійник (той самий клієнт, колір, к-сть — мультипрорахунок) тримає свій
+    рядок 1; «нічий» рядок 3 — наш."""
+    from sqlalchemy.orm import Session as _Session
+
+    from app.models import Order
+    from app.services.mail_row_retry import append_pending_mail_row_warm
+
+    appended: list = []
+    line = _client_line("Басараб", "mono a3", "1", "10-19-48")
+    _wire_sheet(monkeypatch, _raw(line, _client_line("Інший", "pmma a2", "2"), line), appended)
+    _pending_mail(rowdb, row_number=1, sheet_row_pending=None)  # двійник із рядком
+    order_id = _pending_mail(rowdb)
+
+    assert append_pending_mail_row_warm(order_id) is None
+
+    assert appended == [], "дописано другий рядок поверх загубленої відповіді"
+    with _Session(rowdb) as db:
+        order = db.get(Order, order_id)
+        assert order.row_number == 3 and order.sheet_row_pending is None
+
+
+def test_retry_writes_the_row_when_it_is_really_missing(rowdb, monkeypatch):
+    from sqlalchemy.orm import Session as _Session
+
+    from app.models import Order
+    from app.services.mail_row_retry import append_pending_mail_row_warm
+
+    appended: list = []
+    line = _client_line("Басараб", "mono a3", "1", "10-19-48")
+    # Рядок 2 — та сама людина й колір, але ІНШИЙ Sum3D: чужа робота.
+    _wire_sheet(monkeypatch, _raw(line, _client_line("Басараб", "mono a3", "1", "09-00-00")), appended)
+    _pending_mail(rowdb, row_number=1, sheet_row_pending=None)
+    order_id = _pending_mail(rowdb)
+
+    assert append_pending_mail_row_warm(order_id) is None
+
+    assert appended == [("Басараб", "1", "mono a3", "10-19-48")]
+    with _Session(rowdb) as db:
+        order = db.get(Order, order_id)
+        assert order.row_number == 3 and order.sheet_row_pending is None
+
+
+def test_retry_does_nothing_for_a_work_that_already_has_its_row(rowdb, monkeypatch):
+    from app.services.mail_row_retry import append_pending_mail_row_warm
+
+    appended: list = []
+    _wire_sheet(monkeypatch, _raw(), appended)
+    order_id = _pending_mail(rowdb, row_number=4)
+    assert append_pending_mail_row_warm(order_id) is None
+    assert appended == []
+
+
 # ── Конвеєр: виняток посеред партії ───────────────────────────────────────
 
 

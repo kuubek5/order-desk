@@ -46,6 +46,7 @@ from app.parser import HEADER_ROWS
 from app.client_folder import preferred_client_folder
 from app.sender_memory import lookup_sender, remember_sender
 from app.services.opak import format_opak, opak_units
+from app.services.sheet_stuck_writes import note_write_failed, note_write_ok
 from app.settings_store import get_export_folder_path, get_setting
 from app.sheet_writer import append_mail_placeholder_row
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
@@ -304,6 +305,10 @@ def _accept_letter_locked(
         new_order.material_color, load_alias_rows(db), material_id_by_name(db)
     )
     new_order.source_email_id = email.id
+    # Чекає рядок-нотатку з першого ж коміту: якщо процес впаде між комітом і
+    # записом або запис не дійде, повтор (`mail_row_retry`) знає, кого
+    # дописати, а синк — кому віддати рядок, чия відповідь загубилась.
+    new_order.sheet_row_pending = datetime.now()
     db.add(new_order)
     db.flush()
 
@@ -751,15 +756,22 @@ def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, w
     Ніколи не блокує прийняття: відсутня вкладка чи мережевий збій ідуть у
     SyncLog, а не в обличчя операторові 500-ю.
     """
+    if new_order.row_number is not None:
+        # Рядок уже є (синк упізнав його, поки повтор чекав у черзі пулу) —
+        # дописати ще один означало б дубль.
+        new_order.sheet_row_pending = None
+        return
+    if new_order.sheet_row_pending is None:
+        new_order.sheet_row_pending = datetime.now()
     try:
         if worksheet is None:
+            message = "доступної датованої вкладки немає, рядок-нотатку не записано"
             db.add(SyncLog(
                 direction="mail_to_sheet", sheet_tab=new_order.sheet_tab, status="error",
-                message=(
-                    f"email {email.id}: доступної датованої вкладки немає, "
-                    "рядок-нотатку не записано"
-                ),
+                message=f"email {email.id}: {message}",
             ))
+            # «вкладк… не знайдено» — так `classify` дає причину «вкладки немає».
+            note_write_failed("row", new_order, f"вкладку {new_order.sheet_tab} не знайдено: {message}")
             return
         note_row = append_mail_placeholder_row(
             worksheet,
@@ -775,12 +787,17 @@ def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, w
         # імпортує наряд-less рядок як ОКРЕМУ роботу source="sheet_client" — та
         # сама робота зʼявилась би двічі (як «Пошта» і як «Клієнт»).
         new_order.row_number = note_row - HEADER_ROWS
+        new_order.sheet_row_pending = None
         db.add(SyncLog(
             direction="mail_to_sheet", sheet_tab=new_order.sheet_tab, status="ok",
             message=f"email {email.id}: рядок-нотатка записана в рядок {note_row}",
         ))
+        note_write_ok("row", new_order.id)
     except Exception as exc:  # noqa: BLE001 — зручність, а не умова прийняття
         db.add(SyncLog(
             direction="mail_to_sheet", sheet_tab=new_order.sheet_tab, status="error",
             message=f"email {email.id}: не вдалося записати рядок-нотатку: {exc}",
         ))
+        # Позначка `sheet_row_pending` лишається — повтор допише рядок
+        # (`mail_row_retry`), банер «не дійшло в таблицю» показує роботу одразу.
+        note_write_failed("row", new_order, str(exc) or type(exc).__name__)
