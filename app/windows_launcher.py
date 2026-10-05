@@ -446,7 +446,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--open-browser", action="store_true")
     parser.add_argument("--shutdown", action="store_true")
+    # Процес спливаючого вікна (app/desktop_popup_ui.py): той самий exe, інший
+    # режим. ДО перевірки «вже запущено» — інакше він відкрив би браузер.
+    parser.add_argument("--popup-ui", nargs=2, metavar=("PORT", "TOKEN"))
     args, _ = parser.parse_known_args()
+
+    if args.popup_ui:
+        from app.desktop_popup_ui import run_helper
+
+        return run_helper(int(args.popup_ui[0]), args.popup_ui[1])
 
     if args.shutdown:
         return 0 if _signal_shutdown() else 1

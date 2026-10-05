@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 import threading
 import time
 
@@ -245,10 +246,161 @@ def snapshot(db: Session) -> tuple[list[tuple[int, str]], int]:
     return queue_can_take_items_uncached(), int(mail)
 
 
-# ── Одне вікно на процес ──────────────────────────────────────────────────
+# ── Процес вікна ──────────────────────────────────────────────────────────
 
-_ui: object | None = None
-_ui_lock = threading.Lock()
+
+def _settings_payload(s: PopupSettings) -> dict:
+    return {
+        "events": sorted(s.events), "anchor": s.anchor, "monitor": s.monitor,
+        "xy": list(s.xy) if s.xy else None, "seconds": s.seconds,
+    }
+
+
+class PopupClient:
+    """Сторона сервера: запускає процес вікна (`KuubMill.exe --popup-ui`) і шле
+    йому команди рядками JSON через 127.0.0.1.
+
+    Окремий процес, а не потік: потік Tk у процесі сервера ділив інтерпретатор
+    з опитуванням верстатів і печей і на проді малював ~0.5 кадра/с (власник
+    05.10.26). Порт — випадковий, приймається одне з'єднання з одноразовим
+    ключем: інший процес на ПК чужого вікна не намалює. Процес вікна живе,
+    поки відкрите з'єднання; помер — наступна команда запустить новий.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._conn: Any = None
+        self._proc: Any = None
+
+    def _alive(self) -> bool:
+        return self._conn is not None and self._proc is not None and self._proc.poll() is None
+
+    def _spawn(self) -> None:
+        import secrets
+        import socket
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        listener.settimeout(15)
+        port = listener.getsockname()[1]
+        token = secrets.token_hex(16)
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--popup-ui", str(port), token]
+            cwd = None
+        else:
+            cmd = [sys.executable, "-m", "app.desktop_popup_ui", "--popup-ui", str(port), token]
+            cwd = str(Path(__file__).resolve().parents[2])
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        proc = subprocess.Popen(cmd, cwd=cwd, creationflags=flags, close_fds=True)
+        try:
+            conn, _addr = listener.accept()
+        finally:
+            listener.close()
+        conn.settimeout(10)
+        got = b""
+        while not got.endswith(b"\n"):
+            chunk = conn.recv(256)
+            if not chunk:
+                break
+            got += chunk
+        if got.strip().decode(errors="replace") != token:
+            conn.close()
+            proc.kill()
+            raise RuntimeError("процес вікна не підтвердив ключ")
+        conn.settimeout(None)
+        self._conn, self._proc = conn, proc
+        threading.Thread(target=self._read_events, args=(conn,), name="kuubmill-popup-events", daemon=True).start()
+
+    def _read_events(self, conn) -> None:
+        """Події від процесу вікна: збережене положення («Зберегти тут»)."""
+        import json
+
+        from app.db import SessionLocal
+
+        buf = b""
+        try:
+            while True:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    try:
+                        msg = json.loads(line.decode("utf-8"))
+                    except ValueError:
+                        continue
+                    if msg.get("event") == "xy":
+                        with SessionLocal() as db:
+                            save_custom_xy(db, int(msg["x"]), int(msg["y"]))
+                            db.commit()
+        except Exception:  # noqa: BLE001 — обрив з'єднання = процес вікна завершився
+            pass
+
+    def _send(self, msg: dict) -> None:
+        import json
+        import logging
+
+        from app.db import SessionLocal
+
+        with SessionLocal() as db:
+            msg["settings"] = _settings_payload(load_settings(db))
+        msg["origin"] = current_presence().origin
+        data = (json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8")
+        with self._lock:
+            for attempt in (1, 2):
+                try:
+                    if not self._alive():
+                        self._spawn()
+                    self._conn.sendall(data)
+                    return
+                except Exception:  # noqa: BLE001 — перезапустити процес і спробувати ще раз
+                    self._close()
+                    if attempt == 2:
+                        logging.getLogger(__name__).exception("Спливаюче вікно KuubMill не запустилось")
+
+    def _close(self) -> None:
+        try:
+            if self._conn is not None:
+                self._conn.close()
+        except OSError:
+            pass
+        if self._proc is not None and self._proc.poll() is None:
+            try:
+                self._proc.terminate()
+            except OSError:
+                pass
+        self._conn = self._proc = None
+
+    def show(self, kind: str, count: int, title: str, body: str, path: str) -> None:
+        self._send({"cmd": "show", "kind": kind, "count": count, "title": title, "body": body, "path": path})
+
+    def test(self, kind: str = "lab") -> None:
+        if kind == "mail":
+            self.show("mail", 2, "2 нові листи", "Пробне вікно · клікни, щоб відкрити пошту", "/mail")
+        else:
+            self.show("lab", 3, "Лабораторія — можна брати 3", "Пробне вікно · Нова: 24122 · моно A3 · 4 од.", "/")
+
+    def place(self) -> None:
+        self._send({"cmd": "place"})
+
+    def stop(self) -> None:
+        with self._lock:
+            if self._alive():
+                try:
+                    self._conn.sendall(b'{"cmd": "stop"}\n')
+                    self._proc.wait(timeout=2)  # хай закриє вікна сам
+                except Exception:  # noqa: BLE001 — не вийшов сам — _close() завершить
+                    pass
+            self._close()
+
+
+_client: PopupClient | None = None
+_client_lock = threading.Lock()
 
 
 def supported() -> bool:
@@ -258,27 +410,11 @@ def supported() -> bool:
     return sys.platform == "win32"
 
 
-def get_popup_ui():
-    """Ліниво створений `PopupUI` (tkinter імпортується лише тут, не при старті
-    застосунку). Потік із вікном запускається при першому показі."""
-    global _ui
-    with _ui_lock:
-        if _ui is None:
-            from app.db import SessionLocal
-            from app.desktop_popup_ui import PopupUI
-            from app.runtime import resource_path
-
-            def _settings() -> PopupSettings:
-                with SessionLocal() as db:
-                    return load_settings(db)
-
-            def _save_xy(x: int, y: int) -> None:
-                with SessionLocal() as db:
-                    save_custom_xy(db, x, y)
-                    db.commit()
-
-            _ui = PopupUI(
-                resource_path("app/static/img"), _settings, _save_xy,
-                lambda: current_presence().origin,
-            )
-        return _ui
+def get_popup_ui() -> PopupClient:
+    """Один клієнт процесу вікна на сервер. Процес запускається при першому
+    показі, а не на старті застосунку."""
+    global _client
+    with _client_lock:
+        if _client is None:
+            _client = PopupClient()
+        return _client

@@ -1,8 +1,14 @@
-"""Вікно-сповіщення KuubMill поверх усіх програм (tkinter, окремий потік).
+"""Вікно-сповіщення KuubMill поверх усіх програм (tkinter, ОКРЕМИЙ ПРОЦЕС).
 
 Логіка «що й коли показувати» — `app/services/desktop_popup.py`; тут лише
-малювання. Усі звернення до Tk — В ОДНОМУ потоці (`kuubmill-popup-ui`): решта
-застосунку кладе команди в чергу (`PopupUI.show/test/place`), потік їх забирає.
+малювання. Вікно живе в окремому процесі (`KuubMill.exe --popup-ui <порт>
+<ключ>`, `run_helper`): у процесі сервера потік Tk ділив інтерпретатор з
+опитуванням верстатів і печей і отримував кадр раз на секунди — на проді
+вікно рухалось ривками ~0.5 кадра/с (власник 05.10.26; замір: 6 зайнятих
+потоків уже дають 250 мс між кадрами замість 100). Сервер шле команди
+рядками JSON через 127.0.0.1 (`desktop_popup.PopupClient`), процес вікна
+відповідає подіями (збережене положення). Закрив сервер з'єднання — процес
+вікна завершується сам.
 
 Поведінка (власник 05.10.26, макет `design/kuubmill_native-popup-stack_*`):
   * вікно не забирає фокус (WS_EX_NOACTIVATE): друк у Sum3D не переривається;
@@ -33,7 +39,7 @@ W, H, GAP, MARGIN = 360, 82, 10, 16
 CARD, CARD_EDGE, INK, INK2, ACCENT, KEY = (
     "#1b150c", "#5c4a2c", "#f2e8d8", "#bfae95", "#ffd894", "#010203",
 )
-TICK_MS = 100
+TICK_MS = 16  # ~60 кадрів/с: процес вікна нікому не заважає
 
 
 def _monitors() -> list[tuple[int, int, int, int, bool]]:
@@ -88,6 +94,18 @@ def _show_no_activate(hwnd: int, x: int, y: int, w: int, h: int) -> None:
         return
     HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW = -1, 0x10, 0x40
     ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW)
+
+
+def _fit(text: str, font: tuple, maxw: int) -> str:
+    """Обрізати текст до ширини `maxw` пікселів з «…» (Tk має бути запущений)."""
+    import tkinter.font as tkfont
+
+    f = tkfont.Font(font=font)
+    if f.measure(text) <= maxw:
+        return text
+    while text and f.measure(text + "…") > maxw:
+        text = text[:-1]
+    return text.rstrip(" ·") + "…"
 
 
 class _Card:
@@ -148,10 +166,13 @@ class _Card:
             cv.create_image(pad, iy, image=self._photo, anchor="nw")
         tx = pad + icon + int(14 * s)
         maxw = self.w - tx - int(30 * s)
-        cv.create_text(tx, int(24 * s), text=title, anchor="w", fill=INK, width=maxw,
-                       font=("Segoe UI Semibold", 11))
-        cv.create_text(tx, int(48 * s), text=body, anchor="w", fill=INK2, width=maxw,
-                       font=("Segoe UI", 10))
+        # Один рядок на заголовок і один на опис, з «…»: перенесений текст
+        # налазив на смужку часу.
+        title_font, body_font = ("Segoe UI Semibold", 11), ("Segoe UI", 10)
+        cv.create_text(tx, int(24 * s), text=_fit(title, title_font, maxw), anchor="w",
+                       fill=INK, font=title_font)
+        cv.create_text(tx, int(48 * s), text=_fit(body, body_font, maxw), anchor="w",
+                       fill=INK2, font=body_font)
         if not self.place_mode:
             cv.create_text(self.w - int(16 * s), int(16 * s), text="✕", fill=INK2, tags=("close",),
                            font=("Segoe UI", 9))
@@ -188,12 +209,12 @@ class _Card:
 
     def tick(self) -> None:
         if self.closing:
-            self.alpha -= 0.12
+            self.alpha -= 0.08
             if self.alpha <= 0:
                 self.destroy()
                 return
         elif self.alpha < 0.97:
-            self.alpha = min(0.97, self.alpha + 0.16)
+            self.alpha = min(0.97, self.alpha + 0.06)
         try:
             self.top.attributes("-alpha", self.alpha)
         except Exception:  # noqa: BLE001
@@ -442,7 +463,122 @@ class PopupUI:
             if self._placer is None:
                 return
             bar.geometry(f"+{card.x}+{card.y + card.h + int(6 * self.scale)}")
-            self.root.after(50, _follow)
+            self.root.after(TICK_MS, _follow)
 
         self._placer = bar
         _follow()
+
+
+# ── Процес вікна ───────────────────────────────────────────────────────────
+
+
+def _settings_from(data: dict) -> Any:
+    from app.services.desktop_popup import PopupSettings
+
+    xy = data.get("xy")
+    return PopupSettings(
+        enabled=True,
+        events=frozenset(data.get("events") or ()),
+        anchor=str(data.get("anchor") or "br"),
+        monitor=int(data.get("monitor") or 0),
+        xy=(int(xy[0]), int(xy[1])) if xy else None,
+        seconds=int(data.get("seconds") or 0),
+    )
+
+
+def run_helper(port: int, token: str) -> int:
+    """Точка входу процесу вікна: підключитись до сервера, читати команди,
+    малювати. Tk — у головному потоці цього процесу."""
+    import json
+    import socket
+
+    _configure_helper_logging()
+    try:
+        conn = socket.create_connection(("127.0.0.1", port), timeout=10)
+        conn.settimeout(None)
+        conn.sendall((token + "\n").encode())
+    except OSError:
+        logger.exception("Процес вікна: не вдалося підключитись до KuubMill")
+        return 1
+
+    state: dict[str, Any] = {"settings": _settings_from({}), "origin": ""}
+    send_lock = threading.Lock()
+
+    def _save_xy(x: int, y: int) -> None:
+        with send_lock:
+            conn.sendall((json.dumps({"event": "xy", "x": x, "y": y}) + "\n").encode())
+
+    ui = PopupUI(
+        _icon_dir(), lambda: state["settings"], _save_xy, lambda: state["origin"],
+    )
+
+    def _reader() -> None:
+        buf = b""
+        stopping = False
+        try:
+            while not stopping:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    try:
+                        msg = json.loads(line.decode("utf-8"))
+                    except ValueError:
+                        continue
+                    if "settings" in msg:
+                        state["settings"] = _settings_from(msg["settings"])
+                    if msg.get("origin"):
+                        state["origin"] = msg["origin"]
+                    cmd = msg.get("cmd")
+                    if cmd == "show":
+                        ui.q.put(("show", msg["kind"], int(msg.get("count") or 0),
+                                  msg.get("title", ""), msg.get("body", ""), msg.get("path", "/")))
+                    elif cmd == "place":
+                        ui.q.put(("place",))
+                    elif cmd == "stop":
+                        stopping = True  # вийти з ОБОХ циклів, не лише з розбору
+                        break
+        except OSError:
+            pass
+        ui.q.put(("stop",))
+
+    threading.Thread(target=_reader, name="popup-reader", daemon=True).start()
+    ui._run()  # Tk у головному потоці; повертається після ("stop",)
+    try:
+        conn.close()
+    except OSError:
+        pass
+    return 0
+
+
+def _icon_dir() -> Path:
+    from app.runtime import resource_path
+
+    return resource_path("app/static/img")
+
+
+def _configure_helper_logging() -> None:
+    """Збірка без консолі: помилки процесу вікна — у власний файл поруч із
+    логом застосунку (`logs/popup-ui.log`)."""
+    try:
+        from logging.handlers import RotatingFileHandler
+
+        from app.runtime import LOG_FORMAT, data_dir
+
+        logs = data_dir() / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(logs / "popup-ui.log", maxBytes=512_000, backupCount=1, encoding="utf-8")
+        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        root = logging.getLogger()
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+    except Exception:  # noqa: BLE001 — без лога вікно все одно працює
+        pass
+
+
+if __name__ == "__main__":
+    # Dev: `python -m app.desktop_popup_ui --popup-ui <порт> <ключ>`.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--popup-ui":
+        sys.exit(run_helper(int(sys.argv[2]), sys.argv[3]))
