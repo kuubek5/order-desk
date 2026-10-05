@@ -277,3 +277,64 @@ def test_ambiguous_similars_stay_empty(db_session, tmp_path, monkeypatch):
     attach_mail_mirror_folder_uris(db, [order])
 
     assert order.export_folder_uri is None
+
+
+# ── Скільки разів дзеркало стукає в мережеву теку (05.10.26) ──────────────────
+# Полл кожні 15 с. На проді 1–2.8 с на полл: на кожну поштову роботу — двічі
+# `entry_for_folder` (is_dir + scandir + stat партії) і ще `exists()` на її
+# файли, хоча тека вже відома з `export_folder_path`.
+
+
+def _bound_works(db, tmp_path, n):
+    from app.models import EmailMessage
+
+    orders = []
+    for i in range(n):
+        email = EmailMessage(uid=str(100 + i), uid_validity="v", status="прийнято")
+        db.add(email)
+        db.flush()
+        rel = f"Клієнт{i}/05.10.26/pmma a2"
+        folder = tmp_path / "export" / rel
+        folder.mkdir(parents=True)
+        (folder / "crown.stl").write_text("x")
+        order = Order(source="email", client_name=f"Клієнт{i}", source_email_id=email.id,
+                      export_folder_path=rel)
+        db.add(order)
+        db.flush()
+        db.add(Attachment(email_message_id=email.id, filename="crown.stl",
+                          saved_path=str(folder / "crown.stl"), order_id=order.id))
+        orders.append(order)
+    db.commit()
+    return orders
+
+
+def test_mirror_poll_touches_the_share_once_per_work_and_not_again_soon(db_session, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from app import order_folder
+
+    monkeypatch.setattr(order_folder, "get_export_folder_path", lambda _db: str(tmp_path / "export"))
+    orders = _bound_works(db_session, tmp_path, 5)
+    calls = {"entry": 0, "exists": 0}
+    real_entry = order_folder.entry_for_folder
+    real_exists = Path.exists
+
+    def counting_entry(*a, **kw):
+        calls["entry"] += 1
+        return real_entry(*a, **kw)
+
+    def counting_exists(self):
+        if "export" in str(self):
+            calls["exists"] += 1
+        return real_exists(self)
+
+    monkeypatch.setattr(order_folder, "entry_for_folder", counting_entry)
+    monkeypatch.setattr(Path, "exists", counting_exists)
+
+    attach_mail_mirror_folder_uris(db_session, orders)
+    assert all(o.export_folder_uri for o in orders)
+    assert calls == {"entry": 5, "exists": 0}, calls
+
+    attach_mail_mirror_folder_uris(db_session, orders)  # наступний полл за 15 с
+    assert all(o.export_folder_uri for o in orders)
+    assert calls == {"entry": 5, "exists": 0}, "наступний полл знову пішов у мережеву теку"

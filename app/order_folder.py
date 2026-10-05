@@ -262,6 +262,9 @@ def clear_email_preview_token_cache() -> None:
     """Скинути кеш токенів: файли листів переїхали."""
     with _preview_token_lock:
         _preview_token_cache.clear()
+    # Перевірки тек дзеркала пошти описують те саме — де лежать файли.
+    with _mirror_probe_lock:
+        _mirror_probe_cache.clear()
 
 
 def forget_email_preview_token(email_id: int) -> None:
@@ -532,6 +535,33 @@ def _bound_folder(export_root: Path | None, order: Order) -> Path | None:
     return entry.folder_path if entry is not None else None
 
 
+# ── Дзеркало пошти: перевірки тек на шарі — раз на хвилину, не щополла ──────
+# Виміряно на проді 05.10.26: полл дзеркала (кожні 15 с) займав 1–2.8 с, бо на
+# КОЖНУ поштову роботу двічі заглядав у її теку (`entry_for_folder`: is_dir +
+# scandir + stat партії) і ще перевіряв її файли — ≈7 звернень до мережевої
+# шари на роботу, а робіт за день десятки. Тека роботи за 15 с не міняється;
+# переїзд файлів (прийняття, відкат) скидає кеш через `clear_export_cache`.
+_MIRROR_PROBE_TTL_SECONDS = 60.0
+_MIRROR_PROBE_MAX = 4000
+_mirror_probe_cache: dict[tuple[str, str], tuple[float, object]] = {}
+_mirror_probe_lock = threading.Lock()
+
+
+def _mirror_probe(kind: str, key: str, compute):
+    """Результат перевірки з кешу (до `_MIRROR_PROBE_TTL_SECONDS`) або свіжий."""
+    now = time.monotonic()
+    with _mirror_probe_lock:
+        hit = _mirror_probe_cache.get((kind, key))
+        if hit is not None and now - hit[0] < _MIRROR_PROBE_TTL_SECONDS:
+            return hit[1]
+    value = compute()
+    with _mirror_probe_lock:
+        if len(_mirror_probe_cache) >= _MIRROR_PROBE_MAX:
+            _mirror_probe_cache.clear()
+        _mirror_probe_cache[(kind, key)] = (now, value)
+    return value
+
+
 def _folder_name_matcher(db: Session, export_root: Path | None):
     """Зіставлення «ім'я клієнта → назва теки export» як на видачі, ліниво.
 
@@ -645,6 +675,19 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     if not email_orders:
         return
 
+    export_root = get_export_folder_path(db)
+    root_path = Path(export_root) if export_root else None
+    # Перше джерело — один раз на роботу і з кешу (`_mirror_probe`): раніше
+    # воно рахувалось двічі за полл, а файли роботи перевірялись навіть тоді,
+    # коли тека вже відома.
+    bound: dict[int, Path | None] = {
+        order.id: _mirror_probe(
+            "bound", f"{root_path}|{order.export_folder_path}",
+            lambda order=order: _bound_folder(root_path, order),
+        ) if order.export_folder_path and root_path is not None else None
+        for order in email_orders
+    }
+
     order_ids = [order.id for order in email_orders]
     own = db.scalars(
         select(Attachment).where(Attachment.order_id.in_(order_ids))
@@ -656,10 +699,10 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
         if attachment.order_id is None:
             continue
         claimed.add(attachment.order_id)
-        if attachment.order_id in folder_by_order:
+        if attachment.order_id in folder_by_order or bound.get(attachment.order_id) is not None:
             continue
         path = Path(attachment.saved_path)
-        if path.exists():
+        if _mirror_probe("file", str(path), path.exists):
             folder_by_order[attachment.order_id] = path.parent
 
     # Відкат для робіт, у яких ВЛАСНИХ вкладень немає зовсім (лист прийняли без
@@ -685,10 +728,9 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
             if attachment.email_message_id in spool_by_email:
                 continue
             path = Path(attachment.saved_path)
-            if path.exists():
+            if _mirror_probe("file", str(path), path.exists):
                 spool_by_email[attachment.email_message_id] = path.parent
 
-    export_root = get_export_folder_path(db)
     preview_roots: dict[str, str | None] = {
         "export": export_root,
         **mail_spool_root_map(db),
@@ -696,7 +738,6 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     # Корені — один раз на пакет, як у `attach_export_folder_uris`: та сама
     # перевірка, просто не помножена на кількість рядків.
     validated_roots = validate_preview_roots(preview_roots)
-    root_path = Path(export_root) if export_root else None
 
     # Для робіт, яким не вистачило перших трьох джерел, — лист цілком:
     # пам'ять відправника прив'язана до адреси, а адреса живе в EmailMessage.
@@ -705,7 +746,7 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
         order.source_email_id
         for order in email_orders
         if order.source_email_id is not None
-        and _bound_folder(root_path, order) is None
+        and bound.get(order.id) is None
         and order.id not in folder_by_order
         and order.source_email_id not in spool_by_email
     }
@@ -719,7 +760,7 @@ def attach_mail_mirror_folder_uris(db: Session, orders: list[Order]) -> None:
     matcher = _folder_name_matcher(db, root_path) if orphan_email_ids else (lambda _n: None)
 
     for order in email_orders:
-        folder = _bound_folder(root_path, order)
+        folder = bound.get(order.id)
         if folder is None:
             folder = folder_by_order.get(order.id)
         if folder is None and order.id not in claimed and order.source_email_id is not None:
