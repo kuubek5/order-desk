@@ -117,12 +117,14 @@ def test_one_client_one_colour_becomes_one_row_others_stay_apart(shop):
         assert len(files) == 2
         links = {link.email_message_id: link.quantity for link in merged.email_links}
         assert links == {a.id: 2, b.id: 3}
-    # Таблиця: два рядки, у рядку клієнта вже сума, і він записаний ПІСЛЯ
-    # останнього листа групи (не append першого з переписуванням).
+    # Таблиця: два рядки. Рядок групи стоїть на місці ПЕРШОГО листа (власник
+    # 05.10.26) — ліг із його кількістю, а після останнього листа групи в
+    # ньому переписано суму й опак.
     assert [(r["client"], r["quantity"]) for r in shop.appended] == [
-        ("Інший Клієнт", "1"), ("Люмі-Дент", "5"),
+        ("Люмі-Дент", "2"), ("Інший Клієнт", "1"),
     ]
-    assert shop.appended[1]["cam_comment"] == "3 opaq"
+    assert shop.appended[0]["cam_comment"] == "1 opaq"
+    assert shop.sheet_fields == [(merged.id, {"quantity", "cam_comment"})]
 
 
 def test_different_sum3d_is_not_merged(shop):
@@ -201,7 +203,8 @@ def test_undo_second_letter_takes_only_its_files_and_quantity(shop):
         assert db.get(EmailMessage, b.id).order_id is None
         assert db.get(EmailMessage, a.id).status == "прийнято"
         assert [link.email_message_id for link in order.email_links] == [a.id]
-        assert shop.sheet_fields == [(order.id, {"quantity"})]
+        # Останній запис у таблицю — нова кількість після відкату.
+        assert shop.sheet_fields[-1] == (order.id, {"quantity"})
     folder = shop.export.joinpath(*rel.split("/"))
     assert [p.name for p in folder.iterdir()] == ["crown.stl"]
     assert (shop.spool / "b1" / "bridge.stl").is_file()
@@ -280,3 +283,29 @@ def test_row_is_written_even_if_conveyor_breaks_midway(shop):
         (order,) = db.scalars(select(Order)).all()
         assert order.row_number is not None
     assert [r["quantity"] for r in shop.appended] == ["2"]
+    assert shop.sheet_fields == []  # до групи ніхто не додався — суми немає
+
+
+def test_without_first_row_the_group_row_is_appended_with_the_sum(shop):
+    """Рядок першого листа не ліг (таблиця моргнула) — після групи дописуємо
+    рядок уже з сумою, щоб робота не лишилась без рядка."""
+    real_append = mail_accept_svc.append_mail_placeholder_row
+    calls = {"n": 0}
+
+    def flaky_append(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("sheet blink")
+        return real_append(*args, **kwargs)
+
+    shop.monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", flaky_append)
+    with Session(shop.engine, expire_on_commit=False) as db:
+        _enable(db)
+        user = _user(db)
+        a = _letter(db, shop.spool, "a1")
+        b = _letter(db, shop.spool, "b1")
+        _batch(shop.monkeypatch, db, user, [_card(a, quantity="2"), _card(b, quantity="3")])
+        (order,) = db.scalars(select(Order)).all()
+        assert order.quantity == "5" and order.row_number is not None
+    assert [r["quantity"] for r in shop.appended] == ["5"]
+    assert shop.sheet_fields == []

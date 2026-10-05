@@ -2315,21 +2315,22 @@ def accept_email_batch(
     ) if merge_enabled(db) else None
     merge_order: dict[tuple[str, str], Order] = {}
     merge_email: dict[tuple[str, str], EmailMessage] = {}
-    merge_written: set[tuple[str, str]] = set()
+    merge_fields: dict[tuple[str, str], set[str]] = {}
+    merge_done: set[tuple[str, str]] = set()
 
     results: list[dict] = []
     try:
         _accept_batch_letters(
             db, user, checked, planned, group_folder, results,
-            merge_plan, merge_order, merge_email, merge_written,
+            merge_plan, merge_order, merge_email, merge_fields, merge_done,
         )
     finally:
-        # Рядок зведеної групи мусить лягти в таблицю, навіть якщо цикл
-        # обірвався посередині (непередбачений виняток): інакше робота
-        # лишилась би без рядка, а синк не мав би з чим її звірити.
+        # Сума зведеної групи мусить дійти в таблицю, навіть якщо цикл
+        # обірвався посередині (непередбачений виняток): інакше в рядку
+        # лишилась би кількість лише першого листа.
         for mkey, order in merge_order.items():
-            if mkey not in merge_written:
-                write_merged_row(db, merge_email[mkey], order)
+            if mkey not in merge_done:
+                _finish_merged_row(db, merge_email[mkey], order, merge_fields.get(mkey, set()))
 
     accepted = [r for r in results if r["ok"]]
     failed = [r for r in results if not r["ok"]]
@@ -2374,7 +2375,8 @@ def _accept_batch_letters(
     merge_plan,
     merge_order: dict,
     merge_email: dict,
-    merge_written: set,
+    merge_fields: dict,
+    merge_done: set,
 ) -> None:
     """Цикл прийняття листів Конвеєра (`accept_email_batch`). Наповнює
     `results`; зведені групи — через `merge_*` (див. `mail_merge`)."""
@@ -2424,10 +2426,45 @@ def _accept_batch_letters(
             "partial": result.partial,
             "merged": bool(result.ok and merge_into is not None),
         })
+        if result.ok and mkey and merge_into is not None:
+            # Що переписати в рядку першого листа після групи: кількість
+            # завжди, коментар CAM — лише коли цей лист додав опак.
+            fields = merge_fields.setdefault(mkey, set())
+            fields.add("quantity")
+            if str(item.get("opak") or "").strip().strip("0"):
+                fields.add("cam_comment")
         if mkey and merge_plan.last_of.get(mkey) == eid and mkey in merge_order:
-            # Останній лист групи (хай навіть невдалий) — рядок із сумою.
-            write_merged_row(db, merge_email[mkey], merge_order[mkey])
-            merge_written.add(mkey)
+            # Останній лист групи (хай навіть невдалий) — сума в рядок.
+            _finish_merged_row(
+                db, merge_email[mkey], merge_order[mkey], merge_fields.get(mkey, set())
+            )
+            merge_done.add(mkey)
+
+
+def _finish_merged_row(db: Session, email: EmailMessage, order: Order, fields: set[str]) -> None:
+    """Рядок зведеної групи — на місці ПЕРШОГО листа (власник 05.10.26): він
+    ліг у таблицю при прийнятті першого листа з його кількістю, а тут, після
+    останнього листа групи, у ньому переписується сума (і опак). Позиція рядка
+    звіряється всередині `write_sheet_fields`, чужий рядок не чіпається.
+
+    Рядка першого листа немає (таблиця була недоступна) — дописуємо рядок уже
+    з сумою (`write_merged_row`), щоб робота не лишилась без рядка. Збій
+    запису — у журнал синку й банер «не дійшло в таблицю», прийняття не
+    відкочується."""
+    if order.row_number is None:
+        write_merged_row(db, email, order)
+        return
+    if not fields:
+        return
+    try:
+        error = write_sheet_fields(db, order, fields)
+        db.commit()
+    except Exception:  # noqa: BLE001 — прийняття вже відбулось
+        db.rollback()
+        logger.exception("Конвеєр: не вдалося записати суму зведеної роботи %s", order.id)
+        return
+    if error:
+        logger.warning("Конвеєр: сума зведеної роботи %s не дійшла в таблицю: %s", order.id, error)
 
 
 @router.post("/mail/{email_id}/move-processed", response_class=HTMLResponse)
