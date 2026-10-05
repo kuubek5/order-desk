@@ -783,8 +783,8 @@ def pending_mail_count() -> int:
     return _cached_global("pending_mail_count", pending_mail_count_uncached)
 
 
-def queue_can_take_ids_uncached() -> list[int]:
-    """id СЬОГОДНІШНІХ робіт ЛАБОРАТОРІЇ, які можна брати — бейдж «Черга» в
+def queue_can_take_items_uncached() -> list[tuple[int, str]]:
+    """(id, підпис) СЬОГОДНІШНІХ робіт ЛАБОРАТОРІЇ, які можна брати — бейдж «Черга» в
     рейці (власник 29.09.26: «лічильник пошти працює, потрібно і черги»).
     Те саме число, що на чіпах «Сьогодні · Лабораторія · Можна брати»: день —
     `order_date` проти `business_tab_today` (вихідні пишуть у п'ятницю),
@@ -813,12 +813,33 @@ def queue_can_take_ids_uncached() -> list[int]:
                 )
             ).all()
             today = business_tab_today()
-            return sorted(o.id for o in rows if order_date(o) == today and order_can_take(o))
+            return sorted(
+                (o.id, _can_take_label(o))
+                for o in rows if order_date(o) == today and order_can_take(o)
+            )
         finally:
             db.close()
     except Exception:  # noqa: BLE001
-        logger.debug("queue_can_take_ids fell back to []", exc_info=True)
+        logger.debug("queue_can_take_items fell back to []", exc_info=True)
         return []
+
+
+def _can_take_label(order) -> str:
+    """Короткий підпис роботи для сповіщення Windows: «24122 · моно A3 · 4 од.»."""
+    parts = [
+        (order.work_order_no or "").strip(),
+        (order.material_color or "").strip(),
+        f"{order.quantity.strip()} од." if (order.quantity or "").strip() else "",
+    ]
+    return " · ".join(p for p in parts if p)
+
+
+def queue_can_take_items() -> list[tuple[int, str]]:
+    return _cached_global("queue_can_take_items", queue_can_take_items_uncached)
+
+
+def queue_can_take_ids_uncached() -> list[int]:
+    return [oid for oid, _label in queue_can_take_items_uncached()]
 
 
 def queue_can_take_ids() -> list[int]:
@@ -826,7 +847,7 @@ def queue_can_take_ids() -> list[int]:
     оновлює число в рейці й позначку «+N нових» без перезавантаження. Список,
     а не число — «нові» це id, яких оператор ще не бачив у черзі; число саме
     по собі падає, коли роботу беруть, і ховало б нові."""
-    return _cached_global("queue_can_take_ids", queue_can_take_ids_uncached)
+    return [oid for oid, _label in queue_can_take_items()]
 
 
 def queue_can_take_count_uncached() -> int:

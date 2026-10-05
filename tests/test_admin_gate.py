@@ -41,6 +41,12 @@ OPERATOR_ALLOWED = {
     # Сповіщення — налаштування ОПЕРАТОРА під себе, не машини.
     "GET /api/notify-state",
     "POST /settings/notifications",
+    # Власне вікно-сповіщення (05.10.26): місце й час для людини за ПК цеху.
+    # Гейт — «увійшов» + запит з цього ПК (`_popup_gate`, is_loopback_request):
+    # вікно малюється на цьому екрані.
+    "POST /settings/desktop-popup",
+    "POST /settings/desktop-popup/test",
+    "POST /settings/desktop-popup/place",
     # Клієнтські числа профайлера шле сама сторінка будь-якого оператора:
     # саме його затримки й цікаві. Гейт тут — «увійшов», не «адмін».
     "POST /diag/perf/client",

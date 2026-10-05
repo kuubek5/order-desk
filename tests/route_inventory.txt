@@ -82,6 +82,9 @@ GET /clients/duplicates
 GET /clients/duplicates/folders
 POST /settings/handout-qc
 POST /settings/mail-merge-rows
+POST /settings/desktop-popup
+POST /settings/desktop-popup/test
+POST /settings/desktop-popup/place
 POST /settings/google-oauth/disconnect
 POST /discs/basket
 POST /mail/senders/add

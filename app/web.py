@@ -758,6 +758,48 @@ SYSTEM_LOAD_INITIAL_DELAY_SECONDS = 3.0
 SYSTEM_LOAD_INTERVAL_SECONDS = 3.0
 
 
+DESKTOP_POPUP_INITIAL_DELAY_SECONDS = 20
+DESKTOP_POPUP_INTERVAL_SECONDS = 5
+
+
+def _desktop_popup_worker(stop_event: Event) -> None:
+    """Власне спливаюче вікно KuubMill (власник 05.10.26,
+    `app/services/desktop_popup.py`). Раз на 5 с порівнює знімок «лабораторія
+    можна брати» і «Вхідні» з попереднім; нова подія + увімкнено + правило
+    присутності браузера → вікно поверх усіх програм. Знімок береться і при
+    вимкненому вікні: інакше після ввімкнення вискочило б усе, що накопичилось.
+    Лише Windows; tkinter не імпортується, поки вікно не знадобилось."""
+    from app.services import desktop_popup as dp
+
+    if not dp.supported():
+        return
+    if stop_event.wait(DESKTOP_POPUP_INITIAL_DELAY_SECONDS):
+        return
+    watcher = dp.PopupWatcher()
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                settings = dp.load_settings(db)
+                lab, mail = dp.snapshot(db)
+            events = watcher.tick(lab, mail)
+            if settings.enabled and events:
+                presence = dp.current_presence()
+                for ev in events:
+                    shown = ev.kind in settings.events and dp.should_show(ev.kind, presence)
+                    # Слід у лозі на кожну подію: «чому не спливло» інакше
+                    # нічим не відповісти (kmill_log з дому).
+                    logger.info(
+                        "Спливаюче вікно: %s «%s» — %s (сторінка %s, видно %s, фокус %s)",
+                        ev.kind, ev.title, "показано" if shown else "пропущено",
+                        presence.page or "—", presence.visible, presence.focused,
+                    )
+                    if shown:
+                        dp.get_popup_ui().show(ev.kind, ev.count, ev.title, ev.body, ev.path)
+        except Exception:
+            logger.exception("Спливаюче вікно KuubMill: збій проходу")
+        stop_event.wait(DESKTOP_POPUP_INTERVAL_SECONDS)
+
+
 def _system_load_worker(stop_event: Event) -> None:
     """Раз на кілька секунд міряти навантаження системи в пам'ять процесу.
     Перший `cpu_percent` віддає 0 (нема попереднього зрізу), тому семплер
@@ -1105,6 +1147,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
         _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),
+        _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
     ]
     for w in workers:
         w.start()

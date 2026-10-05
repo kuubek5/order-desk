@@ -94,3 +94,84 @@
     });
   }
 })();
+
+// ── Спливаюче вікно KuubMill (05.10.26) ───────────────────────────────────
+// Кожна зміна одразу зберігається (POST /settings/desktop-popup, увесь стан
+// форми — сервер читає відсутню галочку як «знято»). Пробне вікно й режим
+// «Налаштувати положення» — окремі POST; саме вікно малює програма KuubMill.
+(function () {
+  var root = document.querySelector("[data-dn-root]");
+  var form = root && root.querySelector("[data-dn-form]");
+  if (!form) return;
+  var saved = root.querySelector("[data-dn-saved]");
+  var range = root.querySelector("[data-dn-secs]");
+  var label = root.querySelector("[data-dn-secs-label]");
+  var until = root.querySelector("[data-dn-until]");
+  var savedTimer = null;
+
+  function toast(msg, kind) {
+    if (window.showToast) window.showToast(msg, kind || "info");
+  }
+
+  function post(url, data) {
+    return fetch(url, { method: "POST", body: data, headers: { "X-Requested-With": "fetch" } })
+      .then(function (r) {
+        if (r.ok) return r;
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          throw new Error(j.detail || ("HTTP " + r.status));
+        });
+      });
+  }
+
+  function save() {
+    post("/settings/desktop-popup", new FormData(form)).then(function () {
+      saved.hidden = false;
+      window.clearTimeout(savedTimer);
+      savedTimer = window.setTimeout(function () { saved.hidden = true; }, 1500);
+    }).catch(function (e) { toast("Не збережено: " + e.message, "error"); });
+  }
+
+  function syncSeconds() {
+    range.disabled = until.checked;
+    label.textContent = until.checked ? "до кліку" : range.value + " с";
+  }
+
+  function syncSpots() {
+    var picked = form.querySelector('input[name="anchor"]:checked');
+    root.querySelectorAll("[data-spot]").forEach(function (spot) {
+      spot.classList.toggle("is-on", !!picked && spot.dataset.spot === picked.value);
+    });
+  }
+
+  root.addEventListener("change", function (e) {
+    if (e.target === until) syncSeconds();
+    if (e.target.name === "anchor") syncSpots();
+    save();
+  });
+  range.addEventListener("input", syncSeconds);
+
+  root.querySelectorAll("[data-spot]").forEach(function (spot) {
+    spot.addEventListener("click", function () {
+      var radio = form.querySelector('input[name="anchor"][value="' + spot.dataset.spot + '"]');
+      if (!radio || radio.disabled || form.inert) return;
+      radio.checked = true;
+      syncSpots();
+      save();
+    });
+  });
+
+  root.querySelector("[data-dn-test]").addEventListener("click", function () {
+    var data = new FormData();
+    var lab = form.querySelector('input[name="events"][value="lab"]');
+    data.append("kind", lab && !lab.checked ? "mail" : "lab");
+    post("/settings/desktop-popup/test", data)
+      .then(function () { toast("Пробне вікно — у вибраному місці екрана."); })
+      .catch(function (e) { toast(e.message, "error"); });
+  });
+
+  root.querySelector("[data-dn-place]").addEventListener("click", function () {
+    post("/settings/desktop-popup/place", new FormData())
+      .then(function () { toast("Перетягни вікно-зразок мишею й натисни «Зберегти тут». Після цього тут з'явиться «Своє місце».", "info"); })
+      .catch(function (e) { toast(e.message, "error"); });
+  });
+})();

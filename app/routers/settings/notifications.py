@@ -6,13 +6,20 @@
 
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.mail_inbox import in_inbox
 from app.models import EmailMessage, Order
-from app.routers.deps import get_current_user, get_db, queue_can_take_ids, toast_response
+from app.routers.deps import (
+    get_current_user,
+    get_db,
+    is_loopback_request,
+    queue_can_take_ids,
+    toast_response,
+)
+from app.services import desktop_popup
 from app.services.shift import open_note_count as open_shift_note_count
 from app.settings_store import set_notify_prefs
 from app.sync_heartbeat import sync_status_pair
@@ -35,6 +42,16 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    # Присутність браузера ЦЬОГО ПК для власного вікна-сповіщення (05.10.26):
+    # яка сторінка відкрита й чи вікно у фокусі. Лише з петлі — вікно
+    # малюється на цьому ПК, і браузер колеги з мережі тут нічого не вирішує.
+    q = getattr(request, "query_params", None) or {}
+    if q.get("page") is not None and is_loopback_request(request):
+        desktop_popup.note_presence(
+            page=q.get("page", ""), visible=q.get("vis") == "1",
+            focused=q.get("focus") == "1", origin=q.get("origin", "")[:100],
+        )
 
     status = sync_status_pair(db, datetime.now())
     release = get_known_update()
@@ -121,3 +138,58 @@ async def save_notification_prefs(request: Request, db: Session = Depends(get_db
     # (/account, вкладка «Сповіщення»), і старий редірект на /settings кидав
     # би людину на «Стан системи» — секції з таким якорем там більше немає.
     return RedirectResponse("/account#notifications", status_code=303)
+
+
+def _popup_gate(request: Request, db: Session):
+    """Вікно-сповіщення налаштовується лише з ПК, де встановлено KuubMill:
+    воно малюється на ЦЬОМУ екрані. Не адмінське — це місце й час для людини
+    за цим ПК, як і решта «Сповіщень»."""
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="Налаштовується на ПК, де встановлено KuubMill")
+
+
+@router.post("/settings/desktop-popup")
+async def save_desktop_popup(request: Request, db: Session = Depends(get_db)):
+    """Зберегти налаштування вікна. Блок у кабінеті шле ВЕСЬ свій стан щоразу
+    (FormData), тож відсутня галочка тут справді означає «знято»."""
+    _popup_gate(request, db)
+    form = await request.form()
+    try:
+        monitor = int(str(form.get("monitor") or 0))
+        seconds = 0 if form.get("until_click") else int(str(form.get("seconds") or 8))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="некоректне число")
+    desktop_popup.save_settings(
+        db,
+        enabled=bool(form.get("enabled")),
+        events={str(v) for v in form.getlist("events")},
+        anchor=str(form.get("anchor") or "br"),
+        monitor=monitor,
+        seconds=seconds,
+    )
+    db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.post("/settings/desktop-popup/test")
+async def test_desktop_popup(request: Request, db: Session = Depends(get_db)):
+    """Пробне вікно — одразу, без правил присутності: подивитись вигляд і місце."""
+    _popup_gate(request, db)
+    if not desktop_popup.supported():
+        raise HTTPException(status_code=409, detail="Вікно показує програма KuubMill на Windows")
+    form = await request.form()
+    desktop_popup.get_popup_ui().test("mail" if form.get("kind") == "mail" else "lab")
+    return JSONResponse({"ok": True})
+
+
+@router.post("/settings/desktop-popup/place")
+async def place_desktop_popup(request: Request, db: Session = Depends(get_db)):
+    """Режим «Налаштувати положення»: вікно-зразок, яке тягнуть мишею."""
+    _popup_gate(request, db)
+    if not desktop_popup.supported():
+        raise HTTPException(status_code=409, detail="Вікно показує програма KuubMill на Windows")
+    desktop_popup.get_popup_ui().place()
+    return JSONResponse({"ok": True})
+

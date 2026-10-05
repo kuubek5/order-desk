@@ -1547,6 +1547,19 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopA
     document.title = fresh ? "(" + fresh + ") " + baseTitle : baseTitle;
   }
 
+  // Власне вікно-сповіщення KuubMill (05.10.26) вирішує на сервері, чи
+  // показуватись, — йому треба знати, що бачить людина: сторінку, видимість
+  // вкладки й фокус. Звіт іде з кожним опитуванням; сервер бере його лише з
+  // браузера на ПК цеху (петля).
+  function presenceQuery() {
+    const page = onQueuePage() ? "queue"
+      : document.querySelector('.rail-nav-item.is-active[href="/mail"]') ? "mail" : "other";
+    return "?page=" + page +
+      "&vis=" + (document.hidden ? "0" : "1") +
+      "&focus=" + (document.hasFocus() ? "1" : "0") +
+      "&origin=" + encodeURIComponent(window.location.origin);
+  }
+
   // Повернувся у вікно з чергою — нові одразу стають побаченими, не чекаючи
   // наступного опитування.
   window.addEventListener("focus", () => {
@@ -1556,7 +1569,7 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopA
   async function poll() {
     let s;
     try {
-      const r = await fetch("/api/notify-state", { headers: { "X-Requested-With": "fetch" } });
+      const r = await fetch("/api/notify-state" + presenceQuery(), { headers: { "X-Requested-With": "fetch" } });
       // 401/403 — це «ще не увійшли», а не «застосунок упав». Без цієї гілки
       // сторінка входу сама собі повідомляла, що зв'язок втрачено: сервер
       // живий, просто сесії ще немає. Опитування там і не потрібне — нема

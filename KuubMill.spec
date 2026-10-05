@@ -14,6 +14,9 @@ hiddenimports = (
     + ["asyncvnc", "keysymdef"]
     # 7z від клієнтів: py7zr імпортується ліниво в archive_extract.
     + ["py7zr"]
+    # Власне вікно-сповіщення (05.10.26): tkinter і PIL.ImageTk імпортуються
+    # ліниво, лише коли вікно ввімкнено, — статичний аналіз може їх не побачити.
+    + ["app.desktop_popup_ui", "tkinter", "PIL.ImageTk"]
 )
 datas = [
     ("app/templates", "app/templates"),

@@ -32,7 +32,7 @@ from app.services.widget_order import (
     clean_strip_order,
 )
 from app.services.settings_status import build_slab
-from app.routers.deps import UI_SESSION_KEY, get_current_user, login_redirect, get_db, templates
+from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, is_loopback_request, login_redirect, templates
 from app.services.look_prefs import (
     LookError,
     apply_handout_look,
@@ -391,6 +391,20 @@ async def get_account(request: Request, db: Session = Depends(get_db)):
     }
     context = {"user": user, **notify_ctx}
     context["slabs"] = {"notifications": build_slab("notifications", db, notify_ctx)}
+    # Власне вікно-сповіщення (05.10.26): налаштовується лише з ПК цеху.
+    from app.services import desktop_popup
+
+    monitors = 1
+    if desktop_popup.supported():
+        from app.desktop_popup_ui import monitor_count
+
+        monitors = monitor_count()
+    context["popup"] = {
+        "settings": desktop_popup.load_settings(db),
+        "supported": desktop_popup.supported(),
+        "local": is_loopback_request(request),
+        "monitors": monitors,
+    }
     return templates.TemplateResponse(request, "account.html", context)
 
 

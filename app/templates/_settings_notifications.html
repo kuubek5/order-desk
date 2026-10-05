@@ -68,4 +68,77 @@
                     </div>
                     <p class="settings-help">Клік по варіанту одразу показує справжнє сповіщення в ньому — приміряти можна без збереження. «Показати приклад» перебирає всі типи подій по черзі: у вигляді «Аврора» вони йдуть трьома різними каналами. На робочих екранах вибір почне діяти після <strong>Зберегти</strong> й перезавантаження.</p>
                 </form>
+
+                {# ── Спливаюче вікно KuubMill (власник 05.10.26) ────────────────
+                   Своє вікно поверх усіх програм (Sum3D): місце й час задає
+                   людина, не Windows. Малює програма KuubMill на ПК цеху
+                   (app/desktop_popup_ui.py), правила «коли» —
+                   app/services/desktop_popup.py. Налаштовується лише з цього ПК:
+                   роути пускають тільки петлю. JS — notify_prefs.js. #}
+                {# Кабінет рендериться й з повідомленням після зміни пароля/літери —
+                   там контексту вікна немає, блок просто не показується. #}
+                {% if popup is defined %}
+                {% set _p = popup.settings %}
+                {% set _can = popup.supported and popup.local %}
+                <section class="dn" data-dn-root>
+                    <div class="dn-head">
+                        <div>
+                            <h3 class="dn-title">Спливаюче вікно KuubMill</h3>
+                            <p class="dn-sub">Показує сама програма KuubMill поверх усіх вікон, зокрема Sum3D. Згорнуто — спливає; на сторінці пошти без листів, на сторінці черги без лабораторії; KuubMill перед очима — нічого.</p>
+                        </div>
+                        <label class="dn-master"><span>Увімкнено</span>
+                            <input type="checkbox" class="dn-switch" form="dn-form" name="enabled" value="1"{% if _p.enabled %} checked{% endif %}{% if not _can %} disabled{% endif %}>
+                        </label>
+                    </div>
+                    {% if not popup.supported %}
+                    <p class="dn-state" data-tone="warn">Працює лише в програмі KuubMill на Windows</p>
+                    {% elif not popup.local %}
+                    <p class="dn-state" data-tone="warn">Налаштовується на ПК, де встановлено KuubMill — вікно з'являється на його екрані</p>
+                    {% endif %}
+                    <form id="dn-form" class="dn-grid" data-dn-form{% if not _can %} inert{% endif %}>
+                        <div class="dn-box">
+                            <h4>Де з'являється</h4>
+                            <div class="dn-mon" aria-hidden="true">
+                                {% for a in ['tl','tr','bl','br'] %}<i class="dn-spot dn-{{ a }}{% if _p.anchor == a %} is-on{% endif %}" data-spot="{{ a }}"></i>{% endfor %}
+                            </div>
+                            {% if popup.monitors > 1 %}
+                            <div class="dn-chips">
+                                {% for m in range(popup.monitors) %}
+                                <label class="dn-chip"><input type="radio" name="monitor" value="{{ m }}"{% if _p.monitor == m %} checked{% endif %}><span>Монітор {{ m + 1 }}{% if m == 0 %} (основний){% endif %}</span></label>
+                                {% endfor %}
+                            </div>
+                            {% else %}<input type="hidden" name="monitor" value="0">{% endif %}
+                            <div class="dn-chips">
+                                {% for a, label in [('tl','↖ Зверху ліворуч'),('tr','↗ Зверху праворуч'),('bl','↙ Знизу ліворуч'),('br','↘ Знизу праворуч'),('custom','✥ Своє місце')] %}
+                                <label class="dn-chip{% if a == 'custom' and not _p.xy %} is-off{% endif %}"><input type="radio" name="anchor" value="{{ a }}"{% if _p.anchor == a %} checked{% endif %}{% if a == 'custom' and not _p.xy %} disabled{% endif %}><span>{{ label }}</span></label>
+                                {% endfor %}
+                            </div>
+                            <button type="button" class="settings-secondary-button" data-dn-place>Налаштувати положення мишею</button>
+                            <p class="dn-hint">З'явиться вікно-зразок: перетягни його куди зручно й натисни «Зберегти тут».</p>
+                        </div>
+                        <div class="dn-box">
+                            <h4>Скільки висить</h4>
+                            <div class="dn-big" data-dn-secs-label>{% if _p.seconds %}{{ _p.seconds }} с{% else %}до кліку{% endif %}</div>
+                            <input type="range" class="dn-range" name="seconds" min="3" max="60" step="1" value="{{ _p.seconds or 8 }}"{% if not _p.seconds %} disabled{% endif %} data-dn-secs>
+                            <div class="dn-scale"><span>3 с</span><span>30 с</span><span>60 с</span></div>
+                            <label class="dn-chip dn-until"><input type="checkbox" name="until_click" value="1"{% if not _p.seconds %} checked{% endif %} data-dn-until><span>Висить, доки не закрию</span></label>
+                            <h4 class="dn-h4-gap">Що показувати</h4>
+                            <label class="dn-ev">
+                                <img src="/static/img/notify-crown.png" alt="" width="36" height="36">
+                                <span class="dn-ev-text"><b>Лабораторія: можна брати</b><small>Нова робота з шляхом до папки</small></span>
+                                <input type="checkbox" class="dn-switch" name="events" value="lab"{% if 'lab' in _p.events %} checked{% endif %}>
+                            </label>
+                            <label class="dn-ev">
+                                <img src="/static/img/notify-mail.png" alt="" width="36" height="36">
+                                <span class="dn-ev-text"><b>Нові листи</b><small>Лист у «Нових з пошти»</small></span>
+                                <input type="checkbox" class="dn-switch" name="events" value="mail"{% if 'mail' in _p.events %} checked{% endif %}>
+                            </label>
+                            <div class="dn-acts">
+                                <button type="button" class="login-submit settings-submit" data-dn-test>Показати пробне</button>
+                                <span class="dn-saved" data-dn-saved hidden>Збережено</span>
+                            </div>
+                        </div>
+                    </form>
+                </section>
+                {% endif %}
         </div>
