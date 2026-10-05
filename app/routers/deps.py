@@ -783,8 +783,8 @@ def pending_mail_count() -> int:
     return _cached_global("pending_mail_count", pending_mail_count_uncached)
 
 
-def queue_can_take_count_uncached() -> int:
-    """Скільки СЬОГОДНІШНІХ робіт ЛАБОРАТОРІЇ можна брати — бейдж «Черга» в
+def queue_can_take_ids_uncached() -> list[int]:
+    """id СЬОГОДНІШНІХ робіт ЛАБОРАТОРІЇ, які можна брати — бейдж «Черга» в
     рейці (власник 29.09.26: «лічильник пошти працює, потрібно і черги»).
     Те саме число, що на чіпах «Сьогодні · Лабораторія · Можна брати»: день —
     `order_date` проти `business_tab_today` (вихідні пишуть у п'ятницю),
@@ -813,16 +813,28 @@ def queue_can_take_count_uncached() -> int:
                 )
             ).all()
             today = business_tab_today()
-            return sum(1 for o in rows if order_date(o) == today and order_can_take(o))
+            return sorted(o.id for o in rows if order_date(o) == today and order_can_take(o))
         finally:
             db.close()
     except Exception:  # noqa: BLE001
-        logger.debug("queue_can_take_count fell back to 0", exc_info=True)
-        return 0
+        logger.debug("queue_can_take_ids fell back to []", exc_info=True)
+        return []
+
+
+def queue_can_take_ids() -> list[int]:
+    """Ті самі id для живого бейджа (`/api/notify-state`, 05.10.26): браузер
+    оновлює число в рейці й позначку «+N нових» без перезавантаження. Список,
+    а не число — «нові» це id, яких оператор ще не бачив у черзі; число саме
+    по собі падає, коли роботу беруть, і ховало б нові."""
+    return _cached_global("queue_can_take_ids", queue_can_take_ids_uncached)
+
+
+def queue_can_take_count_uncached() -> int:
+    return len(queue_can_take_ids_uncached())
 
 
 def queue_can_take_count() -> int:
-    return _cached_global("queue_can_take_count", queue_can_take_count_uncached)
+    return len(queue_can_take_ids())
 
 
 def closed_sections_titles() -> list[str]:

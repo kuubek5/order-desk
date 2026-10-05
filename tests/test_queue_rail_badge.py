@@ -56,3 +56,37 @@ def test_rail_shows_the_badge(app_db):  # noqa: F811
     html = body.decode("utf-8") if isinstance(body, bytes) else body
     rail_queue = html.split('<span class="rail-label">Черга</span>', 1)[1].split("</a>", 1)[0]
     assert 'class="mail-nav-count tnum"' in rail_queue and ">1</span>" in rail_queue
+
+
+def test_notify_state_carries_the_same_ids_for_the_live_badge(app_db):  # noqa: F811
+    """Живий бейдж (05.10.26): /api/notify-state віддає ті самі id, що рахує
+    бейдж у рейці, — браузер оновлює число й «+N нових» з цього ж опитування."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        _seed(db)
+        expected = [o.id for o in db.query(Order).all()
+                    if o.source == "lab" and o.job_code == "P:/a"]
+    clear_global_badge_cache()
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    status, _, body = client.get("/api/notify-state")
+    assert status == 200
+    import json
+    state = json.loads(body)
+    assert state["can_take_ids"] == expected
+    assert len(state["can_take_ids"]) == queue_can_take_count_uncached()
+
+
+def test_empty_badges_stay_in_the_rail_hidden(app_db):  # noqa: F811
+    """Порожній бейдж лишається в розмітці з `hidden`: інакше живе оновлення
+    не мало б що показати, коли робота зʼявиться."""
+    app, _ = app_db
+    clear_global_badge_cache()
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    _, _, body = client.get("/mail")
+    html = body.decode("utf-8") if isinstance(body, bytes) else body
+    rail_queue = html.split('<span class="rail-label">Черга</span>', 1)[1].split("</a>", 1)[0]
+    assert 'data-live="queue"' in rail_queue and " hidden>0</span>" in rail_queue
+    assert 'data-live="queue-new"' in rail_queue
+    assert 'data-live="mail"' in html

@@ -718,6 +718,53 @@ body.rail-collapsed .rail-kbd { display: none; }
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 }
 
+/* Живі бейджі рейки (05.10.26, app.js `initRailLive`): порожній бейдж не
+   зникає з DOM, а стає `hidden`, щоб опитування могло його показати. Атрибут
+   сам по собі не перемагає `display:inline-flex` класу — тому явне правило. */
+.mail-nav-count[hidden],
+.rail-new[hidden] { display: none; }
+
+/* «+N нових» біля «Черги»: роботи лабораторії, яких оператор ще не бачив у
+   черзі. Тихіша за число (без заливки), щоб читалась як «нове», а не як другий
+   лічильник; зникає, щойно відкрив чергу. */
+.rail-new {
+  display: inline-flex;
+  align-items: center;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  color: var(--accent-c);
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.mail-nav-count + .rail-new { margin-left: 0.25rem; }
+/* Згорнута рейка: підписів немає, «+N» не влазить — лише крапка в кутку. */
+body.rail-collapsed .rail-new {
+  position: absolute;
+  bottom: 3px;
+  right: 6px;
+  width: 0.45rem;
+  height: 0.45rem;
+  padding: 0;
+  font-size: 0;
+  background: var(--accent-c);
+  border: none;
+}
+
+/* Число зросло — ОДИН короткий спалах, не петля (у тріажі петель не
+   додаємо, див. коментар вище). Клас знімає app.js після анімації. */
+@keyframes rail-bump {
+  0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55); }
+  100% { box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0); }
+}
+.mail-nav-count.is-bump { animation: rail-bump 0.9s ease-out 2; }
+@media (prefers-reduced-motion: reduce) {
+  .mail-nav-count.is-bump { animation: none; }
+}
+
 .mail-pending-notice {
   display: grid;
   grid-template-columns: auto 1fr auto;

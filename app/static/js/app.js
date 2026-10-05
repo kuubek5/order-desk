@@ -1447,7 +1447,9 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopA
   const stack = document.getElementById("toast-stack");
   if (!stack) return;
   const enabled = new Set((stack.dataset.notifyEvents || "").split(",").filter(Boolean));
-  if (!enabled.size) return;
+  // Без увімкнених подій опитування раніше не запускалось узагалі. Тепер те
+  // саме опитування оновлює живі бейджі рейки (`applyRailLive`, 05.10.26), тож
+  // воно йде завжди, а тости й далі гейтить `fire` — вимкнена подія мовчить.
 
   // Follows the sync-speed preset (data-notify-poll, seconds): on Турбо the
   // "технік змінив роботу" alert lands in ~5s, not a fixed 30s. Clamped so a
@@ -1470,6 +1472,86 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopA
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
     return many;
   }
+
+  // ── Живі бейджі рейки (власник 05.10.26: «на сторінці пошти не бачу, що
+  // зʼявилась робота в лабораторії») ──────────────────────────────────────
+  // Число «Черги» (сьогоднішня лабораторія, «можна брати») і «Нових з пошти»
+  // оновлюються з цього ж опитування, без зайвих запитів. «+N нових» — id робіт,
+  // яких оператор ще не бачив у черзі; «побачене» живе в localStorage браузера
+  // (зручність одного робочого місця, не стан для всіх). Відкрив чергу —
+  // побачив (перший знімок на сторінці черги). Далі, поки черга відкрита,
+  // нові стають побаченими лише коли вікно у фокусі: поверх може бути Sum3D,
+  // і тоді позначка має лишитись.
+  const SEEN_KEY = "queueSeenIds";
+  const baseTitle = document.title.replace(/^\(\d+\)\s+/, "");
+  let lastIds = null;
+  let queueOpened = false;  // перший знімок на сторінці черги вже позначено
+
+  // Через KMStore (storage.js): префікс версії й приватний режим — там.
+  function readSeen() {
+    try {
+      const raw = window.KMStore ? window.KMStore.get(SEEN_KEY) : null;
+      return raw === null || raw === undefined ? null : new Set(JSON.parse(raw));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeSeen(ids) {
+    try {
+      if (window.KMStore) window.KMStore.set(SEEN_KEY, JSON.stringify(ids));
+    } catch (e) { /* сховище недоступне — позначка просто не тримається */ }
+  }
+
+  function onQueuePage() {
+    return !!document.querySelector('.rail-nav-item.is-active[href="/"]');
+  }
+
+  function setBadge(el, n) {
+    const before = parseInt(el.textContent, 10) || 0;
+    el.textContent = String(n);
+    el.hidden = !n;
+    if (n > before && !el.hidden) {
+      el.classList.remove("is-bump");
+      void el.offsetWidth;  // перезапуск анімації, якщо клас уже стояв
+      el.classList.add("is-bump");
+      window.setTimeout(() => el.classList.remove("is-bump"), 2000);
+    }
+  }
+
+  function applyRailLive(s) {
+    if (typeof s.mail_pending === "number") {
+      document.querySelectorAll('[data-live="mail"]').forEach((el) => setBadge(el, s.mail_pending));
+    }
+    const ids = Array.isArray(s.can_take_ids) ? s.can_take_ids : null;
+    if (!ids) return;
+    lastIds = ids;
+    document.querySelectorAll('[data-live="queue"]').forEach((el) => {
+      setBadge(el, ids.length);
+      el.title = "Лабораторія сьогодні — можна брати: " + ids.length;
+    });
+    let seen = readSeen();
+    // Перший запуск у цьому браузері — усе наявне вважаємо баченим, інакше
+    // «+N» показав би всі сьогоднішні роботи як нові.
+    const onQueue = onQueuePage();
+    if (seen === null || (onQueue && (!queueOpened || document.hasFocus()))) {
+      queueOpened = queueOpened || onQueue;
+      writeSeen(ids);
+      seen = new Set(ids);
+    }
+    const fresh = ids.filter((id) => !seen.has(id)).length;
+    document.querySelectorAll('[data-live="queue-new"]').forEach((el) => {
+      el.textContent = "+" + fresh;
+      el.hidden = !fresh;
+    });
+    document.title = fresh ? "(" + fresh + ") " + baseTitle : baseTitle;
+  }
+
+  // Повернувся у вікно з чергою — нові одразу стають побаченими, не чекаючи
+  // наступного опитування.
+  window.addEventListener("focus", () => {
+    if (lastIds && onQueuePage()) applyRailLive({ can_take_ids: lastIds });
+  });
 
   async function poll() {
     let s;
@@ -1498,6 +1580,7 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopA
       offlineShown = false;
       fire("sheet_recovered", "Зв'язок із застосунком відновлено.", "success");
     }
+    applyRailLive(s);
 
     if (prev) {
       if (prev.sheet !== "error" && s.sheet === "error") {
@@ -1546,8 +1629,13 @@ window.addEventListener("pageshow", (event) => { if (event.persisted) kloadStopA
       // «Можна брати»: технік доклав шлях до папки. Рахуємо СТАН готовності
       // (job_code є, Sum3D порожній), а не розмір черги — саме через розмір
       // старий `new_orders` показував роботи, яких немає, і був прибраний.
-      if (s.ready > prev.ready) {
-        const n = s.ready - prev.ready;
+      // З 05.10.26 — ті самі id, що бейдж «Черга» (сьогоднішня лабораторія):
+      // число в тості й у рейці однакове, а нова — та, якої не було в
+      // попередньому знімку (взяли одну, прийшла інша — тост теж буде).
+      const prevIds = new Set(Array.isArray(prev.can_take_ids) ? prev.can_take_ids : []);
+      const arrived = (Array.isArray(s.can_take_ids) ? s.can_take_ids : []).filter((id) => !prevIds.has(id));
+      if (arrived.length) {
+        const n = arrived.length;
         fire(
           "ready_to_take",
           n + " " + plural(n, "роботу", "роботи", "робіт") + " можна брати — технік доклав шлях до папки.",

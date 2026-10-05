@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.mail_inbox import in_inbox
 from app.models import EmailMessage, Order
-from app.routers.deps import get_current_user, get_db, toast_response
+from app.routers.deps import get_current_user, get_db, queue_can_take_ids, toast_response
 from app.services.shift import open_note_count as open_shift_note_count
 from app.settings_store import set_notify_prefs
 from app.sync_heartbeat import sync_status_pair
@@ -86,6 +86,12 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
             select(func.count()).select_from(Order).where(Order.archived_at.is_not(None))
         ) or 0,
         "update": release.version if release else None,
+        # Бейдж «Черга» в рейці НАЖИВО (власник 05.10.26: «на сторінці пошти не
+        # бачу, що зʼявилась робота в лабораторії»). Ті самі id, що рахує
+        # бейдж (`queue_can_take_ids`, сьогоднішня лабораторія «можна брати»),
+        # тож число в рейці, тост і чіп черги не розходяться. Список — щоб
+        # браузер позначив «+N нових», яких оператор ще не бачив.
+        "can_take_ids": queue_can_take_ids(),
     }
 
 
