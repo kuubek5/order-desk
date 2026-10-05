@@ -35,8 +35,8 @@ imap-tools>=1.0
 # UnRAR/7z binary on the machine at runtime; without it, RAR extraction fails
 # with a clear message and ZIP still works.
 rarfile>=4.0
-# Розпакування 7z від клієнтів: чистий Python, зовнішній інструмент не потрібен.
-# Імпортується ліниво (archive_extract), тож у KuubMill.spec — hiddenimports.
+# Extract client-sent .7z archives. Pure Python, no external tool needed.
+# Imported lazily (archive_extract), hence listed in KuubMill.spec hiddenimports.
 py7zr>=1.0
 # System-tray icon on the standalone Windows build (right-click: open, pause
 # sheet sync, quit). Pillow renders/loads the icon image pystray needs.
