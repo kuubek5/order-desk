@@ -152,6 +152,22 @@ def _fresh_log_throttle():
 
 
 @pytest.fixture(autouse=True)
+def _mail_accept_background_inline(monkeypatch):
+    """Прийняття листа переносить його в папку скриньки У ФОНІ і памʼятає
+    вкладку дня хвилину (app/services/mail_accept). У тестах фон виконується
+    на місці: більшість баз тут `StaticPool` без `check_same_thread=False`, і
+    задача з іншого потоку впала б на зʼєднанні, а тест перевіряв би стан до
+    переносу. Тести самого фону повертають справжній пул. Кеш вкладки — на
+    ПРОЦЕС, тож скидається, як і решта таких лічильників."""
+    from app.services import mail_accept
+
+    monkeypatch.setattr(mail_accept, "_submit_folder_move", lambda fn, *args: fn(*args))
+    mail_accept.reset_tab_cache()
+    yield
+    mail_accept.reset_tab_cache()
+
+
+@pytest.fixture(autouse=True)
 def _screen_inbox_in_tmp(tmp_path, monkeypatch):
     """Скринька невідомих екранів пише PNG на ДИСК і памʼятає екрани на ПРОЦЕС.
 

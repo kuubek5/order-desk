@@ -128,6 +128,7 @@ from app.routers.deps import (
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, sender_key_for
 from app.services.mail_accept import (
     AcceptResult,
+    _letter_lock,
     accept_blocker,
     accept_letter,
     missing_accept_fields,
@@ -3472,6 +3473,10 @@ def _rewrite_merged_row(
         )
 
 
+# Скільки «Повернути» чекає лок листа, поки фон переносить його в папку.
+RESTORE_LOCK_WAIT_SECONDS = 30.0
+
+
 @router.post("/mail/{email_id}/restore")
 def restore_email(
     request: Request,
@@ -3487,6 +3492,23 @@ def restore_email(
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
 
+    # Той самий лок листа, під яким фон переносить щойно прийнятий лист у папку
+    # скриньки (`mail_accept._move_accepted_letter`). Лист читається вже ПІД
+    # локом: інакше відкат бачив би `mailbox_folder` до переносу й не повертав
+    # лист з папки. Чекаємо, а не відмовляємо: фон тримає лок секунду.
+    lock = _letter_lock(email_id)
+    if not lock.acquire(timeout=RESTORE_LOCK_WAIT_SECONDS):
+        return RedirectResponse(
+            f"/mail?view=archive&error={quote('Лист саме обробляється — спробуйте за мить')}",
+            status_code=303,
+        )
+    try:
+        return _restore_email_locked(request, db, user, email_id)
+    finally:
+        lock.release()
+
+
+def _restore_email_locked(request: Request, db: Session, user, email_id: int):
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")

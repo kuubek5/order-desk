@@ -15,11 +15,13 @@
 зникли», хоча вони на місці. Компенсація — `mail_export.undo_moves`.
 """
 
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from threading import Lock
 import logging
+import time
 
 from sqlalchemy.orm import Session
 
@@ -81,6 +83,9 @@ class AcceptResult:
     remaining_files: int = 0
     material_label: str = ""
     partial: bool = field(default=False)
+    # Лист прийнято повністю → перенести його в папку «оброблено» скриньки.
+    # Робить це `accept_letter` у фоні, ПІСЛЯ зняття локу листа.
+    move_to_folder: bool = field(default=False)
 
     @property
     def ok(self) -> bool:
@@ -217,7 +222,7 @@ def accept_letter(
             error="Цей лист саме приймає інший оператор — оновіть сторінку за мить"
         )
     try:
-        return _accept_letter_locked(
+        result = _accept_letter_locked(
             db, user, email,
             client_name=client_name, material_color=material_color, kind=kind,
             quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
@@ -228,6 +233,11 @@ def accept_letter(
         )
     finally:
         lock.release()
+    # Після зняття локу: фонова задача бере цей самий лок (див.
+    # `_move_accepted_letter`), і під ним прийняття її б чекало.
+    if result.ok and result.move_to_folder:
+        schedule_folder_move(db, email.id, getattr(user, "username", None))
+    return result
 
 
 def _accept_letter_locked(
@@ -487,19 +497,16 @@ def _accept_files_and_commit(
     # Робота пішла в роботу → лист переносимо в папку «оброблено» скриньки, щоб
     # CRM і пошта лишались синхронні (рішення власника 24.09.26). Лише при
     # ПОВНОМУ прийнятті: доки в листі є нерозібрані кольори, він тримається у
-    # Вхідних. Best-effort, як рядок-нотатка: прийняття вже успішне, збій IMAP
-    # (мережа, папка) не відкочуємо — лишаємо слід у SyncLog, а лист лишається у
-    # Вхідних, звідки його потім забере кнопка чи наступний синк.
-    if not remaining:
-        with perf.span("accept:mail-folder"):
-            _move_letter_to_processed_folder(db, email, getattr(user, "username", None))
-
+    # Вхідних. Сам перенос — у фоні (`schedule_folder_move`, 07.10.26: IMAP
+    # ~0.5 с з 2.3–3.5 с прийняття); best-effort, як і був: збій IMAP прийняття
+    # не відкочує, лишає слід у SyncLog, а лист — у Вхідних.
     return AcceptResult(
         order=new_order,
         saved_files=len(attachments),
         remaining_files=len(remaining),
         material_label=(new_order.material_color or "").strip() or "без матеріалу",
         partial=bool(remaining),
+        move_to_folder=not remaining,
     )
 
 
@@ -566,6 +573,74 @@ def _move_letter_to_processed_folder(
             logger.exception("Не вдалося записати слід про непереміщення листа %s", email.id)
 
 
+# Перенос прийнятого листа в папку скриньки — у фоні (власник 07.10.26). Один
+# потік: IMAP-входи йдуть по черзі, а не пачкою паралельних логінів з Конвеєра.
+_folder_move_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mail-folder-move")
+
+
+def _submit_folder_move(fn, *args) -> Future | None:
+    """Точка подачі в пул — тести підміняють її виконанням на місці
+    (`tests/conftest.py`), щоб фон не ходив у чужу базу з іншого потоку."""
+    return _folder_move_pool.submit(fn, *args)
+
+
+def schedule_folder_move(db: Session, email_id: int, user_name: str | None) -> Future | None:
+    """Поставити перенос прийнятого листа в чергу фону. Задача відкриває ВЛАСНУ
+    сесію на ту саму базу: сесії SQLAlchemy не потокобезпечні, а сесія запиту
+    закриється раніше, ніж фон дійде до листа. Папку не задано → нічого не
+    ставимо (переніс лишається ручним, як було)."""
+    if not (get_setting(db, "mail_processed_folder") or "").strip():
+        return None
+    return _submit_folder_move(_move_accepted_letter, db.get_bind(), email_id, user_name)
+
+
+def drain_folder_moves(timeout: float = 30.0) -> None:
+    """Дочекатись, поки фон перенесе все, що вже в черзі (тести, наживо)."""
+    _folder_move_pool.submit(lambda: None).result(timeout=timeout)
+
+
+def _move_accepted_letter(bind, email_id: int, user_name: str | None) -> None:
+    """Фонова половина прийняття — під ТИМ САМИМ локом листа, що й «Повернути»
+    (`restore_email`). Без нього «прийняв → одразу повернув» вигравав би в
+    гонці: відкат бачив лист ще без `mailbox_folder` і не повертав його з
+    папки, а фон потім переносив уже «нове» в «оброблено». Тому під локом
+    лист перечитується: переносимо, лише якщо він досі прийнятий повністю і
+    ще не в папці."""
+    started = time.monotonic()
+    try:
+        with _letter_lock(email_id):
+            with Session(bind=bind, autoflush=False, expire_on_commit=False) as bg:
+                email = bg.get(EmailMessage, email_id)
+                if email is None or email.status != "прийнято" or email.mailbox_folder:
+                    return
+                if any(
+                    a.order_id is None and not _file_is_missing(a.saved_path)
+                    for a in email.attachments
+                ):
+                    return
+                _move_letter_to_processed_folder(bg, email, user_name)
+                if email.mailbox_folder:
+                    logger.info(
+                        "Лист %s перенесено в «%s» у фоні за %.2f с",
+                        email_id, email.mailbox_folder, time.monotonic() - started,
+                    )
+    except Exception:  # noqa: BLE001 — фон не має права мовчки померти
+        logger.exception("Фоновий перенос листа %s у папку впав", email_id)
+
+
+# Вкладка дня — памʼять на хвилину (власник 07.10.26): перелік вкладок коштує
+# 0.2–0.8 с на КОЖНЕ прийняття, а міняється раз на день. Тримаємо лише НАЗВУ:
+# обʼєкти gspread живуть у кеші свого потоку (`app/sheets.py`), між потоками
+# їх не передаємо.
+TAB_CACHE_SECONDS = 60.0
+_tab_cache: tuple[date, str, float] | None = None
+
+
+def reset_tab_cache() -> None:
+    global _tab_cache
+    _tab_cache = None
+
+
 def _resolve_target_tab(db: Session, email: EmailMessage):
     """До якої датованої вкладки належить ця робота.
 
@@ -581,9 +656,28 @@ def _resolve_target_tab(db: Session, email: EmailMessage):
     ЙОГО вкладку. Це та сама межа, яку CLAUDE.md §14 вимагає скрізь; тут вона
     лишалась календарною з часів, коли правила ще не було, і сторож
     `tests/test_business_day.py` знайшов це, щойно код переїхав під його нагляд.
+
+    Знайдену назву памʼятаємо `TAB_CACHE_SECONDS` у межах робочого дня: нова
+    вкладка, створена посеред дня, підхоплюється щонайпізніше за хвилину.
     """
+    global _tab_cache
     today = business_today()
     target_tab = today.strftime("%d.%m.%y")
+    cached = _tab_cache
+    if (
+        cached is not None and cached[0] == today
+        and time.monotonic() - cached[2] < TAB_CACHE_SECONDS
+    ):
+        try:
+            worksheet = get_worksheet_by_name(open_spreadsheet(db=db), cached[1])
+        except Exception as exc:  # noqa: BLE001 — проблеми таблиці не блокують прийняття
+            # Вкладка відома — робота лягає в неї, а рядок допише повтор.
+            logger.warning("Could not open sheet tab %s for email %s: %s", cached[1], email.id, exc)
+            return cached[1], None
+        if worksheet is not None:
+            return worksheet.title, worksheet
+        # Вкладку прибрали чи перейменували за цю хвилину — шукаємо заново.
+        _tab_cache = None
     try:
         worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=db), today)
     except Exception as exc:  # noqa: BLE001 — проблеми таблиці не блокують прийняття
@@ -591,6 +685,7 @@ def _resolve_target_tab(db: Session, email: EmailMessage):
         return target_tab, None
     if worksheet is not None:
         target_tab = worksheet.title
+        _tab_cache = (today, target_tab, time.monotonic())
     return target_tab, worksheet
 
 
