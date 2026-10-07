@@ -494,6 +494,20 @@ def main() -> int:
         if configured_data_dir != DATA_DIR:
             raise RuntimeError("Неузгоджений Windows data directory")
         _ensure_port_available()
+        # Сторож бази (рішення власника 07.10.26): зникла/порожня/зіпсована база
+        # при наявних знімках → питаємо людину, а не створюємо мовчки порожню
+        # й не стартуємо на биті. ДО міграцій: вони не мають чіпати те, що
+        # збираємось відновлювати.
+        from app import snapshot_cli
+
+        if snapshot_cli.guard_database(
+            db_file=Path(DB_PATH),
+            data_dir=DATA_DIR,
+            say=snapshot_cli.windows_say,
+            ask=snapshot_cli.windows_ask,
+        ) == "declined":
+            logging.warning("Старт скасовано: база непридатна, відновлення не підтверджено")
+            return 1
         _run_migrations()
         # Alembic's logging config targets stderr; restore the rotating file
         # handler required by the no-console Windows build.

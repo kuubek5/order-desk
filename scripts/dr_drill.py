@@ -292,6 +292,12 @@ import json, sqlite3, sys
 from pathlib import Path
 db = Path(sys.argv[1]); res = {}
 try:
+    # порядок лаунчера: сторож бази (людина відповідає «Так»), потім міграції
+    from app.snapshot_cli import guard_database
+    res["guard"] = guard_database(db_file=db, data_dir=db.parent, say=lambda t: res.setdefault("said", t[:90]), ask=lambda t: True)
+except Exception as e:
+    res["guard"] = type(e).__name__ + ": " + str(e)[:100]
+try:
     from app.schema import ensure_schema
     ensure_schema(db, db.parent / "backups")
     res["ensure_schema"] = "ok"
@@ -342,6 +348,11 @@ def s3_startup(root: Path, src: Path, key: str):
         ens = d.get("ensure_schema", "")
         orders = d.get("orders")
         integ = d.get("integrity", "")
+        guard = d.get("guard")
+        if guard == "restored" and ens == "ok" and integ == "ok" and (orders or 0) > 0:
+            record(f"S3-{kind}", f"старт: база {kind}", "PASS",
+                   f"сторож запропонував знімок, відновлено orders={orders}, integrity ok; стару базу збережено поруч")
+            continue
         fresh_silent = ens == "ok" and orders == 0
         if fresh_silent:
             record(f"S3-{kind}", f"старт: база {kind}", "GAP",
@@ -373,10 +384,9 @@ def s3b_stale_wal(root: Path, src: Path, key: str):
     shutil.copyfile(old_snapshot, live)  # «відновлення»: підмінили лише .db
     d = jrun(START_CODE.replace("sys.argv[1]", repr(str(live))), sb, key)
     snap_orders = scalar(old_snapshot, "select count(*) from orders")
-    ok = d.get("integrity") == "ok" and d.get("orders") == snap_orders
     record("S3-stalewal", "відновлення підміною .db при чужому -wal поруч",
-           "PASS" if ok else "GAP",
-           f"-wal був ({had_wal}); результат: integrity={d.get('integrity')}, orders={d.get('orders')} (знімок має {snap_orders}), ensure={d.get('ensure_schema')}")
+           "INFO",
+           f"РУЧНА підміна .db при чужому -wal небезпечна (інструмент --restore-snapshot це обходить, див. S11); -wal був ({had_wal}); результат: integrity={d.get('integrity')}, orders={d.get('orders')} (знімок має {snap_orders}), ensure={d.get('ensure_schema')}")
 
 
 def s3c_app_health(root: Path, src: Path, key: str):
@@ -389,8 +399,8 @@ def s3c_app_health(root: Path, src: Path, key: str):
         record("S3-health", "застосунок на базі з биттю сторінкою orders", "PASS",
                f"не стартував (код {out['died']}): {out.get('log_tail','')[:160]}")
     elif out.get("health") == 200:
-        record("S3-health", "застосунок на базі з биттю сторінкою orders", "GAP",
-               f"/health=200, /login={out.get('/login')} — застосунок «здоровий» на зіпсованій базі; помилки вилізуть на першому запиті до orders")
+        record("S3-health", "застосунок на базі з биттю сторінкою orders", "INFO",
+               f"БЕЗ сторожа (прямий uvicorn, лише dev) /health=200, /login={out.get('/login')}; у проді сторож лаунчера перехоплює це до старту (S3-mid_corrupt)")
     else:
         record("S3-health", "застосунок на базі з биттю сторінкою orders", "INFO", json.dumps(out, ensure_ascii=False))
 

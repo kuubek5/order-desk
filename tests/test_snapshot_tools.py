@@ -245,6 +245,122 @@ def test_cli_does_nothing_when_the_person_says_no(tmp_path):
     assert rc == 1 and inspect_snapshot(live).orders == 1
 
 
+# ── Сторож бази на старті (рішення власника 07.10.26) ─────────────────────────
+
+
+def _data_with_snapshot(tmp_path, snap_orders=33):
+    data = tmp_path / "data"
+    (data / "backups").mkdir(parents=True)
+    snap = _make_db(data / "backups" / "kuubmill_20261005_000000.db", snap_orders)
+    return data, data / "kuubmill.db", snap
+
+
+def _guard(db, data, *, answer=True):
+    said: list[str] = []
+    asked: list[str] = []
+    result = snapshot_cli.guard_database(
+        db_file=db, data_dir=data, say=said.append, ask=lambda t: asked.append(t) or answer,
+    )
+    return result, said, asked
+
+
+@pytest.mark.parametrize("damage", ["missing", "zero", "garbage", "truncated", "header_zeroed", "page_corrupt"])
+def test_guard_offers_the_snapshot_for_every_kind_of_damage_and_restores_on_yes(tmp_path, damage):
+    data, live, _ = _data_with_snapshot(tmp_path)
+    if damage != "missing":
+        _make_db(live, 500)
+        raw = live.read_bytes()
+        if damage == "zero":
+            live.write_bytes(b"")
+        elif damage == "garbage":
+            live.write_bytes(os.urandom(6000))
+        elif damage == "truncated":
+            live.write_bytes(raw[: len(raw) // 2])
+        elif damage == "header_zeroed":
+            live.write_bytes(b"\x00" * 100 + raw[100:])
+        elif damage == "page_corrupt":
+            probe = sqlite3.connect(live)
+            ps = probe.execute("pragma page_size").fetchone()[0]
+            root = probe.execute("select rootpage from sqlite_master where name='orders'").fetchone()[0]
+            probe.close()  # відкритий дескриптор не дав би Windows перейменувати файл
+            with open(live, "r+b") as fh:
+                fh.seek((root - 1) * ps + 20)
+                fh.write(os.urandom(ps - 40))
+
+    result, said, asked = _guard(live, data)
+
+    assert result == "restored", (damage, said)
+    assert "kuubmill_20261005_000000.db" in asked[0]
+    assert inspect_snapshot(live).orders == 33
+    if damage != "missing":
+        assert any("before-restore" in p.name for p in data.iterdir()), "стару базу мусить бути збережено поруч"
+
+
+def test_guard_declined_changes_nothing(tmp_path):
+    data, live, _ = _data_with_snapshot(tmp_path)
+    live.write_bytes(os.urandom(6000))
+    before = live.read_bytes()
+
+    result, _, asked = _guard(live, data, answer=False)
+
+    assert result == "declined" and asked
+    assert live.read_bytes() == before
+    assert [p.name for p in data.iterdir()] == ["backups", "kuubmill.db"]
+
+
+def test_guard_lets_a_first_install_through_without_asking(tmp_path):
+    """Бази нема й знімків нема — це перша інсталяція, не аварія."""
+    data = tmp_path / "data"
+    data.mkdir()
+    result, said, asked = _guard(data / "kuubmill.db", data)
+    assert result == "ok" and not asked and not said
+
+
+def test_guard_does_not_ask_about_a_healthy_database(tmp_path):
+    data, live, _ = _data_with_snapshot(tmp_path)
+    _make_db(live, 500)
+    result, _, asked = _guard(live, data)
+    assert result == "ok" and not asked and inspect_snapshot(live).orders == 500
+
+
+def test_guard_stops_loudly_when_the_database_is_broken_and_no_snapshot_exists(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    live = data / "kuubmill.db"
+    live.write_bytes(os.urandom(6000))
+    result, said, asked = _guard(live, data)
+    assert result == "declined" and not asked
+    assert "не знайдено" in said[0] and "--restore-snapshot" in said[0]
+
+
+def test_guard_never_restores_over_a_database_that_is_merely_locked(tmp_path, monkeypatch):
+    """Заблокована база — не доказ пошкодження. Помилкове відновлення затерло б живі дані."""
+    data, live, _ = _data_with_snapshot(tmp_path)
+    _make_db(live, 500)
+    holder = sqlite3.connect(live, isolation_level=None)
+    holder.execute("begin exclusive")
+    try:
+        result, _, asked = _guard(live, data)
+        assert result == "ok" and not asked
+    finally:
+        holder.execute("rollback")
+        holder.close()
+    assert inspect_snapshot(live).orders == 500
+
+
+def test_database_state_reads_a_live_wal_database_without_losing_its_wal(tmp_path):
+    """Жива база з -wal читається звичайним відкриттям (не immutable) — інакше свіжі
+    транзакції лишилися б непоміченими."""
+    from app.snapshot_tools import database_state
+
+    live = tmp_path / "kuubmill.db"
+    keeper = _live_with_wal(live, 50)
+    try:
+        assert database_state(live)[0] == "ok"
+    finally:
+        keeper.close()
+
+
 def test_cli_lists_and_reports_when_there_are_no_snapshots(tmp_path):
     said: list[str] = []
     rc = snapshot_cli.run(list_only=True, target=None, data_dir=tmp_path, db_file=tmp_path / "kuubmill.db",

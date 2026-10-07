@@ -93,6 +93,49 @@ def inspect_snapshot(path: Path) -> SnapshotInfo:
     return SnapshotInfo(path, True, "ok", orders, revision, modified, size)
 
 
+_DAMAGE_MARKERS = ("malformed", "not a database", "disk image", "encrypted")
+
+
+def database_state(db_file: Path) -> tuple[str, str]:
+    """Стан РОБОЧОЇ бази при старті: `(стан, деталі)`.
+
+    * `ok` — читається, `quick_check` чистий;
+    * `missing` — файла нема, він порожній або в ньому жодної таблиці;
+    * `corrupt` — не база, обрізана, биті сторінки;
+    * `unknown` — не вдалось зʼясувати (заблокована, немає прав). Такий стан
+      НІКОЛИ не привід для відновлення: помилковий «зіпсована» затер би живу базу.
+
+    Викликається на старті, коли застосунок не працює і нічого не пише, тож звичайне
+    відкриття (з WAL) безпечне: на відміну від знімка, живу базу `immutable` читати не можна —
+    вона проігнорувала б свіжі транзакції з `-wal`.
+    """
+    db_file = Path(db_file)
+    try:
+        if not db_file.is_file() or db_file.stat().st_size == 0:
+            return "missing", "файла нема або він порожній"
+    except OSError as exc:
+        return "unknown", str(exc)[:80]
+    try:
+        con = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True, timeout=3)
+        try:
+            tables = con.execute("select count(*) from sqlite_master where type='table'").fetchone()[0]
+            if tables == 0:
+                return "missing", "у файлі жодної таблиці"
+            quick = con.execute("PRAGMA quick_check").fetchone()
+        finally:
+            con.close()
+    except sqlite3.DatabaseError as exc:
+        text = str(exc).lower()
+        if any(m in text for m in _DAMAGE_MARKERS):
+            return "corrupt", str(exc)[:100]
+        return "unknown", str(exc)[:100]  # locked / unable to open: не доказ пошкодження
+    except sqlite3.Error as exc:
+        return "unknown", str(exc)[:100]
+    if not quick or quick[0] != "ok":
+        return "corrupt", f"quick_check: {str(quick)[:100]}"
+    return "ok", "ok"
+
+
 def verify_snapshot(path: Path) -> None:
     """Для ВІДНОВЛЕННЯ: кидає `SnapshotError`, якщо знімок не можна використати
     (не читається, не проходить цілісність, чи це взагалі не база KuubMill)."""

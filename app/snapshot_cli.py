@@ -14,6 +14,7 @@ from pathlib import Path
 from app.snapshot_tools import (
     SnapshotError,
     app_is_running,
+    database_state,
     discover_snapshots,
     newest_valid,
     restore_from_snapshot,
@@ -85,6 +86,55 @@ def run(
     return 0
 
 
+def guard_database(
+    *,
+    db_file: Path,
+    data_dir: Path,
+    say: Callable[[str], None],
+    ask: Callable[[str], bool],
+) -> str:
+    """Сторож бази на старті: `ok` | `restored` | `declined`.
+
+    Рішення власника 07.10.26 (DR-навчання): база зникла, порожня чи зіпсована
+    при наявних знімках → НЕ створювати мовчки порожню й не стартувати на биті,
+    а спитати людину. «Так» відновлює найновіший придатний знімок (стару базу
+    лишає поруч), «Ні» — вихід без змін.
+
+    Свіжа інсталяція (бази нема І знімків нема) — звичайний старт. Стан
+    `unknown` (база заблокована тощо) нічого не відновлює, ніколи.
+    """
+    state, detail = database_state(db_file)
+    if state in ("ok", "unknown"):
+        return "ok"
+    snap = newest_valid(discover_snapshots(data_dir))
+    if snap is None:
+        if state == "missing":
+            return "ok"  # перша інсталяція: бази й знімків ще нема
+        say(
+            "База даних KuubMill пошкоджена, а придатного знімка в "
+            f"{data_dir}\\backups не знайдено.\n\nЗапуск зупинено, дані не змінено.\n"
+            "Якщо копії лежать на іншому диску: KuubMill.exe --restore-snapshot latest --from <тека>.\n\n"
+            f"Деталі: {detail}"
+        )
+        return "declined"
+    what = "не знайдена (або порожня)" if state == "missing" else "пошкоджена"
+    if not ask(
+        f"База даних KuubMill {what}.\n\n"
+        f"Знайдено знімок:\n{snap.label()}\n\n"
+        "Відновити базу з нього?\n\n"
+        "• Поточну базу НЕ буде видалено — вона збережеться поруч (*.before-restore-…).\n"
+        "• Дані, внесені після цього знімка, у відновленій базі будуть відсутні.\n"
+        "• «Ні» — KuubMill не запуститься, нічого не зміниться."
+    ):
+        return "declined"
+    try:
+        restore_from_snapshot(db_file, snap.path, running=lambda: False)
+    except SnapshotError as exc:
+        say(str(exc))
+        return "declined"
+    return "restored"
+
+
 def windows_say(text: str) -> None:
     """Вікно з повідомленням (прод без консолі). Поза Windows/в тестах — у stdout."""
     if os.name != "nt" or os.environ.get("KUUBMILL_NONINTERACTIVE"):
@@ -104,4 +154,4 @@ def windows_ask(text: str) -> bool:
     return ctypes.windll.user32.MessageBoxW(0, text, "KuubMill — відновлення", 0x4 | 0x30 | 0x100 | 0x10000 | 0x40000) == 6
 
 
-__all__ = ["run", "windows_say", "windows_ask", "app_is_running"]
+__all__ = ["run", "guard_database", "windows_say", "windows_ask", "app_is_running"]
