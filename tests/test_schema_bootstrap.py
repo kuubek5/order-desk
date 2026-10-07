@@ -95,6 +95,40 @@ def test_fresh_database_is_created_and_stamped(tmp_path):
     assert "agent_token_encrypted" in _columns(db_path, "machines")
 
 
+def test_fresh_database_gets_its_tables_in_a_clean_interpreter(tmp_path):
+    """Чиста база в ТОМУ порядку імпортів, у якому стартує лаунчер.
+
+    Лаунчер викликає `_run_migrations()` ДО `from app.web import app`, тобто
+    коли `app.models` ще ніхто не імпортував. Тест вище цього не бачить: сам
+    модуль імпортує моделі на 24-му рядку, тож `Base.metadata` у ньому вже
+    повна. А в чистому інтерпретаторі `create_all` не створював НІЧОГО, база
+    лишалась з однією таблицею `alembic_version`, проштампованою на голову, і
+    застосунок на новому ПК віддавав 500 на кожній сторінці («no such table:
+    materials») при зеленому /health — тож ні CI-смоук, ні сторож оновлення
+    цього не бачили (DR-навчання 07.10.26).
+    """
+    db_path = tmp_path / "fresh-clean.db"
+    code = (
+        "import sys, sqlite3\n"
+        "from pathlib import Path\n"
+        "from app.schema import ensure_schema\n"
+        "assert not any(m.startswith('app.models') for m in sys.modules), 'передумова: моделей ще немає'\n"
+        f"ensure_schema(Path({str(db_path)!r}), Path({str(tmp_path / 'backups')!r}))\n"
+        f"c = sqlite3.connect({str(db_path)!r})\n"
+        "names = {r[0] for r in c.execute(\"select name from sqlite_master where type='table'\")}\n"
+        "print(len(names), 'orders' in names, 'users' in names, 'materials' in names)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env=dict(os.environ, DB_PATH=str(db_path), PYTHONIOENCODING="utf-8"),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert result.returncode == 0, result.stderr[-600:]
+    count, has_orders, has_users, has_materials = result.stdout.split()[-4:]
+    assert int(count) > 30 and has_orders == has_users == has_materials == "True", result.stdout
+
+
 def test_stale_database_is_migrated_to_head(tmp_path):
     """База, що відстала на міграції, доїжджає сама — без ручного втручання."""
     db_path = tmp_path / "stale.db"

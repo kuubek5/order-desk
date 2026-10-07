@@ -199,6 +199,14 @@ def ensure_schema(db_file: Path, backup_dir: Path) -> None:
     from alembic.script import ScriptDirectory
     from sqlalchemy import URL, create_engine
 
+    # Таблиці реєструються в `Base.metadata` ЛИШЕ імпортом моделей, а лаунчер
+    # викликає нас ДО `from app.web import app`. Без цього рядка `create_all`
+    # нижче не створював нічого, база лишалась з однією `alembic_version`,
+    # проштампованою на голову, і застосунок на новому ПК віддавав 500 на кожній
+    # сторінці при зеленому /health (DR-навчання 07.10.26). Так само
+    # `_matches_models` для старої неверсіонованої бази порівнювала б з порожнім.
+    import app.models  # noqa: F401
+
     db_file = Path(db_file).expanduser().resolve()
     config = alembic_config()
     # `migrations/env.py` бере шлях з DB_PATH — без цього рядка alembic мігрував
@@ -226,6 +234,14 @@ def ensure_schema(db_file: Path, backup_dir: Path) -> None:
             Base.metadata.create_all(fresh_engine)
         finally:
             fresh_engine.dispose()
+        # Запобіжник «порожню схему не штампуємо»: штамп на голову без таблиць
+        # назавжди закриває шлях до їх створення (наступний старт бачить
+        # «версія = голова» і нічого не робить).
+        if len(_table_names(db_file)) < 5:
+            raise RuntimeError(
+                "Не вдалося створити таблиці бази (моделі не зареєстровано?). "
+                "Запуск зупинено, штамп не поставлено."
+            )
         command.stamp(config, "head")
         logger.info("Схему створено з моделей і проштамповано %s", head_revision)
         _decide_foreign_key_enforcement(db_file)
