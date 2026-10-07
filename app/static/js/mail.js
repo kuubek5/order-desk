@@ -705,7 +705,8 @@ document.addEventListener("click", (event) => {
 });
 
 // ── Конвеєр (блок B): вибір кількох листів + батч-прийняття ──────────────────
-// Стан вибору живе ЛИШЕ тут (у DOM-галочках), не в БД. Панель #mail-detail
+// Стан вибору живе в браузері (DOM-галочки + sessionStorage, щоб пережити
+// перехід по меню — див. «Вибір переживає перехід»), не в БД. Панель #mail-detail
 // перемикається з картки на таблицю батчу, щойно обрано ≥1 лист, і назад на
 // картку/заглушку, коли знято всі. Джерело істини — самі галочки (.mailcb), а не
 // окремий Set: галочки в рядках з hx-preserve переживають 15-секундний полл, тож
@@ -1008,10 +1009,91 @@ window.collectMailBatch = function () {
     );
   }
 
+  // ── Вибір переживає перехід (власник 07.10.26) ──────────────────────────
+  // Вкладки пошти, чіпи матеріалу й рейка — повні переходи, і набраний для
+  // мультипрорахунку вибір разом із вписаними Sum3D/теками злітав від будь-якої
+  // кнопки меню. Тримаємо його в sessionStorage: переживає перехід і F5, але
+  // належить ОДНІЙ вкладці браузера й зникає з нею (localStorage змішав би вибір
+  // двох вкладок). Галочки лишаються джерелом істини для того, що є на сторінці;
+  // листи, яких на ній немає (інша вкладка пошти, інший фільтр), зберігаються
+  // як були — інакше перехід через «На уточненні» стер би вибір із «Вхідних».
+  const SEL_KEY = "kmill.mailBatchSel";
+  const SEL_MAX_AGE_MS = 12 * 3600 * 1000;
+  // Масова дія вже пішла — сторінка йде геть, зберігати нічого.
+  let selectionSaveOff = false;
+
+  function readSel() {
+    try {
+      const raw = window.sessionStorage.getItem(SEL_KEY);
+      const sel = raw ? JSON.parse(raw) : null;
+      if (!sel || !Array.isArray(sel.ids) || Date.now() - (sel.at || 0) > SEL_MAX_AGE_MS) return null;
+      return sel;
+    } catch (e) {
+      return null; // сховище недоступне чи битий запис — просто без памʼяті
+    }
+  }
+
+  function writeSel(sel) {
+    try {
+      if (!sel || !sel.ids.length) window.sessionStorage.removeItem(SEL_KEY);
+      else window.sessionStorage.setItem(SEL_KEY, JSON.stringify(sel));
+    } catch (e) { /* сховище недоступне */ }
+  }
+
+  function saveSelection() {
+    if (selectionSaveOff) return;
+    const prev = readSel();
+    const onPage = new Set(idsOf(".mailcb"));
+    const kept = prev ? prev.ids.filter((id) => !onPage.has(id)) : [];
+    const ids = kept.concat(selectedIds());
+    snapshotBatch(); // без Конвеєра на сторінці лишає попередній знімок
+    writeSel({
+      ids: ids,
+      snap: batchSnapshot || (prev && prev.snap) || null,
+      pool: Array.from(openedPool),
+      at: Date.now(),
+    });
+  }
+
+  function forgetSelection(ids) {
+    const prev = readSel();
+    if (!prev) return;
+    const drop = new Set(ids.map(String));
+    prev.ids = prev.ids.filter((id) => !drop.has(id));
+    writeSel(prev);
+  }
+
+  function restoreSelection() {
+    const sel = readSel();
+    if (!sel || !document.getElementById("mail-batchbar")) return;
+    let any = false;
+    sel.ids.forEach((id) => {
+      const cb = document.querySelector('.mailcb[data-cb-id="' + id + '"]:not(:disabled)');
+      if (cb) {
+        cb.checked = true;
+        any = true;
+      }
+    });
+    if (sel.snap) batchSnapshot = sel.snap;
+    (sel.pool || []).forEach((id) => openedPool.add(id));
+    if (any) refreshPanel();
+  }
+
+  // Не на DOMContentLoaded: htmx ще ініціалізує `body`, і запит Конвеєра,
+  // поданий раніше, лишав на ньому `htmx-request` назавжди (лічильник іде в −1),
+  // а цей клас знімає з елемента кліки — уся сторінка ставала мертвою.
+  if (document.readyState === "complete") {
+    restoreSelection();
+  } else {
+    window.addEventListener("load", restoreSelection, { once: true });
+  }
+  window.addEventListener("pagehide", saveSelection);
+
   // Галочка рядка змінилась → перебудувати панель.
   document.addEventListener("change", (event) => {
     if (event.target.classList && event.target.classList.contains("mailcb")) {
       refreshPanel();
+      saveSelection();
     }
   });
 
@@ -1025,6 +1107,7 @@ window.collectMailBatch = function () {
       cb.checked = on;
     });
     refreshPanel();
+    saveSelection();
   });
 
   // Масова дія: форма /mail/bulk — підставити id обраних і спитати підтвердження
@@ -1045,6 +1128,10 @@ window.collectMailBatch = function () {
       return;
     }
     form.querySelector('[name="ids"]').value = ids.join(",");
+    // Дію виконано над цими листами — після переходу вони не мають
+    // повернутись обраними (pagehide інакше зберіг би ще стоячі галочки).
+    forgetSelection(ids);
+    selectionSaveOff = true;
     // Пункт меню «Перемістити» несе назву папки в data-folder.
     const folderInput = form.querySelector('[name="folder"]');
     if (folderInput) folderInput.value = (btn && btn.dataset.folder) || "";
@@ -1147,6 +1234,8 @@ window.collectMailBatch = function () {
       cb.checked = false;
     });
     batchSnapshot = null;
+    openedPool.clear();
+    writeSel(null);
     refreshPanel();
   });
 
@@ -1177,7 +1266,15 @@ window.collectMailBatch = function () {
     // Панель уже свопнута сервером на результат — не тримати старий кеш картки.
     detailCache = null;
     // Диск прийнято — його «Sum3D усім» і поля не мають перейти в наступний.
-    if (accepted.length) batchSnapshot = null;
+    if (accepted.length) {
+      batchSnapshot = null;
+      forgetSelection(accepted);
+      const sel = readSel();
+      if (sel) {
+        sel.snap = null;
+        writeSel(sel);
+      }
+    }
     updateSelCount(selectedIds());
     if (accepted.length && window.htmx) {
       // Прийняті роботи зʼявились у дзеркалі «Прийняте з пошти» — оновити його.
