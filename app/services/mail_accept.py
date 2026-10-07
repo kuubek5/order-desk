@@ -23,6 +23,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app import perf
 from app.business_day import business_today
 from app.export_scanner import clear_export_cache
 from app.link_attachments import undownloaded_links
@@ -271,7 +272,10 @@ def _accept_letter_locked(
             join_export_folder=join_export_folder, write_row=False,
         )
 
-    target_tab, target_worksheet = _resolve_target_tab(db, email)
+    # Фази прийняття — у рядку «Slow request» (07.10.26: на проді 2.3–3.5 с на лист,
+    # а розбивки не було). Поза запитом (фонові виклики, тести) — no-op.
+    with perf.span("accept:tab"):
+        target_tab, target_worksheet = _resolve_target_tab(db, email)
 
     new_order = Order(
         source="email",
@@ -382,13 +386,14 @@ def _accept_files_and_commit(
             # падіння ПІСЛЯ переносу (запис у базу, `remember_sender`) лишало
             # файли в export при листі «нове» — диск і база розходились
             # назавжди, і компенсувати вже не було чим.
-            _move_attachments(
-                db, email, new_order, attachments,
-                folder_pick=folder_pick, folder_new=folder_new,
-                material_folder=material_folder,
-                moved_out=moved_pairs,
-                join_export_folder=join_export_folder,
-            )
+            with perf.span("accept:files"):
+                _move_attachments(
+                    db, email, new_order, attachments,
+                    folder_pick=folder_pick, folder_new=folder_new,
+                    material_folder=material_folder,
+                    moved_out=moved_pairs,
+                    join_export_folder=join_export_folder,
+                )
         except Exception as exc:  # noqa: BLE001 — файли могли поїхати, треба відкотити
             # Не лише OSError/ValueError: усе між переносом і поверненням —
             # робота з базою, і будь-яка її помилка мусить повернути файли в
@@ -440,7 +445,8 @@ def _accept_files_and_commit(
             # Прийнятий лист більше не «на уточненні» — інакше відкат прийняття
             # повернув би його в стару паузу, а не у «Вхідні».
             release_hold(email)
-        db.commit()
+        with perf.span("accept:commit"):
+            db.commit()
     except Exception as exc:  # noqa: BLE001 — файли вже на диску, треба відкотити
         # Файли переїхали ДО цього коміту. Невдалий коміт (SQLite locked, диск
         # повний під WAL, …) відкочує базу в «лист не прийнято», тож файли
@@ -468,7 +474,8 @@ def _accept_files_and_commit(
     # потрібен ще один коміт; його невдача лише логується, прийняття листа
     # назад не відкочуємо.
     if write_row:
-        _write_placeholder_row(db, email, new_order, target_worksheet)
+        with perf.span("accept:sheet-row"):
+            _write_placeholder_row(db, email, new_order, target_worksheet)
         try:
             db.commit()
         except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
@@ -484,7 +491,8 @@ def _accept_files_and_commit(
     # (мережа, папка) не відкочуємо — лишаємо слід у SyncLog, а лист лишається у
     # Вхідних, звідки його потім забере кнопка чи наступний синк.
     if not remaining:
-        _move_letter_to_processed_folder(db, email, getattr(user, "username", None))
+        with perf.span("accept:mail-folder"):
+            _move_letter_to_processed_folder(db, email, getattr(user, "username", None))
 
     return AcceptResult(
         order=new_order,
