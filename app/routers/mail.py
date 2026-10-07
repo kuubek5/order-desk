@@ -74,6 +74,7 @@ from app.services.material_suggest import (
 from app.material_catalog import load_alias_rows
 from app.material_class import mail_material_badge
 from app.mail_reader import (
+    attachment_lock,
     download_attachments_now,
     extract_archive_attachments,
     list_move_target_folders,
@@ -1797,15 +1798,20 @@ def download_email_attachments(
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
-    try:
-        download_attachments_now(db, email, Path(get_mail_attachments_path(db)))
-        db.commit()
-        db.refresh(email)  # expire_on_commit=False: колекція вкладень інакше стара
-    except Exception as exc:  # noqa: BLE001 — surface a friendly error, don't 500
-        db.rollback()
-        logger.exception("Manual attachment download failed for email %s", email.id)
-        context = _mail_panel_context(db, email, user, error=f"Не вдалося скачати файли: {exc}")
-        return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    # Один лист — одне скачування за раз, від запиту до коміту (08.10.26: два
+    # кліки по 10 с перекрились і поклали 7 двійників «(2)»). Другий запит
+    # чекає першого, а тоді бачить уже скачане й пропускає його.
+    with attachment_lock(email_id):
+        db.expire_all()  # що встиг закомітити попередній запит
+        try:
+            download_attachments_now(db, email, Path(get_mail_attachments_path(db)))
+            db.commit()
+            db.refresh(email)  # expire_on_commit=False: колекція вкладень інакше стара
+        except Exception as exc:  # noqa: BLE001 — surface a friendly error, don't 500
+            db.rollback()
+            logger.exception("Manual attachment download failed for email %s", email.id)
+            context = _mail_panel_context(db, email, user, error=f"Не вдалося скачати файли: {exc}")
+            return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
     # Архів у листі — розпакувати одразу, як це вже роблять скачування за
     # посиланням і повторне скачування. Без цього «Скачати вкладення» лишало
     # архів замість STL, а кнопка «Розпакувати» ховалась у меню чіпа (власник
@@ -1842,7 +1848,12 @@ def redownload_email_attachments(
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
+    # Той самий лок, що в «Скачати»: два кліки «Скачати наново» підряд не
+    # мають покласти двійників (див. download_email_attachments).
+    lock = attachment_lock(email_id)
+    lock.acquire()
     try:
+        db.expire_all()
         removed, saved = redownload_missing_attachments(
             db, email, Path(get_mail_attachments_path(db))
         )
@@ -1863,6 +1874,8 @@ def redownload_email_attachments(
             db, email, user, error=f"Не вдалося скачати файли наново: {exc}"
         )
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    finally:
+        lock.release()
 
     # Файли клієнта часто приїздять у ZIP/RAR, і на диску живуть уже
     # РОЗПАКОВАНІ. Повторне скачування тягне з пошти сам архів — без цього

@@ -1514,3 +1514,99 @@ def test_inbox_gone_ignores_moved_and_dateless():
         db.refresh(nodate)
         assert moved.inbox_gone_at is None   # перенесений кнопкою — не чіпаємо
         assert nodate.inbox_gone_at is None  # без дати — не гадаємо
+
+
+# ── Двійники «(2)»: те саме скачування двічі (08.10.26, лист 1063) ─────────────
+
+
+def _seven_files():
+    return [_fake_attachment(f"2026-10-07_00002-013-{n}-crown_cad.stl", payload=f"stl-{n}".encode())
+            for n in range(21, 28)]
+
+
+def test_second_manual_download_adds_no_twins(monkeypatch, tmp_path):
+    """Лист Ростіка Веклина: 7 вкладень, після двох «Скачати» — 14 файлів,
+    сім із «(2)». Повторне скачування мусить пропускати те, що вже на диску."""
+    from app.mail_reader import download_attachments_now
+
+    mailbox = FakeMailbox(headers=[], full_by_uid={"63": _full_message("63", attachments=_seven_files())})
+    _patch_common(monkeypatch, mailbox)
+    with _engine_session() as session:
+        email = EmailMessage(uid="63", from_address="v@x", subject="", status="нове",
+                             attachments_status="skipped")
+        session.add(email)
+        session.commit()
+
+        assert download_attachments_now(session, email, tmp_path) == 7
+        session.commit()
+        session.refresh(email)
+        assert download_attachments_now(session, email, tmp_path) == 0, "друге скачування — без двійників"
+        session.commit()
+
+        names = sorted(a.filename for a in session.scalars(select(Attachment)))
+        assert len(names) == 7 and not any("(" in n for n in names)
+        on_disk = sorted(p.name for p in tmp_path.rglob("*.stl"))
+        assert on_disk == names
+
+
+def test_overlapping_downloads_of_one_letter_save_one_set(monkeypatch, tmp_path):
+    """Два запити «Скачати» о 01:58 перекрились (по 10 с кожен): кожен не бачив
+    файлів іншого. Під `attachment_lock` другий чекає першого, тоді бачить
+    уже скачане й нічого не додає — так само, як роут скачування."""
+    import threading
+    import time as _time
+
+    from sqlalchemy.pool import StaticPool
+
+    from app.mail_reader import attachment_lock, download_attachments_now
+
+    class SlowMailbox(FakeMailbox):
+        def fetch(self, criteria=None, **kwargs):
+            _time.sleep(0.3)  # «10 секунд» скачування — щоб запити перекрились
+            return super().fetch(criteria, **kwargs)
+
+    mailbox = SlowMailbox(headers=[], full_by_uid={"63": _full_message("63", attachments=_seven_files())})
+    _patch_common(monkeypatch, mailbox)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    with Session(engine) as s:
+        email = EmailMessage(uid="63", from_address="v@x", subject="", status="нове",
+                             attachments_status="skipped")
+        s.add(email)
+        s.commit()
+        email_id = email.id
+
+    db_guard = threading.Lock()  # StaticPool = одне зʼєднання: SQL по черзі
+    saved: list[int] = []
+
+    def click():
+        with Session(engine, expire_on_commit=False) as db, attachment_lock(email_id):
+            with db_guard:
+                db.expire_all()
+                letter = db.get(EmailMessage, email_id)
+                _ = list(letter.attachments)
+            n = download_attachments_now(db, letter, tmp_path)
+            with db_guard:
+                db.commit()
+            saved.append(n)
+
+    threads = [threading.Thread(target=click) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+
+    assert sorted(saved) == [0, 7]
+    with Session(engine) as s:
+        assert s.query(Attachment).count() == 7
+    assert len(list(tmp_path.rglob("*.stl"))) == 7
+
+
+def test_both_manual_download_routes_hold_the_attachment_lock():
+    """Сторож проводки: лок у сервісі нічого не дає, якщо роут його не бере."""
+    import inspect
+
+    from app.routers import mail as mail_router
+
+    for fn in (mail_router.download_email_attachments, mail_router.redownload_email_attachments):
+        assert "attachment_lock(email_id)" in inspect.getsource(fn), fn.__name__

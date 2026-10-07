@@ -3,6 +3,7 @@
 import logging
 import mimetypes
 import re
+import threading
 import time
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -1105,21 +1106,57 @@ def _reconcile_inbox_gone(
     return marked
 
 
+_attachment_locks_guard = threading.Lock()
+_attachment_locks: dict[int, threading.Lock] = {}
+
+
+def attachment_lock(email_id: int) -> threading.Lock:
+    """Лок ВКЛАДЕНЬ одного листа: скачування з пошти — ручне («Скачати»,
+    «Скачати наново») і фонове (фаза 2 синку) — тримають його від запиту до
+    коміту. 08.10.26 лист 1063 (Ростік Веклин, 7 файлів) скачався двічі: два
+    запити «Скачати» о 01:58 по 10 с перекрились, кожен не бачив файлів
+    іншого, і на диску лягли 7 двійників «(2)». Окремо від локу прийняття
+    (`mail_accept._letter_lock`): той тримається секунди й чужий тут."""
+    with _attachment_locks_guard:
+        lock = _attachment_locks.get(email_id)
+        if lock is None:
+            lock = threading.Lock()
+            _attachment_locks[email_id] = lock
+        return lock
+
+
+def _names_already_on_disk(email_message: EmailMessage) -> set[str]:
+    """Імена вкладень листа, які вже скачані: файл на диску або вкладення вже
+    в черзі (файл переїхав в export). Їх повторне скачування пропускає — інакше
+    поруч лягав двійник «(2)»."""
+    return {
+        a.filename
+        for a in email_message.attachments
+        if a.order_id is not None or not _file_is_missing(a.saved_path)
+    }
+
+
 def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:
     """Manually pull a "skipped" letter's attachments on demand (operator
     decided a non-whitelisted letter is relevant after all). Re-fetches the
     message by UID and saves its files, flipping status to "ready". Returns the
-    count saved. Raises on IMAP/IO failure — the caller rolls back."""
+    count saved. Raises on IMAP/IO failure — the caller rolls back.
+
+    Файли, що вже лежать на диску, НЕ зберігаються вдруге (другий клік чи
+    фоновий синк уже встигли) — викликач тримає `attachment_lock` до коміту."""
     login = get_imap_login(session)
     password = get_imap_password(session)
     if not login or not password:
         raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    have = _names_already_on_disk(email_message)
     with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
         _refuse_stale_uid_namespace(mailbox, email_message)
         full = list(mailbox.fetch(AND(uid=email_message.uid), mark_seen=False))
         if not full:
             raise RuntimeError("Лист більше недоступний на сервері")
-        saved = _save_message_attachments(session, email_message, full[0], attachments_dir)
+        saved = _save_message_attachments(
+            session, email_message, full[0], attachments_dir, skip_names=have
+        )
         _refresh_links_in_body(email_message, full[0])
     email_message.attachments_status = "ready"
     return saved
@@ -1412,7 +1449,16 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
             # touched if this one fails.
             created_paths = session.info.setdefault("mail_sync_created_paths", [])
             mark = len(created_paths)
+            # Той самий лок, що в ручного «Скачати»: оператор міг натиснути
+            # кнопку, поки синк дійшов до цього листа. Під локом — свіжий стан:
+            # уже не «pending» (скачав оператор) — не чіпаємо, інакше двійники.
+            lock = attachment_lock(email_message.id)
+            if not lock.acquire(blocking=False):
+                continue  # саме зараз качає оператор — доберемо наступним проходом
             try:
+                session.refresh(email_message)
+                if email_message.attachments_status != "pending":
+                    continue
                 full_messages = list(
                     mailbox.fetch(AND(uid=email_message.uid), mark_seen=False)
                 )
@@ -1490,6 +1536,8 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     except OSError:
                         pass
                 continue
+            finally:
+                lock.release()
 
         # --- Phase 3: звірка папки «оброблено» — ОСТАННЯ в блоці, бо перемикає
         # активну папку скриньки з Inbox (далі в блоці нічого не читає Inbox).
