@@ -16,6 +16,8 @@
             title="Лише роботи, прийняті з пошти сьогодні">Прийняте з пошти <span class="n">{{ dock.mail_count }}</span></button>
     <button type="button" data-dock-scope="lab" aria-pressed="{{ 'true' if dock.scope == 'lab' else 'false' }}"
             title="Плюс лабораторні роботи вкладки дня, у порядку таблиці">+ Лабораторія <span class="n">{{ dock.lab_count }}</span></button>
+    <button type="button" data-dock-scope="labonly" aria-pressed="{{ 'true' if dock.scope == 'labonly' else 'false' }}"
+            title="Лише лабораторні роботи вкладки дня, у порядку таблиці, без пошти">Лише лаба <span class="n">{{ dock.lab_count }}</span></button>
     <button type="button" data-dock-scope="all" aria-pressed="{{ 'true' if dock.scope == 'all' else 'false' }}"
             title="Уся вкладка дня — лаба, клієнти з таблиці, пошта">Уся вкладка <span class="n">{{ dock.all_count }}</span></button>
 </div>
@@ -30,5 +32,5 @@
     <button type="button" data-dock-ready="all" aria-pressed="{{ 'true' if dock.ready == 'all' else 'false' }}"
             title="Без фільтра готовності">Усі <span class="n">{{ dock.ready_counts.all }}</span></button>
 </div>
-<span class="qmir-note">порядок як у таблиці · пошта без фільтра</span>
+<span class="qmir-note">порядок як у таблиці{% if dock.scope != 'labonly' %} · пошта без фільтра{% endif %}</span>
 {% endif %}

@@ -154,6 +154,23 @@ def test_lab_scope_without_mail_or_without_lab_has_no_separator():
         assert dock.sep_index is None
 
 
+def test_labonly_scope_shows_just_the_lab_rows_in_sheet_order():
+    """Власник 08.10.26: «не можна включити тільки лабораторні, ті що можна
+    брати» — у «+ Лабораторія» 50 листів дня стояли над 7 лабораторними."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        _seed_day(db)
+        dock = mail_dock(db, scope="labonly")  # can_take
+        assert [_label(o) for o in dock.orders] == ["L-можна-1", "L-можна-2"]
+        assert dock.sep_index is None and dock.title == "Лабораторія"
+        assert [_label(o) for o in mail_dock(db, scope="labonly", ready="all").orders] == [
+            "L-в-роботі", "L-можна-1", "L-можна-2", "L-не-готово"
+        ]
+        user = _user(db)
+        look_prefs.apply_mail_look(user, dock="labonly")
+        assert user.mail_dock_scope == "labonly"
+
+
 def test_all_scope_is_sheet_order_and_filters_everything_but_mail():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
@@ -314,7 +331,7 @@ def test_js_dock_height_limits_match_the_server():
 def test_dock_markup_only_offers_values_the_server_accepts():
     html = Path("app/templates/_mail_dock_controls.html").read_text(encoding="utf-8")
     scopes = set(re.findall(r'data-dock-scope="([a-z]+)"', html))
-    assert scopes == {"mail", "lab", "all"}
+    assert scopes == {"mail", "lab", "labonly", "all"}
     assert scopes <= set(look_prefs.MAIL_DOCK_SCOPES)
     readies = set(re.findall(r'data-dock-ready="([a-z_]+)"', html))
     assert readies == set(READY_FILTERS), "усі чотири фільтри готовності, і жодного зайвого"
@@ -379,7 +396,7 @@ def _login(app) -> MiniClient:
     return client
 
 
-@pytest.mark.parametrize("scope", ["", "lab", "all"])
+@pytest.mark.parametrize("scope", ["", "lab", "labonly", "all"])
 def test_queue_mirror_renders_for_every_scope(app_db, scope):
     app, session_factory = app_db
     with session_factory() as db:
@@ -392,7 +409,7 @@ def test_queue_mirror_renders_for_every_scope(app_db, scope):
     client = _login(app)
     status, _, html = client.get("/mail/queue-mirror")
     assert status == 200, status
-    assert "Пошта-3" in html
+    assert ("Пошта-3" in html) == (scope != "labonly"), "лише лаба — без пошти"
     assert 'id="qmir-ctl"' in html and 'hx-swap-oob="true"' in html, "шапка їде oob-свапом із поллом"
     if scope == "":
         assert "L-можна-1" not in html and "qmir-sep" not in html
@@ -406,6 +423,8 @@ def test_queue_mirror_renders_for_every_scope(app_db, scope):
         assert "Табличний" not in html
     if scope == "all":
         assert "Табличний" in html and "qmir-sep" not in html
+    if scope == "labonly":
+        assert "Табличний" not in html and "qmir-sep" not in html
 
     # Повна сторінка теж малюється (шапка включена без oob).
     status, _, page = client.get("/mail")
