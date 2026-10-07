@@ -75,6 +75,14 @@ class User(Base):
     # «Лист ↔ заявка» (C). Обидва нові вигляди міняють РОЗТАШУВАННЯ, не
     # можливості — увесь чекліст §3 брифу лишається доступним у кожному.
     mail_view: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Док черги внизу екрана пошти (07.10.26, MAIL_LAB_DOCK_BRIEF.md, варіант
+    # A): що показує дзеркало «Прийняте з пошти». "" — лише прийняте з пошти
+    # (як було), "lab" — плюс лабораторія, "all" — уся вкладка дня. Фільтр
+    # готовності для лаби/табличних рядків (READY_FILTERS; "" = can_take) і
+    # висота доку в px (0 = як було). Усе на акаунті, як решта шестерні.
+    mail_dock_scope: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    mail_dock_ready: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    mail_dock_height: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Те саме для черги. Щільність і вигляд колонки «Матеріал / Колір» жили в
     # localStorage — тобто гинули при зміні браузера й не їхали за оператором.
     # Переїхали сюди ЄДИНИМ джерелом: два місця для одного значення рано чи

@@ -1,0 +1,34 @@
+{# Шапка доку черги на екрані пошти (MAIL_LAB_DOCK_BRIEF.md, 07.10.26):
+   заголовок з лічильником, перемикач джерела і — коли док розширено —
+   чипи готовності для лабораторних/табличних рядків.
+
+   Включається ДВІЧІ з однією обгорткою #qmir-ctl: у mail_triage.html (перший
+   малюнок) і в _mail_queue_mirror.html як hx-swap-oob (полл /mail/queue-mirror
+   оновлює лічильники разом із таблицею — інакше число в шапці відставало б
+   від рядків до перезавантаження). Обгортка — в тому, хто включає.
+
+   Кнопки шлють /account/look (scope=mail, dock=… / dock_ready=…) і одразу
+   смикають полл (mail.js, [data-dock-scope] / [data-dock-ready]). Канон на
+   дроті — "mail", не "" (пастка «порожнє поле = поля не було», CLAUDE.md §14). #}
+<h2 class="qmir-title" id="qmir-title">{{ dock.title }} <span class="qmir-count">{{ dock.orders|length }}</span></h2>
+<div class="qmir-seg" role="group" aria-label="Що показує док">
+    <button type="button" data-dock-scope="mail" aria-pressed="{{ 'true' if dock.scope == '' else 'false' }}"
+            title="Лише роботи, прийняті з пошти сьогодні">Прийняте з пошти <span class="n">{{ dock.mail_count }}</span></button>
+    <button type="button" data-dock-scope="lab" aria-pressed="{{ 'true' if dock.scope == 'lab' else 'false' }}"
+            title="Плюс лабораторні роботи вкладки дня, у порядку таблиці">+ Лабораторія <span class="n">{{ dock.lab_count }}</span></button>
+    <button type="button" data-dock-scope="all" aria-pressed="{{ 'true' if dock.scope == 'all' else 'false' }}"
+            title="Уся вкладка дня — лаба, клієнти з таблиці, пошта">Уся вкладка <span class="n">{{ dock.all_count }}</span></button>
+</div>
+{% if dock.scope %}
+<div class="qmir-seg qmir-ready" role="group" aria-label="Готовність лабораторних і табличних рядків">
+    <button type="button" data-dock-ready="can_take" aria-pressed="{{ 'true' if dock.ready == 'can_take' else 'false' }}"
+            title="Технік заповнив шлях, Sum3D ID ще немає — можна брати">Можна брати <span class="n">{{ dock.ready_counts.can_take }}</span></button>
+    <button type="button" data-dock-ready="in_work" aria-pressed="{{ 'true' if dock.ready == 'in_work' else 'false' }}"
+            title="Шлях заповнено і стоїть Sum3D ID — уже взято в роботу">В роботі <span class="n">{{ dock.ready_counts.in_work }}</span></button>
+    <button type="button" data-dock-ready="not_ready" aria-pressed="{{ 'true' if dock.ready == 'not_ready' else 'false' }}"
+            title="Техніки ще не здали (шлях роботи порожній)">Не готово <span class="n">{{ dock.ready_counts.not_ready }}</span></button>
+    <button type="button" data-dock-ready="all" aria-pressed="{{ 'true' if dock.ready == 'all' else 'false' }}"
+            title="Без фільтра готовності">Усі <span class="n">{{ dock.ready_counts.all }}</span></button>
+</div>
+<span class="qmir-note">порядок як у таблиці · пошта без фільтра</span>
+{% endif %}

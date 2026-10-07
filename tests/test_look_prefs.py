@@ -52,7 +52,7 @@ def _save(request, db, **kwargs):
     # "значення" на кожному цьому виклику і падав би 422 з невідомого вигляду.
     payload = {
         "row_pad": 0, "list_width": 0, "density": "", "mat_style": "", "step": 2,
-        "view": None,
+        "view": None, "dock": None, "dock_ready": None, "dock_height": None,
     }
     payload.update(kwargs)
     return asyncio.run(

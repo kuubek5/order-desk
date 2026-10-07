@@ -1353,6 +1353,106 @@ document.addEventListener("htmx:afterSwap", (event) => {
       try { if (window.KMStore) KMStore.set(KEY, collapsed ? "1" : "0"); } catch (e) { /* сховище недоступне */ }
     });
   }
+
+  // ── Док: перемикач джерела і фільтр готовності (MAIL_LAB_DOCK_BRIEF.md) ───
+  // Кнопки живуть у #qmir-ctl, який полл оновлює oob-свапом, тому слухач — на
+  // секції (делегування), не на самих кнопках. Клік: зберегти на акаунті
+  // (/account/look, scope=mail, лише СВОЄ поле — інакше скидався б відступ) і
+  // одразу смикнути полл, не чекати 15 с. Згорнутий док при виборі
+  // розгортається тією самою кнопкою, що й рукою, — щоб вибір було видно.
+  function refreshDock() {
+    if (!window.htmx) return;
+    window.htmx.ajax("GET", "/mail/queue-mirror", { target: "#qmir-body", swap: "innerHTML" });
+  }
+  function saveDock(fields, done) {
+    const body = new URLSearchParams(Object.assign({ scope: "mail" }, fields));
+    return fetch("/account/look", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      credentials: "same-origin",
+    })
+      .then((response) => {
+        if (response.status === 401) { window.location.href = "/login"; return; }
+        if (!response.ok) { dockFailed(); return; }
+        if (done) done();
+      })
+      .catch(dockFailed);
+  }
+  function dockFailed() {
+    if (window.showToast) window.showToast("Не вдалось зберегти вигляд доку", "error");
+  }
+  mirror.addEventListener("click", (event) => {
+    const scopeBtn = event.target.closest("[data-dock-scope]");
+    const readyBtn = scopeBtn ? null : event.target.closest("[data-dock-ready]");
+    const target = scopeBtn || readyBtn;
+    if (!target || !mirror.contains(target)) return;
+    // Натиснуте підсвічуємо одразу — відповідь полла потім перемалює шапку
+    // з сервера; без цього між кліком і свапом кнопка «не реагує».
+    target.parentElement.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("aria-pressed", b === target ? "true" : "false");
+    });
+    if (scopeBtn) {
+      const value = scopeBtn.dataset.dockScope || "mail";
+      mirror.dataset.dockScopeNow = value;
+      mirror.classList.toggle("qmir--wide", value !== "mail");
+      if (mirror.classList.contains("qmir-collapsed") && btn) btn.click();
+      saveDock({ dock: value }, refreshDock);
+      return;
+    }
+    saveDock({ dock_ready: readyBtn.dataset.dockReady || "can_take" }, refreshDock);
+  });
+
+  // ── Док: висота ручкою (.qmir-grip над шапкою) ────────────────────────────
+  // Як .mail-split у lookgear.js, але по вертикалі: тягнуть — лише apply,
+  // відпустили — один запис; подвійний клік — «як було» (0). Межі ті самі,
+  // що look_prefs.DOCK_HEIGHT; за збігом стежить tests/test_look_prefs.py.
+  const DOCK_H_LIMITS = [160, 720];
+  const grip = mirror.querySelector("[data-dock-grip]");
+  if (grip) {
+    const vars = document.documentElement.style;
+    function applyHeight(px) {
+      if (px) vars.setProperty("--mail-dock-h", px + "px");
+      else vars.removeProperty("--mail-dock-h");
+    }
+    function wrapHeight() {
+      const wrap = mirror.querySelector(".qmir-body .tablewrap");
+      return wrap ? Math.round(wrap.getBoundingClientRect().height) : DOCK_H_LIMITS[0];
+    }
+    function clampH(px) { return Math.max(DOCK_H_LIMITS[0], Math.min(DOCK_H_LIMITS[1], px)); }
+
+    grip.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startY = event.clientY;
+      const startH = wrapHeight();
+      let next = startH;
+      try { grip.setPointerCapture(event.pointerId); } catch (e) { /* без захоплення теж тягнеться */ }
+      document.body.classList.add("is-dock-resizing");
+      // Ручка СТОЇТЬ НАД таблицею: тягнути вгору = док вищий.
+      function move(ev) { next = clampH(Math.round(startH + (startY - ev.clientY))); applyHeight(next); }
+      function up(ev) {
+        try { grip.releasePointerCapture(ev.pointerId); } catch (e) { /* уже відпущено */ }
+        grip.removeEventListener("pointermove", move);
+        grip.removeEventListener("pointerup", up);
+        grip.removeEventListener("pointercancel", up);
+        document.body.classList.remove("is-dock-resizing");
+        saveDock({ dock_height: String(next) });
+      }
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up);
+      grip.addEventListener("pointercancel", up);
+    });
+    grip.addEventListener("dblclick", () => { applyHeight(0); saveDock({ dock_height: "0" }); });
+    grip.addEventListener("keydown", (event) => {
+      const direction = event.key === "ArrowUp" ? 1 : event.key === "ArrowDown" ? -1 : 0;
+      if (!direction) return;
+      event.preventDefault();
+      const next = clampH(wrapHeight() + direction * 20);
+      applyHeight(next);
+      saveDock({ dock_height: String(next) });
+    });
+  }
 })();
 
 // ── Список за кнопкою (вузьке вікно) ────────────────────────────────────────

@@ -710,8 +710,40 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
    листів. */
 .mailv2 .qmir-body{overflow:visible}
 .mailv2 .qmir-collapsed .qmir-body{display:none}
-.mailv2 .qmir-body .tablewrap{max-height:min(60vh,520px)}
+/* --mail-dock-h — висота з акаунта оператора (ручка .qmir-grip, mail.js →
+   /account/look dock_height). Не задана — та сама стеля, що й до доку. */
+.mailv2 .qmir-body .tablewrap{max-height:var(--mail-dock-h, min(60vh,520px))}
 .mailv2 .qmir-empty{padding:16px;color:var(--ink-2);font-size:var(--fs-1)}
+
+/* ── Док: шапка з перемикачем, роздільник, ручка висоти (MAIL_LAB_DOCK_BRIEF.md) ──
+   .qmir-ctl — обгортка, яку полл оновлює oob-свапом; шапка з кнопкою
+   згортання лишається. Перемикач джерела і чипи готовності — та сама мова,
+   що .seg у фільтрах черги (v2a_queue.css), але власними класами: шапка стоїть
+   поза .q2, і тягнути туди весь набір правил черги означало б успадкувати
+   чужі відступи. */
+.mailv2 .qmir-ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0;flex:1}
+.mailv2 .qmir-seg{display:inline-flex;background:color-mix(in srgb,var(--bg) 60%,var(--card));border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.mailv2 .qmir-seg button{height:26px;padding:0 12px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:var(--fs-2);font-weight:500;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .qmir-seg button:hover{color:var(--ink);background:var(--raise)}
+.mailv2 .qmir-seg button[aria-pressed="true"]{background:linear-gradient(180deg,rgba(var(--accent-base-rgb),.30),rgba(var(--accent-base-rgb),.14));color:var(--ink);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.6)}
+.mailv2 .qmir-seg .n{display:inline-block;min-width:18px;padding:1px 6px;border-radius:999px;font-family:var(--font-mono);font-size:var(--fs-0);background:color-mix(in srgb,var(--ink) 8%,transparent);text-align:center}
+.mailv2 .qmir-seg button[aria-pressed="true"] .n{background:rgba(var(--accent-rgb),.22);color:var(--accent-c)}
+.mailv2 .qmir-note{margin-left:auto;font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap}
+/* Роздільник між блоком пошти і блоком лаби (лише scope="lab"): рядок на всю
+   ширину, моно-підпис, тонка лінія зверху — межа двох порядків, не ще один
+   рядок роботи. */
+.mailv2 .qmir-sep td{padding:6px 12px;font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);background:color-mix(in srgb,var(--bg) 50%,var(--card));border-top:1px solid var(--line-2)}
+.mailv2 .qmir-sep .qmir-sep-n{color:var(--ink-2)}
+/* Ручка висоти над шапкою — як .mail-split, але горизонтальна: лінія видна на
+   наведенні й під час перетягування; згорнутий док тягнути нема за що. */
+.mailv2 .qmir-grip{height:10px;margin-bottom:-4px;position:relative;cursor:row-resize;touch-action:none;outline:none}
+.mailv2 .qmir-grip::before{content:"";position:absolute;left:50%;top:3px;width:48px;height:3px;margin-left:-24px;border-radius:3px;background:var(--line-2);opacity:0;transition:opacity var(--ui-speed) ease,background var(--ui-speed) ease}
+.mailv2 .qmir-grip:hover::before,.mailv2 .qmir-grip:focus-visible::before,body.is-dock-resizing .mailv2 .qmir-grip::before{opacity:1;background:var(--accent-b)}
+.mailv2 .qmir-collapsed .qmir-grip{display:none}
+body.is-dock-resizing{cursor:row-resize;user-select:none}
+@media (max-width:960px){
+  .mailv2 .qmir-note{display:none}
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    Картка «Стрічка» (блок A) — один лист, один екран без скролу (1280×800).

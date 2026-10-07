@@ -141,7 +141,7 @@ from app.services.mail_merge import detach_letter, detachable_link, merge_enable
 from app.services.sheet_writeback import write_sheet_fields
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
-from app.services.mail_mirror import mail_mirror_orders
+from app.services.mail_mirror import mail_dock_for
 from app.services.focus import focused_ids
 from app.statuses import STATUSES
 from app.services.config_state import (
@@ -789,6 +789,7 @@ def get_mail(
                 _mail_panel_context(db, open_email, user)
             )
 
+    dock = mail_dock_for(db, user)
     return templates.TemplateResponse(
         request,
         "mail_triage.html",
@@ -846,15 +847,17 @@ def get_mail(
             # Frozen-list state (see the `since` comment above).
             "list_watermark": list_watermark,
             "held_back_count": held_back_count,
-            # Дзеркало черги внизу сторінки — ПОВНА копія рядків черги для робіт,
-            # ПРИЙНЯТИХ саме з пошти, з тим самим inline-редагуванням. Контекст,
-            # який очікує _order_row.html: статуси (меню статусу) і набір «мої
-            # зараз» (персональна мітка; сторож test_order_focus вимагає його на
-            # КОЖНОМУ рендері рядка). Іконки папок тут НЕ чіпляємо — їх дотягне
-            # полл /mail/queue-mirror одразу після першого малюнку (hx-trigger
-            # `load`), як #queue-rows у черзі, щоб не платити скан мережевої шари
-            # на повному рендері сторінки.
-            "mirror_orders": mail_mirror_orders(db),
+            # Док черги внизу сторінки — ПОВНА копія рядків черги для робіт,
+            # ПРИЙНЯТИХ саме з пошти (канон) або, за вибором оператора,
+            # + лабораторія / уся вкладка (MAIL_LAB_DOCK_BRIEF.md), з тим самим
+            # inline-редагуванням. Контекст, який очікує _order_row.html:
+            # статуси (меню статусу) і набір «мої зараз» (персональна мітка;
+            # сторож test_order_focus вимагає його на КОЖНОМУ рендері рядка).
+            # Іконки папок тут НЕ чіпляємо — їх дотягне полл /mail/queue-mirror
+            # одразу після першого малюнку (hx-trigger `load`), як #queue-rows
+            # у черзі, щоб не платити скан мережевої шари на повному рендері.
+            "dock": dock,
+            "mirror_orders": dock.orders,
             "statuses": STATUSES,
             "focused_ids": focused_ids(db, user),
         },
@@ -882,8 +885,9 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/mail/queue-mirror", response_class=HTMLResponse)
 def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
-    """Полл-фрагмент дзеркала черги (лише рядки) — свопається в .qmir-body кожні
-    15с. Read-only список робіт, ПРИЙНЯТИХ з пошти (mail_mirror_orders).
+    """Полл-фрагмент доку черги (рядки + oob-шапка з лічильниками) — свопається
+    в .qmir-body кожні 15с. Склад — за налаштуваннями оператора
+    (User.mail_dock_*, mail_dock_for): канон — лише прийняте з пошти.
 
     Оголошено ВИЩЕ за `/mail/{email_id}`: інакше FastAPI матчив би «queue-mirror»
     як email_id (та сама пастка, що з `/settings/furnaces/password`)."""
@@ -893,7 +897,8 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
     blocked = blocked_response(request, db, user, "mail")
     if blocked is not None:
         return blocked
-    orders = mail_mirror_orders(db)
+    dock = mail_dock_for(db, user)
+    orders = dock.orders
     # Іконки папок (export + STL-прев'ю) — саме на поллі, як #queue-rows у черзі:
     # скан мережевої шари дорогий, тож повний рендер сторінки його пропускає, а
     # цей полл (спрацьовує на `load` одразу після малюнку) домальовує іконки.
@@ -906,7 +911,12 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request, "_mail_queue_mirror.html",
         {
+            "dock": dock,
             "mirror_orders": orders,
+            # Шапка доку (лічильники, перемикачі) живе ПОЗА .qmir-body і їде
+            # в цій же відповіді oob-свапом — інакше після прийняття листа
+            # число в шапці відставало б від таблиці до перезавантаження.
+            "dock_oob": True,
             "statuses": STATUSES,
             "focused_ids": focused_ids(db, user),
         },

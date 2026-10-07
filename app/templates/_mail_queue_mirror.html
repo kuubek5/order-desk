@@ -1,13 +1,21 @@
-{# Дзеркало черги на екрані пошти — ПОВНА копія рядків черги, лише для робіт,
-   ПРИЙНЯТИХ з пошти (source=email). Той самий вигляд і те саме inline-редагування,
-   що в черзі: рендеримо ту саму таблицю (_queue_table_head + _order_row), тож
-   колонки, чипи, статуси й усі форми правки — ідентичні. Різниця з чергою:
-   заголовки без сортування (sortable=false — воно таргетить #queue-rows, якого
-   тут нема), і немає печей/верстатів/фільтрів. Стовпцями керує той самий
-   queue.js (getTable → .q2 .tablewrap table.qtable), тож ширини збігаються.
+{# Док черги на екрані пошти — ПОВНА копія рядків черги для робіт, ПРИЙНЯТИХ з
+   пошти (канон), або + лабораторія / уся вкладка за вибором оператора
+   (MAIL_LAB_DOCK_BRIEF.md, `dock.scope`). Той самий вигляд і те саме
+   inline-редагування, що в черзі: рендеримо ту саму таблицю (_queue_table_head +
+   _order_row), тож колонки, чипи, статуси й усі форми правки — ідентичні.
+   Різниця з чергою: заголовки без сортування (sortable=false — воно таргетить
+   #queue-rows, якого тут нема), і немає печей/верстатів/фільтрів. Стовпцями
+   керує той самий queue.js (getTable → .q2 .tablewrap table.qtable), тож ширини
+   збігаються.
 
    Полл (/mail/queue-mirror) свопає ВМІСТ .qmir-body цим фрагментом; правки йдуть
-   точковими свапами #order-row-{id}, як у черзі. #}
+   точковими свапами #order-row-{id}, як у черзі. Шапка доку (#qmir-ctl) стоїть
+   ПОЗА тілом і їде тут же oob-свапом (`dock_oob`, лише з полла — на першому
+   малюнку її включає mail_triage.html сам).
+
+   Роздільник між блоком пошти (найновіша згори) і блоком лаби (порядок
+   таблиці) — лише в scope="lab", і лише коли є обидва блоки: два порядки
+   поспіль без межі читались би як один. #}
 {% import "_sortable_th.html" as sortcol with context %}
 {% set sortable = false %}
 {% if mirror_orders %}
@@ -16,11 +24,17 @@
         {% include "_queue_table_head.html" %}
         <tbody>
             {% for order in mirror_orders %}
+                {% if dock is defined and dock.sep_index is not none and loop.index0 == dock.sep_index %}
+                <tr class="qmir-sep"><td colspan="10">Лабораторія · <span class="qmir-sep-n">{{ mirror_orders|length - dock.sep_index }}</span> · порядок як у таблиці</td></tr>
+                {% endif %}
                 {% include "_order_row.html" %}
             {% endfor %}
         </tbody>
     </table>
 </div>
 {% else %}
-<div class="qmir-empty">Прийнятих з пошти робіт поки немає — приймеш лист, робота зʼявиться тут.</div>
+<div class="qmir-empty">{{ dock.empty_text if dock is defined else "Прийнятих з пошти робіт поки немає — приймеш лист, робота зʼявиться тут." }}</div>
+{% endif %}
+{% if dock_oob is defined and dock_oob and dock is defined %}
+<div class="qmir-ctl" id="qmir-ctl" hx-swap-oob="true">{% include "_mail_dock_controls.html" %}</div>
 {% endif %}

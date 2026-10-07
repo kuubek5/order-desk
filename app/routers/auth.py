@@ -525,11 +525,14 @@ async def post_account_layout(
 async def post_account_look(
     request: Request,
     scope: str = Form(...),
-    row_pad: int = Form(0),
-    list_width: int = Form(0),
+    # None = кнопка про число нічого не сказала (шестерня шле всі три разом,
+    # кнопки вигляду й доку пошти — лише своє). До 07.10.26 тут стояли нулі,
+    # і клік по вигляду екрана мовчки скидав відступ, ширину й крок у канон.
+    row_pad: int | None = Form(None),
+    list_width: int | None = Form(None),
     density: str = Form(""),
     mat_style: str = Form(""),
-    step: int = Form(0),
+    step: int | None = Form(None),
     # None = кнопка про це поле нічого не сказала. У шапці видачі дві
     # незалежні кнопки-іконки, кожна шле лише своє — інакше клік по одній
     # скидав би другу в дефолт.
@@ -538,6 +541,11 @@ async def post_account_look(
     # Вигляд екрана пошти (MAIL_V1_BRIEF.md етап 2): None — не чіпати, як і
     # layout/flow вище. Кнопки-пресети в шестерні пошти шлють лише це поле.
     view: str | None = Form(None),
+    # Док черги внизу пошти (MAIL_LAB_DOCK_BRIEF.md): джерело, фільтр
+    # готовності, висота. Теж None = не чіпати.
+    dock: str | None = Form(None),
+    dock_ready: str | None = Form(None),
+    dock_height: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Зберегти вигляд списку (шестерня) — один роут на обидва екрани.
@@ -553,10 +561,16 @@ async def post_account_look(
         return Response(status_code=401)
     try:
         if scope == "mail":
-            apply_mail_look(user, row_pad=row_pad, list_width=list_width, step=step, view=view)
+            apply_mail_look(
+                user, row_pad=row_pad, list_width=list_width, step=step, view=view,
+                dock=dock, dock_ready=dock_ready, dock_height=dock_height,
+            )
         elif scope == "queue":
+            # Шестерня черги шле всі числа завжди; пропущене читаємо як канон,
+            # як і до 07.10.26.
             apply_queue_look(
-                user, density=density, row_pad=row_pad, mat_style=mat_style, step=step
+                user, density=density, row_pad=row_pad or 0, mat_style=mat_style,
+                step=step or 0,
             )
         elif scope == "handout":
             apply_handout_look(user, layout=layout, flow=flow)

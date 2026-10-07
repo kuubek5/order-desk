@@ -592,6 +592,9 @@ def ui_prefs(request: Request) -> dict:
         "mail_list_w": 0,
         "mail_step": 0,
         "mail_view": "",
+        # Док черги внизу пошти: "" = лише прийняте з пошти; висота 0 = як було.
+        "mail_dock_scope": "",
+        "mail_dock_h": 0,
         "queue_density": "",
         "queue_row_pad": 0,
         "queue_mat_style": "",
@@ -630,6 +633,8 @@ def ui_prefs(request: Request) -> dict:
                         "mail_list_w": user.mail_list_width or 0,
                         "mail_step": user.mail_ui_step or 0,
                         "mail_view": user.mail_view or "",
+                        "mail_dock_scope": user.mail_dock_scope or "",
+                        "mail_dock_h": user.mail_dock_height or 0,
                         "queue_density": user.queue_density or "",
                         "queue_row_pad": user.queue_row_pad or 0,
                         "queue_mat_style": user.queue_mat_style or "",

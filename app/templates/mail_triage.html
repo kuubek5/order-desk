@@ -354,23 +354,30 @@
         </section>
     </div>
 
-    {# Дзеркало черги (23.09.26): ПОВНА копія рядків черги для робіт, ПРИЙНЯТИХ з
-       пошти (source=email) — той самий вигляд і те саме inline-редагування, що в
+    {# Док черги (23.09.26, розширено 07.10.26 — MAIL_LAB_DOCK_BRIEF.md): ПОВНА
+       копія рядків черги для робіт, ПРИЙНЯТИХ з пошти (канон, як було), або за
+       вибором оператора + лабораторія / уся вкладка дня (User.mail_dock_scope,
+       перемикач у шапці) — той самий вигляд і те саме inline-редагування, що в
        черзі. Оператор прийняв лист — робота видима внизу й правиться прямо тут,
-       без переходу в чергу. НЕ вся черга (рішення власника): лаба й табличні
-       клієнти сюди не йдуть. Згортання (клас .qmir-collapsed, стан у KMStore,
-       обробник у mail.js). Полл (/mail/queue-mirror) свопає ЛИШЕ тіло й спить у
-       схованій вкладці ([!document.hidden]); `load` дотягує іконки папок після
-       першого малюнку (як #queue-rows у черзі). `.q2` на самому тілі, бо воно
-       переживає innerHTML-своп полла, а таблиця всередині — ні; queue.js бере
-       ширини з `.q2 .tablewrap table.qtable`, тож стовпці збігаються з чергою. #}
-    <section class="qmir" id="mail-queue-mirror" aria-labelledby="qmir-title">
+       без переходу в чергу. Згортання (клас .qmir-collapsed, стан у KMStore,
+       обробник у mail.js). Полл (/mail/queue-mirror) свопає тіло (+ шапку
+       oob-свапом) і спить у схованій вкладці ([!document.hidden]); `load`
+       дотягує іконки папок після першого малюнку (як #queue-rows у черзі).
+       `.q2` на самому тілі, бо воно переживає innerHTML-своп полла, а таблиця
+       всередині — ні; queue.js бере ширини з `.q2 .tablewrap table.qtable`,
+       тож стовпці збігаються з чергою. Висота — ручка .qmir-grip над шапкою,
+       пише --mail-dock-h (mail.js → /account/look dock_height). #}
+    <section class="qmir{% if dock.scope %} qmir--wide{% endif %}" id="mail-queue-mirror" aria-labelledby="qmir-title"
+             data-dock-scope-now="{{ dock.wire_scope }}">
+        <div class="qmir-grip" data-dock-grip role="separator" aria-orientation="horizontal"
+             aria-label="Висота доку" tabindex="0"
+             title="Потягніть, щоб змінити висоту доку · подвійний клік — як було"></div>
         <header class="qmir-head">
             <button type="button" class="qmir-toggle" aria-expanded="true"
                     aria-controls="qmir-body" title="Згорнути / розгорнути">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
             </button>
-            <h2 class="qmir-title" id="qmir-title">Прийняте з пошти <span class="qmir-count">{{ mirror_orders|length }}</span></h2>
+            <div class="qmir-ctl" id="qmir-ctl">{% include "_mail_dock_controls.html" %}</div>
         </header>
         <div class="qmir-body q2" id="qmir-body"
              hx-get="/mail/queue-mirror" hx-trigger="load, every 15s[!document.hidden]"
