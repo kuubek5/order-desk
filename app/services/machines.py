@@ -208,6 +208,9 @@ class MachineState:
     # «стоїть» — інакше картки на телевізорі різнились (власник 05.10.26: 150i
     # мав бути як інші). Знімається, коли відсоток знову в роботі (0 < % < 100).
     done_latched: bool = False
+    # Стрибок відсотка вгору, що чекає підтвердження наступним кадром (див.
+    # `_settle_percent`). None — нічого не чекає.
+    jump_candidate: Optional[int] = None
     # Верстат ПЕРЕВІРЯЄ програму перед стартом (екран VALIDATE JOBS). Окремий
     # стан від «стоїть»: смуга внизу того екрана рахує перевірку, а не
     # фрезерування, тож числа звідти ми не беремо — беремо слово.
@@ -1689,6 +1692,65 @@ def _report_unread_screen(target: MachineTarget, frame: Image.Image, why: str) -
                    f" (ще {skipped} разів відтоді)" if skipped else "")
 
 
+# Стрибок відсотка вгору, якого не буває в житті (власник 07.10.26: 250i-Tolik
+# фрезерував 50 %, а телевізор показав 100 % і танцюючого котика). Програма
+# йде годину-дві, тож +30 пунктів між двома кадрами з різницею в секунди —
+# це хибне читання кадру, а не робота. Такий стрибок не показуємо, доки його
+# не підтвердить НАСТУПНИЙ кадр; справжній (верстат довго не відповідав,
+# оператор перемкнув екран на іншу роботу) приймається на кадр пізніше.
+# Стрибки вниз — нова програма — приймаються одразу, як і раніше.
+PERCENT_JUMP_POINTS = 30
+PERCENT_JUMP_AGREE = 3
+PERCENT_JUMP_TRUST_GAP_SECONDS = 120
+
+
+def _settle_percent(state: "MachineState", percent: Optional[int], now: datetime) -> Optional[int]:
+    """Відсоток, який можна показувати після цього кадру. Кличеться під
+    `_states_lock`, до запису `state.percent`/`state.percent_at`."""
+    previous = state.percent
+    candidate, state.jump_candidate = state.jump_candidate, None
+    if percent is None or previous is None or percent - previous <= PERCENT_JUMP_POINTS:
+        return percent
+    if state.percent_at is None or (now - state.percent_at).total_seconds() > PERCENT_JUMP_TRUST_GAP_SECONDS:
+        return percent  # попереднє число давнє — порівнювати нема з чим
+    if candidate is not None and abs(percent - candidate) <= PERCENT_JUMP_AGREE:
+        return percent  # другий кадр поспіль каже те саме — це правда
+    state.jump_candidate = percent
+    return previous
+
+
+def _report_percent_jump(
+    target: MachineTarget, frame: Image.Image, shown: Optional[int], read: Optional[int]
+) -> None:
+    """Відкладений стрибок — у лог (раз на годину на верстат) разом із кадром
+    `machine_frames/percent_jump/<ключ>.png`: звичайний кадр перезапишеться за
+    секунди, а саме з цього видно, що детектор прийняв за смугу."""
+    skipped = log_throttle.due(f"machines.percent_jump:{target.key}")
+    if skipped is None:
+        return
+    saved = ""
+    try:
+        folder = frames_root() / "percent_jump"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{target.key}.png"
+        tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident():x}.tmp")
+        try:
+            frame.save(tmp, format="PNG")
+            tmp.replace(path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        saved = f"; кадр: {path}"
+    except OSError as exc:
+        saved = f"; кадр не збережено: {exc}"
+    logger.warning(
+        "Верстат %s: відсоток стрибнув %s → %s між двома кадрами — не показуємо, "
+        "доки наступний кадр не підтвердить%s%s",
+        target.name, shown, read, saved,
+        f" (ще {skipped} разів відтоді)" if skipped else "",
+    )
+
+
 def _load_memory(db: Session, state: "MachineState", now: datetime) -> None:
     """Підняти з бази те, що ми знали про цей верстат до перезапуску.
 
@@ -1947,6 +2009,7 @@ def poll_target(
     # немає взагалі — отже й відсотка бути не може.
     if validating or idle_known:
         percent = None
+    read_percent = percent
 
     # Усе, що прочитали з ОДНОГО кадру, лягає в стан ОДНИМ кроком під локом.
     # Раніше поля писались по черзі, а між ними стояли дискове I/O і мережевий
@@ -1980,6 +2043,10 @@ def poll_target(
         # Їх чистить `_flush_link_probe` — після того, як запише.
         state.last_ok_at = now
         state.polls_ok += 1
+        jump_from = state.percent
+        if sisma is None:
+            percent = _settle_percent(state, percent, now)
+        jump_held = percent != read_percent
         if percent != state.percent or state.percent_changed_at is None:
             state.percent_changed_at = _changed_at_for(state, percent, now)
         else:
@@ -2010,6 +2077,8 @@ def poll_target(
         state.error = None
         state.frame_saved_at = saved_at
 
+    if jump_held and frame is not None:
+        _report_percent_jump(target, frame, jump_from, read_percent)
     if closing[0] is not None:
         _close_link_event(db, target, now, closing)
     # Стук міг завершитись УЖЕ ПІСЛЯ відновлення — тоді рядок уже закритий, а
