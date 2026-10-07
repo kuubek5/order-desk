@@ -212,7 +212,9 @@ def analyze_spool(
     # UNC, а корінь спулу — з літерою диска (§14 «Шляхи»). Зайвий збіг імені
     # лише вбереже теку, а не зітре чужу.
     live_parts: set[str] = set()
-    for row in session.execute(
+    # Окрема змінна `att`, а не друге `row`: тип кортежу інший, і mypy-храповик
+    # CI (планка 170) на цьому впав на тегах 0.21.50 і 0.21.51.
+    for att in session.execute(
         select(
             Attachment.saved_path,
             EmailMessage.status, EmailMessage.received_at,
@@ -220,14 +222,14 @@ def analyze_spool(
             EmailMessage.inbox_gone_at, EmailMessage.hold_at,
         ).join(EmailMessage, Attachment.email_message_id == EmailMessage.id)
     ).all():
-        if not row.saved_path:
+        if not att.saved_path:
             continue
-        done = _finished_at(
-            row.status, row.received_at, row.mailbox_folder,
-            row.mailbox_moved_at, row.inbox_gone_at, row.hold_at,
+        att_done = _finished_at(
+            att.status, att.received_at, att.mailbox_folder,
+            att.mailbox_moved_at, att.inbox_gone_at, att.hold_at,
         )
-        if done is None or done >= cutoff:
-            live_parts.update(part.casefold() for part in PureWindowsPath(row.saved_path).parts[:-1])
+        if att_done is None or att_done >= cutoff:
+            live_parts.update(part.casefold() for part in PureWindowsPath(att.saved_path).parts[:-1])
 
     total_bytes = 0
     total_dirs = 0
