@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Пошта + черга лаби — макети</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<style>
+:root{
+  --bg:#14100a;--bg-rail:#0f0b06;--card:#1b150c;--card-2:#221a0e;--card-3:#2a2013;
+  --line:#2c2214;--line-2:#45361d;--ink:#f2e8d8;--ink-2:#a89578;--ink-3:#a08c68;
+  --accent:#ffb454;--accent-b:#ffc670;--accent-c:#ffd894;--accent-d:#a8752b;--accent-rgb:255,180,84;
+  --zr:#8fb3ff;--pmma:#f29ad0;--wax:#8fe0c8;--ok:#7ed39a;--warn:#ffb454;--bad:#ff7a6b;
+  --font:'Golos Text',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.35 var(--font)}
+body{background:
+  linear-gradient(rgba(255,180,84,.035) 1px,transparent 1px) 0 0/48px 48px,
+  linear-gradient(90deg,rgba(255,180,84,.035) 1px,transparent 1px) 0 0/48px 48px,var(--bg)}
+.screen{display:none;width:1400px;height:820px;margin:0 auto;position:relative;overflow:hidden;
+  border:1px solid var(--line-2);border-radius:14px;background:var(--bg)}
+.screen.on{display:grid;grid-template-columns:56px 1fr}
+.page{padding-bottom:36px}
+.vlabel{position:absolute;right:14px;bottom:10px;z-index:9;font:600 11px/1 var(--mono);letter-spacing:.08em;
+  color:var(--accent);background:rgba(var(--accent-rgb),.12);border:1px solid rgba(var(--accent-rgb),.4);
+  border-radius:999px;padding:6px 10px;text-transform:uppercase}
+/* rail */
+.rail{background:var(--bg-rail);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px}
+.rail i{display:block;width:30px;height:30px;border-radius:9px;border:1px solid transparent;position:relative}
+.rail i::after{content:"";position:absolute;inset:8px;border-radius:5px;border:1.5px solid var(--ink-3);opacity:.7}
+.rail i.on{background:rgba(var(--accent-rgb),.14);border-color:rgba(var(--accent-rgb),.45)}
+.rail i.on::after{border-color:var(--accent)}
+.rail .logo{width:30px;height:30px;border-radius:9px;background:var(--accent);margin-bottom:8px;
+  font:800 12px/30px var(--mono);color:#1b150c;text-align:center}
+.rail .n{position:absolute;top:-5px;right:-6px;background:var(--accent);color:#1b150c;font:700 9px/1 var(--mono);padding:3px 4px;border-radius:999px}
+/* page */
+.page{display:flex;flex-direction:column;min-width:0;min-height:0;padding:12px 14px 40px 14px;gap:10px}
+.head{display:flex;align-items:center;gap:14px}
+.head h1{font:800 22px/1 var(--font);letter-spacing:-.02em;margin:0}
+.head .meta{color:var(--ink-2);font-size:12px}
+.head .meta b{color:var(--ink);font-weight:600}
+.head .sp{flex:1}
+.btn{border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);border-radius:9px;padding:6px 11px;font:600 12px var(--font);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#1b150c}
+.btn.on{background:rgba(var(--accent-rgb),.14);border-color:rgba(var(--accent-rgb),.55);color:var(--accent-c)}
+.btn .n{font:700 10px/1 var(--mono);background:rgba(255,255,255,.08);padding:3px 5px;border-radius:999px}
+.btn.on .n{background:var(--accent);color:#1b150c}
+.controls{display:flex;align-items:center;gap:8px}
+.tabs{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:3px}
+.tab{padding:6px 11px;border-radius:8px;color:var(--ink-2);font-weight:600;font-size:12px;display:flex;gap:6px;align-items:center}
+.tab.on{background:var(--card-3);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.tab .n{font:600 10px/1 var(--mono);color:var(--ink-3);background:rgba(255,255,255,.05);padding:3px 5px;border-radius:999px}
+.tab.on .n{color:var(--accent);background:rgba(var(--accent-rgb),.14)}
+.tab.lab{color:var(--accent-c)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:9px;overflow:hidden;background:var(--card)}
+.seg span{padding:5px 10px;font-size:11.5px;color:var(--ink-2);font-weight:600;border-right:1px solid var(--line)}
+.seg span:last-child{border-right:0}
+.seg span.on{background:rgba(var(--accent-rgb),.16);color:var(--accent-c)}
+.chips{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}
+.chip{font:600 11px/1 var(--font);padding:5px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2);background:var(--card);display:inline-flex;gap:6px;align-items:center}
+.chip.on{color:var(--accent-c);border-color:rgba(var(--accent-rgb),.5);background:rgba(var(--accent-rgb),.12)}
+.chip .n{font:600 10px var(--mono);color:var(--ink-3)}
+.chip .x{opacity:.55}
+/* work layout */
+.work{display:grid;gap:10px;min-height:0;flex:1}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.panel .ph{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);color:var(--ink-2);font-size:11.5px}
+.panel .ph b{color:var(--ink);font-weight:600;font-size:12px}
+.panel .ph .sp{flex:1}
+.list{overflow:hidden;display:flex;flex-direction:column}
+.day{padding:7px 10px 3px;font:600 10.5px/1 var(--mono);letter-spacing:.08em;color:var(--ink-3);text-transform:uppercase;display:flex;gap:8px;align-items:center}
+.day::after{content:"";flex:1;height:1px;background:var(--line)}
+.row{display:grid;grid-template-columns:18px 14px 1fr auto;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);position:relative}
+.row::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:0 3px 3px 0;background:var(--mat,transparent)}
+.row.zr{--mat:var(--zr)}.row.pmma{--mat:var(--pmma)}.row.wax{--mat:var(--wax)}
+.row.sel{background:rgba(var(--accent-rgb),.09)}
+.row.cur{box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.55);background:rgba(var(--accent-rgb),.06)}
+.cb{width:14px;height:14px;border:1.5px solid var(--line-2);border-radius:4px;background:var(--card-2)}
+.cb.on{background:var(--accent);border-color:var(--accent);position:relative}
+.cb.on::after{content:"";position:absolute;left:4px;top:1px;width:3px;height:7px;border:solid #1b150c;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);justify-self:center}
+.dot.new{background:var(--accent)}
+.dot.ok{background:var(--ok)}
+.dot.warn{background:var(--warn)}
+.dot.off{background:var(--line-2)}
+.row .main{min-width:0;display:flex;flex-direction:column;gap:3px}
+.row .l1{display:flex;gap:7px;align-items:center;min-width:0}
+.row .l1 b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .l2{color:var(--ink-2);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;color:var(--ink-3);font:11px var(--mono)}
+.mat{font:600 10px/1 var(--mono);padding:3px 6px;border-radius:5px;background:var(--card-3);border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
+.mat.zr{color:var(--zr);border-color:rgba(143,179,255,.35)}
+.mat.pmma{color:var(--pmma);border-color:rgba(242,154,208,.35)}
+.mat.wax{color:var(--wax);border-color:rgba(143,224,200,.35)}
+.tag{font:600 10px/1 var(--font);padding:3px 6px;border-radius:5px;background:rgba(255,255,255,.06);color:var(--ink-2);white-space:nowrap}
+.tag.lab{background:rgba(var(--accent-rgb),.16);color:var(--accent-c)}
+.tag.mail{background:rgba(143,179,255,.14);color:#b9cdff}
+.tag.fast{background:rgba(255,122,107,.18);color:#ff9d92}
+.tag.ok{background:rgba(126,211,154,.16);color:var(--ok)}
+.tag.hold{background:rgba(190,150,255,.16);color:#d3bbff}
+.mono{font-family:var(--mono)}
+/* card (letter) */
+.card{padding:12px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.card h3{margin:0;font:700 16px/1.2 var(--font)}
+.card .sub{color:var(--ink-2);font-size:12px}
+.fields{display:grid;grid-template-columns:1.4fr 1.1fr .6fr .6fr .9fr;gap:8px}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label{font:600 10px/1 var(--mono);letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase}
+.f .in{border:1px solid var(--line-2);background:var(--card-2);border-radius:8px;padding:7px 9px;font-size:12.5px;min-height:31px;color:var(--ink)}
+.f .in.e{color:var(--ink-3)}
+.path{font:11.5px var(--mono);color:var(--ink-2);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.path b{color:var(--ink);font-weight:500;background:var(--card-3);padding:2px 6px;border-radius:5px;border:1px solid var(--line-2)}
+.files{display:flex;gap:8px;flex-wrap:wrap}
+.file{border:1px solid var(--line-2);border-radius:9px;background:var(--card-2);padding:8px 10px;font:11px var(--mono);color:var(--ink-2);display:flex;flex-direction:column;gap:5px;width:150px}
+.file i{display:block;height:46px;border-radius:6px;background:
+  radial-gradient(circle at 50% 60%,rgba(var(--accent-rgb),.35),transparent 60%),var(--card-3)}
+.card .foot{margin-top:auto;display:flex;gap:8px;align-items:center}
+.card .foot .sp{flex:1}
+.pre{color:var(--ink-2);font-size:12px;line-height:1.5;background:var(--card-2);border:1px dashed var(--line-2);border-radius:9px;padding:9px 11px}
+/* queue table */
+.qt{width:100%;border-collapse:collapse;font-size:12px}
+.qt th{font:600 10px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:7px 9px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+.qt td{padding:6px 9px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+.qt td.mono,.qt th.mono{font-family:var(--mono)}
+.qt tr.ready td{background:rgba(126,211,154,.05)}
+.qt tr.lab td:first-child{box-shadow:inset 3px 0 0 var(--accent-d)}
+.qt tr.mail td:first-child{box-shadow:inset 3px 0 0 var(--zr)}
+.qt .in{border:1px solid var(--line-2);background:var(--card-2);border-radius:6px;padding:3px 7px;font:11.5px var(--mono);color:var(--ink-3);display:inline-block;min-width:88px}
+.qt .in.v{color:var(--ink)}
+.rd{font:600 10px/1 var(--font);padding:3px 7px;border-radius:999px;display:inline-block}
+.rd.go{background:rgba(126,211,154,.16);color:var(--ok)}
+.rd.run{background:rgba(143,179,255,.14);color:#b9cdff}
+.rd.no{background:rgba(255,255,255,.06);color:var(--ink-3)}
+/* dock */
+.dock{background:var(--card);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.dock .dh{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line)}
+.dock .dh h2{margin:0;font:700 13px var(--font);display:flex;gap:8px;align-items:center}
+.dock .dh .sp{flex:1}
+.grip{height:5px;display:flex;justify-content:center;align-items:center;cursor:row-resize}
+.grip::before{content:"";width:46px;height:3px;border-radius:3px;background:var(--line-2)}
+.tw{overflow:hidden}
+/* right dock (variant B) */
+.lcol{display:flex;flex-direction:column;min-height:0}
+.lc{border-bottom:1px solid var(--line);padding:8px 10px;display:flex;flex-direction:column;gap:5px;position:relative}
+.lc.go{background:rgba(126,211,154,.045)}
+.lc .t{display:flex;align-items:center;gap:7px}
+.lc .t b{font:600 14px var(--mono);color:var(--ink)}
+.lc .t .sp{flex:1}
+.lc .m{color:var(--ink-2);font-size:11.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.lc .a{display:flex;gap:6px;align-items:center;margin-top:2px}
+.lc .a .in{flex:1;border:1px solid var(--line-2);background:var(--card-2);border-radius:7px;padding:4px 8px;font:11.5px var(--mono);color:var(--ink-3)}
+.lc .a .in.v{color:var(--ink)}
+.ib{width:26px;height:26px;border-radius:7px;border:1px solid var(--line-2);background:var(--card-2);display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);font:600 10px var(--mono)}
+.ib.pri{background:rgba(var(--accent-rgb),.16);border-color:rgba(var(--accent-rgb),.45);color:var(--accent-c)}
+/* collapsed strip (shared) */
+.strip{display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--card);border:1px solid var(--line);border-radius:12px;color:var(--ink-2);font-size:12px}
+.strip b{color:var(--ink);font-weight:600}
+.strip .sp{flex:1}
+/* switcher */
+.sw{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:6px;background:rgba(27,21,12,.92);border:1px solid var(--line-2);padding:6px;border-radius:12px;backdrop-filter:blur(6px);z-index:50}
+.sw a{color:var(--ink-2);text-decoration:none;font:600 12px var(--font);padding:6px 10px;border-radius:8px}
+.sw a.on{background:var(--accent);color:#1b150c}
+.hint{position:absolute;left:70px;bottom:10px;z-index:9;color:var(--ink-3);font:11px var(--mono);background:rgba(20,16,10,.85);padding:5px 8px;border-radius:7px;border:1px solid var(--line)}
+.passport{padding:12px;display:flex;flex-direction:column;gap:10px}
+.passport h3{margin:0;font:700 20px/1 var(--mono);display:flex;gap:10px;align-items:center}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kv .f .in{min-height:30px}
+.hist{display:flex;flex-direction:column;gap:6px;color:var(--ink-2);font-size:12px}
+.hist span b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+
+<!-- ============ A — Нижній док ============ -->
+<section class="screen" id="a">
+  <aside class="rail"><span class="logo">KM</span><i></i><i class="on"><span class="n">16</span></i><i></i><i></i><i></i><i></i><i></i><i></i></aside>
+  <div class="page">
+    <div class="head"><h1>Нові з пошти</h1><span class="meta"><b>16</b> у Вхідних · kyiv.lab@ukr.net · <b>3</b> нові</span><span class="sp"></span><span class="btn">Перевірити пошту</span></div>
+    <div class="controls">
+      <div class="tabs"><span class="tab on">Вхідні <span class="n">16</span></span><span class="tab">скачано прощитано <span class="n">44</span></span><span class="tab">На уточненні <span class="n">3</span></span><span class="tab">Ще ▾</span></div>
+      <span class="sp" style="flex:1"></span>
+      <span class="btn on">Черга лаби внизу <span class="n">5</span></span>
+    </div>
+    <div class="work" style="grid-template-columns:440px 1fr;grid-template-rows:minmax(0,1fr) auto">
+      <section class="panel list">
+        <div class="ph"><span class="cb"></span><b>Усі</b><span class="chips"><span class="chip zr">Zr <span class="n">6</span><span class="x">✕</span></span><span class="chip">PMMA <span class="n">4</span><span class="x">✕</span></span><span class="chip">Wax <span class="n">2</span><span class="x">✕</span></span></span><span class="sp"></span><span class="btn" style="padding:4px 8px">↦ Перемістити</span></div>
+        <div class="day">Сьогодні 07.10 · 12 листів</div>
+        <div class="row pmma"><span class="cb"></span><span class="dot new"></span><div class="main"><div class="l1"><b>Zahar Pushkar</b><span class="mat pmma">PMMA a3</span></div><div class="l2">Пушкар Захар… · не скачано</div></div><div class="side">20:09</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Маріанна Голій</b><span class="mat zr">Zr emo a1</span></div><div class="l2">цирконій мульти… · 2 файл.</div></div><div class="side">20:01</div></div>
+        <div class="row zr sel"><span class="cb on"></span><span class="dot"></span><div class="main"><div class="l1"><b>Євген Кривовид</b><span class="mat zr">Zr mono a2</span></div><div class="l2">Циркон · 3 файл.</div></div><div class="side">19:14</div></div>
+        <div class="row pmma sel cur"><span class="cb on"></span><span class="dot"></span><div class="main"><div class="l1"><b>Маріанна Голій</b><span class="mat pmma">PMMA a2</span></div><div class="l2">PMMA, колір A2, пац. Горбатенко · 2 файл.</div></div><div class="side">18:39</div></div>
+        <div class="row zr sel"><span class="cb on"></span><span class="dot"></span><div class="main"><div class="l1"><b>Яна Ковальчук</b><span class="mat zr">Zr</span></div><div class="l2">циркон A1 · 3 файл.</div></div><div class="side">18:38</div></div>
+        <div class="row wax"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Яна Ковальчук</b><span class="mat wax">Wax</span></div><div class="l2">фрез воск · 4 файл.</div></div><div class="side">18:36</div></div>
+        <div class="row pmma"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Ivan Nicolaev</b><span class="mat pmma">PMMA a2</span></div><div class="l2">ПММА A2 · не скачано</div></div><div class="side">17:52</div></div>
+      </section>
+      <section class="panel card">
+        <div style="display:flex;align-items:center;gap:10px"><h3>Конвеєр — обрано 3 листи</h3><span class="sp" style="flex:1"></span><span class="btn">Зняти вибір</span></div>
+        <div class="path"><span class="mat">mono a2</span> 1 лист · к-сть не вписано · 1 клієнт <span class="tag">Маріанна Голій — pmma a2</span><span class="tag">Яна Ковальчук — Цирконій</span></div>
+        <div class="pre"><b style="color:var(--ink)">Євген Кривовид</b> · Циркон · 3 файл. · <span class="mono">export / Євген Кривовид / 07.10.26 / mono a2</span></div>
+        <div class="fields"><div class="f"><label>Клієнт</label><div class="in">Маріанна Голій</div></div><div class="f"><label>Матеріал · колір</label><div class="in">pmma a2</div></div><div class="f"><label>К-сть</label><div class="in e">—</div></div><div class="f"><label>Опак</label><div class="in e">—</div></div><div class="f"><label>Sum3D</label><div class="in e">—</div></div></div>
+        <div class="path">Файли (2) ляжуть у: export / <b>Маріанна Голій</b> / <b>07.10.26</b> / <b>pmma a2</b></div>
+        <div class="foot"><span class="mono" style="color:var(--ink-2)">Sum3D усім</span><span class="f" style="width:130px"><span class="in mono">12-01-45</span></span><span class="sp"></span><span style="color:var(--ink-2)">3 роботи, 8 файлів переїдуть</span><span class="btn pri">✓ Прийняти 3 в чергу</span></div>
+      </section>
+      <section class="dock" style="grid-column:1/-1;height:250px">
+        <div class="grip"></div>
+        <div class="dh"><h2>Черга <span class="seg"><span>Прийняте з пошти <span class="mono">4</span></span><span class="on">+ Лабораторія <span class="mono">5</span></span><span>Уся вкладка <span class="mono">94</span></span></span></h2>
+          <span class="chips"><span class="chip on">Можна брати <span class="n">5</span></span><span class="chip">В роботі <span class="n">32</span></span><span class="chip">Не готово <span class="n">53</span></span></span>
+          <span class="sp"></span><span class="meta" style="color:var(--ink-3);font-size:11px">порядок як у таблиці · оновлюється кожні 15 с</span><span class="ib">⌄</span></div>
+        <div class="tw"><table class="qt">
+          <tr><th>№</th><th>Наряд</th><th>К-сть</th><th>Колір</th><th>Вид</th><th>Номер роботи</th><th>Технік</th><th>Коментар CAM</th><th>Готовність</th><th>Sum3D</th><th></th></tr>
+          <tr class="lab ready"><td class="mono">41</td><td class="mono"><b>34397</b></td><td class="mono">1</td><td><span class="mat zr">моно А3</span></td><td>анатомія</td><td class="mono">2026-10-07_00041-003</td><td>Овчаров</td><td></td><td><span class="rd go">можна брати</span></td><td><span class="in">—</span></td><td><span class="ib pri">⧉</span></td></tr>
+          <tr class="lab ready"><td class="mono">44</td><td class="mono"><b>34549</b></td><td class="mono">3</td><td><span class="mat zr">моно А3</span></td><td>анатомія гвинтова 24-26</td><td class="mono">2026-10-07_00044-001</td><td>Юля</td><td><span class="tag fast">на швидку</span></td><td><span class="rd go">можна брати</span></td><td><span class="in">—</span></td><td><span class="ib pri">⧉</span></td></tr>
+          <tr class="lab ready"><td class="mono">52</td><td class="mono"><b>34555</b></td><td class="mono">1</td><td><span class="mat pmma">пмма A2</span></td><td>анатомія</td><td class="mono">34555</td><td>Овчаров</td><td></td><td><span class="rd go">можна брати</span></td><td><span class="in">—</span></td><td><span class="ib pri">⧉</span></td></tr>
+          <tr class="mail"><td class="mono">88</td><td class="mono">—</td><td class="mono">14</td><td><span class="mat zr">emo a2</span></td><td>Estedent</td><td class="mono">Estedent/07.10.26/emo a2</td><td></td><td></td><td><span class="rd run">в роботі</span></td><td><span class="in v">19-42-33</span></td><td></td></tr>
+          <tr class="lab"><td class="mono">39</td><td class="mono"><b>34372</b></td><td class="mono">2</td><td><span class="mat zr">моно А2</span></td><td>каркас міст 13-23</td><td class="mono">2026-10-07_00039-002</td><td>Бойко</td><td></td><td><span class="rd run">в роботі</span></td><td><span class="in v">20-22-11</span></td><td></td></tr>
+        </table></div>
+      </section>
+    </div>
+  </div>
+  <span class="vlabel">Варіант A · нижній док</span>
+  <span class="hint">розширене «Прийняте з пошти»: той самий рядок черги, +перемикач джерела й фільтр готовності</span>
+</section>
+
+<!-- ============ B — Права колонка ============ -->
+<section class="screen" id="b">
+  <aside class="rail"><span class="logo">KM</span><i></i><i class="on"><span class="n">16</span></i><i></i><i></i><i></i><i></i><i></i><i></i></aside>
+  <div class="page">
+    <div class="head"><h1>Нові з пошти</h1><span class="meta"><b>16</b> у Вхідних · kyiv.lab@ukr.net · <b>3</b> нові</span><span class="sp"></span><span class="btn">Перевірити пошту</span></div>
+    <div class="controls">
+      <div class="tabs"><span class="tab on">Вхідні <span class="n">16</span></span><span class="tab">скачано прощитано <span class="n">44</span></span><span class="tab">На уточненні <span class="n">3</span></span><span class="tab">Ще ▾</span></div>
+      <span class="sp" style="flex:1"></span>
+      <span class="btn on">⚗ Лаба поруч <span class="n">5</span></span>
+    </div>
+    <div class="work" style="grid-template-columns:400px 1fr 330px">
+      <section class="panel list">
+        <div class="ph"><span class="cb"></span><b>Усі</b><span class="chips"><span class="chip zr">Zr <span class="n">6</span><span class="x">✕</span></span><span class="chip">PMMA <span class="n">4</span><span class="x">✕</span></span></span><span class="sp"></span><span class="btn" style="padding:4px 8px">↦ Перемістити</span></div>
+        <div class="day">Сьогодні 07.10 · 12 листів</div>
+        <div class="row pmma"><span class="cb"></span><span class="dot new"></span><div class="main"><div class="l1"><b>Zahar Pushkar</b><span class="mat pmma">PMMA a3</span></div><div class="l2">не скачано</div></div><div class="side">20:09</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Маріанна Голій</b><span class="mat zr">Zr emo a1</span></div><div class="l2">цирконій мульти… · 2 файл.</div></div><div class="side">20:01</div></div>
+        <div class="row zr cur"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Євген Кривовид</b><span class="mat zr">Zr mono a2</span></div><div class="l2">Циркон · 3 файл.</div></div><div class="side">19:14</div></div>
+        <div class="row pmma"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Маріанна Голій</b><span class="mat pmma">PMMA a2</span></div><div class="l2">пац. Горбатенко · 2 файл.</div></div><div class="side">18:39</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Яна Ковальчук</b><span class="mat zr">Zr</span></div><div class="l2">циркон A1 · 3 файл.</div></div><div class="side">18:38</div></div>
+        <div class="row wax"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Яна Ковальчук</b><span class="mat wax">Wax</span></div><div class="l2">фрез воск · 4 файл.</div></div><div class="side">18:36</div></div>
+        <div class="row pmma"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Ivan Nicolaev</b><span class="mat pmma">PMMA a2</span></div><div class="l2">не скачано</div></div><div class="side">17:52</div></div>
+        <div class="row pmma"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><b>Илья Катеринец</b><span class="mat pmma">PMMA</span></div><div class="l2">фрезерування · не скачано</div></div><div class="side">16:26</div></div>
+      </section>
+      <section class="panel card">
+        <div><h3>Євген Кривовид <span class="tag mail">лист</span></h3><div class="sub">kryvovyd@gmail.com · 07.10 19:14 · «Циркон»</div></div>
+        <div class="fields"><div class="f"><label>Клієнт</label><div class="in">Євген Кривовид</div></div><div class="f"><label>Матеріал · колір</label><div class="in">mono a2</div></div><div class="f"><label>К-сть</label><div class="in">3</div></div><div class="f"><label>Опак</label><div class="in e">—</div></div><div class="f"><label>Sum3D</label><div class="in e">—</div></div></div>
+        <div class="path">Файли (3) ляжуть у: export / <b>Євген Кривовид</b> / <b>07.10.26</b> / <b>mono a2</b> <span class="tag ok">тека в пулі</span></div>
+        <div class="files"><div class="file"><i></i>crown_16.stl<span>412 КБ</span></div><div class="file"><i></i>crown_26.stl<span>398 КБ</span></div><div class="file"><i></i>crown_36.stl<span>405 КБ</span></div></div>
+        <div class="pre">Добрий день, у вкладенні 3 коронки, mono A2, на завтра до обіду. Дякую.</div>
+        <div class="foot"><span class="btn">На уточнення</span><span class="btn">Відхилити</span><span class="sp"></span><span class="btn pri">✓ Прийняти в чергу</span></div>
+      </section>
+      <section class="panel lcol">
+        <div class="ph"><b>Лабораторія · можна брати</b><span class="n mono" style="color:var(--accent)">5</span><span class="sp"></span><span class="seg"><span class="on">Брати</span><span>Усі</span></span></div>
+        <div class="lc go"><div class="t"><b>34549</b><span class="tag fast">на швидку</span><span class="sp"></span><span class="mono" style="color:var(--ink-3);font-size:11px">19:58</span></div><div class="m"><span class="mat zr">моно А3</span>3 од. · анатомія гвинтова 24-26 · Юля</div><div class="a"><span class="in">Sum3D —</span><span class="ib pri" title="Копіювати шлях для Sum3D">⧉</span><span class="ib">📁</span></div></div>
+        <div class="lc go"><div class="t"><b>34397</b><span class="sp"></span><span class="mono" style="color:var(--ink-3);font-size:11px">19:41</span></div><div class="m"><span class="mat zr">моно А3</span>1 од. · анатомія · Овчаров</div><div class="a"><span class="in">Sum3D —</span><span class="ib pri">⧉</span><span class="ib">📁</span></div></div>
+        <div class="lc go"><div class="t"><b>34555</b><span class="sp"></span><span class="mono" style="color:var(--ink-3);font-size:11px">19:12</span></div><div class="m"><span class="mat pmma">пмма A2</span>1 од. · анатомія · Овчаров</div><div class="a"><span class="in">Sum3D —</span><span class="ib pri">⧉</span><span class="ib">📁</span></div></div>
+        <div class="lc go"><div class="t"><b>34487</b><span class="sp"></span><span class="mono" style="color:var(--ink-3);font-size:11px">18:50</span></div><div class="m"><span class="mat zr">500</span>1 од. · абатмент · Бойко</div><div class="a"><span class="in">Sum3D —</span><span class="ib pri">⧉</span><span class="ib">📁</span></div></div>
+        <div class="lc go"><div class="t"><b>34414</b><span class="tag hold">на погодженні</span><span class="sp"></span><span class="mono" style="color:var(--ink-3);font-size:11px">18:22</span></div><div class="m"><span class="mat zr">моно А2</span>2 од. · каркас міст 13-23 · Бойко</div><div class="a"><span class="in">Sum3D —</span><span class="ib pri">⧉</span><span class="ib">📁</span></div></div>
+        <div class="day" style="margin-top:4px">щойно взяті</div>
+        <div class="lc"><div class="t"><b>34372</b><span class="sp"></span><span class="rd run">в роботі</span></div><div class="m"><span class="mat zr">моно А2</span>2 од. · каркас · Бойко</div><div class="a"><span class="in v">20-22-11</span><span class="ib">✎</span></div></div>
+      </section>
+    </div>
+  </div>
+  <span class="vlabel">Варіант B · права колонка</span>
+  <span class="hint">компактні картки лаби поруч із листом; на пів-екрані колонка стає висувною шухлядою</span>
+</section>
+
+<!-- ============ C — Вкладка «Лаба» ============ -->
+<section class="screen" id="c">
+  <aside class="rail"><span class="logo">KM</span><i></i><i class="on"><span class="n">21</span></i><i></i><i></i><i></i><i></i><i></i><i></i></aside>
+  <div class="page">
+    <div class="head"><h1>Нові з пошти</h1><span class="meta"><b>16</b> у Вхідних · <b>5</b> лаба можна брати</span><span class="sp"></span><span class="btn">Перевірити пошту</span></div>
+    <div class="controls">
+      <div class="tabs"><span class="tab">Вхідні <span class="n">16</span></span><span class="tab on lab">⚗ Лаба <span class="n">5</span></span><span class="tab">скачано прощитано <span class="n">44</span></span><span class="tab">На уточненні <span class="n">3</span></span><span class="tab">Ще ▾</span></div>
+      <span class="sp" style="flex:1"></span>
+      <span class="seg"><span class="on">Можна брати 5</span><span>В роботі 32</span><span>Не готово 53</span></span>
+    </div>
+    <div class="work" style="grid-template-columns:440px 1fr">
+      <section class="panel list">
+        <div class="ph"><b>Лабораторія · вкладка 07.10.26</b><span class="sp"></span><span class="chips"><span class="chip on">Zr <span class="n">4</span></span><span class="chip">PMMA <span class="n">1</span></span></span></div>
+        <div class="day">можна брати · порядок таблиці</div>
+        <div class="row zr"><span class="dot ok"></span><span></span><div class="main"><div class="l1"><b class="mono">34397</b><span class="mat zr">моно А3</span><span class="tag">1 од.</span></div><div class="l2">анатомія · Овчаров</div></div><div class="side">19:41<span style="color:var(--ok)">здав</span></div></div>
+        <div class="row zr cur"><span class="dot ok"></span><span></span><div class="main"><div class="l1"><b class="mono">34549</b><span class="mat zr">моно А3</span><span class="tag">3 од.</span><span class="tag fast">на швидку</span></div><div class="l2">анатомія гвинтова 24-26 · Юля</div></div><div class="side">19:58<span style="color:var(--ok)">здав</span></div></div>
+        <div class="row pmma"><span class="dot ok"></span><span></span><div class="main"><div class="l1"><b class="mono">34555</b><span class="mat pmma">пмма A2</span><span class="tag">1 од.</span></div><div class="l2">анатомія · Овчаров</div></div><div class="side">19:12<span style="color:var(--ok)">здав</span></div></div>
+        <div class="row zr"><span class="dot ok"></span><span></span><div class="main"><div class="l1"><b class="mono">34487</b><span class="mat zr">500</span><span class="tag">1 од.</span></div><div class="l2">абатмент · Бойко</div></div><div class="side">18:50<span style="color:var(--ok)">здав</span></div></div>
+        <div class="row zr"><span class="dot ok"></span><span></span><div class="main"><div class="l1"><b class="mono">34414</b><span class="mat zr">моно А2</span><span class="tag">2 од.</span><span class="tag hold">на погодженні</span></div><div class="l2">каркас міст 13-23 · Бойко</div></div><div class="side">18:22<span style="color:var(--ok)">здав</span></div></div>
+        <div class="day">в роботі · 32</div>
+        <div class="row zr"><span class="dot"></span><span></span><div class="main"><div class="l1"><b class="mono">34372</b><span class="mat zr">моно А2</span><span class="tag">2 од.</span></div><div class="l2">каркас · Бойко · <span class="mono">20-22-11</span></div></div><div class="side">250-New<span>100%</span></div></div>
+        <div class="row zr"><span class="dot"></span><span></span><div class="main"><div class="l1"><b class="mono">34221</b><span class="mat zr">моно А3</span><span class="tag">1 од.</span></div><div class="l2">анатомія · Овчаров · <span class="mono">20-05-39</span></div></div><div class="side">250i-Sec<span>41%</span></div></div>
+      </section>
+      <section class="panel passport">
+        <h3>34549 <span class="tag lab">лабораторія</span><span class="tag fast">на швидку</span><span class="sp" style="flex:1"></span><span class="rd go">можна брати</span></h3>
+        <div class="kv"><div class="f"><label>Колір · матеріал</label><div class="in">моно А3</div></div><div class="f"><label>К-сть</label><div class="in">3</div></div><div class="f"><label>Вид</label><div class="in">анатомія гвинтова 24-26</div></div><div class="f"><label>Технік</label><div class="in">Юля</div></div></div>
+        <div class="path">Номер роботи: <b>2026-10-07_00044-001</b> <span class="ib pri" title="Копіювати шлях для Sum3D">⧉</span> <span class="ib">📁</span> <span style="color:var(--ink-3)">· технік здав 19:58</span></div>
+        <div class="pre">Коментар для CAM: <b style="color:#ff9d92">на швидку</b> — швидка програма спікання, пацієнт завтра о 9:00.</div>
+        <div class="fields" style="grid-template-columns:1fr 1fr 2fr"><div class="f"><label>Sum3D ID</label><div class="in e mono">12-01-45 ⟵ вписати</div></div><div class="f"><label>Прорахував</label><div class="in e">Р · авто</div></div><div class="f"><label>Статус</label><div class="in">нове → прораховано після Sum3D</div></div></div>
+        <div class="hist"><span><b>19:58</b> · технік здав роботу (номер роботи в таблиці)</span><span><b>19:41</b> · рядок з'явився у вкладці 07.10.26, №44</span></div>
+        <div class="foot" style="margin-top:auto;display:flex;gap:8px"><span class="btn">Коментар</span><span class="btn">Проблема</span><span class="sp" style="flex:1"></span><span class="btn pri">Взяти · записати Sum3D</span></div>
+      </section>
+    </div>
+  </div>
+  <span class="vlabel">Варіант C · вкладка «Лаба»</span>
+  <span class="hint">лаба як ще одна вкладка списку: ліворуч роботи «можна брати», праворуч паспорт із полем Sum3D</span>
+</section>
+
+<!-- ============ D — Єдина стрічка ============ -->
+<section class="screen" id="d">
+  <aside class="rail"><span class="logo">KM</span><i></i><i class="on"><span class="n">21</span></i><i></i><i></i><i></i><i></i><i></i><i></i></aside>
+  <div class="page">
+    <div class="head"><h1>На прорахунок</h1><span class="meta"><b>16</b> листів · <b>5</b> робіт лаби · разом <b>21</b></span><span class="sp"></span><span class="btn">Перевірити пошту</span></div>
+    <div class="controls">
+      <div class="tabs"><span class="tab on">Усе <span class="n">21</span></span><span class="tab">✉ Листи <span class="n">16</span></span><span class="tab lab">⚗ Лаба <span class="n">5</span></span><span class="tab">скачано прощитано <span class="n">44</span></span><span class="tab">На уточненні <span class="n">3</span></span><span class="tab">Ще ▾</span></div>
+      <span class="sp" style="flex:1"></span>
+      <span class="chips"><span class="chip zr">Zr <span class="n">10</span><span class="x">✕</span></span><span class="chip">PMMA <span class="n">5</span><span class="x">✕</span></span><span class="chip">Wax <span class="n">2</span><span class="x">✕</span></span></span>
+    </div>
+    <div class="work" style="grid-template-columns:470px 1fr">
+      <section class="panel list">
+        <div class="ph"><span class="cb"></span><b>Обрати всі</b><span class="sp"></span><span class="btn" style="padding:4px 8px">↦ Перемістити</span><span class="btn" style="padding:4px 8px">✕ Відхилити</span></div>
+        <div class="day">Сьогодні 07.10 · за часом появи</div>
+        <div class="row pmma"><span class="cb"></span><span class="dot new"></span><div class="main"><div class="l1"><span class="tag mail">✉</span><b>Zahar Pushkar</b><span class="mat pmma">PMMA a3</span></div><div class="l2">не скачано</div></div><div class="side">20:09</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><span class="tag mail">✉</span><b>Маріанна Голій</b><span class="mat zr">Zr emo a1</span></div><div class="l2">цирконій мульти… · 2 файл.</div></div><div class="side">20:01</div></div>
+        <div class="row zr cur"><span class="cb"></span><span class="dot ok"></span><div class="main"><div class="l1"><span class="tag lab">⚗</span><b class="mono">34549</b><span class="mat zr">моно А3</span><span class="tag">3 од.</span><span class="tag fast">на швидку</span></div><div class="l2">анатомія гвинтова 24-26 · Юля · здав</div></div><div class="side">19:58</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot ok"></span><div class="main"><div class="l1"><span class="tag lab">⚗</span><b class="mono">34397</b><span class="mat zr">моно А3</span><span class="tag">1 од.</span></div><div class="l2">анатомія · Овчаров · здав</div></div><div class="side">19:41</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><span class="tag mail">✉</span><b>Євген Кривовид</b><span class="mat zr">Zr mono a2</span></div><div class="l2">Циркон · 3 файл.</div></div><div class="side">19:14</div></div>
+        <div class="row pmma"><span class="cb"></span><span class="dot ok"></span><div class="main"><div class="l1"><span class="tag lab">⚗</span><b class="mono">34555</b><span class="mat pmma">пмма A2</span><span class="tag">1 од.</span></div><div class="l2">анатомія · Овчаров · здав</div></div><div class="side">19:12</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot ok"></span><div class="main"><div class="l1"><span class="tag lab">⚗</span><b class="mono">34487</b><span class="mat zr">500</span><span class="tag">1 од.</span></div><div class="l2">абатмент · Бойко · здав</div></div><div class="side">18:50</div></div>
+        <div class="row pmma"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><span class="tag mail">✉</span><b>Маріанна Голій</b><span class="mat pmma">PMMA a2</span></div><div class="l2">пац. Горбатенко · 2 файл.</div></div><div class="side">18:39</div></div>
+        <div class="row zr"><span class="cb"></span><span class="dot"></span><div class="main"><div class="l1"><span class="tag mail">✉</span><b>Яна Ковальчук</b><span class="mat zr">Zr</span></div><div class="l2">циркон A1 · 3 файл.</div></div><div class="side">18:38</div></div>
+      </section>
+      <section class="panel passport">
+        <h3>34549 <span class="tag lab">лабораторія</span><span class="tag fast">на швидку</span><span class="sp" style="flex:1"></span><span class="rd go">можна брати</span></h3>
+        <div class="kv"><div class="f"><label>Колір · матеріал</label><div class="in">моно А3</div></div><div class="f"><label>К-сть</label><div class="in">3</div></div><div class="f"><label>Вид</label><div class="in">анатомія гвинтова 24-26</div></div><div class="f"><label>Технік</label><div class="in">Юля</div></div></div>
+        <div class="path">Номер роботи: <b>2026-10-07_00044-001</b> <span class="ib pri">⧉</span> <span class="ib">📁</span></div>
+        <div class="pre">Коментар для CAM: <b style="color:#ff9d92">на швидку</b>.</div>
+        <div class="fields" style="grid-template-columns:1fr 1fr 2fr"><div class="f"><label>Sum3D ID</label><div class="in e mono">—</div></div><div class="f"><label>Прорахував</label><div class="in e">Р · авто</div></div><div class="f"><label>Статус</label><div class="in">нове</div></div></div>
+        <div class="foot" style="margin-top:auto;display:flex;gap:8px"><span class="btn">Коментар</span><span class="sp" style="flex:1"></span><span class="btn pri">Взяти · записати Sum3D</span></div>
+      </section>
+    </div>
+  </div>
+  <span class="vlabel">Варіант D · єдина стрічка</span>
+  <span class="hint">листи й роботи лаби в одному списку за часом появи; картка праворуч — лист або паспорт</span>
+</section>
+
+<nav class="sw"><a href="#a">A · нижній док</a><a href="#b">B · права колонка</a><a href="#c">C · вкладка «Лаба»</a><a href="#d">D · єдина стрічка</a></nav>
+<script>
+function show(){var id=(location.hash||'#a').slice(1);document.querySelectorAll('.screen').forEach(function(s){s.classList.toggle('on',s.id===id)});document.querySelectorAll('.sw a').forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+id)});}
+addEventListener('hashchange',show);show();
+if(location.search.indexOf('clean')!==-1){document.querySelector('.sw').style.display='none';document.body.style.padding='10px 0';}
+</script>
+</body>
+</html>
