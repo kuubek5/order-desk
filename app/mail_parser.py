@@ -12,6 +12,7 @@ from rapidfuzz import fuzz
 
 from app.client_matcher import _transliterations
 from app.material_classifier import AliasRow, classify_material
+from app.material_match import shades as _shades
 
 _PATTERNS = {
     "material_color_guess": r"(?:колір|цвет|матеріал)[:\s]+[-–]?\s*([^\n,;]+)",
@@ -56,7 +57,8 @@ _MAT_FAMILY = (
     + r"|емо" + _NOT_LETTER + r"|emo" + _NOT_LETTER
     + r"|віск\w*|воск\w*|wax)"
 )
-_MAT_COLOR = r"(?:[аa]\s?[1-4](?:[.,]5)?|[58]00|коре[яйю]\w*|korea)"
+# BL1–BL4 (відбілені): без них «Monolith BL3» читалось як голе «Monolith».
+_MAT_COLOR = r"(?:[аa]\s?[1-4](?:[.,]5)?|(?:bl|бл)\s?[1-4]|[58]00|коре[яйю]\w*|korea)"
 _MATERIAL_FAMILY_RE = re.compile(
     r"\b" + _MAT_FAMILY + r"(?:[\s:._–-]*" + _MAT_COLOR + r")?",
     re.IGNORECASE,
@@ -213,6 +215,13 @@ def fuzzy_match_material_color(
                     best_name = known
 
     if best_name is not None and best_score >= threshold:
+        # Відтінок — не дрібниця в рядку, а суть замовлення: «Monolith BL3»
+        # проти «моноліт а3» дає 87 балів (дві літери з дванадцяти), і лист
+        # BL3 ставав «моно а3» (07.10.26, Островський). Назвав клієнт відтінок —
+        # збіг мусить мати ТОЙ САМИЙ, інакше не довіряємо.
+        wanted = _shades(candidate)
+        if wanted and _shades(best_name) != wanted:
+            return None
         return best_name
     return None
 

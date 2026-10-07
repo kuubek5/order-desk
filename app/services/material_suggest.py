@@ -324,6 +324,37 @@ def _is_shadeless(word: str) -> bool:
     return "kapa" in _concepts(_forms(word))
 
 
+_MONOCHROME_KEYS = ("monoxpom", "monoxrom", "monochrom", "monocrom")
+"""«Монохромний» / «monochrome» — одноколірний диск, НЕ лінія Monolith. За
+початком «mono…» слово ставало `mono` (07.10.26, Михно: «Циркон Doceram
+монохромний A2» → `mono a2` замість `800`)."""
+
+_DOCERAM_KEYS = ("doceram", "docepam", "dokepam")
+"""Doceram латиницею й кирилицею («Доцерам», «Досерам», «Докерам») після
+`match_key`."""
+_DOCERAM_CODES = {"a1": "500", "a2": "800"}
+"""Доцерам цех пише ГОЛИМ кодом виробника (CLAUDE.md §3: `500` = A1 опак,
+`800` = A2 опак; у таблиці так само `1000`, `2000`). Інших відповідностей
+власник не давав — для решти відтінків Doceram нічого не підставляємо."""
+
+
+def _is_monochrome(key: str) -> bool:
+    return key.startswith(_MONOCHROME_KEYS)
+
+
+def doceram_code(guess: str | None, context: str | None) -> tuple[bool, str | None]:
+    """(Doceram названо?, код диска). Код — лише коли відтінок рівно один і
+    відомий (`a2` → `800`). Названо, а коду немає — ні Monolith, ні інша лінія
+    не годяться: вгаданий чіп гірший за відсутній."""
+    tokens = _mm_tokens(guess) + _mm_tokens(context)
+    if not any(match_key(t).startswith(_DOCERAM_KEYS) for t in tokens):
+        return False, None
+    wanted = _wanted_shades(guess, None, context)
+    if len(wanted) != 1:
+        return True, None
+    return True, _DOCERAM_CODES.get(wanted[0])
+
+
 def _match_word(
     token: str, weight: Counter[str], *, allow_short: bool, fuzzy: bool = False
 ) -> str | None:
@@ -331,7 +362,7 @@ def _match_word(
     початок канону (обидва ≥3 літер; коротше — лише повний збіг, і то лише коли
     `allow_short`). Кілька кандидатів (`mono` і рідкісне `monolith`) — вирішує
     ЧАСТОТА: канон той, яким цех пише щодня."""
-    if not token:
+    if not token or _is_monochrome(token):
         return None
     best: tuple[int, str] | None = None
     for word, total in weight.items():
@@ -415,10 +446,30 @@ def _wanted_shades(guess: str | None, shades: list[str] | None, context: str | N
     return [_shade_key(s) for s in (shades or [])] or shades_in(guess) or shades_in(context)
 
 
+def _code_badge(session: Session, code: str | None) -> str | None:
+    """Чіп родини для голого коду диска (`800` — цирконій). З даних цеху, а
+    якщо код ще не траплявся — `Zr`: усі коди виробника тут цирконієві."""
+    if not code:
+        return None
+    entry = next((e for e in _latin_entries(session) if e.text == code and e.badge), None)
+    return entry.badge if entry else "Zr"
+
+
+def _context_with_shades(context: str | None, shades: list[str] | None) -> str | None:
+    """Відтінки, передані окремо (групи кольорів листа), — у текст для
+    `doceram_code`, щоб він бачив той самий набір, що й решта підказок."""
+    if not shades:
+        return context
+    return (context or "") + "\n" + " ".join(shades)
+
+
 def best_material(session: Session, guess: str | None, context: str | None = None) -> str | None:
     """ОДНА впевнена відповідь для поля матеріалу: матеріал упізнано (у здогаді чи
     в тексті) і відтінок рівно один. Інакше None — поле лишається як було,
     вгадувати колір чи матеріал не можна."""
+    named, code = doceram_code(guess, context)
+    if named:
+        return code  # Doceram — лише відомий код; інша лінія тут хибна
     wanted = _wanted_shades(guess, None, context)
     word = canonical_material_word(session, guess, context)
     if not word:
@@ -436,6 +487,10 @@ def row_label(session: Session, guess: str | None, context: str | None = None) -
     підставиться в поле картки (`best_material`); колір невідомий чи їх кілька —
     лише лінія (`mono`). Матеріал не впізнано — None (чіп тоді будує старий
     `mail_material_badge` зі здогаду, або його немає)."""
+    named, code = doceram_code(guess, context)
+    if named:
+        # Без коду — старий чіп зі здогаду («Zr»), а не чужа лінія.
+        return {"badge": _code_badge(session, code), "text": code} if code else None
     word = canonical_material_word(session, guess, context)
     if not word:
         return None
@@ -462,7 +517,18 @@ def canonical_suggestions(
     написання. Матеріал словом не впізнано, але бібліотека знає його
     («Цирконій», «циркон») — лише варіанти цього матеріалу. Інакше — нічого:
     вгаданий чіп гірший за відсутній (власник 25.09.26: «тільки правильно
-    підказувало, а вже потім варіанти»)."""
+    підказувало, а вже потім варіанти»). Doceram — лише його код (`800`), без
+    варіантів інших ліній (`doceram_code`)."""
+    named, code = doceram_code(guess, _context_with_shades(context, shades))
+    if named:
+        if not code:
+            return []
+        entry = next((e for e in _latin_entries(session) if e.text == code), None)
+        return [Suggestion(
+            kind="best", text=code, badge=_code_badge(session, code),
+            material_id=entry.material_id if entry else None,
+            count=entry.c90 if entry else 0,
+        )]
     entries = _latin_entries(session)
     word = canonical_material_word(session, guess, context)
     wanted = _wanted_shades(guess, shades, context)

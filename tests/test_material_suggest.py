@@ -388,6 +388,33 @@ def test_canonical_chips_never_invent_colour_or_material():
         assert canonical_suggestions(session, "") == []
 
 
+def test_doceram_a2_is_the_800_disc_and_monochrome_is_not_monolith():
+    """07.10.26, Михно: «Циркон Doceram монохромний A2». Картка дала `mono a2`:
+    «монохромний» за початком «моно…» ставало Monolith, а Doceram система не
+    знала. Цех пише Doceram голим кодом виробника — `800` = A2 опак, `500` =
+    A1 опак (CLAUDE.md §3). Інших кодів власник не давав — не вгадуємо."""
+    from app.services.material_suggest import best_material, canonical_suggestions, row_label
+
+    with _canon_session() as session:
+        add_orders(session, {"800": 6, "500": 5})
+        invalidate_cache()
+        text = "Фрезерування вкладка однокоренева 14\nЦиркон Doceram монохромний A2"
+        assert best_material(session, "Цирконій", text) == "800"
+        assert [(c.kind, c.text) for c in canonical_suggestions(session, "Цирконій", context=text)] == [
+            ("best", "800")
+        ], "жодних mono/emo поруч: це інший диск"
+        assert row_label(session, "Цирконій", text)["text"] == "800"
+        # Кирилицею, A1 → 500.
+        assert best_material(session, "Цирконій", "Доцерам А1") == "500"
+        # Doceram з невідомим кодом — нічого, а не чужа лінія.
+        assert best_material(session, "Цирконій", "Doceram A3") is None
+        assert canonical_suggestions(session, "Цирконій", context="Doceram A3") == []
+        # «Монохромний» сам по собі — не Monolith (поле не заповнюється).
+        assert best_material(session, "Цирконій", "монохромний A2") is None
+        # А Monolith, назване поруч, лишається Monolith.
+        assert best_material(session, "Monolith", "моноліт монохромний a2") == "mono a2"
+
+
 def test_canonical_material_builds_missing_spelling_in_latin():
     from app.services.material_suggest import canonical_material
 

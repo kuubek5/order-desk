@@ -110,6 +110,21 @@ def test_fuzzy_match_material_color_latin_subject_maps_to_cyrillic():
     assert fuzzy_match_material_color("emo a2", known) == "емо а2"
 
 
+def test_fuzzy_match_never_swaps_the_shade_the_client_named():
+    """07.10.26, Островський: тема «Monolith BL3» нечітко збігалась із
+    «моноліт а3» зі словника таблиці (87 балів — відтінок лише дві літери з
+    дванадцяти), і картка підставила `mono a3`. Названий відтінок мусить
+    збігтись, інакше здогад іде запасним шляхом — родиною матеріалу з BL."""
+    known = ["моноліт а3", "моноліт д3", "моно а3", "емо а2", "моно а3.5"]
+    assert fuzzy_match_material_color("Monolith BL3", known) is None
+    assert fuzzy_match_material_color("monolith a3", known) == "моноліт а3"
+    assert fuzzy_match_material_color("моно а3.5.", known) == "моно а3.5"
+    guesses = guess_fields_from_text(
+        "Monolith BL3", subject="Monolith BL3", body="", known_materials=known
+    )
+    assert guesses["material_color_guess"] == "Monolith BL3"
+
+
 def test_fuzzy_match_material_color_latin_garbage_still_rejected():
     """Transliteration must not turn nonsense into a false positive."""
     known = ["емо а3.5", "пмма а2", "500", "800"]
