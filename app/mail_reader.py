@@ -5,6 +5,7 @@ import mimetypes
 import re
 import time
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from typing import cast
 from html.parser import HTMLParser
 from pathlib import Path
@@ -77,6 +78,33 @@ def message_id_of(msg) -> str | None:
     except Exception:  # noqa: BLE001
         return None
     return value or None
+
+
+def arrival_time(msg) -> datetime | None:
+    """Коли лист ДІЙШОВ до скриньки — наївний київський, той самий час, що
+    показує ukr.net у своєму списку.
+
+    Заголовок Date ставить програма ВІДПРАВНИКА за годинником її комп'ютера.
+    07.10.26 у Наталії Бойченко він спішив на 23 хв: ukr.net показував лист о
+    23:42, CRM — о 00:05 наступного дня, лист стояв над «Сьогодні» в групі
+    «Четвер», а попередній її лист оператор прийняв ще ДО часу, вказаного в
+    ньому. Тому беремо верхній заголовок Received — його дописує сервер
+    скриньки при прийомі, годинник там правильний. Дата в ньому — після
+    останньої «;» (RFC 5321). Немає, кривий чи без поясу — падаємо на Date, як
+    було. Ніколи не кидає: синк важливіший за точний час."""
+    try:
+        received = msg.obj.get_all("Received") or []
+    except Exception:  # noqa: BLE001
+        received = []
+    if received:
+        stamp = str(received[0]).rsplit(";", 1)[-1].strip()
+        try:
+            moment = parsedate_to_datetime(stamp)
+        except (TypeError, ValueError, IndexError):
+            moment = None
+        if moment is not None and moment.tzinfo is not None:
+            return aware_to_business(moment)
+    return aware_to_business(getattr(msg, "date", None))
 
 # Tags that should force a line break in the extracted text so paragraphs/
 # list items/table rows in the source HTML don't all run together into one
@@ -1295,7 +1323,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     # Час, записаний до переводу в київський (лист із поясом
                     # «+0000» лежав на 3 год раніше) — виправляється сам на
                     # наступному проході, без міграції: вікно синку 30 днів.
-                    received = aware_to_business(msg.date)
+                    received = arrival_time(msg)
                     if received is not None and row.received_at != received:
                         row.received_at = received
                 continue
@@ -1334,7 +1362,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     from_name=sender_display_name(msg),
                     message_id=message_id_of(msg),
                     subject=msg.subject,
-                    received_at=aware_to_business(msg.date),
+                    received_at=arrival_time(msg),
                     status="нове",
                     attachments_status="pending",
                 )

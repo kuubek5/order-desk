@@ -889,6 +889,64 @@ def test_utc_dated_letter_is_stored_in_kyiv_time_and_old_rows_fixed(monkeypatch,
         assert by_uid["9"].received_at == _dt(2026, 9, 25, 17, 6)   # правильний — як був
 
 
+def test_arrival_time_comes_from_the_server_not_the_senders_clock(monkeypatch, tmp_path):
+    """07.10.26, Наталія Бойченко: годинник її ПК спішив на 23 хв. ukr.net
+    показував лист о 23:42 (час прийому сервером), CRM — 08.10 00:05 (Date від
+    її програми): лист стояв у групі «Четвер» над «Сьогодні». Час листа —
+    верхній Received (його ставить сервер скриньки); без нього — Date, як було.
+    Уже збережений неправильно — виправляється на наступному синку."""
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from email.message import Message
+
+    from app.mail_reader import arrival_time
+
+    def _obj(mid, *received):
+        obj = Message()
+        obj["Message-ID"] = mid
+        for line in received:
+            obj["Received"] = line
+        return obj
+
+    fast_clock = _dt(2026, 10, 8, 0, 5, tzinfo=_tz(_td(hours=3)))
+    server = "from mail.gmail.com by fmx.ukr.net with ESMTPS id 1x; Tue, 07 Oct 2026 23:42:17 +0300"
+    hop = "from [10.0.0.5] by mail.gmail.com; Tue, 07 Oct 2026 20:41:58 +0000"
+
+    late = _header_with_name_and_mid("31", "Natalia Boychenko", "<n@gmail>")
+    late.date = fast_clock
+    late.obj = _obj("<n@gmail>", server, hop)          # верхній = сервер скриньки
+    stored = _header_with_name_and_mid("32", "Natalia Boychenko", "<n2@gmail>")
+    stored.date = fast_clock
+    stored.obj = _obj("<n2@gmail>", server)
+    plain = _header_with_name_and_mid("33", "Без Received", "<p@x>")
+    plain.date = _dt(2026, 10, 7, 23, 38, tzinfo=_tz(_td(hours=3)))
+    broken = _header_with_name_and_mid("34", "Кривий Received", "<b@x>")
+    broken.date = _dt(2026, 10, 7, 23, 38, tzinfo=_tz(_td(hours=3)))
+    broken.obj = _obj("<b@x>", "from x by y; не дата")
+
+    assert arrival_time(late) == _dt(2026, 10, 7, 23, 42, 17)
+    assert arrival_time(plain) == _dt(2026, 10, 7, 23, 38)    # як було — з Date
+    assert arrival_time(broken) == _dt(2026, 10, 7, 23, 38)   # кривий — з Date
+    assert arrival_time(SimpleNamespace(uid="x", date=None)) is None
+
+    mailbox = FakeMailbox(headers=[late, stored, plain, broken], full_by_uid={})
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+    with _engine_session() as session:
+        session.add(EmailMessage(  # збережений ДО фіксу — з часом годинника відправника
+            uid="32", from_address="a@x", from_name="Natalia Boychenko", message_id="<n2@gmail>",
+            subject="Лепеха", status="нове", attachments_status="ready",
+            received_at=_dt(2026, 10, 8, 0, 5),
+        ))
+        session.commit()
+
+        fetch_new_emails(session, tmp_path)
+
+        by_uid = {r.uid: r for r in session.scalars(select(EmailMessage))}
+        assert by_uid["31"].received_at == _dt(2026, 10, 7, 23, 42, 17)
+        assert by_uid["32"].received_at == _dt(2026, 10, 7, 23, 42, 17), "старий виправлено"
+        assert by_uid["33"].received_at == _dt(2026, 10, 7, 23, 38)
+
+
 def test_returned_letter_is_adopted_by_message_id_not_duplicated(monkeypatch, tmp_path):
     """Лист, повернутий у Вхідні прямо в пошті (з папки «оброблено» чи іншої), у
     Inbox під НОВИМ uid. Фаза 1 мусить упізнати його за Message-ID і всиновити
