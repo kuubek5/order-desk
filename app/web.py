@@ -41,6 +41,7 @@ from app.schema import ensure_schema
 from app.services.health_snapshot import check_after_update
 from app import log_throttle, perf
 from app.backup_mirror import mirror_snapshot
+from app.daily_backup import ensure_daily_snapshot
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
 from app import sync_control
@@ -421,6 +422,16 @@ def _monthly_backup_tick() -> None:
                 db.commit()
     except Exception:
         logger.exception("Monthly DB snapshot failed")
+    # Щоденний знімок (DR-навчання 07.10.26): окремий try, щоб збій одного не
+    # зупиняв інший. Дзеркало — те саме налаштування `backup_mirror_dir`.
+    try:
+        daily = ensure_daily_snapshot(engine, DB_PATH)
+        if daily is not None:
+            with SessionLocal() as db:
+                mirror_snapshot(db, daily, subdir="daily")
+                db.commit()
+    except Exception:
+        logger.exception("Daily DB snapshot failed")
 
 
 def _monthly_backup_worker(stop_event: Event) -> None:

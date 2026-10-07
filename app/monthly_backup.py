@@ -34,6 +34,8 @@ from pathlib import Path
 
 from sqlalchemy.engine import Engine
 
+from app.snapshot_tools import verify_integrity
+
 logger = logging.getLogger(__name__)
 
 SNAPSHOT_PREFIX = "kuubmill-"
@@ -141,6 +143,13 @@ def ensure_monthly_snapshot(
     with engine.connect() as conn:
         conn.exec_driver_sql(f"VACUUM INTO '{quoted}'")
 
+    # Знімок, який не читається, гірший за відсутній: він створює відчуття
+    # захисту. Перевіряємо ДО перейменування (DR-навчання 07.10.26).
+    try:
+        verify_integrity(tmp)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
     tmp.replace(target)
     logger.info("Monthly DB snapshot created: %s", target.name)
 

@@ -30,6 +30,8 @@ from pathlib import Path
 
 from sqlalchemy.engine import Engine
 
+from app.snapshot_tools import verify_integrity
+
 logger = logging.getLogger(__name__)
 
 SNAPSHOT_PREFIX = "kuubmill-pre-"
@@ -90,6 +92,12 @@ def snapshot_before_update(
     with engine.connect() as conn:
         conn.exec_driver_sql(f"VACUUM INTO '{quoted}'")
 
+    # Копія, що не читається, не має виглядати захистом: перевірка до перейменування.
+    try:
+        verify_integrity(tmp)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
     tmp.replace(target)
     logger.info("Копія бази перед оновленням: %s", target.name)
 

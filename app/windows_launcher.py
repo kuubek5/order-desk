@@ -449,12 +449,33 @@ def main() -> int:
     # Процес спливаючого вікна (app/desktop_popup_ui.py): той самий exe, інший
     # режим. ДО перевірки «вже запущено» — інакше він відкрив би браузер.
     parser.add_argument("--popup-ui", nargs=2, metavar=("PORT", "TOKEN"))
+    # Аварійне відновлення бази (app/snapshot_cli.py): той самий exe, веб не
+    # стартує і ключі шифрування не читаються — потрібне саме тоді, коли
+    # застосунок не запускається (DR-навчання 07.10.26).
+    parser.add_argument("--list-snapshots", action="store_true")
+    parser.add_argument("--restore-snapshot", nargs="?", const="latest", metavar="ШЛЯХ|latest")
+    parser.add_argument("--from", dest="from_dirs", action="append", metavar="ТЕКА")
+    parser.add_argument("--yes", action="store_true")
     args, _ = parser.parse_known_args()
 
     if args.popup_ui:
         from app.desktop_popup_ui import run_helper
 
         return run_helper(int(args.popup_ui[0]), args.popup_ui[1])
+
+    if args.list_snapshots or args.restore_snapshot:
+        from app import snapshot_cli
+
+        return snapshot_cli.run(
+            list_only=bool(args.list_snapshots),
+            target=args.restore_snapshot,
+            data_dir=DATA_DIR,
+            db_file=DATA_DIR / "kuubmill.db",
+            from_dirs=args.from_dirs,
+            assume_yes=args.yes,
+            say=snapshot_cli.windows_say,
+            ask=snapshot_cli.windows_ask,
+        )
 
     if args.shutdown:
         return 0 if _signal_shutdown() else 1
