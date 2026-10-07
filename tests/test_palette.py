@@ -170,7 +170,7 @@ function makeRow(i) {
 const rows = [makeRow(0), makeRow(1), makeRow(2)];
 let rowsActive = ACTIVE_INDEX;
 
-global.window = { setTimeout, clearTimeout };
+global.window = { setTimeout, clearTimeout, addEventListener() {} };
 global.document = {
   addEventListener: on,
   body: { addEventListener: on, appendChild() {} },
