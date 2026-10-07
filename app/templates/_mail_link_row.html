@@ -1,12 +1,14 @@
 {# One "file by link" row with its own download status. Rendered idle by the
    panel and swapped in-place (outerHTML) by /mail/{id}/fetch-link after this
    file downloads. Click the row to fetch just it; the "download all" button
-   fires a `dl-all` body event every row listens for. Needs: email, link, and
+   fires a `dl-all` body event, and app.js feeds the rows a `dl-go` each, two
+   at a time (all at once froze the page: the browser's 6 connections were all
+   busy with Drive downloads — 08.10.26). Needs: email, link, and
    (after a fetch) link_status in done|skip|error + link_message / result_name. #}
 <div class="linkrow {{ link_status }}"
      hx-post="/mail/{{ email.id }}/fetch-link"
      hx-vals='{"ref": {{ (link.file_id or link.url)|tojson }}}'
-     hx-trigger="click, keyup[key=='Enter'], keyup[key==' '], dl-all from:body"
+     hx-trigger="click, keyup[key=='Enter'], keyup[key==' '], dl-go"
      hx-target="this" hx-swap="outerHTML"
      hx-disabled-elt="this"
      role="button" tabindex="0" title="{% if link_status in ('done', 'skip', 'handled') %}Скачати ще раз{% else %}Скачати цей файл{% endif %}">

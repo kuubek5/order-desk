@@ -1088,7 +1088,7 @@ function scheduleMailFilesRefresh() {
     // з відірваного елемента не спливає), і файли, скачані пізніше, та їхнє
     // STL-прев'ю зʼявлялись би лише після F5 (власник 25.09.26). Чекаємо, поки
     // допрацює останнє, — і оновлюємо картку ОДИН раз.
-    if (document.querySelector("#mail-detail .linkrow.htmx-request")) {
+    if (linkQueueBusy() || document.querySelector("#mail-detail .linkrow.htmx-request")) {
       scheduleMailFilesRefresh();
       return;
     }
@@ -1119,6 +1119,56 @@ function scheduleMailFilesRefresh() {
 }
 
 document.body.addEventListener("mailFilesChanged", scheduleMailFilesRefresh);
+
+// «Скачати за посиланням» — ЧЕРГОЮ, по LINK_PARALLEL файлів одночасно.
+//
+// Раніше кнопка будила всі рядки разом (`dl-all from:body`): лист із 18
+// файлами Google Диску = 18 POST за раз (прод 08.10.26 01:35, лист 1050). Браузер
+// тримає до одного сервера лише 6 зʼєднань, тож ВСІ інші запити сторінки —
+// полли списку й дзеркала, кліки, відкриття листа — стояли в черзі за файлами,
+// поки ті качались, і сторінка «зависала» (власник 08.10.26). Тепер у дорозі
+// не більше двох скачувань, чотири зʼєднання лишаються сторінці.
+//
+// Уже скачані рядки (done/skip/handled) у чергу не йдуть — сервер однаково
+// відповів би «такий файл уже є». Клік по ОДНОМУ рядку працює як був.
+const LINK_PARALLEL = 2;
+const linkQueue = [];
+let linkInFlight = 0;
+
+function linkQueueBusy() {
+  return linkQueue.length > 0 || linkInFlight > 0;
+}
+
+function pumpLinkQueue() {
+  while (linkInFlight < LINK_PARALLEL && linkQueue.length) {
+    const row = linkQueue.shift();
+    if (!row.isConnected || !window.htmx) continue;
+    linkInFlight += 1;
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      linkInFlight = Math.max(0, linkInFlight - 1);
+      pumpLinkQueue();
+    };
+    // Події htmx запит шле на САМ рядок; після outerHTML-свопу він відірваний
+    // і до body нічого не спливає (CLAUDE.md §14, шкала D3) — тому слухаємо на
+    // рядку, плюс запасний таймер, щоб черга не стала навіки на загубленій події.
+    ["htmx:afterRequest", "htmx:sendError", "htmx:timeout", "htmx:responseError"].forEach((name) => {
+      row.addEventListener(name, done, { once: true });
+    });
+    window.setTimeout(done, HTMX_SLOW_TIMEOUT_MS + 5000);
+    window.htmx.trigger(row, "dl-go");
+  }
+}
+
+document.body.addEventListener("dl-all", () => {
+  const rows = document.querySelectorAll("#mail-detail .linkrow:not(.done):not(.skip):not(.handled)");
+  rows.forEach((row) => {
+    if (!linkQueue.includes(row) && !row.classList.contains("htmx-request")) linkQueue.push(row);
+  });
+  pumpLinkQueue();
+});
 
 // Дедлайн на HTMX-запит.
 //
