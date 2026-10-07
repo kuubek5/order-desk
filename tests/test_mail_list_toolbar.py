@@ -23,6 +23,10 @@ def test_toolbar_days_and_material_edge(app_db):  # noqa: F811
     # `datetime.now()` тест падав у CI (UTC) щоночі 00:00–03:00 за Києвом:
     # листи «щойно» лягали на вчорашню дату (реліз 0.21.36, 02.10.26).
     now = mail_router_mod.business_now().replace(tzinfo=None)  # у базі час без зони
+    # Роздільники днів — за КАЛЕНДАРНОЮ датою листа. О 00:06 «мінус 9 хвилин»
+    # уже вчора, і «сьогоднішні» листи розпадались на два дні (падіння
+    # 08.10.26 о 00:06). Відлік — не раніше 00:10 поточного дня.
+    now = max(now, now.replace(hour=0, minute=10, second=0, microsecond=0))
     with session_factory() as db:
         ensure_seeded(db)  # бібліотека матеріалів, як у живій базі — інакше бейджів немає
         db.commit()
