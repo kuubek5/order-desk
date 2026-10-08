@@ -1533,3 +1533,50 @@ function mailStepRow(forward) {
   next.click();
   return true;
 }
+
+// ── Кількість з назв STL (STL_UNITS_BRIEF.md, власник 08.10.26) ───────────
+// Сервер підставляє в «К-сть» число унікальних зубів FDI з назв файлів і ставить
+// бейдж «?» — оператор бачить, що число не його. `data-qty-auto` на полі тримає
+// авто-число; щойно оператор вписав інше, бейдж гасне (і авто-число більше не
+// оновлюється: число людини не перезаписуємо). Галочки файлів у картці листа
+// (часткове прийняття кількох кольорів) перераховують авто-число, поки поле
+// його ще тримає.
+function qtyBadgeFor(input) {
+  const box = input.closest(".field, .mb-f");
+  return box ? box.querySelector(".qty-auto") : null;
+}
+
+function syncQtyBadge(input) {
+  const badge = qtyBadgeFor(input);
+  if (!badge) return;
+  const auto = input.dataset.qtyAuto || "";
+  badge.hidden = !(auto && input.value.trim() === auto);
+}
+
+document.addEventListener("input", (event) => {
+  const input = event.target;
+  if (!input || !input.matches || !input.matches("input[name='quantity'][data-qty-auto]")) return;
+  // Своє число — поле більше не стежить за файлами.
+  if (input.value.trim() !== (input.dataset.qtyAuto || "")) {
+    input.dataset.qtyAuto = "";
+    input.dataset.qtyManual = "1";
+  }
+  syncQtyBadge(input);
+});
+
+document.addEventListener("change", (event) => {
+  const box = event.target;
+  if (!box || !box.matches || !box.matches(".mc-attcb")) return;
+  const form = box.closest("form") || document;
+  const qty = form.querySelector("#mc-qty[data-qty-auto]");
+  if (!qty || qty.dataset.qtyManual === "1") return;
+  if (qty.value.trim() !== (qty.dataset.qtyAuto || "")) return;
+  const teeth = new Set();
+  form.querySelectorAll(".mc-attcb:checked[data-teeth]").forEach((cb) => {
+    cb.dataset.teeth.split(",").forEach((t) => { if (t) teeth.add(t); });
+  });
+  const n = teeth.size ? String(teeth.size) : "";
+  qty.value = n;
+  qty.dataset.qtyAuto = n;
+  syncQtyBadge(qty);
+});

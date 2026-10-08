@@ -87,8 +87,12 @@
                            hx-include="closest .mb-row" hx-target="#bt-path-{{ e.id }}" hx-swap="innerHTML"
                            hx-trigger="change">
                 </label>
-                <label class="mb-f"><span>К-сть</span>
-                    <input type="text" name="quantity" class="suminput mono" value="{{ r.quantity }}" placeholder="—">
+                {# Кількість з назв STL: бейдж «?», поки в полі авто-число
+                   (STL_UNITS_BRIEF.md; той самий розрахунок, що в картці). #}
+                <label class="mb-f"><span>К-сть{% if r.qty_units and r.qty_units.units %} <span class="qty-auto"{% if not r.qty_auto %} hidden{% endif %}
+                       title="Пораховано з назв файлів: {{ r.qty_units.summary }}. Перевірте — бейдж зникне, коли зміните число або приймете роботу.">?</span>{% endif %}</span>
+                    <input type="text" name="quantity" class="suminput mono" value="{{ r.quantity }}" placeholder="—"
+                           {% if r.qty_units and r.qty_units.units %}data-qty-auto="{{ r.qty_units.units if r.qty_auto else '' }}"{% endif %}>
                 </label>
                 {# Опак і Sum3D — як у картці листа й ручному додаванні
                    (власник 25.09.26); обидва необовʼязкові. #}
@@ -103,6 +107,10 @@
                    передперевірки (_mail_batch_preflight.html), mail.js. #}
                 <input type="hidden" name="accept_anyway" value="">
             </div>
+
+            {% if r.qty_mismatch %}
+            <p class="mb-qtycheck" role="status">Кількість не сходиться: у листі <b class="mono">{{ r.qty_letter }}</b>, у назвах файлів <b class="mono">{{ r.qty_units.units }}</b> (<span class="mono">{{ r.qty_units.summary }}</span>) — перевірте.</p>
+            {% endif %}
 
             <div class="mb-pathline">
                 <span class="wph-line" id="bt-path-{{ e.id }}">

@@ -140,6 +140,7 @@ from app.services.mail_accept import (
 )
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
 from app.services import mail_auto_backfill
+from app.services.stl_units import count_units, is_model_file, letter_quantity, teeth_in_filename
 from app.services.sheet_writeback import write_sheet_fields
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
@@ -1173,6 +1174,9 @@ def _mail_panel_context(
         material_color = best_material(db, guess, material_ctx) or guess
     if kind is None:
         kind = email.kind_guess or ""
+    # Порожнє поле — ще семена: тоді кількість може дати назва STL (нижче).
+    # Число, яке прийшло з форми, — оператора, і його не чіпаємо ніколи.
+    quantity_seeded = quantity is None
     if quantity is None:
         quantity = email.quantity_guess or ""
     selected_ids = set(attachment_ids) if attachment_ids else None
@@ -1188,6 +1192,19 @@ def _mail_panel_context(
             a.id for a in partial_state["unclaimed_attachments"]
             if a.id in on_disk and a.id not in dup_report.copy_of
         }
+    # Кількість одиниць з назв STL (STL_UNITS_BRIEF.md, власник 08.10.26): унікальні
+    # зуби FDI по файлах, що підуть у цю роботу. Лише підказка з бейджем «?» —
+    # рішення за оператором; у таблицю після прийняття йде просте число.
+    unit_files = [
+        a for a in partial_state["unclaimed_attachments"]
+        if selected_ids is None or a.id in selected_ids
+    ]
+    units = count_units(a.filename for a in unit_files)
+    if quantity_seeded and units.units:
+        quantity = str(units.units)
+    letter_qty = letter_quantity(email.quantity_guess)
+    # Табличка «не відповідає дійсності»: клієнт написав одне, файли кажуть інше.
+    qty_mismatch = bool(units.units and letter_qty is not None and letter_qty != units.units)
     with perf.span("share:export"):
         dir_ctx = _card_dir_context(
             db, email, partial_state, sender_hint,
@@ -1247,6 +1264,19 @@ def _mail_panel_context(
         "opak_hint": letter_opak_hint(material_ctx),
         "kind": kind,
         "quantity": quantity,
+        # Одиниці з назв STL: число, звідки воно (по квадрантах), чи поле зараз
+        # тримає саме його (тоді бейдж «?»), і що написав клієнт.
+        "qty_units": units,
+        "qty_auto": bool(units.units) and str(quantity).strip() == str(units.units),
+        "qty_letter": letter_qty,
+        "qty_mismatch": qty_mismatch,
+        # Зуби кожного файлу — для перерахунку в браузері, коли оператор знімає
+        # чи ставить галочку на файлі (часткове прийняття кількох кольорів).
+        "att_teeth": {
+            a.id: ",".join(str(t) for t in teeth_in_filename(a.filename))
+            for a in partial_state["unclaimed_attachments"]
+            if is_model_file(a.filename)
+        },
         # Sum3D і опак зберігаються в картці після невдалої спроби прийняти, як
         # решта полів: інакше попередження «не вписано кількість» стирало б уже
         # вписаний Sum3D.

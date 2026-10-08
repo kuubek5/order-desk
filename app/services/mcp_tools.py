@@ -629,6 +629,68 @@ def tool_mail_material(db: Session, args: dict) -> dict[str, Any]:
     return out
 
 
+def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
+    """Звірка «кількість з назв STL» на справжніх листах (STL_UNITS_BRIEF.md).
+
+    Для кожної поштової роботи за останні `days` днів: кількість у роботі (її
+    вписав або підтвердив оператор) проти порахованої з назв її файлів. Назви
+    файлів НЕ віддаються — у них бувають імена пацієнтів; лише числа й зуби."""
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    from app.business_day import business_today
+    from app.services.order_dates import parse_sheet_tab
+    from app.services.stl_units import count_units
+
+    days = _int_arg(args, "days", default=3, low=1, high=30)
+    low = business_today() - _td(days=days - 1)
+    # Від робіт вікна (з запасом на прийняття заднім числом), не від усіх
+    # вкладень бази: тих за роки — десятки тисяч.
+    orders = list(db.scalars(
+        select(Order).where(
+            Order.source == "email",
+            Order.created_at >= _dt.combine(low - _td(days=3), _dt.min.time()),
+        )
+    ))
+    names: dict[int, list[str]] = {}
+    if orders:
+        for order_id, filename in db.execute(
+            select(Attachment.order_id, Attachment.filename)
+            .where(Attachment.order_id.in_([o.id for o in orders]))
+        ):
+            names.setdefault(order_id, []).append(filename)
+    rows: list[dict[str, Any]] = []
+    stats = {"збіг": 0, "розбіжність": 0, "без зубів у назвах": 0, "капа (вручну)": 0}
+    for order in orders:
+        day = parse_sheet_tab(order.sheet_tab)
+        if day is None or day < low or order.id not in names:
+            continue
+        result = count_units(names[order.id])
+        quantity = (order.quantity or "").strip()
+        if result.uncounted:
+            verdict = "капа (вручну)"
+        elif not result.units:
+            verdict = "без зубів у назвах"
+        elif quantity.isdigit() and int(quantity) == result.units:
+            verdict = "збіг"
+        else:
+            verdict = "розбіжність"
+        stats[verdict] += 1
+        rows.append({
+            "id": order.id,
+            "вкладка": order.sheet_tab,
+            "клієнт": order.client_name,
+            "кількість_у_роботі": quantity or None,
+            "з_назв": result.units,
+            "зуби": result.summary,
+            "файлів_моделей": result.model_files,
+            "без_номерів": len(result.without_teeth),
+            "висновок": verdict,
+        })
+    rows.sort(key=lambda r: (r["висновок"] != "розбіжність", r["id"]))
+    return {"днів": days, "підсумок": stats, "роботи": rows[:200]}
+
+
 # ── Реєстр ───────────────────────────────────────────────────────────────────
 
 
@@ -909,6 +971,27 @@ TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=device_diag.puzzles,
+    ),
+)
+
+TOOLS = TOOLS + (
+    Tool(
+        name="kmill_mail_units",
+        description=(
+            "Кількість одиниць з назв STL проти кількості в поштових роботах за "
+            "останні дні: «збіг / розбіжність / без зубів у назвах» по кожній "
+            "роботі, з порахованими зубами. Назви файлів не віддаються (у них "
+            "бувають імена пацієнтів). Для звірки підрахунку зубів на даних цеху."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "minimum": 1, "maximum": 30,
+                         "description": "Скільки останніх робочих днів (типово 3)."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_mail_units,
     ),
 )
 

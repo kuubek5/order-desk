@@ -1533,3 +1533,13 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    виштовхував перемикач за край картки. Тепер чіп стискається (текст і так
    обрізається трикрапкою), а перемикач лишається повним. */
 .mailv2 .mc-hintbox .mc-hint{flex:0 1 auto}
+
+/* Кількість з назв STL (STL_UNITS_BRIEF.md): «?» біля «К-сть», поки в полі
+   авто-число з назв файлів. Тон попередження, не тривоги — це прохання
+   перевірити, а не помилка. */
+.mailv2 .qty-auto{display:inline-grid;place-items:center;width:15px;height:15px;margin-left:4px;vertical-align:1px;
+  border-radius:50%;font-size:var(--fs-0);font-weight:700;line-height:1;cursor:help;
+  color:var(--warn-ink);background:rgba(var(--warn-rgb),.18);box-shadow:inset 0 0 0 1px rgba(var(--warn-rgb),.55)}
+.mailv2 .qty-auto[hidden]{display:none}
+.mailv2 .mb-qtycheck{margin:2px 0 6px;font-size:var(--fs-1);color:var(--warn-ink)}
+.mailv2 .mb-qtycheck b{color:var(--warn)}
