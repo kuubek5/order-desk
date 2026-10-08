@@ -152,6 +152,21 @@ def _fresh_log_throttle():
 
 
 @pytest.fixture(autouse=True)
+def _mail_auto_backfill_recorded(monkeypatch):
+    """Ввімкнене «Авто» докачує листи відправника У ФОНІ, з IMAP-входом на
+    кожен (app/services/mail_auto_backfill). У тестах фон НЕ запускається, а
+    записується: інакше перемикач у будь-якому тесті пішов би в мережу з
+    чужого потоку. Тести самого докачування кличуть `_backfill` напряму або
+    читають записане тут (`mail_auto_backfill.recorded`)."""
+    from app.services import mail_auto_backfill
+
+    recorded: list = []
+    monkeypatch.setattr(mail_auto_backfill, "_submit", lambda fn, *args: recorded.append(args))
+    monkeypatch.setattr(mail_auto_backfill, "recorded", recorded, raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _mail_accept_background_inline(monkeypatch):
     """Прийняття листа переносить його в папку скриньки У ФОНІ і памʼятає
     вкладку дня хвилину (app/services/mail_accept). У тестах фон виконується

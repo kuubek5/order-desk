@@ -1021,16 +1021,37 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    Власний шар (z-index), бо рядки списку нижче малюються пізніше й лягали
    поверх меню «Перемістити». */
 .mailv2 .mail-batchbar{position:relative;z-index:3;flex-wrap:nowrap;box-sizing:border-box;min-height:42px;padding-top:4px;padding-bottom:4px}
-.mailv2 .mb-selall,.mailv2 .mb-selcount,.mailv2 .mb-actions .btn{white-space:nowrap}
+.mailv2 .mb-selall,.mailv2 .mb-selcount{white-space:nowrap}
 .mailv2 .mail-batchbar.has-sel .mb-selall span{display:none}
 .mailv2 .mb-selcount{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.mailv2 .mb-actions{display:inline-flex;align-items:center;gap:6px;margin:0 0 0 auto;flex:0 0 auto}
+/* Дії над обраними — одна сегментована панель, як фільтр матеріалу поруч
+   (власник 08.10.26: дві важкі рамки «↦ Перемістити» / «✕ Відхилити» на весь
+   рядок виглядали жахливо). Свій клас `.mb-act`, а не `.btn`: теми кнопок із
+   кабінету (`html[data-buttons]`) переписують `.btn` і робили зі смуги дій
+   скляний бурштиновий блок. Іконки — SVG, не гліфи шрифту. «Відхилити» тихий,
+   червоніє лише під курсором: це не головна дія смуги. */
+.mailv2 .mb-actions{display:inline-flex;align-items:stretch;gap:0;margin:0 0 0 auto;flex:0 0 auto;
+  padding:2px;border:1px solid var(--line-2);border-radius:9px;background:var(--bg-rail)}
 .mailv2 .mb-actions[hidden]{display:none}
+/* Роздільник лише між видимими діями: перші діти форми — приховані поля. */
+.mailv2 .mb-actions>:is(.mb-move,.mb-act)~:is(.mb-move,.mb-act){position:relative;margin-left:5px}
+.mailv2 .mb-actions>:is(.mb-move,.mb-act)~:is(.mb-move,.mb-act)::before{content:"";position:absolute;left:-3px;top:6px;bottom:6px;width:1px;background:var(--line-2)}
+.mailv2 .mb-actions>.mb-move{display:flex}
+.mailv2 .mb-act{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;margin:0;
+  border:0;border-radius:7px;background:none;color:var(--ink-2);font:inherit;font-size:var(--fs-1);font-weight:500;
+  white-space:nowrap;cursor:pointer;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .mb-act svg{width:15px;height:15px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .mb-act .mb-act-caret{width:13px;height:13px;margin-left:-2px;opacity:.7;transition:transform var(--ui-speed) ease}
+.mailv2 .mb-act:hover{background:var(--raise);color:var(--ink)}
+.mailv2 .mb-act:focus-visible{outline:2px solid var(--accent-c);outline-offset:-2px}
+.mailv2 .mb-act.is-danger:hover{background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink)}
+.mailv2 .mb-move[open]>.mb-act{background:var(--raise);color:var(--ink)}
+.mailv2 .mb-move[open]>.mb-act .mb-act-caret{transform:rotate(180deg)}
+@media (prefers-reduced-motion:reduce){.mailv2 .mb-act,.mailv2 .mb-act .mb-act-caret{transition:none}}
 /* Меню «Перемістити»: папки скриньки під кнопкою (як у ukr.net) */
 .mailv2 .mb-move{position:relative}
 .mailv2 .mb-move>summary{list-style:none}
 .mailv2 .mb-move>summary::-webkit-details-marker{display:none}
-.mailv2 .mb-move[open]>summary{border-color:var(--accent-b);color:var(--ink)}
 .mailv2 .mb-move-body{position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-lightbox);min-width:280px;max-height:360px;overflow:auto;display:flex;flex-direction:column;padding:6px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);box-shadow:0 20px 60px -24px rgba(0,0,0,.9)}
 /* Меню «Перемістити» (власник 25.09.26): заголовок і робочі папки → «На
    уточненні» → згорнуті «Інші папки». Фрагмент IMAP (.mb-move-folders) —

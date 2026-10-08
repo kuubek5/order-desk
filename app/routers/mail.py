@@ -139,6 +139,7 @@ from app.services.mail_accept import (
     write_merged_row,
 )
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
+from app.services import mail_auto_backfill
 from app.services.sheet_writeback import write_sheet_fields
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
@@ -1928,6 +1929,8 @@ def add_sender_auto(
         else:
             row.auto_accept = True
         db.commit()
+        # Листи цієї адреси, що вже чекають у «Вхідних», — докачати у фоні.
+        mail_auto_backfill.schedule_backfill(db, {key})
     return RedirectResponse("/mail?view=auto", status_code=303)
 
 
@@ -1938,8 +1941,9 @@ def toggle_sender_auto(
     db: Session = Depends(get_db),
 ):
     """Flip a sender's trusted auto-download flag. Trusting a sender means
-    their future letters have attachments downloaded automatically; existing
-    letters already in triage are untouched. Same gate as the other filter
+    their future letters have attachments downloaded automatically. Листи, що
+    вже чекають у «Вхідних» без файлів, докачуються у фоні
+    (`mail_auto_backfill`, власник 08.10.26). Same gate as the other filter
     routes — це рішення про запис чужих файлів на диск."""
     user = get_current_user(request, db)
     if user is None:
@@ -1951,6 +1955,8 @@ def toggle_sender_auto(
         raise HTTPException(status_code=404, detail="sender not found")
     row.auto_accept = not row.auto_accept
     db.commit()
+    if row.auto_accept:
+        mail_auto_backfill.schedule_backfill(db, {row.sender_key})
     return RedirectResponse("/mail?view=auto", status_code=303)
 
 
@@ -1996,6 +2002,10 @@ def toggle_letter_sender_auto(
         else:
             row.auto_accept = True
     db.commit()
+    if is_auto_sender(db, email):
+        # Увімкнули — докачати й решту листів цього відправника, що вже
+        # чекають у «Вхідних» (сам цей лист теж, якщо його файли ще не тут).
+        mail_auto_backfill.schedule_backfill(db, {key})
     return templates.TemplateResponse(
         request, "_mail_auto_toggle.html",
         {"email": email, "auto_on": is_auto_sender(db, email)},
