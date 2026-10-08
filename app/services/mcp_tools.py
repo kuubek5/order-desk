@@ -661,16 +661,14 @@ def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
             if order_id is not None:
                 names.setdefault(order_id, []).append(filename)
     rows: list[dict[str, Any]] = []
-    stats = {"збіг": 0, "розбіжність": 0, "без зубів у назвах": 0, "капа (вручну)": 0}
+    stats = {"збіг": 0, "розбіжність": 0, "без зубів у назвах": 0}
     for order in orders:
         day = parse_sheet_tab(order.sheet_tab)
         if day is None or day < low or order.id not in names:
             continue
         result = count_units(names[order.id])
         quantity = (order.quantity or "").strip()
-        if result.uncounted:
-            verdict = "капа (вручну)"
-        elif not result.units:
+        if not result.units:
             verdict = "без зубів у назвах"
         elif quantity.isdigit() and int(quantity) == result.units:
             verdict = "збіг"

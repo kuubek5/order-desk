@@ -38,10 +38,24 @@ _DATE_TIME = re.compile(
 # `-<тип>_cad` (dev-копія 08.10.26: загальне правило давало там зайві 16 і 13).
 _EXOCAD_TEETH = re.compile(r"(?<!\d)((?:\d{2}-)*\d{2})-([A-Za-z]+)_cad", re.IGNORECASE)
 
-# Капа (`bitesplint_cad`) — одна деталь на всю щелепу, а в таблиці її кількість
-# інша (06.10.26: «kappa 14» у трьох клієнтів), тож номер зуба в назві про
-# одиниці нічого не каже. Такі файли авто не рахуємо — поле лишається оператору.
-UNCOUNTED_TYPES = {"bitesplint", "splint", "nightguard"}
+# Капа (`bitesplint_cad`) — одна деталь на всю щелепу, і в таблиці вона завжди
+# 14 одиниць (власник 08.10.26; 06.10.26 «kappa 14» у трьох клієнтів). Номер
+# зуба в назві (`…-41-bitesplint_cad`) каже лише, ЯКА щелепа: 1x/2x — верх,
+# 3x/4x — низ. Дві капи (верх і низ) — 28; копія тієї самої капи — ні.
+SPLINT_TYPES = {"bitesplint", "splint", "nightguard"}
+SPLINT_UNITS = 14
+# Як капу називають у цеху й клієнти (власник 08.10.26): сплінт, капа, каппа —
+# і латиницею. Окремим словом у назві файлу, а не частиною іншого слова.
+_SPLINT_WORD = re.compile(
+    r"(?<![^\W\d_])(?:bite\s*splint|splint|night\s*guard|kap{1,2}a|сплінт|сплинт|кап{1,2}а)(?![^\W\d_])",
+    re.IGNORECASE,
+)
+
+
+def is_splint_file(filename: str) -> bool:
+    """Файл капи: тип Exocad `bitesplint_cad` або слово «капа»/«сплінт»/… у назві."""
+    name = PurePath(filename or "").stem
+    return exocad_type(filename) in SPLINT_TYPES or bool(_SPLINT_WORD.search(name.replace("_", " ")))
 _SPLIT = re.compile(r"[-_\s.]+")
 
 
@@ -84,16 +98,16 @@ class UnitsCount:
     repeated: list[int] = field(default_factory=list)
     # Файли моделей, у назві яких зубів немає (моделі щелеп, ясна, не Exocad).
     without_teeth: list[str] = field(default_factory=list)
-    # Файли, які свідомо не рахуються (капи) — їх кількість лише вручну.
-    uncounted: list[str] = field(default_factory=list)
+    # Щелепи кап: «верх» / «низ» / «щелепа ?» (номера зуба в назві немає).
+    splint_jaws: list[str] = field(default_factory=list)
     model_files: int = 0
 
     @property
     def summary(self) -> str:
         """Підказка «звідки число»: зуби по квадрантах, повтори окремо."""
+        parts = [f"капа {jaw} = {SPLINT_UNITS}" for jaw in self.splint_jaws]
         if not self.teeth:
-            return ""
-        parts = []
+            return " · ".join(parts)
         for quadrant in (1, 2, 3, 4):
             row = [str(t) for t in self.teeth if t // 10 == quadrant]
             if row:
@@ -112,8 +126,10 @@ def count_units(filenames: Iterable[str]) -> UnitsCount:
         if not is_model_file(name):
             continue
         result.model_files += 1
-        if exocad_type(name) in UNCOUNTED_TYPES:
-            result.uncounted.append(PurePath(name).name)
+        if is_splint_file(name):
+            jaw = _splint_jaw(teeth_in_filename(name), name)
+            if jaw not in result.splint_jaws:
+                result.splint_jaws.append(jaw)
             continue
         teeth = teeth_in_filename(name)
         if not teeth:
@@ -123,9 +139,25 @@ def count_units(filenames: Iterable[str]) -> UnitsCount:
             seen[tooth] = seen.get(tooth, 0) + 1
     result.teeth = sorted(seen)
     result.repeated = sorted(t for t, n in seen.items() if n > 1)
-    # Капа в роботі — число з решти файлів було б неповним: не підставляємо.
-    result.units = 0 if result.uncounted else len(result.teeth)
+    result.units = len(result.teeth) + SPLINT_UNITS * len(result.splint_jaws)
     return result
+
+
+_UPPER_WORD = re.compile(r"верх|верхн|upper|maxill", re.IGNORECASE)
+_LOWER_WORD = re.compile(r"низ|нижн|lower|mandib", re.IGNORECASE)
+
+
+def _splint_jaw(teeth: list[int], name: str = "") -> str:
+    """Щелепа капи: з номера зуба, а без нього — зі слова в назві."""
+    quadrants = {t // 10 for t in teeth}
+    if quadrants and quadrants <= {1, 2}:
+        return "верх"
+    if quadrants and quadrants <= {3, 4}:
+        return "низ"
+    upper, lower = bool(_UPPER_WORD.search(name)), bool(_LOWER_WORD.search(name))
+    if upper != lower:
+        return "верх" if upper else "низ"
+    return "щелепа ?"
 
 
 def letter_quantity(raw: str | None) -> int | None:

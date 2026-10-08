@@ -67,12 +67,45 @@ def test_same_tooth_in_two_files_is_one_unit():
     assert "у кількох файлах: 34" in result.summary
 
 
-def test_bite_splint_is_not_auto_counted():
-    """Капа: у таблиці «kappa 14», а в назві один зуб — число з назви хибне."""
-    result = count_units(["2024-02-14_7324612-001-41-bitesplint_cad.stl"])
-    assert result.units == 0 and result.uncounted
+def test_bite_splint_is_14_per_jaw():
+    """Власник 08.10.26: капа завжди 14. Зуб у назві каже лише, яка щелепа."""
+    lower = count_units(["2024-02-14_7324612-001-41-bitesplint_cad.stl"])
+    assert lower.units == 14 and lower.splint_jaws == ["низ"]
+    assert lower.summary == "капа низ = 14"
+    # Копія тієї самої капи — та сама щелепа, не 28.
+    copies = count_units(["a-41-bitesplint_cad.stl", "a-41-bitesplint_cad — копия (2).stl"])
+    assert copies.units == 14
+    both = count_units(["a-41-bitesplint_cad.stl", "a-11-bitesplint_cad.stl"])
+    assert both.units == 28 and sorted(both.splint_jaws) == ["верх", "низ"]
     mixed = count_units(["a-41-bitesplint_cad.stl", "a-36-crown_cad.stl"])
-    assert mixed.units == 0, "з капою в роботі неповне число не підставляємо"
+    assert mixed.units == 15 and mixed.summary == "капа низ = 14 · 36"
+
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Іваненко капа верх.stl", "kappa_lower.stl", "Kapa 2.stl", "каппа.STL", "сплінт низ.stl",
+     "night_guard.stl", "patient-splint.stl", "a-41-bitesplint_cad.stl"],
+)
+def test_splint_names(name):
+    """Власник 08.10.26: капу ще звуть сплінт, капа, каппа — і латиницею."""
+    from app.services.stl_units import is_splint_file
+
+    assert is_splint_file(name)
+    assert count_units([name]).units == 14
+
+
+def test_splint_jaw_from_words_when_no_tooth_number():
+    both = count_units(["Іваненко капа верх.stl", "Іваненко капа низ.stl"])
+    assert both.units == 28 and both.splint_jaws == ["верх", "низ"]
+    assert count_units(["kappa_lower.stl", "kappa lower copy.stl"]).units == 14
+
+
+@pytest.mark.parametrize("name", ["kapacity-36-crown_cad.stl", "капак.stl", "a-36-crown_cad.stl"])
+def test_not_a_splint(name):
+    from app.services.stl_units import is_splint_file
+
+    assert not is_splint_file(name)
 
 
 def test_letter_quantity():
@@ -167,7 +200,7 @@ def test_mcp_mail_units_compares_without_leaking_file_names(app_db):  # noqa: F8
                           filename="a-11-crown_cad.stl", saved_path="x"))
         db.commit()
         out = tool_mail_units(db, {"days": 3})
-    assert out["підсумок"] == {"збіг": 1, "розбіжність": 1, "без зубів у назвах": 0, "капа (вручну)": 0}
+    assert out["підсумок"] == {"збіг": 1, "розбіжність": 1, "без зубів у назвах": 0}
     first = out["роботи"][0]
     assert first["висновок"] == "розбіжність" and first["з_назв"] == 2 and first["кількість_у_роботі"] == "3"
     assert "Іваненко" not in repr(out), "назви файлів (імена пацієнтів) не віддаються"
