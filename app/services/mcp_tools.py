@@ -658,7 +658,8 @@ def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
             select(Attachment.order_id, Attachment.filename)
             .where(Attachment.order_id.in_([o.id for o in orders]))
         ):
-            names.setdefault(order_id, []).append(filename)
+            if order_id is not None:
+                names.setdefault(order_id, []).append(filename)
     rows: list[dict[str, Any]] = []
     stats = {"збіг": 0, "розбіжність": 0, "без зубів у назвах": 0, "капа (вручну)": 0}
     for order in orders:
