@@ -5,6 +5,25 @@
 <div id="handout-list"{% if handout_layout == 'nav' %} class="with-nav"{% endif %}>
     {% if client_groups %}
 
+    {# Смуга «де лежить»: скільки робіт у якій печі, на верстатах і без мітки.
+       Усередині `#handout-list`, щоб лічильники оновлювались разом із мітками;
+       обраний фільтр живе на `main` (поза свапом) — handout.js. Клік лише
+       пригашує рядки інших місць, порядок НЕ міняється (правило видачі №1). #}
+    {% if place_view and place_view.strip %}
+    <div class="hplaces" role="group" aria-label="Де лежать роботи">
+        {% for item in place_view.strip %}
+        <button type="button" class="hplace {{ item.key }}" data-place-filter="{{ item.key }}" aria-pressed="false"{% if not item.count %} data-zero{% endif %}
+                title="{{ item.label }}: {{ item.count }} — пригасити решту (ще клік — показати всі)">
+            <span class="hplace-n mono">{{ item.count }}</span>
+            <span class="hplace-t">{{ item.label }}{% if item.note %} · <b class="mono">{{ item.note }}</b>{% endif %}</span>
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if place_notice %}
+    <div class="hplace-note is-{{ place_notice.kind }}" role="status">{{ place_notice.message }}</div>
+    {% endif %}
+
     {% if handout_layout == 'nav' %}
     {# Покажчик дня стоїть УСЕРЕДИНІ цього ж фрагмента свідомо: галочка
        «знайдено» підмінює саме `#handout-list`, і якби покажчик лежав зовні,

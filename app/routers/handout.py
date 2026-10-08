@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -79,13 +80,17 @@ from app.services.handout import (
 )
 from app.services import folder_binding
 from app.services.folder_binding import entry_fully_bound, rel_key
+from app.services.handout_place import FURNACE_BY_KEY, FURNACES, place_view_for, set_disc_place
 from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
 from app.services.sheet_writeback import (
+    SHEET_PAUSED_MESSAGE,
     await_on_writeback,
     clear_group_fills_background,
     issue_group_warm,
+    order_writes_to_sheet,
     set_client_row_fill_background,
+    write_place_cells_warm,
 )
 from app.settings_store import get_export_folder_path
 from app.stl_preview import build_preview_token_lexical, validate_preview_roots
@@ -539,6 +544,11 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             })
     flat_rows.sort(key=lambda row: sheet_order_key(row["order"]))
 
+    # «Де лежить робота» (бриф HANDOUT_PLACE_BRIEF.md): мітка в рядку й смуга
+    # над списком — з ТОГО САМОГО набору, що малюється (після фільтра дня й
+    # джерела), інакше лічильник смуги сперечався б із рядками під ним.
+    place_view = place_view_for(db, [o for g in client_groups for o in g["orders"]])
+
     done_groups = sum(1 for g in client_groups if g["all_found"])
     # Рахунок ЗА ОБРАНИЙ ДЕНЬ — прохання власника: яке число видане, за те
     # число й рахуємо. Так і виходить: `eligible` вище вже звужено до дня, а
@@ -624,6 +634,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             # бо він і вирішує, чим малювати список.
             "handout_flow": (user.handout_flow or "") if user else "",
             "flat_rows": flat_rows,
+            "place_view": place_view,
+            "place_furnaces": FURNACES,
             "unbound_count": unbound_count,
             # QC-чеклист (опційний, вимкнений за замовчуванням). Їде і у
             # фрагмент карток теж: кнопки «знайдено» живуть саме там, і після
@@ -657,7 +669,9 @@ def get_handout(
     )
 
 
-def handout_cards_response(request: Request, user, source: str, day: str, db: Session):
+def handout_cards_response(
+    request: Request, user, source: str, day: str, db: Session, place_notice: dict | None = None
+):
     """Лише список карток — відповідь на HTMX-відмітку.
 
     Сторінка НЕ перезавантажується, тому екран лишається рівно там, де
@@ -669,6 +683,7 @@ def handout_cards_response(request: Request, user, source: str, day: str, db: Se
     # і друга копія дала б дубльований id (див. коментар у _handout_cards.html).
     context = handout_context(request, user, source, day, db)
     context["oob_kpi"] = True
+    context["place_notice"] = place_notice
     response = templates.TemplateResponse(request, "_handout_cards.html", context)
     # Свіжий відбиток — у ТІЙ САМІЙ відповіді, що й нові картки: інакше
     # оператор, який щойно клацнув галочку, отримував би зайве оновлення
@@ -1097,3 +1112,66 @@ async def issue_handout_group(
     if request.headers.get("HX-Request"):
         return handout_cards_response(request, user, source, day, db)
     return RedirectResponse(back_url, status_code=303)
+
+
+# Скільки чекати на таблицю при мітці печі. Клік має бути швидким: довше —
+# кажемо чесно «запис у черзі», мітка в CRM уже стоїть.
+_PLACE_WRITE_TIMEOUT_SECONDS = 20
+
+
+@router.post("/handout/place/{order_id}")
+async def set_handout_place(
+    request: Request,
+    order_id: int,
+    place: str = Form(""),
+    source: str = Form("all"),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Мітка печі на ДИСК — один клік з меню в рядку видачі, без підтверджень
+    (правило видачі №2). `place` — ключ печі (`p1`/`bk`/`p3`/`cn`) або порожньо
+    («прибрати мітку»).
+
+    Мітка лягає всім клієнтським роботам того самого Sum3D у тій самій вкладці
+    (`handout_place.disc_orders`) і пишеться в колонку «Відфрезерував» тим
+    словом, яким її пишуть руками. Запис — на воркері write-back (`await`, не
+    event loop), перебудова списку — у threadpool: вона ходить по мережевій
+    шарі export (див. коментар до `mark_found`). Порядок списку не змінюється."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    place = (place or "").strip()
+    if place and place not in FURNACE_BY_KEY:
+        raise HTTPException(status_code=400, detail="невідома піч")
+
+    changed = set_disc_place(db, user, order, place)
+    db.commit()
+    label = FURNACE_BY_KEY[place].label if place else "Мітку прибрано"
+    count = len(changed)
+    notice: dict | None = None
+    if count:
+        disc = f" диска {order.sum3d_id}" if order.sum3d_id else ""
+        works = "робота" if count == 1 else ("роботи" if count < 5 else "робіт")
+        notice = {"kind": "success", "message": f"{label}: {count} {works}{disc}"}
+        to_sheet = [o.id for o in changed if order_writes_to_sheet(o)]
+        if to_sheet:
+            if sync_control.is_paused():
+                notice = {"kind": "info", "message": f"{notice['message']} — {SHEET_PAUSED_MESSAGE}"}
+            else:
+                error = await await_on_writeback(
+                    write_place_cells_warm, to_sheet, (FURNACE_BY_KEY[place].word if place else ""),
+                    timeout=_PLACE_WRITE_TIMEOUT_SECONDS,
+                )
+                if error:
+                    notice = {
+                        "kind": "error",
+                        "message": f"{notice['message']} — у таблицю не записано: {error}",
+                    }
+    if request.headers.get("HX-Request"):
+        return await run_in_threadpool(
+            handout_cards_response, request, user, source, day, db, notice
+        )
+    return RedirectResponse(handout_back_url(source, day), status_code=303)

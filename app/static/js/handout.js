@@ -131,6 +131,56 @@ document.body.addEventListener("htmx:afterSettle", (event) => {
   restoreHandoutCollapsed();
   applyHandoutFilter();
   applyHandoutLooking();
+  syncPlaceStrip();
+});
+
+// ── Смуга «де лежить» (HANDOUT_PLACE_BRIEF.md) ─────────────────────────
+// Клік по «Бочка · 7» пригашує рядки інших місць; ще клік — показати всі.
+// Стан — атрибут `data-pf` на `main.handoutv2`: той лежить ПОЗА
+// `#handout-list`, який свапає пульс і кожна галочка, тож вибір переживає
+// оновлення, а CSS сам пригашує нові рядки. Порядок НЕ міняється — правило
+// видачі №1. Сама смуга приїжджає з сервером щоразу заново, тому після
+// свапу кнопкам повертаємо aria-pressed.
+function placeRoot() {
+  return document.querySelector("main.handoutv2");
+}
+
+function syncPlaceStrip() {
+  const root = placeRoot();
+  if (!root) return;
+  const current = root.dataset.pf || "";
+  document.querySelectorAll("[data-place-filter]").forEach((btn) => {
+    btn.setAttribute("aria-pressed", btn.dataset.placeFilter === current ? "true" : "false");
+  });
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest && event.target.closest("[data-place-filter]");
+  if (!btn) return;
+  const root = placeRoot();
+  if (!root) return;
+  const key = btn.dataset.placeFilter;
+  if (root.dataset.pf === key) delete root.dataset.pf;
+  else root.dataset.pf = key;
+  syncPlaceStrip();
+});
+
+// Меню печі — `details`: відкрите одне за раз, закривається кліком повз і
+// Escape. Після вибору список свапається, тож відкрите меню зникає саме.
+document.addEventListener("click", (event) => {
+  const inside = event.target.closest && event.target.closest("details.wplace");
+  document.querySelectorAll("details.wplace[open]").forEach((d) => {
+    if (d !== inside) d.open = false;
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const open = document.querySelector("details.wplace[open]");
+  if (!open) return;
+  open.open = false;
+  const summary = open.querySelector("summary");
+  if (summary) summary.focus();
 });
 
 // ── Покажчик дня: клік веде до клієнта ───────────────────────────────────

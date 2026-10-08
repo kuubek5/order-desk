@@ -248,6 +248,7 @@ POST /orders/{order_id}/cam-comment
 GET /mail/{email_id}
 POST /settings/feedback/invite/{invite_id}/revoke
 POST /handout/issue-group
+POST /handout/place/{order_id}
 GET /account
 POST /vyrobitok/day-sync
 POST /settings/backup/import

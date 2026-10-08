@@ -12,7 +12,10 @@
    `data-order` — ключ підсвітки «кого я шукаю» (handout.js): рядок, чиї
    файли відкрито в прев'ю, лишається підсвіченим і після свапу списку. #}
 {% set is_found = order.status in ('знайдено при видачі', 'видано') %}
-<div class="wrow {% if is_found %}found{% endif %}" data-order="{{ order.id }}">
+{% set place = place_view.of(order.id) %}
+{# data-place — кошик смуги місць над списком (handout.js пригашує рядки інших
+   місць; порядок НЕ міняється — правило видачі №1). #}
+<div class="wrow {% if is_found %}found{% endif %}" data-order="{{ order.id }}" data-place="{{ place_view.bucket(order.id) }}">
     {% if not is_found %}
     {# `data-qc` вмикає діалог саме для цієї форми, а
        `data-qc-label` каже діалогу (він один на екран),
@@ -125,6 +128,36 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
                 </form>
                 {% endif %}
             </span>
+            {% endif %}
+            {# «Де лежить» (бриф HANDOUT_PLACE_BRIEF.md). Верстат ставить
+               система з телеметрії — мітка без меню. Піч — меню з чотирьох
+               печей, один клік, і мітка лягає на ВЕСЬ диск (той самий Sum3D у
+               цій вкладці), у всіх клієнтів. Після «знайдено» мітка лишається:
+               це історія, де робота лежала. #}
+            {% if place and place.live %}
+            <span class="pl mc" title="Диск зараз на верстаті {{ place.label }} — мітку ставить система з екрана верстата">{{ place.label }}{% if place.percent is not none %} · {{ place.percent }} %{% endif %}</span>
+            {% else %}
+            <details class="wplace">
+                <summary class="pl {{ place.bucket if place else 'none' }}"
+                         title="{% if place %}Лежить: {{ place.label }}{% if place.kind == 'other' %} (так написано в таблиці){% endif %}. Змінити піч{% else %}Вказати піч{% endif %}{% if order.sum3d_id %} — для всього диска {{ order.sum3d_id }}{% endif %}">{{ place.label if place else 'піч?' }}</summary>
+                <div class="wplace-pop" role="group" aria-label="Піч для диска">
+                    <div class="wplace-opts">
+                        {% for f in place_furnaces %}
+                        <button type="button" class="wplace-opt {{ f.key }}{% if place and place.key == f.key %} on{% endif %}"
+                                hx-post="/handout/place/{{ order.id }}" hx-target="#handout-list" hx-swap="outerHTML"
+                                hx-vals='{{ {"place": f.key, "source": source, "day": day_param}|tojson }}'
+                                data-kload="self">{{ f.label }}</button>
+                        {% endfor %}
+                    </div>
+                    <small>{% if order.sum3d_id %}Для всього диска <span class="mono">{{ order.sum3d_id }}</span> — усі клієнти{% else %}Лише ця робота: Sum3D немає{% endif %}</small>
+                    {% if place %}
+                    <button type="button" class="wplace-clear"
+                            hx-post="/handout/place/{{ order.id }}" hx-target="#handout-list" hx-swap="outerHTML"
+                            hx-vals='{{ {"place": "", "source": source, "day": day_param}|tojson }}'
+                            data-kload="self">прибрати мітку</button>
+                    {% endif %}
+                </div>
+            </details>
             {% endif %}
             {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
             {# Заливка рядка не доїхала в таблицю. Доти цей збій був НІМИЙ: у

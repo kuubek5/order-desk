@@ -55,7 +55,10 @@ CALCULATED_STATUSES = {
     "знайдено при видачі",
     "видано",
 }
-MILLED_STATUSES = {"відфрезеровано", "знайдено при видачі", "видано"}
+# Гілки «Відфрезерував» тут більше немає (власник 08.10.26): колонка N тепер
+# каже, ДЕ лежить диск (`1`, `бочка`, `3`, `чіна`, верстат), а авто-літера
+# «<оператор> HH:MM» при «відфрезеровано»/«видано» займала клітинку раніше за
+# мітку печі й ховала її. Мітку пише лише людина (`write_place_cells`).
 
 
 _WHITE = {"red": 1.0, "green": 1.0, "blue": 1.0}
@@ -753,6 +756,21 @@ def write_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> 
     return True
 
 
+def write_place_cells(worksheet: gspread.Worksheet, rows: list[int], value: str) -> None:
+    """Мітка місця диска (піч) у колонку «Відфрезерував» — однією правкою.
+
+    Рядки вже звірені викликачем (`resolve_rows_bulk`). На відміну від
+    маркерів статусу, живе значення клітинки тут НЕ виграє: це пряма дія
+    оператора («диск у Бочці»), і порожнє значення так само стирає мітку, як
+    «очистити Sum3D» (див. `erase` у `write_order_fields`)."""
+    updates = [
+        {"range": gspread.utils.rowcol_to_a1(row, COL_MILLED), "values": [[value or ""]]}
+        for row in rows
+    ]
+    if updates:
+        call_with_retry(lambda: worksheet.batch_update(updates))
+
+
 def apply_status_markers(
     order: Order,
     status: str,
@@ -763,6 +781,9 @@ def apply_status_markers(
 
     Existing cell content is never replaced: staff may have entered a name or
     timestamp manually in the shared sheet.
+
+    Лише «Прорахував» (М). «Відфрезерував» (N) з 08.10.26 — місце диска, і
+    статус його не пише (див. коментар біля CALCULATED_STATUSES).
     """
     marker_time = occurred_at or datetime.now()
     marker = f"{actor} {marker_time:%H:%M}"
@@ -771,10 +792,6 @@ def apply_status_markers(
     if status in CALCULATED_STATUSES and not order.calculated_raw:
         order.calculated_raw = marker
         changed.add("calculated_raw")
-    if status in MILLED_STATUSES and not order.milled_raw:
-        order.milled_raw = marker
-        changed.add("milled_raw")
-
     return changed
 
 

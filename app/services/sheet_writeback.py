@@ -39,6 +39,7 @@ from app.sheet_writer import (
     take_last_erased,
     write_calculated,
     write_order_fields,
+    write_place_cells,
     write_rework_cells,
 )
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
@@ -603,6 +604,75 @@ def write_rework_sum3d_fields_warm(
         error = write_rework_sum3d_fields(bg, order, value, letter)
         bg.commit()
         return error
+
+
+def write_place_cells_warm(order_ids: list[int], value: str) -> str | None:
+    """Мітка печі в колонку «Відфрезерував» усім роботам диска — одним
+    завданням на воркері (екран видачі, `/handout/place`).
+
+    Значення приходить ПАРАМЕТРОМ, а не читається з бази: між комітом роуту й
+    цим записом тік синку міг перечитати ще порожню клітинку й повернути її в
+    базу, і тоді запис «з бази» стер би щойно поставлену мітку. Після
+    підтвердженого запису значення вертається і в базу.
+
+    Позиції звіряються пакетно (`resolve_rows_bulk`), правила звірки ті самі:
+    непідтверджений рядок пропускається, пропуск — у журнал і в помилку.
+    Повертає перший рядок помилки або None."""
+    if not order_ids:
+        return None
+    word = value or None
+    error: str | None = None
+    with writeback_session() as bg:
+        by_tab: dict[str, list[Order]] = {}
+        for order_id in order_ids:
+            order = bg.get(Order, order_id)
+            if order is None or not order.sheet_tab or not order_writes_to_sheet(order):
+                continue
+            by_tab.setdefault(order.sheet_tab, []).append(order)
+
+        spreadsheet = None
+        for sheet_tab, orders in by_tab.items():
+            try:
+                if spreadsheet is None:
+                    spreadsheet = open_spreadsheet(db=bg)
+                worksheet = get_worksheet_by_name(spreadsheet, sheet_tab)
+                if worksheet is None:
+                    raise RuntimeError(f"вкладку '{sheet_tab}' не знайдено")
+                rows = resolve_rows_bulk(worksheet, orders)
+                confirmed: list[tuple[Order, int]] = []
+                for order in orders:
+                    row = rows.get(order.id)
+                    if row is None:
+                        _log_sync(bg, SyncLog(
+                            direction="db_to_sheet", sheet_tab=sheet_tab, status="skipped",
+                            message=(
+                                f"order {order.id}: milled_raw (місце): "
+                                "рядок у таблиці не підтверджено — не записано"
+                            ),
+                        ))
+                        error = error or f"робота {order.id}: рядок у таблиці не підтверджено"
+                        continue
+                    confirmed.append((order, row))
+                if not confirmed:
+                    continue
+                write_place_cells(worksheet, [row for _, row in confirmed], value)
+            except Exception as exc:  # noqa: BLE001 — мітка в базі лишається
+                logger.exception("Мітка місця: вкладка %s", sheet_tab)
+                error = error or str(exc)
+                for order in orders:
+                    _log_sync(bg, SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                        message=f"order {order.id}: milled_raw (місце): {exc}",
+                    ))
+                continue
+            for order, _ in confirmed:
+                order.milled_raw = word
+                _log_sync(bg, SyncLog(
+                    direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
+                    message=f"order {order.id}: milled_raw (місце) → {word or '—'}",
+                ))
+        bg.commit()
+    return error
 
 
 def write_sheet_fields_background(order_id: int, fields: set[str]) -> None:

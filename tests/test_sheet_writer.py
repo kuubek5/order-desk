@@ -327,16 +327,20 @@ class TestStatusMarkers:
         assert order.calculated_raw == "Роман 09:05"
         assert order.milled_raw is None
 
-    def test_milled_status_sets_both_missing_markers(self):
+    def test_milled_status_sets_only_calculated_marker(self):
+        """Авто-літеру в «Відфрезерував» вимкнено (власник 08.10.26): колонка N
+        каже, де лежить диск (піч/верстат), і літера оператора ховала б мітку
+        печі. «Прорахував» лишається як було."""
         order = make_order(calculated_raw=None, milled_raw=None)
 
-        fields = apply_status_markers(
-            order, "відфрезеровано", "operator", datetime(2026, 8, 1, 17, 30)
-        )
-
-        assert fields == {"calculated_raw", "milled_raw"}
-        assert order.calculated_raw == "operator 17:30"
-        assert order.milled_raw == "operator 17:30"
+        for status in ("відфрезеровано", "знайдено при видачі", "видано"):
+            order.calculated_raw = None
+            fields = apply_status_markers(
+                order, status, "operator", datetime(2026, 8, 1, 17, 30)
+            )
+            assert fields == {"calculated_raw"}
+            assert order.calculated_raw == "operator 17:30"
+            assert order.milled_raw is None
 
     def test_existing_manual_markers_are_preserved(self):
         order = make_order(calculated_raw="Іван 10:00", milled_raw="Марія 12:00")
