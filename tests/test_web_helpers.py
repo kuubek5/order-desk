@@ -802,6 +802,24 @@ def test_approval_pending_is_not_the_approved_form_of_the_same_word():
         assert is_approval_pending_comment(comment) is False, comment
 
 
+def test_one_letter_typo_in_the_root_still_counts():
+    """Власник 08.10.26: технік написав «когодження» — плашки не було.
+    Одруківка в КОРЕНІ виправляється, закінчення — ні: воно й розрізняє
+    «ще на погодженні» і «вже погоджено»."""
+    from app.services.queue import is_approval_pending_comment, is_rush_comment
+
+    for comment in ("когодження Маньо", "погоження", "поггодження до завтра",
+                    "на когодженні", "на узгожденні з лікарем"):
+        assert is_approval_pending_comment(comment) is True, comment
+    for comment in ("когоджено", "погожено (робота за 06.07)", "гарна погода",
+                    "погоду обіцяли", "погодні умови"):
+        assert is_approval_pending_comment(comment) is False, comment
+    for comment in ("на шфидку", "швдко плс", "щвидка"):
+        assert is_rush_comment(comment) is True, comment
+    for comment in ("свідок", "шкідливо", "покрити опаком"):
+        assert is_rush_comment(comment) is False, comment
+
+
 # --- обробник нешкідливого обриву клієнта на Windows (WinError 10054) ---
 
 

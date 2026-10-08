@@ -53,11 +53,41 @@ RUSH_STEMS = ("швидк", "терміново")
 RUSH_MARKERS = RUSH_STEMS
 
 
+# Одруківки техніків у корені (власник 08.10.26: «когодження» замість
+# «погодження» — плашка не зʼявилась). Слово, чий КОРІНЬ відрізняється від
+# відомого на одну літеру (заміна, пропуск, зайва), читаємо як правильне.
+# Закінчення НЕ виправляємо: саме воно розрізняє «погодження» (ще чекає) і
+# «погоджено» (готово), і «виправлене» закінчення могло б перевернути сигнал.
+# Корінь «погодж»/«узгодж» — лише в слові довшому за корінь (не чіпаємо
+# «погоду»), «швидк» — у слові від 5 літер.
+_TYPO_ROOTS = ("погодж", "узгодж", "швидк")
+_WORD = re.compile(r"[^\W\d_]+")
+
+
+def _fix_root_typos(lowered: str) -> str:
+    from rapidfuzz.distance import Levenshtein
+
+    def fix(match: re.Match) -> str:
+        word = match.group(0)
+        for root in _TYPO_ROOTS:
+            if word.startswith(root):
+                return word
+            for cut in (len(root), len(root) + 1, len(root) - 1):
+                rest = word[cut:]
+                if root != "швидк" and not rest:
+                    continue
+                if cut <= len(word) and Levenshtein.distance(word[:cut], root) <= 1:
+                    return root + rest
+        return word
+
+    return _WORD.sub(fix, lowered)
+
+
 def is_rush_comment(text: str | None) -> bool:
     """Чи просить коментар техніка швидку програму (= термінова робота)."""
     if not text:
         return False
-    lowered = text.casefold()
+    lowered = _fix_root_typos(text.casefold())
     return any(stem in lowered for stem in RUSH_STEMS)
 
 
@@ -87,7 +117,7 @@ def is_approval_pending_comment(text: str | None) -> bool:
     """Чи пише технік, що робота ще на погодженні з лікарем."""
     if not text:
         return False
-    lowered = text.casefold()
+    lowered = _fix_root_typos(text.casefold())
     if _APPROVAL_NEGATED.search(lowered):
         return True
     if _APPROVAL_DONE.search(lowered):
