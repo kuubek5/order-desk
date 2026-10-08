@@ -1428,3 +1428,10 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
      нічого не ріжеться. */
   .q2 .side-sec{flex:1 1 170px}
 }
+/* Розділ «Зауваження технікові» в меню рядка (власник 08.10.26). */
+.q2 .rowmenu-remark.on{color:var(--alarm-ink)}
+.q2 .rowmenu-remark-form{margin:2px 0 0}
+.q2 .rowmenu-remark-input{box-sizing:border-box;width:100%;height:30px;padding:0 9px;border:1px solid var(--line-2);border-radius:8px;background:var(--field);color:var(--ink);font:inherit;font-size:var(--fs-2)}
+.q2 .rowmenu-remark-input:focus-visible{outline:2px solid var(--accent-c);outline-offset:1px}
+.q2 .rowmenu-remark-clear{color:var(--ink-3);text-decoration:underline}
+.q2 .rowmenu-remark-form + .rowmenu-h,.q2 .rowmenu-remark-clear + .rowmenu-h{margin-top:6px;padding-top:8px;border-top:1px solid var(--line)}

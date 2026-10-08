@@ -25,6 +25,9 @@
    оператор копіює в Sum3D, тож сигнал «не брати» мусить стояти й там
    (власник 11.09.26). #}
 {% set _hold = is_approval_pending_comment(order.cam_comment) %}
+{# Зауваження CAM-оператора («❗ немає папки · Роман 08.10 04:30» у коментарі K,
+   власник 08.10.26) — червоним чіпом біля наряду. #}
+{% set _remark = cam_remark_of(order.cam_comment) %}
 {# Смуга матеріалу на краю рядка. Клас береться з ТОГО САМОГО джерела, що й
    ключ маркування (material_badge → каталог матеріалів), тому смуга й чип
    фізично не можуть розійтись. Цирконій свідомо без смуги — правило живе в
@@ -52,7 +55,7 @@
    сім :has() у CSS, які браузер переоцінював по КОЖНОМУ рядку на кожен своп
    таблиці; тепер прапорець ставить сервер класом .wrap (перф-аудит 16.09.26).
    Той самий набір сигналів, що й у знятих :has() — звіряти при зміні бейджів. #}
-{% set _oid_wrap = _rework or _changed or _mill or _hold or is_rush_comment(order.cam_comment) or order.status in ('проблема', 'переробка') %}
+{% set _oid_wrap = _rework or _changed or _mill or _hold or _remark or is_rush_comment(order.cam_comment) or order.status in ('проблема', 'переробка') %}
 <tr{% if _matrow %} data-mat="{{ _matrow.cls }}"{% endif %} class="queue-row{% if _focused %} queue-row-focus{% endif %} {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
@@ -154,6 +157,12 @@
                 на погодженні
             </span>
             {% endif %}
+            {% if _remark %}
+            <span class="remark-badge" title="Зауваження CAM-оператора: {{ _remark }} — стоїть червоним у «Коментар для CAM» таблиці">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20z" class="duo"/><path d="M12 3 2 20h20z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>
+                <span class="remark-badge-t">{{ _remark }}</span>
+            </span>
+            {% endif %}
             {% if order.status == 'проблема' %}
             <span class="badge problem">проблема</span>
             {% elif order.status == 'переробка' and not _rework %}
@@ -172,10 +181,36 @@
                жодного нового кольору (сигнальні канали не чіпаємо). #}
             {% if not row_locked %}
             <details class="rowmenu">
-                <summary class="rowmenu-btn" title="Статус роботи" aria-label="Змінити статус">
+                <summary class="rowmenu-btn" title="Статус і зауваження" aria-label="Статус і зауваження">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
                 </summary>
                 <div class="rowmenu-pop" role="menu">
+                    {# Зауваження технікові (власник 08.10.26): лягає червоним
+                       рядком у «Коментар для CAM» таблиці. Один клік — готовий
+                       варіант; своє слово — поле нижче (Enter). #}
+                    <span class="rowmenu-h">Зауваження технікові</span>
+                    {% for p in cam_remark_presets %}
+                    <button type="button" role="menuitem"
+                            class="rowmenu-item rowmenu-remark{% if _remark and _remark.startswith(p) %} on{% endif %}"
+                            hx-post="/orders/{{ order.id }}/remark"
+                            hx-vals='{{ {"remark": p}|tojson }}'
+                            hx-target="#order-row-{{ order.id }}"
+                            hx-swap="outerHTML">{{ p }}</button>
+                    {% endfor %}
+                    <form class="rowmenu-remark-form"
+                          hx-post="/orders/{{ order.id }}/remark"
+                          hx-target="#order-row-{{ order.id }}"
+                          hx-swap="outerHTML">
+                        <input type="text" name="remark" maxlength="200" autocomplete="off"
+                               placeholder="своє зауваження…" aria-label="Своє зауваження" class="rowmenu-remark-input">
+                    </form>
+                    {% if _remark %}
+                    <button type="button" role="menuitem" class="rowmenu-item rowmenu-remark-clear"
+                            hx-post="/orders/{{ order.id }}/remark"
+                            hx-vals='{"remark": ""}'
+                            hx-target="#order-row-{{ order.id }}"
+                            hx-swap="outerHTML">прибрати зауваження</button>
+                    {% endif %}
                     <span class="rowmenu-h">Статус</span>
                     {% for s in statuses %}
                     <button type="button" role="menuitem"

@@ -40,6 +40,7 @@ from app.sheet_writer import (
     write_calculated,
     write_order_fields,
     write_place_cells,
+    write_remark,
     write_rework_cells,
 )
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
@@ -673,6 +674,44 @@ def write_place_cells_warm(order_ids: list[int], value: str) -> str | None:
                 ))
         bg.commit()
     return error
+
+
+def write_remark_warm(order_id: int, line: str | None) -> str | None:
+    """Зауваження CAM-оператора в «Коментар для CAM» (K) — на воркері.
+
+    Клітинка складається з ЖИВОГО вмісту (`sheet_writer.write_remark`), і саме
+    він після підтвердженого запису стає `cam_comment` у базі — тож синк не
+    побачить «нового тексту техніка» там, де дописали ми. Робота без рядка в
+    таблиці (пошта без нотатки) — лише база. Повертає помилку або None."""
+    from app.services.cam_remark import compose
+
+    with writeback_session() as bg:
+        order = bg.get(Order, order_id)
+        if order is None:
+            return None
+        if not order_writes_to_sheet(order):
+            order.cam_comment = compose(order.cam_comment, line) or None
+            bg.commit()
+            return None
+        try:
+            worksheet = get_worksheet_by_name(open_spreadsheet(db=bg), order.sheet_tab or "")
+            if worksheet is None:
+                raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
+            combined = write_remark(worksheet, order, line)
+        except Exception as exc:  # noqa: BLE001 — помилка йде оператору в тост
+            logger.exception("Зауваження роботи %s у таблицю", order_id)
+            _log_sync(bg, SyncLog(
+                direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
+                message=f"order {order.id}: зауваження: {exc}",
+            ))
+            return str(exc)
+        order.cam_comment = combined or None
+        _log_sync(bg, SyncLog(
+            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
+            message=f"order {order.id}: зауваження → {line or 'прибрано'}",
+        ))
+        bg.commit()
+        return None
 
 
 def write_sheet_fields_background(order_id: int, fields: set[str]) -> None:

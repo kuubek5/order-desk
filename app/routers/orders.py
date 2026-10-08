@@ -65,7 +65,9 @@ from app.services.sheet_writeback import (
     write_sheet_fields_background,
     queue_sheet_fields,
     write_sheet_fields_warm,
+    write_remark_warm,
 )
+from app.services import cam_remark
 from app.services.focus import clear_all as clear_focus, count as focus_count, focused_ids, toggle as toggle_focus
 from app.services.undo import (
     UNDOABLE_ACTION_TYPES,
@@ -458,6 +460,60 @@ async def set_cam_comment(
     return templates.TemplateResponse(
         request, "_order_row.html", _row_context(request, db, order, None)
     )
+
+
+# Скільки чекати на таблицю для зауваження: клік має бути швидким, довше —
+# кажемо чесно, що запис ще в черзі.
+_REMARK_WRITE_TIMEOUT_SECONDS = 20
+
+
+@router.post("/orders/{order_id}/remark", response_class=HTMLResponse)
+async def set_cam_remark(
+    request: Request,
+    order_id: int,
+    remark: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Зауваження CAM-оператора з меню рядка черги (власник 08.10.26): готовий
+    варіант (`cam_remark.PRESETS`) або своє слово; порожньо — прибрати.
+
+    Лягає в «Коментар для CAM» (K) окремим червоним рядком «❗ … · хто коли»,
+    текст техніка не чіпається (`sheet_writer.write_remark` читає живу
+    клітинку). Запис — на воркері write-back (`await`), рядок повертається вже
+    з новим коментарем; збій — тост із причиною, у базі нічого не міняється."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if sync_control.is_paused():
+        return templates.TemplateResponse(
+            request, "_order_row.html", _row_context(request, db, order, SYNC_PAUSED_MSG),
+        )
+
+    text = " ".join((remark or "").split())[:200]
+    author = user.full_name or user.username
+    line = cam_remark.remark_line(text, author) if text else None
+    old = cam_remark.remark_of(order.cam_comment)
+    log_action(
+        db, order=order, operator=user, action_type="remark", field="cam_comment",
+        old=old or "", new=text,
+        note=(f"зауваження: {text}" if text else "зауваження прибрано"),
+    )
+    db.commit()
+    sync_error = await await_on_writeback(
+        write_remark_warm, order.id, line, timeout=_REMARK_WRITE_TIMEOUT_SECONDS,
+    )
+    db.refresh(order)
+    attach_export_folder_uris(db, [order])
+    attach_job_code_folder_uris(db, [order])
+    response = templates.TemplateResponse(
+        request, "_order_row.html", _row_context(request, db, order, sync_error)
+    )
+    if sync_error is not None:
+        attach_sync_error_toast(response, "зауваження", sync_error)
+    return response
 
 
 @router.get("/orders/new", response_class=HTMLResponse)

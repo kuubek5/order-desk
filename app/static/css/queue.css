@@ -408,3 +408,28 @@
   color:var(--ink);background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r-input, 8px)}
 .sum3d-batch .sb-input:focus{outline:none;border-color:var(--accent-c);box-shadow:0 0 0 2px rgba(var(--accent-rgb), .25)}
 .sum3d-batch .sb-go{flex:0 0 auto}
+
+/* Зауваження CAM-оператора технікові (власник 08.10.26: «бажано червоним»).
+   Та сама геометрія, що в .rush-badge, колір тривоги — це прохання техніку
+   виправити, і в таблиці воно теж червоне. У комірці наряду чіп мусить мати
+   max-width і трикрапку (CLAUDE.md §14), повний текст — у підказці. */
+.remark-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  max-width: 220px;
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-chip, 999px);
+  font-size: var(--fs-0);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--alarm-ink);
+  background: rgba(var(--alarm-rgb), 0.18);
+  border: 1px solid rgba(var(--alarm-rgb), 0.55);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.remark-badge-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.remark-badge svg { width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; }
+.remark-badge svg .duo { fill: currentColor; opacity: .25; stroke: none; }

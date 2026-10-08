@@ -290,6 +290,9 @@ def write_order_fields_bulk(
     if updates:
         # Ідемпотентно: повтор запише ті самі значення в ті самі клітинки.
         call_with_retry(lambda: worksheet.batch_update(updates))
+        _keep_remark_red(worksheet, [
+            (row, order.cam_comment) for order, fields, row in plan if "cam_comment" in fields
+        ])
 
 
 # Колонки, які CRM знає про рядок, і поле роботи для кожної. Колонка E — вид
@@ -560,6 +563,8 @@ def write_order_fields(
     if updates:
         # Idempotent: retrying writes the same fixed values to the same cells.
         call_with_retry(lambda: worksheet.batch_update(updates))
+        if "cam_comment" in fields:
+            _keep_remark_red(worksheet, [(row, order.cam_comment)])
     return True
 
 
@@ -769,6 +774,82 @@ def write_place_cells(worksheet: gspread.Worksheet, rows: list[int], value: str)
     ]
     if updates:
         call_with_retry(lambda: worksheet.batch_update(updates))
+
+
+_REMARK_RED = {"red": 0.8, "green": 0.0, "blue": 0.0}
+
+
+def comment_format_request(sheet_id: int, row: int, text: str) -> dict:
+    """Клітинка K з текстом і форматом: рядок зауваження (`cam_remark`, «❗ …»)
+    — червоним жирним, решта — звичайним; перенесення тексту ввімкнене, щоб
+    зауваження читалось повністю, а рядок сам ставав вищим (власник 08.10.26:
+    ширину колонки не чіпаємо — розкладка спільна).
+
+    `textFormatRuns` — у одиницях UTF-16 (`cam_remark.remark_start`)."""
+    from app.services.cam_remark import remark_start
+
+    start = remark_start(text)
+    runs: list[dict] = [{"startIndex": 0, "format": {}}]
+    if start is not None:
+        runs = ([{"startIndex": 0, "format": {}}] if start > 0 else []) + [
+            {"startIndex": start, "format": {"bold": True, "foregroundColor": _REMARK_RED}}
+        ]
+    cell: dict = {"userEnteredValue": {"stringValue": text}, "textFormatRuns": runs if text else []}
+    fields = "userEnteredValue,textFormatRuns"
+    if start is not None:
+        cell["userEnteredFormat"] = {"wrapStrategy": "WRAP"}
+        fields += ",userEnteredFormat.wrapStrategy"
+    return {
+        "updateCells": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row - 1, "endRowIndex": row,
+                "startColumnIndex": COL_CAM_COMMENT - 1, "endColumnIndex": COL_CAM_COMMENT,
+            },
+            "rows": [{"values": [cell]}],
+            "fields": fields,
+        }
+    }
+
+
+def _keep_remark_red(worksheet: gspread.Worksheet, cells: list[tuple[int, str | None]]) -> None:
+    """Запис K звичайним значенням скидає формат клітинки, і червоний рядок
+    зауваження ставав чорним, щойно оператор правив коментар у черзі. Тут
+    формат повертається — лише для клітинок, де зауваження справді є. Збій —
+    не збій запису: текст уже в таблиці, бракує лише кольору."""
+    from app.services.cam_remark import remark_of
+
+    requests = [
+        comment_format_request(worksheet.id, row, text or "")
+        for row, text in cells
+        if remark_of(text)
+    ]
+    if not requests:
+        return
+    try:
+        call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": requests}))
+    except Exception:  # noqa: BLE001
+        logger.warning("Колір зауваження в K не повернуто", exc_info=True)
+
+
+def write_remark(worksheet: gspread.Worksheet, order: Order, line: str | None) -> str:
+    """Поставити (або зняти, `line=None`) зауваження в ЖИВУ клітинку K рядка.
+
+    Читаємо клітинку з таблиці, а не беремо копію з бази: технік міг дописати
+    свій текст після останнього синку, і він мусить лишитись. Позиція рядка
+    звіряється (`_resolve_row`); не звірилась — виняток, у таблицю нічого.
+    Повертає новий вміст клітинки."""
+    from app.services.cam_remark import compose
+
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        raise RuntimeError("рядок у таблиці не підтверджено — зауваження не записано")
+    a1 = gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)
+    cell = call_with_retry(lambda: worksheet.acell(a1))
+    combined = compose(cell.value, line)
+    request = comment_format_request(worksheet.id, row, combined)
+    call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": [request]}))
+    return combined
 
 
 def apply_status_markers(

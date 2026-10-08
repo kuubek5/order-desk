@@ -245,6 +245,7 @@ POST /settings/furnaces/password
 GET /discs/footer
 GET /feedback/inbox
 POST /orders/{order_id}/cam-comment
+POST /orders/{order_id}/remark
 GET /mail/{email_id}
 POST /settings/feedback/invite/{invite_id}/revoke
 POST /handout/issue-group

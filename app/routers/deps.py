@@ -44,6 +44,7 @@ from app.settings_store import (
     get_setting,
 )
 from app.services.queue import is_approval_pending_comment, is_rush_comment
+from app.services import cam_remark as _cam_remark
 from app.services.settings_nav import can_edit, can_see, nav_payload, visible_nav
 from app.services.shift import night_label, open_note_count
 from app.statuses import STATUSES, is_overdue, status_dot
@@ -926,6 +927,8 @@ def hidden_widgets(request) -> set:
 templates.env.globals["load_metrics"] = load_metrics
 templates.env.globals["hidden_widgets"] = hidden_widgets
 templates.env.globals["is_rush_comment"] = is_rush_comment
+templates.env.globals["cam_remark_of"] = _cam_remark.remark_of
+templates.env.globals["cam_remark_presets"] = _cam_remark.PRESETS
 templates.env.globals["is_approval_pending_comment"] = is_approval_pending_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md
