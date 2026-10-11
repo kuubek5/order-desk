@@ -14,8 +14,11 @@
    /mail/{id} рендериться як повна картка тріажу. Скоуплено під `.mailv2`.
    ========================================================================== */
 /* Ширина росте з екраном. 1400px обмежував так, що на моніторі 1920+ права
-   третина лишалась мертвою, хоча списку бракувало місця на теми листів. */
-main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
+   третина лишалась мертвою, хоча списку бракувало місця на теми листів.
+   1720px робив те саме на 27" на весь екран — порожня смуга справа (власник
+   11.10.26), тож стелі немає: сторінка замощує ширину вікна. Вужчі вікна
+   (пів екрана) від цього не змінюються — стеля там і так не діяла. */
+main.mailv2{max-width:none;margin:0;padding:18px 20px}
 .mailv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .mailv2 .m-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .mailv2 .m-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
@@ -118,7 +121,9 @@ main.mailv2{max-width:1720px;margin:0;padding:18px 20px}
 /* --mail-list-w — ширина з акаунта оператора (шестерня). Не задана — та сама
    clamp, що й раніше, тобто оператор, який нічого не крутив, нічого й не
    помітить. */
-.mailv2 .list-panel{flex:0 1 var(--mail-list-w, clamp(380px, 32%, 620px));width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px - var(--m-strips-h, 0px))}
+/* Стеля 720 (не 620) — лише для вікон ширших за ~1950px, де сторінка тепер
+   без стелі: до цієї ширини 32% < 620 і нічого не змінюється. */
+.mailv2 .list-panel{flex:0 1 var(--mail-list-w, clamp(380px, 32%, 720px));width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px - var(--m-strips-h, 0px))}
 .mailv2 .card-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .mailv2 .card-head h2{font-family:var(--font-head);font-size:var(--fs-3);font-weight:600;margin:0}
 .mailv2 .card-head .meta{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
@@ -714,6 +719,13 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
    /account/look dock_height). Не задана — та сама стеля, що й до доку. */
 .mailv2 .qmir-body .tablewrap{max-height:var(--mail-dock-h, min(60vh,520px))}
 .mailv2 .qmir-empty{padding:16px;color:var(--ink-2);font-size:var(--fs-1)}
+/* Колонки «Оператор» у дзеркалі немає (власник 11.10.26): тут дивляться, куди
+   ліг лист, а не хто взяв роботу — у черзі вона лишається. Ховаємо CSS-ом, а
+   не вирізаємо з _order_row.html: шаблон рядка спільний із чергою, а комірка
+   лишається в DOM, тож номери колонок для збережених ширин (queue.js) не
+   зсуваються. */
+.mailv2 .qmir-body table.qtable td.calc-op,
+.mailv2 .qmir-body table.qtable th.col-op{display:none}
 
 /* ── Док: шапка з перемикачем, роздільник, ручка висоти (MAIL_LAB_DOCK_BRIEF.md) ──
    .qmir-ctl — обгортка, яку полл оновлює oob-свапом; шапка з кнопкою
@@ -1522,10 +1534,22 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    й так нижча (її межа на 46+ px менша), тож ряд однаковий за будь-якої
    картки. Лише на широкому екрані: вужче список і картка стають одне під
    одним, там фіксована висота лише додала б порожнечі. */
+/* Список і картка — ОДНІЄЇ висоти, нижні краї на одній лінії (власник
+   11.10.26: «два блоки однакові по відступах»). Було: список 100vh−190, картка
+   100vh−236 (запас під кнопку зворотного зв'язку, див. вище), тож список
+   звисав на 46 px нижче картки. Тепер обидві беруть висоту картки — запас під
+   кнопку лишається, а список коротшає на ті самі 46 px. Змінна на
+   .worklayout, бо --m-strips-h ставить app.js на .mailv2 (предок). */
 @media (min-width:961px){
+  .mailv2 .worklayout{--m-panel-h:calc(100vh - 236px - var(--m-strips-h, 0px))}
   /* Лише коли в списку є листи: порожня вкладка (Оброблено, На уточненні)
      стискається, як раніше, а не стоїть високою порожньою панеллю. */
-  .mailv2 .list-panel:has(.mailrow){height:calc(100vh - 190px - var(--m-strips-h, 0px))}
+  .mailv2 .list-panel:has(.mailrow),
+  .mailv2 .worklayout:has(.list-panel .mailrow)>.detail-panel{height:var(--m-panel-h)}
+}
+/* Та сама поправка, що й для max-height картки на 961–1280 (вкладки в два ряди). */
+@media (min-width:961px) and (max-width:1280px){
+  .mailv2 .worklayout{--m-panel-h:calc(100vh - 280px - var(--m-strips-h, 0px))}
 }
 
 /* Перемикач «Авто» в шапці картки не зникає на половині екрана: чіп
