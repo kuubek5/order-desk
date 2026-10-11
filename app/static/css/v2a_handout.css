@@ -565,11 +565,11 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .samename svg{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 
 
-/* ── «Де лежить робота»: мітка в рядку й смуга над списком ──────────────
+/* ── «Де лежить робота»: мітка в рядку ──────────────
    Бриф HANDOUT_PLACE_BRIEF.md (08.10.26). Мітка — чіп із тоном місця; піч
    ставиться з меню (`details`), верстат — без меню, його веде телеметрія.
-   Смуга лише пригашує рядки інших місць (`main[data-pf]`, handout.js):
-   порядок списку не міняється (правило видачі №1). */
+   Смугу-лічильник «Перша · Бочка · … · без мітки» над списком прибрано
+   (власник 11.10.26: «інформаційні, не дуже») — разом із її фільтром. */
 .handoutv2 .pl{--pl-rgb:var(--ink-rgb, 143, 163, 187);display:inline-flex;align-items:center;gap:6px;
   border-radius:999px;padding:1px 9px;font-size:var(--fs-1);font-weight:600;white-space:nowrap;
   border:1px solid transparent;color:rgb(var(--pl-rgb));background:rgba(var(--pl-rgb), .14);line-height:1.6}
@@ -609,45 +609,12 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   background:none;color:var(--ink-3);text-decoration:underline;cursor:pointer}
 .handoutv2 .wplace-clear:hover{color:var(--ink)}
 
-.handoutv2 .hplaces{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
-.handoutv2 #handout-list.with-nav > .hplaces,
 .handoutv2 #handout-list.with-nav > .hplace-note{grid-column:1 / -1}
-.handoutv2 .hplace{--pl-rgb:var(--place-mc-rgb);font:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
-  min-width:104px;padding:6px 11px;border-radius:var(--r-ctl);cursor:pointer;text-align:left;
-  background:var(--card);border:1px solid var(--line);color:var(--ink-2);
-  transition:border-color var(--ui-speed) ease, opacity var(--ui-speed) ease}
-.handoutv2 .hplace.p1{--pl-rgb:var(--place-p1-rgb)}
-.handoutv2 .hplace.bk{--pl-rgb:var(--place-bk-rgb)}
-.handoutv2 .hplace.p3{--pl-rgb:var(--place-p3-rgb)}
-.handoutv2 .hplace.cn{--pl-rgb:var(--place-cn-rgb)}
-.handoutv2 .hplace-n{font-size:var(--fs-5);font-weight:600;line-height:1.15;color:rgb(var(--pl-rgb))}
-.handoutv2 .hplace.none .hplace-n,
-.handoutv2 .hplace.other .hplace-n{color:var(--ink-2)}
-.handoutv2 .hplace-t{font-size:var(--fs-0);color:var(--ink-3)}
-.handoutv2 .hplace-t b{font-weight:600;color:var(--ink-2)}
-.handoutv2 .hplace:hover{border-color:var(--line-2)}
-.handoutv2 .hplace[aria-pressed="true"]{border-color:rgb(var(--pl-rgb));box-shadow:inset 0 0 0 1px rgb(var(--pl-rgb))}
-.handoutv2 .hplace.none[aria-pressed="true"],
-.handoutv2 .hplace.other[aria-pressed="true"]{border-color:var(--control-edge);box-shadow:inset 0 0 0 1px var(--control-edge)}
-.handoutv2 .hplace:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
-/* Порожнє місце лишається в смузі (видно, що Третя порожня), але тихіше. */
-.handoutv2 .hplace[data-zero]{opacity:.55}
 
 .handoutv2 .hplace-note{margin:0 0 10px;font-size:var(--fs-1);color:var(--ink-2)}
 .handoutv2 .hplace-note.is-error{color:var(--alarm-ink)}
 .handoutv2 .hplace-note.is-info{color:var(--warn-ink)}
 
-.handoutv2 .wrow{transition:opacity var(--ui-speed) ease}
-.handoutv2[data-pf="p1"] .wrow:not([data-place="p1"]),
-.handoutv2[data-pf="bk"] .wrow:not([data-place="bk"]),
-.handoutv2[data-pf="p3"] .wrow:not([data-place="p3"]),
-.handoutv2[data-pf="cn"] .wrow:not([data-place="cn"]),
-.handoutv2[data-pf="mc"] .wrow:not([data-place="mc"]),
-.handoutv2[data-pf="other"] .wrow:not([data-place="other"]),
-.handoutv2[data-pf="none"] .wrow:not([data-place="none"]){opacity:.22}
-@media (prefers-reduced-motion:reduce){
-  .handoutv2 .wrow,.handoutv2 .hplace{transition:none}
-}
 /* Картка клієнта ріже вміст (`overflow:hidden` під заокруглення), і меню печі
    біля останнього рядка ховалось би під її краєм. Поки меню відкрите, картка
    вміст не ріже й стоїть над сусідніми. */

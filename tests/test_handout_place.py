@@ -318,10 +318,9 @@ def test_handout_renders_marks_and_strip_in_both_views(app_db, flow):  # noqa: F
 
     places = re.findall(r'class="wrow[^"]*" data-order="\d+" data-place="(\w+)"', html)
     assert sorted(places) == ["bk", "bk", "none", "none"]
-    strip = dict(re.findall(
-        r'data-place-filter="(\w+)"[^>]*>\s*<span class="hplace-n mono">(\d+)</span>', html
-    ))
-    assert strip == {"p1": "0", "bk": "2", "p3": "0", "cn": "0", "mc": "0", "none": "2"}
+    # Смугу-лічильник над списком прибрано (власник 11.10.26) — мітки лишились
+    # у рядках (вище), плиток із числами й фільтра немає.
+    assert "data-place-filter" not in html and 'class="hplaces"' not in html
     assert html.count('hx-post="/handout/place/') >= 4 * 4, "меню з чотирьох печей на кожному рядку"
     assert "RR 09:12" not in html, "маркер авто-літери не показується як місце"
 
@@ -351,7 +350,5 @@ def test_place_route_marks_the_disc_and_writes_the_sheet(app_db, monkeypatch):  
     assert sorted(u["range"] for u in updates) == [f"N{r + HEADER_ROWS}" for r in (60, 61, 62)]
     assert all(u["values"] == [["1"]] for u in updates)
     assert "Перша: 3 роботи диска 21-22-23" in html
-    strip = dict(re.findall(
-        r'data-place-filter="(\w+)"[^>]*>\s*<span class="hplace-n mono">(\d+)</span>', html
-    ))
-    assert strip["p1"] == "3" and strip["none"] == "1"
+    places = re.findall(r'class="wrow[^"]*" data-order="\d+" data-place="(\w+)"', html)
+    assert sorted(places) == ["none", "p1", "p1", "p1"]
