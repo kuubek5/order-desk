@@ -1594,3 +1594,17 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .qty-auto[hidden]{display:none}
 .mailv2 .mb-qtycheck{margin:2px 0 6px;font-size:var(--fs-1);color:var(--warn-ink)}
 .mailv2 .mb-qtycheck b{color:var(--warn)}
+
+/* Прийнята робота летить у «Прийняте з пошти» (mail.js acceptFlight, макет №1).
+   Чип — тимчасовий елемент на body, поза .mailv2, тому без префікса екрана.
+   Лічильник доку після приземлення один раз світиться кільцем акценту. */
+.mail-fly{position:fixed;z-index:var(--z-toast);pointer-events:none;height:32px;display:flex;align-items:center;
+  padding:0 12px;border-radius:9px;background:var(--card-2);border:1px solid var(--accent);color:var(--ink);
+  font:600 var(--fs-1) var(--font-body);white-space:nowrap;box-shadow:0 14px 30px -14px rgba(0,0,0,.8);will-change:transform}
+.mailv2 .qmir-count.is-landed{animation:qmirLand .9s ease-out}
+@keyframes qmirLand{
+  0%{box-shadow:0 0 0 0 rgba(var(--accent-rgb),.0);color:var(--ink-2)}
+  25%{box-shadow:0 0 0 4px rgba(var(--accent-rgb),.55);color:var(--accent-c);transform:scale(1.18)}
+  100%{box-shadow:0 0 0 10px rgba(var(--accent-rgb),0);color:var(--ink-2);transform:scale(1)}
+}
+@media (prefers-reduced-motion:reduce){.mailv2 .qmir-count.is-landed{animation:none}}

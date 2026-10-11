@@ -1580,3 +1580,83 @@ document.addEventListener("change", (event) => {
   qty.dataset.qtyAuto = n;
   syncQtyBadge(qty);
 });
+
+// ── Прийнята робота летить у «Прийняте з пошти» (власник 11.10.26, макет №1) ──
+// Оператор прийняв лист — і бачить, КУДИ пішла робота: чип «клієнт · колір ·
+// к-сть» перелітає від кнопки до лічильника доку, лічильник коротко світиться.
+// Одиночне прийняття відповідає 204 + HX-Redirect і перезавантажує /mail, тож
+// політ стартує в htmx:beforeOnLoad (до обробки редиректу), а перехід іде
+// одразу, без очікування: анімація грає, поки вантажиться нова сторінка, а
+// після завантаження лічильник світиться ще раз (позначка в sessionStorage).
+// Конвеєр сторінку не перезавантажує — там є mailBatchDone. Лише клас на
+// лічильнику й один тимчасовий елемент; prefers-reduced-motion — без польоту.
+(function acceptFlight() {
+  const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const FLAG = "kmMailLanded";
+  let pulseOnSettle = false;
+  const dockCount = () => document.querySelector("#mail-queue-mirror .qmir-count");
+  const plural = (n) => {
+    const t = n % 100, u = n % 10;
+    if (t >= 11 && t <= 14) return "робіт";
+    return u === 1 ? "робота" : (u >= 2 && u <= 4 ? "роботи" : "робіт");
+  };
+  function pulse() {
+    const c = dockCount();
+    if (!c || REDUCE) return;
+    c.classList.remove("is-landed");
+    void c.offsetWidth;
+    c.classList.add("is-landed");
+  }
+  function fly(fromEl, label) {
+    const to = dockCount();
+    if (!to || !fromEl || REDUCE || !fromEl.animate) return;
+    const a = fromEl.getBoundingClientRect(), b = to.getBoundingClientRect();
+    if (!a.width || !b.width) return;
+    const chip = document.createElement("div");
+    chip.className = "mail-fly";
+    chip.textContent = label;
+    chip.setAttribute("aria-hidden", "true");
+    document.body.appendChild(chip);
+    const w = chip.offsetWidth, h = chip.offsetHeight;
+    const x0 = a.left + a.width / 2 - w / 2, y0 = a.top + a.height / 2 - h / 2;
+    const dx = b.left + b.width / 2 - w / 2 - x0, dy = b.top + b.height / 2 - h / 2 - y0;
+    chip.style.left = x0 + "px";
+    chip.style.top = y0 + "px";
+    const anim = chip.animate([
+      { transform: "translate(0,0) scale(1)", opacity: 1 },
+      { transform: `translate(${dx}px,${dy}px) scale(.7)`, opacity: 1, offset: 0.86 },
+      { transform: `translate(${dx}px,${dy}px) scale(.55)`, opacity: 0 },
+    ], { duration: 620, easing: "cubic-bezier(.6,0,.2,1)" });
+    anim.onfinish = () => { chip.remove(); pulse(); };
+  }
+
+  document.body.addEventListener("htmx:beforeOnLoad", (event) => {
+    const d = event.detail || {};
+    if (!d.elt || d.elt.id !== "mail-card-form" || !d.xhr) return;
+    if (d.xhr.status !== 204 || !d.xhr.getResponseHeader("HX-Redirect")) return;
+    const form = d.elt;
+    const label = ["#mc-client", "#mc-material", "#mc-qty"]
+      .map((sel) => { const i = form.querySelector(sel); return i ? i.value.trim() : ""; })
+      .filter(Boolean).join(" · ") || "Робота";
+    try { sessionStorage.setItem(FLAG, "1"); } catch (e) { /* приватний режим */ }
+    fly(document.querySelector('button.btn.apex[form="mail-card-form"]'), label);
+  });
+
+  // Конвеєр: HX-Trigger приходить ДО свопу, кнопка ще на місці.
+  document.body.addEventListener("mailBatchDone", (event) => {
+    const n = (((event && event.detail) || {}).accepted || []).length;
+    if (!n) return;
+    pulseOnSettle = true;
+    fly(document.querySelector(".mb-accept, .mb-accept-anyway"), `${n} ${plural(n)}`);
+  });
+  // Док оновився (лічильник перемальовано oob-свопом) — світиться вже новий.
+  document.body.addEventListener("htmx:afterSettle", (event) => {
+    if (!pulseOnSettle || !event.target || event.target.id !== "qmir-body") return;
+    pulseOnSettle = false;
+    pulse();
+  });
+
+  let landed = null;
+  try { landed = sessionStorage.getItem(FLAG); sessionStorage.removeItem(FLAG); } catch (e) { /* приватний режим */ }
+  if (landed) setTimeout(pulse, 250);
+})();
