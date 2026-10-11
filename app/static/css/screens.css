@@ -329,6 +329,20 @@
   transform: translateY(0) scale(1);
 }
 
+/* Розкриття колом із кнопки-кубика (stl-preview.js growFromTrigger, макет №3).
+   200 %: центр може лежати поза панеллю (вона стоїть збоку від рядка), і коло
+   мусить дотягнутись до дальнього кута. */
+.stl-panel.is-growing {
+  animation: stlGrow 0.34s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes stlGrow {
+  from { clip-path: circle(0 at var(--grow-x, 50%) var(--grow-y, 50%)); }
+  to { clip-path: circle(200% at var(--grow-x, 50%) var(--grow-y, 50%)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stl-panel.is-growing { animation: none; }
+}
+
 .stl-panel-head {
   display: flex;
   align-items: center;

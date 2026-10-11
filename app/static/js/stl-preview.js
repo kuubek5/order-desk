@@ -588,6 +588,23 @@
     };
   }
 
+  // Панель розкривається колом із кнопки, що її відкрила (власник 11.10.26,
+  // макет №3 «Моушн у KuubMill»): видно, ЯКИЙ файл відкрито. Центр кола — центр
+  // кнопки у координатах панелі (і збоку від рядка, і на весь екран). Клас
+  // одноразовий: знімається після анімації, щоб clip-path не лишався на
+  // перетягуванні й розгортанні. prefers-reduced-motion — без анімації (CSS).
+  function growFromTrigger(panel, trigger) {
+    const p = panel.getBoundingClientRect();
+    const t = trigger && trigger.getBoundingClientRect();
+    if (!p.width || !t || !t.width) return;
+    panel.style.setProperty("--grow-x", Math.round(t.left + t.width / 2 - p.left) + "px");
+    panel.style.setProperty("--grow-y", Math.round(t.top + t.height / 2 - p.top) + "px");
+    panel.classList.remove("is-growing");
+    void panel.offsetWidth;
+    panel.classList.add("is-growing");
+    panel.addEventListener("animationend", () => panel.classList.remove("is-growing"), { once: true });
+  }
+
   function positionPanel(target) {
     ensurePanel();
     const panel = state.panelEl;
@@ -812,6 +829,7 @@
     // requestAnimationFrame: rAF is throttled when the tab isn't painting, so
     // the panel could otherwise stay at opacity 0 in a backgrounded tab.)
     void state.panelEl.offsetWidth;
+    growFromTrigger(state.panelEl, triggerEl);
     state.panelEl.classList.add("is-open");
     resizeRenderer();
     setStatus("Завантаження прев'ю…");
