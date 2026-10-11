@@ -113,6 +113,8 @@
        (сторінка логіна) не показуємо: форма однаково вимагає авторизації. #}
     {% if request.session.get('user_id') %}
     {% include "_feedback.html" %}
+    {# «Що нового» після оновлення (_whats_new.html, whats_new.js). #}
+    {% include "_whats_new.html" %}
     {% endif %}
     {% include "_update_overlay.html" %}
     {# Зона спливаючих сповіщень. Вигляд (скляна/картка), позиція і перелік

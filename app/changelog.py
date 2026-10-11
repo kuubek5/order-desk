@@ -106,3 +106,35 @@ def load_changelog() -> list[ChangelogRelease]:
     except OSError:
         return []
     return _load_changelog_cached(mtime)
+
+
+_TITLE_RE = re.compile(r"^\*\*(?P<title>.+?)\*\*\s*(?P<rest>.*)$")
+
+
+def _plain(text: str) -> str:
+    return text.replace("**", "").replace("`", "").strip()
+
+
+def whats_new_releases(limit: int = 6) -> list[dict]:
+    """Останні ВИПУЩЕНІ версії для картки «Що нового» (власник 11.10.26, макет №5).
+
+    Той самий CHANGELOG.md, що й «Про застосунок», лише у формі «заголовок +
+    опис»: пункт журналу починається жирним реченням — воно й стає заголовком
+    картки. Розділ без дати («Наступна версія») сюди не йде: його ще ніхто не
+    встановив. Який із цих релізів показати, вирішує браузер (whats_new.js),
+    бо «вже бачив до версії X» живе в ньому.
+    """
+    out: list[dict] = []
+    for release in load_changelog():
+        if release.is_unreleased:
+            continue
+        items = []
+        for group in release.groups:
+            for item in group.items:
+                m = _TITLE_RE.match(item)
+                title, rest = (m.group("title"), m.group("rest")) if m else (item, "")
+                items.append({"group": group.label, "title": _plain(title).rstrip("."), "text": _plain(rest)})
+        out.append({"version": release.version, "items": items})
+        if len(out) >= limit:
+            break
+    return out

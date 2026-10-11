@@ -1,0 +1,24 @@
+{# «Що нового» після оновлення (власник 11.10.26, макет №5 «Моушн у KuubMill»).
+   Дані — останні ВИПУЩЕНІ версії з CHANGELOG.md (app.changelog.whats_new_releases),
+   той самий журнал, що й «Про застосунок». Чи показувати, вирішує браузер
+   (whats_new.js): «уже бачив до версії X» живе в KMStore, бо двоє операторів
+   працюють з різних ПК. Картка будується скриптом із цього JSON; без JS —
+   нічого не з'являється, журнал лишається в Налаштуваннях. #}
+<script type="application/json" id="whats-new-data" data-version="{{ app_version }}">{{ whats_new_releases()|tojson }}</script>
+<div class="wnew" id="whats-new" hidden role="dialog" aria-modal="true" aria-labelledby="wnew-title">
+    <div class="wnew-card">
+        <div class="wnew-top">
+            <span class="wnew-ver" id="wnew-ver"></span>
+            <span class="wnew-kicker">Що нового</span>
+            <span class="wnew-step" id="wnew-step"></span>
+        </div>
+        <p class="wnew-group" id="wnew-group"></p>
+        <h2 class="wnew-title" id="wnew-title"></h2>
+        <p class="wnew-text" id="wnew-text"></p>
+        <div class="wnew-actions">
+            <a class="wnew-all" href="/settings#update">Увесь журнал змін</a>
+            <button type="button" class="wnew-btn" id="wnew-skip">Пропустити</button>
+            <button type="button" class="wnew-btn is-primary" id="wnew-next">Далі ›</button>
+        </div>
+    </div>
+</div>

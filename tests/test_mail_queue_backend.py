@@ -2258,3 +2258,14 @@ def test_hello_clients_match_the_handout_default_day():
                          status="прораховано", material_color="mono a3", quantity="1"))
         db.commit()
         assert handout_default_day_clients(db, today) == 2
+
+
+def test_logged_in_page_carries_whats_new_data_for_the_current_version():
+    from app.__version__ import VERSION
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        html = queue_router_mod.get_queue(request=_request(user.id), db=db, period="today").body.decode()
+    assert f'id="whats-new-data" data-version="{VERSION}"' in html
+    assert 'id="whats-new" hidden' in html

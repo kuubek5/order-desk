@@ -902,3 +902,33 @@ body.has-toast-chip .toast-stack[data-toast-pos="tc"]{padding-top:40px}
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .fpath-actions .fpath-copy{border-color:var(--accent);color:var(--accent-c)}
 .fpath-actions button:hover{background:rgba(255,255,255,.06)}
+
+/* ── «Що нового» після оновлення (власник 11.10.26, макет №5) ───────────────
+   _whats_new.html + app.js initWhatsNew. Один пункт журналу за раз: мітка
+   версії, група («Додано»/«Змінено»), заголовок, опис; «Далі ›» гортає,
+   «Пропустити» / Esc / клік повз картку — закрити. Лише токени теми. */
+.wnew{position:fixed;inset:0;z-index:var(--z-lightbox);display:flex;align-items:flex-start;justify-content:center;
+  padding:16vh 16px 0;background:color-mix(in srgb,var(--bg) 66%,transparent);opacity:0;transition:opacity .24s ease}
+.wnew[hidden]{display:none}
+.wnew.is-in{opacity:1}
+.wnew-card{width:min(640px,100%);box-sizing:border-box;padding:24px 26px 22px;border-radius:18px;background:var(--card-2);
+  border:1px solid var(--line-2);box-shadow:0 30px 80px -30px rgba(0,0,0,.9);transform:translateY(22px) scale(.98);
+  transition:transform .4s cubic-bezier(.2,.9,.25,1.02)}
+.wnew.is-in .wnew-card{transform:none}
+.wnew-top{display:flex;align-items:center;gap:10px}
+.wnew-ver{font:500 11px var(--font-mono);color:var(--accent-c);padding:3px 9px;border-radius:999px;
+  background:rgba(var(--accent-base-rgb),.16);border:1px solid rgba(var(--accent-rgb),.45)}
+.wnew-kicker{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)}
+.wnew-step{margin-left:auto;font:500 11px var(--font-mono);color:var(--ink-3)}
+.wnew-group{margin:18px 0 0;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.wnew-title{margin:6px 0 0;font-family:var(--font-head);font-size:24px;font-weight:700;letter-spacing:-.01em;line-height:1.2;color:var(--ink)}
+.wnew-text{margin:10px 0 0;font-size:15px;line-height:1.55;color:var(--ink-2)}
+.wnew-actions{display:flex;align-items:center;gap:10px;margin-top:22px}
+.wnew-all{margin-right:auto;font-size:13px;color:var(--ink-3);text-decoration:underline}
+.wnew-all:hover{color:var(--ink)}
+.wnew-btn{height:40px;padding:0 16px;border-radius:10px;border:1px solid var(--line-2);background:var(--card);color:var(--ink);
+  font:600 15px var(--font-body);cursor:pointer}
+.wnew-btn:hover{border-color:var(--control-edge)}
+.wnew-btn.is-primary{border-color:rgba(var(--accent-rgb),.42);background:rgba(var(--accent-base-rgb),.15);color:var(--accent-c)}
+.wnew-btn:focus-visible,.wnew-all:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.wnew,.wnew-card{transition:none}}

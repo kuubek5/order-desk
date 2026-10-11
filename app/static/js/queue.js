@@ -1484,6 +1484,9 @@ if (document.readyState === "loading") {
   const KEY = "helloDay";
   const day = box.dataset.day || "";
   if (!day || KMStore.get(KEY) === day) return;
+  // Після оновлення на екрані «Що нового» (app.js) — не накладатись: день не
+  // витрачено, привітання покажеться при наступному відкритті черги.
+  if (document.documentElement.dataset.whatsNew) return;
   if (document.hidden) {
     const onVisible = () => {
       if (document.hidden) return;

@@ -83,3 +83,32 @@ def test_changelog_md_filter_bolds_and_escapes():
     assert "<script>" not in out
     assert "&lt;script&gt;" in out
     assert "<strong>ок</strong>" in out
+
+
+def test_whats_new_splits_bold_title_and_skips_unreleased(monkeypatch):
+    """«Що нового» (власник 11.10.26): жирний початок пункту — заголовок картки,
+    решта — опис; розділ без дати ще ніхто не встановив — його немає."""
+    import app.changelog as changelog
+
+    md = (
+        "## [Незалежно від версії]\n### Додано\n- **Ще не вийшло.** Секрет.\n\n"
+        "## [0.21.65] — 2026-10-12\n### Додано\n- **Лист летить у док.** Видно, куди\n"
+        "  пішла робота, `код` без лапок.\n### Виправлено\n- Без жирного початку\n\n"
+        "## [0.21.64] — 2026-10-11\n### Змінено\n- **Плитки прибрано**\n"
+    )
+    monkeypatch.setattr(changelog, "load_changelog", lambda: changelog.parse_changelog(md))
+    out = changelog.whats_new_releases()
+    assert [r["version"] for r in out] == ["0.21.65", "0.21.64"]
+    first = out[0]["items"]
+    assert first[0] == {"group": "Додано", "title": "Лист летить у док", "text": "Видно, куди пішла робота, код без лапок."}
+    assert first[1] == {"group": "Виправлено", "title": "Без жирного початку", "text": ""}
+    assert out[1]["items"][0]["title"] == "Плитки прибрано"
+    assert len(changelog.whats_new_releases(limit=1)) == 1
+
+
+def test_whats_new_json_is_safe_inside_the_script_tag():
+    """JSON у <script type=application/json> — через |tojson: «</script>» у
+    тексті журналу не має закрити тег."""
+    tpl = deps.templates.env.from_string("{{ data|tojson }}")
+    html = tpl.render(data=[{"title": "</script><b>x</b>"}])
+    assert "</script>" not in html

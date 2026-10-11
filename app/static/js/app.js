@@ -1843,3 +1843,85 @@ document.addEventListener("toggle", (event) => {
   const search = box.querySelector("[data-fp-search]");
   if (search) search.focus();
 }, true);
+
+/* ── «Що нового» після оновлення (_whats_new.html, власник 11.10.26, макет №5) ──
+   Браузер пам'ятає, до якої версії вже бачив новини (KMStore seenVersion).
+   Перший запуск у браузері — нічого не показуємо, лише запам'ятовуємо: інакше
+   новий ПК побачив би чужі старі новини. Після оновлення — пункти всіх версій
+   новіших за бачену (до 8), один за раз. «Бачив» ставимо одразу при показі:
+   перезавантаження не повторить картку. Поки картка на екрані, ранкове
+   привітання (queue.js) чекає наступного відкриття — не накладається. */
+(function initWhatsNew() {
+  const data = document.getElementById("whats-new-data");
+  const box = document.getElementById("whats-new");
+  if (!data || !box || !window.KMStore) return;
+  const KEY = "seenVersion";
+  const current = data.dataset.version || "";
+  const parts = (v) => String(v).split(".").map((n) => parseInt(n, 10) || 0);
+  const cmp = (a, b) => {
+    const x = parts(a), y = parts(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+    }
+    return 0;
+  };
+  const seen = KMStore.get(KEY);
+  if (!current) return;
+  if (!seen) { KMStore.set(KEY, current); return; }
+  if (cmp(seen, current) >= 0) return;
+  let releases = [];
+  try { releases = JSON.parse(data.textContent || "[]"); } catch (e) { return; }
+  const items = [];
+  releases
+    .filter((r) => cmp(r.version, seen) > 0 && cmp(r.version, current) <= 0)
+    .forEach((r) => (r.items || []).forEach((it) => items.push(Object.assign({ version: r.version }, it))));
+  KMStore.set(KEY, current);
+  const list = items.slice(0, 8);
+  if (!list.length) return;
+  document.documentElement.dataset.whatsNew = "1";
+
+  const $ = (id) => document.getElementById(id);
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const card = box.querySelector(".wnew-card");
+  const prevFocus = document.activeElement;
+  let i = 0;
+  function render() {
+    const it = list[i];
+    $("wnew-ver").textContent = it.version;
+    $("wnew-step").textContent = list.length > 1 ? `${i + 1} з ${list.length}` : "";
+    $("wnew-group").textContent = it.group || "";
+    $("wnew-title").textContent = it.title || "";
+    $("wnew-text").textContent = it.text || "";
+    $("wnew-text").hidden = !it.text;
+    $("wnew-next").textContent = i < list.length - 1 ? "Далі ›" : "Зрозуміло";
+    $("wnew-skip").hidden = i >= list.length - 1;
+  }
+  function close() {
+    box.classList.remove("is-in");
+    document.removeEventListener("keydown", onKey, true);
+    delete document.documentElement.dataset.whatsNew;
+    setTimeout(() => { box.hidden = true; }, reduce ? 0 : 260);
+    if (prevFocus && prevFocus.focus) prevFocus.focus();
+  }
+  function next() {
+    if (i >= list.length - 1) { close(); return; }
+    i += 1;
+    if (!reduce && card.animate) {
+      card.animate([{ opacity: 0.35, transform: "translateX(14px)" }, { opacity: 1, transform: "none" }],
+        { duration: 220, easing: "cubic-bezier(.2,.7,.2,1)" });
+    }
+    render();
+  }
+  function onKey(event) {
+    if (event.key === "Escape") { event.preventDefault(); close(); }
+  }
+  $("wnew-next").addEventListener("click", next);
+  $("wnew-skip").addEventListener("click", close);
+  box.addEventListener("click", (event) => { if (event.target === box) close(); });
+  document.addEventListener("keydown", onKey, true);
+  render();
+  box.hidden = false;
+  void box.offsetWidth;
+  box.classList.add("is-in");
+  $("wnew-next").focus();
+})();
