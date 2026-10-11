@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -1931,6 +1932,38 @@ def test_queue_hands_the_add_form_the_day_the_period_tab_shows(period, offset_da
     expected_day = {0: tab_today, -1: prev_tab_day(tab_today), 1: next_tab_day(tab_today)}[offset_days]
     expected = expected_day.strftime("%d.%m.%y")
     assert f'name="target_tab" value="{expected}"' in html
+
+
+@pytest.mark.parametrize("period", ["today", "yesterday", "tomorrow", "earlier"])
+def test_day_strip_highlights_the_tab_the_period_shows(period):
+    """Смуга днів підсвічує вкладку, що зараз у таблиці (власник 11.10.26).
+
+    Доти підсвічувалась лише дата, обрана в самій смузі: з «Сьогодні» (у
+    вихідні це п'ятниця) жодна дата не горіла, і не видно було, чия таблиця
+    завантажена. «Раніше» — багато днів, підсвітки немає.
+    """
+    from app.business_day import business_tab_today, next_tab_day, prev_tab_day
+
+    tab_today = business_tab_today()
+    days = {
+        "today": tab_today,
+        "yesterday": prev_tab_day(tab_today),
+        "tomorrow": next_tab_day(tab_today),
+    }
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        for n, d in enumerate(days.values(), start=1):
+            db.add(Order(source="lab", sheet_tab=d.strftime("%d.%m.%y"), row_number=n))
+        db.commit()
+        html = queue_router_mod.get_queue(request=_request(user.id), db=db, period=period).body.decode()
+
+    strip = html.split('class="date-strip"', 1)[1].split("</div>", 1)[0]
+    active = re.findall(r'class="is-active" aria-current="date" title="([\d.]+)"', strip)
+    if period == "earlier":
+        assert active == []
+    else:
+        assert active == [days[period].strftime("%d.%m.%Y")]
 
 
 def test_earlier_tab_targets_today():

@@ -130,8 +130,13 @@
         {% else %}
         <span class="nav-arrow nav-off" aria-hidden="true">‹</span>
         {% endif %}
+        {# Підсвічена дата = вкладка, що ЗАРАЗ у таблиці: обрана в смузі АБО
+           та, яку дав період («Сьогодні» у вихідні — п'ятниця). `viewed_tab`
+           рахує queue_view (той самий день, що гаряча смуга синку й ручне
+           додавання); «Раніше» й «Прострочено» — кілька днів, підсвітки нема. #}
         {% for d in date_tabs %}
-        <a href="/?date={{ d.strftime('%d.%m.%y') }}&date_page={{ date_page }}&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and selected_date == d %}is-active{% endif %}" title="{{ d.strftime('%d.%m.%Y') }}">{{ d.strftime('%d.%m') }}</a>
+        {% set _d_tab = d.strftime('%d.%m.%y') %}
+        <a href="/?date={{ _d_tab }}&date_page={{ date_page }}&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and viewed_tab == _d_tab %}is-active{% endif %}"{% if not show_overdue and viewed_tab == _d_tab %} aria-current="date"{% endif %} title="{{ d.strftime('%d.%m.%Y') }}">{{ d.strftime('%d.%m') }}</a>
         {% endfor %}
         {% if date_page > 0 %}
         <a class="nav-arrow" href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page - 1 }}" aria-label="Новіші дні" title="Новіші дні">›</a>
