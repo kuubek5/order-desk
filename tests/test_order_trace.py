@@ -163,9 +163,16 @@ def test_a_vanished_tab_is_named(snapshots):
 
 
 def test_a_live_order_is_reported_as_in_the_queue(snapshots):
-    snapshots("2026-09-08", "08.09.26", [_row(work_order="30150")])
+    # Вкладка — сьогоднішня, а не 08.09.26: «у черзі» означає «в межах
+    # RETENTION_DAYS», і стала дата перестала туди влазити 09.10.26 — тест
+    # почав казати «в архіві за віком» при правильній поведінці.
+    from app.business_day import business_tab_today
+
+    day = business_tab_today()
+    tab = day.strftime("%d.%m.%y")
+    snapshots(day.isoformat(), tab, [_row(work_order="30150")])
     db = _db()
-    _order(db, work_order_no="30150", status="прораховано", sheet_tab="08.09.26")
+    _order(db, work_order_no="30150", status="прораховано", sheet_tab=tab)
 
     result = order_trace.trace(db, "30150")
 
