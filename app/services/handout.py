@@ -462,6 +462,21 @@ def handout_select_day(days: list, day: str):
     return past[-1] if past else days[-1]
 
 
+def handout_default_day_clients(db: Session, today: date) -> int:
+    """Скільки клієнтів на видачі того дня, який екран видачі відкриває сам.
+
+    Для ранкового привітання над чергою (queue_view.morning_hello): число
+    мусить збігатись із шапкою видачі («N кл.»), тож береться тим самим
+    ланцюжком — невидані роботи → день за замовчуванням → групи клієнтів.
+    KPI черги `handout_pending_client_count` для цього не годиться: він
+    рахує всі 30 днів і разом зі старими хвостами давав 103 замість 35."""
+    eligible = handout_eligible_orders(db, today)
+    day = handout_select_day(handout_day_options(eligible), "")
+    if day is None:
+        return 0
+    return len({handout_group_key(o) for o in eligible if parse_sheet_tab(o.sheet_tab) == day})
+
+
 def handout_not_before(eligible: list[Order]) -> datetime | None:
     """Межа за датою — головний важіль швидкодії обходу. Бойовий лог 27.08.26:
     «262 клієнтів на екрані, 746 тек, 46148 записів, 511.42с» — тобто ~176

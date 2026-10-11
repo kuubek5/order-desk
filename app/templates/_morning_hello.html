@@ -1,0 +1,27 @@
+{# Ранкове привітання над чергою (власник 11.10.26, макет №8 «Моушн у KuubMill»).
+   Раз на робочий день у цьому браузері (ключ `hello.day`, межа доби 07:30) —
+   queue.js показує його, лише якщо сьогодні ще не показував. Роботі не заважає:
+   зникає сам за ~6 с, від кліку будь-де або будь-якої клавіші (клавіша при цьому
+   доходить, куди йшла). Числа — з queue_view.morning_hello, ті самі, що на екрані. #}
+{% if hello %}
+<div class="mhello" id="mhello" hidden data-day="{{ hello.day }}" role="status" aria-live="polite">
+    <div class="mhello-card">
+        <p class="mhello-date">{{ hello.date_label }}{% if hello.tab_note %} · {{ hello.tab_note }}{% endif %}</p>
+        <p class="mhello-greet">{{ hello.greet }}</p>
+        <div class="mhello-stats">
+            <div class="mhello-stat">
+                <span class="mhello-n" data-n="{{ hello.today }}">{{ hello.today }}</span>
+                <span class="mhello-l">{{ hello.today_label }}</span>
+            </div>
+            <div class="mhello-stat">
+                <span class="mhello-n" data-n="{{ hello.can_take }}">{{ hello.can_take }}</span>
+                <span class="mhello-l">можна брати</span>
+            </div>
+            <div class="mhello-stat">
+                <span class="mhello-n ok" data-n="{{ hello.clients }}">{{ hello.clients }}</span>
+                <span class="mhello-l">{{ hello.clients_label }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

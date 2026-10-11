@@ -1468,3 +1468,65 @@ if (document.readyState === "loading") {
 } else {
   centerActiveDay();
 }
+
+/* ── Ранкове привітання (_morning_hello.html, власник 11.10.26) ──────────
+   Раз на робочий день у цьому браузері: ключ — робоча дата з сервера
+   (`data-day`, межа доби 07:30), тож нічна зміна після 07:30 побачить його
+   знову, а перезавантаження сторінки — ні. Числа «докручуються» від нуля до
+   значення, яке вже стоїть у розмітці (без JS чи з prefers-reduced-motion
+   видно одразу кінцеве). Зникає сам за ~6 с, від кліку будь-де або будь-якої
+   клавіші; клавішу не перехоплюємо — вона доходить, куди йшла (Ctrl+K, пошук).
+   Чергу відкрили у фоновій вкладці — чекаємо, поки її покажуть: інакше
+   таймер закрив би привітання непоміченим, а «бачив сьогодні» вже стояло б. */
+(function initMorningHello() {
+  const box = document.getElementById("mhello");
+  if (!box) return;
+  const KEY = "helloDay";
+  const day = box.dataset.day || "";
+  if (!day || KMStore.get(KEY) === day) return;
+  if (document.hidden) {
+    const onVisible = () => {
+      if (document.hidden) return;
+      document.removeEventListener("visibilitychange", onVisible);
+      showHello(box, KEY, day);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return;
+  }
+  showHello(box, KEY, day);
+})();
+
+function showHello(box, KEY, day) {
+  KMStore.set(KEY, day);
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  box.hidden = false;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    box.classList.remove("is-in");
+    document.removeEventListener("keydown", close, true);
+    setTimeout(() => { box.hidden = true; }, reduce ? 0 : 320);
+  };
+  requestAnimationFrame(() => box.classList.add("is-in"));
+  box.addEventListener("click", close);
+  document.addEventListener("keydown", close, true);
+  setTimeout(close, 6500);
+  if (reduce) return;
+  const nums = Array.from(box.querySelectorAll("[data-n]"));
+  const start = performance.now() + 180;
+  const DUR = 1100;
+  const ease = (p) => 1 - Math.pow(1 - p, 3);
+  nums.forEach((el) => { el.textContent = "0"; });
+  function tick(now) {
+    const p = Math.min(1, Math.max(0, (now - start) / DUR));
+    nums.forEach((el, i) => {
+      const target = Number(el.dataset.n) || 0;
+      const q = Math.min(1, Math.max(0, p * 1.15 - i * 0.07));
+      el.textContent = String(Math.round(target * ease(q)));
+    });
+    if (p < 1 && !closed) requestAnimationFrame(tick);
+    else nums.forEach((el) => { el.textContent = el.dataset.n; });
+  }
+  requestAnimationFrame(tick);
+}
