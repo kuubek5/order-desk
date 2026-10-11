@@ -8,12 +8,20 @@
 
   <div class="mgrid">
     {% for m in view.machines %}
-      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}">
+      {# `data-key`/`data-tone` — для ПЕРЕХОДІВ (shop_board.html): шматок
+         свапається кожні 30 с, і анімація, прив'язана до самого стану, грала б
+         щоразу. Скрипт порівнює з попереднім шматком і вмикає її лише там, де
+         стан справді змінився. #}
+      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}" data-key="{{ m.key }}" data-tone="{{ m.tone }}">
         {% if m.portrait %}<div class="mc-port"><i style="background-image:url('{{ m.portrait }}')"></i></div>{% endif %}
+        {# Тривога (ТВ 4): товста рамка й легка заливка поверх фото, без
+           ореолу. Один сильний імпульс — лише на переході в червоне; далі в
+           помилки край повільно дихає, «немає звʼязку» стоїть рівно. #}
+        {% if m.tone == 'bad' %}<i class="mc-alarm" data-phase="2400" aria-hidden="true"></i>{% endif %}
         <div class="mc-top">
           <b>{{ m.name }}</b>
           <em>
-            <span class="gear" aria-hidden="true"><svg viewBox="0 0 32 32" fill="currentColor">
+            <span class="gear" aria-hidden="true"><svg viewBox="0 0 32 32" fill="currentColor" data-phase="3400">
               <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6"></rect>
               <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6" transform="rotate(45 16 16)"></rect>
               <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6" transform="rotate(90 16 16)"></rect>
@@ -79,7 +87,20 @@
           {% elif m.state == 'fault' %}
             <span class="take is-fault">підійти</span>
           {% elif m.percent is not none %}
-            <div class="bar"><i style="width:{{ m.percent }}%"></i></div>
+            {# Диск, що вифрезеровується (ТВ 3, власник 11.10.26) замість
+               точкової смужки: дуга — той самий відсоток, що числом праворуч;
+               одиниці — лише коли їх кількість відома з робіт (`units`), без
+               неї диск чесно порожній. Розміченої, але ще не вирізаної
+               одиниці майже не видно; вирізана — темна лунка з бурштиновим
+               краєм. `data-cut`/`data-pct` — для плавного переходу в скрипті. #}
+            <svg class="disc" viewBox="0 0 100 100" aria-hidden="true"
+                 data-pct="{{ m.percent }}" data-cut="{{ m.cut_count }}">
+              <circle class="disc-body" cx="50" cy="50" r="42"></circle>
+              {% for c in m.crowns %}<circle class="crown{% if c.cut %} is-cut{% endif %}" cx="{{ c.x }}" cy="{{ c.y }}" r="{{ c.r }}"></circle>{% endfor %}
+              <circle class="disc-track" cx="50" cy="50" r="47"></circle>
+              <circle class="disc-arc" cx="50" cy="50" r="47" transform="rotate(-90 50 50)"
+                      stroke-dasharray="{{ m.arc_dash }}" style="stroke-dashoffset:{{ m.arc_offset }}"></circle>
+            </svg>
             <span class="pc">{{ m.percent }}<small>%</small>{% if m.percent == 100 %}{{ _cat }}{% endif %}</span>
           {% elif has_work and m.note %}
             <span class="nd">{{ m.note }}</span>
@@ -138,11 +159,32 @@
     </div>
     <div class="furn-cells">
       {% for f in view.furnaces %}
-        <div class="fc {{ f.kind }}">
+        <div class="fc {{ f.kind }}"{% if f.heat is not none %} style="--heat:{{ f.heat }}"{% endif %}>
+          {# Жар (ТВ 5) — лише над піччю в роботі, сила від прочитаної
+             температури (`furnace_heat`); дихає повільно, фаза — від годинника,
+             а не від свапу (див. phaseLock у shop_board.html). #}
+          {% if f.heat is not none %}<span class="fc-heat" aria-hidden="true"><i data-phase="4200"></i></span>{% endif %}
+          {# Крива нагріву за останні години — справжні показання з бази.
+             Дірка в даних — розрив ЛІНІЇ (окремі polyline); заштрихованої
+             смуги, як на екрані «Печі», тут немає: на телевізорі сіра смуга
+             посеред плитки читалась як збій рендера. «Голова» — остання
+             свіжа точка. #}
+          {% if f.curve %}
+            <span class="fc-plot" aria-hidden="true">
+              <svg viewBox="0 0 {{ f.curve.width }} {{ f.curve.height }}" preserveAspectRatio="none">
+                {% for pts in f.curve.lines %}<polyline points="{{ pts }}" vector-effect="non-scaling-stroke"></polyline>{% endfor %}
+              </svg>
+              {% for d in f.curve.dots %}<i class="fc-dot" style="left:{{ d[0] }}%;top:{{ d[1] }}%"></i>{% endfor %}
+              {% if f.curve.head_x is not none %}<i class="fc-head" data-phase="2400" style="left:{{ f.curve.head_x }}%;top:{{ f.curve.head_y }}%"></i>{% endif %}
+            </span>
+          {% endif %}
           {# Іскри — лише над піччю в роботі: канал стану, не оздоба. #}
           {% if f.kind == 'run' %}<span class="fc-sparks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>{% endif %}
           <div class="fc-n">{{ f.name }}<em>{% if f.kind == 'run' %}RUN{% elif f.kind == 'idle' %}WAIT{% else %}—{% endif %}</em></div>
-          <div class="fc-t">{% if f.temp is not none %}{{ f.temp }}<small>°C</small>{% else %}—{% endif %}</div>
+          {# Відлік до відкриття тікає щосекунди (браузер рахує від часу
+             сервера). Стоїть у рядку температури, а не в рядку «відкриється»:
+             там при чотирьох печах його обрізала б трикрапка. #}
+          <div class="fc-t">{% if f.temp is not none %}{{ f.temp }}<small>°C</small>{% else %}—{% endif %}{% if f.done_iso %}<span class="fc-left" data-left-to="{{ f.done_iso }}" data-fmt="hms" data-prefix="ще ">—</span>{% endif %}</div>
           <div class="fc-o">
             {% if f.open_at %}відкриється <b>{% if f.open_day %}{{ f.open_day }} {% endif %}{{ f.open_at }}</b>
             {% elif f.note %}<span class="nd">{{ f.note }}</span>

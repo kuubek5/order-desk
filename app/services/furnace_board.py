@@ -117,6 +117,9 @@ class BoardCard:
     done_iso: str = ""   # для відліку «ще …» у браузері
     remaining: str = ""
     note: str = ""
+    # Ключ печі (адреса) — ним підписані її показання в базі. Табло логістів
+    # його не показує; табло цеху за ним бере криву нагріву (`shop_board`).
+    key: str = ""
 
 
 @dataclass
@@ -165,8 +168,9 @@ def board_view(db: Session, now: Optional[datetime] = None, cards=None) -> Board
     for card in source:
         state = card.state
         name = card.target.name
+        key = getattr(card, "key", "") or ""
         if card.has_problem:
-            view.cards.append(BoardCard(name=name, kind="bad", note="Табло печі не читається — число не вгадуємо"))
+            view.cards.append(BoardCard(name=name, kind="bad", note="Табло печі не читається — число не вгадуємо", key=key))
             continue
         temp = state.temp_c if state is not None else None
         if card.has_data and state is not None and state.captured_at is not None:
@@ -174,7 +178,7 @@ def board_view(db: Session, now: Optional[datetime] = None, cards=None) -> Board
             if stamp is not None:
                 stamps.append(stamp)
         if card.is_running:
-            item = BoardCard(name=name, kind="run", temp=temp)
+            item = BoardCard(name=name, kind="run", temp=temp, key=key)
             done_at = state.done_at if state is not None else None
             if state is not None and done_at is not None:
                 item.open_day = _open_day(done_at, now)
@@ -187,9 +191,9 @@ def board_view(db: Session, now: Optional[datetime] = None, cards=None) -> Board
                 item.note = "Час відкриття з табло не прочитано"
             view.cards.append(item)
         elif card.is_idle:
-            view.cards.append(BoardCard(name=name, kind="idle", temp=temp))
+            view.cards.append(BoardCard(name=name, kind="idle", temp=temp, key=key))
         else:
-            view.cards.append(BoardCard(name=name, kind="bad", temp=None, note="Стан печі не прочитано"))
+            view.cards.append(BoardCard(name=name, kind="bad", temp=None, note="Стан печі не прочитано", key=key))
     if nearest is not None:
         done_at, name = nearest
         view.nearest_name = name

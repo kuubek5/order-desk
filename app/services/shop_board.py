@@ -20,8 +20,12 @@
 
 from __future__ import annotations
 
+import functools
+import math
+import threading
+import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -48,6 +52,87 @@ _TONES = {
 # саме на екрані, куди дивляться, щоб зрозуміти, чия це заготовка (рішення
 # власника 15.09.26). Третя й далі не вміщаються — за ними «ще N».
 MAX_NAMED_WORKS = 2
+
+
+# ── Диск, що вифрезеровується (ТВ 3, власник 11.10.26) ─────────────────────
+# Замість точкової смужки — заготовка, на якій із відсотком проступають
+# вирізані одиниці, і дуга прогресу довкола. Число на картці лишається тим
+# самим `percent` з екрана верстата; диск лише показує його формою.
+#
+# Скільки одиниць на диску — СУМА кількостей робіт цього Sum3D (Sum3D ID — час
+# диска, не роботи: один проєкт = одна заготовка). Не вгадуємо: якщо хоч одна
+# кількість не число або робіт немає, коронок не малюємо зовсім — лише дугу.
+# Порожній диск чесніший за диск із вигаданими сімома коронками.
+DISC_MAX_UNITS = 36          # більше на 98-мм заготовку не кладуть; більше — лише дуга
+_DISC_FIELD = 37.0           # радіус поля коронок у viewBox 0..100 (диск 42, дуга 47)
+_DISC_ARC = 2 * math.pi * 47  # довжина дуги прогресу — у `stroke-dasharray`
+_GOLDEN_ANGLE = math.pi * (3 - math.sqrt(5))
+
+
+@dataclass(frozen=True)
+class DiscCrown:
+    """Одна одиниця на заготовці: місце (viewBox 0..100) і чи вже вирізана."""
+
+    x: float
+    y: float
+    r: float
+    cut: bool
+
+
+def disc_units(orders) -> Optional[int]:
+    """Скільки одиниць фрезерується на цьому диску, або None — не знаємо."""
+    total = 0
+    for order in orders or ():
+        raw = str(getattr(order, "quantity", "") or "").strip()
+        if not raw.isdigit() or int(raw) <= 0:
+            return None
+        total += int(raw)
+    if not total or total > DISC_MAX_UNITS:
+        return None
+    return total
+
+
+@functools.lru_cache(maxsize=64)
+def _disc_layout(units: int) -> tuple[float, tuple[tuple[float, float], ...]]:
+    """Радіус лунки й центри для `units` одиниць — спіраль Фогеля.
+
+    Радіус береться від НАЙМЕНШОЇ відстані між сусідами саме цієї розкладки
+    (а не від середньої щільності): на малих кількостях спіраль нерівна, і
+    «середній» радіус давав накладені лунки (вісім одиниць)."""
+    if units == 1:
+        return 8.0, ((50.0, 50.0),)
+    unit = [
+        (math.sqrt((i + 0.5) / units) * math.cos(i * _GOLDEN_ANGLE),
+         math.sqrt((i + 0.5) / units) * math.sin(i * _GOLDEN_ANGLE))
+        for i in range(units)
+    ]
+    nearest = min(
+        math.hypot(a[0] - b[0], a[1] - b[1])
+        for i, a in enumerate(unit) for b in unit[i + 1:]
+    )
+    # Лунка займає 88 % половини найменшої відстані; поле — `_DISC_FIELD`.
+    k = nearest * 0.44
+    radius = min(8.0, _DISC_FIELD * k / (1 + k))
+    reach = _DISC_FIELD - radius
+    points = tuple((round(50 + reach * x, 2), round(50 + reach * y, 2)) for x, y in unit)
+    return round(radius, 2), points
+
+
+def disc_crowns(units: Optional[int], percent: Optional[int]) -> list[DiscCrown]:
+    """Одиниці на диску: місця (`_disc_layout`) і які вже вирізані.
+
+    Вирізаних — частка, що відповідає відсотку, вниз до цілої: на 99 % остання
+    коронка ще не вирізана, і так само її покаже й диск. Розкладка залежить
+    лише від кількості, тож між оновленнями коронки не «стрибають» по диску.
+    """
+    if not units or percent is None:
+        return []
+    cut = units * max(0, min(100, percent)) // 100
+    radius, points = _disc_layout(units)
+    return [
+        DiscCrown(x=x, y=y, r=radius, cut=index < cut)
+        for index, (x, y) in enumerate(points)
+    ]
 
 
 @dataclass
@@ -96,6 +181,26 @@ class ShopMachine:
     # Коли машина обіцяє закінчити — ЇЇ прогноз із екрана, не наша оцінка.
     ends_at: str = ""
     left_text: str = ""
+    # Одиниць на диску (див. `disc_units`); None — коронок не малюємо.
+    units: Optional[int] = None
+
+    @property
+    def crowns(self) -> list[DiscCrown]:
+        return disc_crowns(self.units, self.percent)
+
+    @property
+    def cut_count(self) -> int:
+        return sum(1 for crown in self.crowns if crown.cut)
+
+    @property
+    def arc_dash(self) -> float:
+        return round(_DISC_ARC, 2)
+
+    @property
+    def arc_offset(self) -> float:
+        """Незаповнена частина дуги: 0 — повне коло, `arc_dash` — порожнє."""
+        share = max(0, min(100, self.percent or 0)) / 100
+        return round(_DISC_ARC * (1 - share), 2)
 
     @property
     def client(self) -> str:
@@ -113,13 +218,135 @@ class ShopMachine:
         return round(self.layer / self.layers_total * 100)
 
 
+# ── Піч: живий жар і крива нагріву (ТВ 5, власник 11.10.26) ────────────────
+# Крива — ЛИШЕ з показань у базі (`FurnaceReading`) і тим самим збирачем, що
+# графік доби на екрані «Печі» (`furnace.build_day_chart`): розрив лишається
+# розривом, проміжних точок ніхто не усереднює. Вікно коротке: біля телевізора
+# питають «як іде ця програма», а не «що було вночі».
+TV_CURVE_HOURS = 6
+# Крива змінюється раз на хвилину (так пишуться показання), а табло питає раз
+# на 30 с, і глядачів буває кілька — тож тримаємо готову криву хвилину.
+_CURVE_TTL_SECONDS = 55.0
+_curve_cache: dict[str, tuple[float, Optional["TvCurve"]]] = {}
+_curve_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class TvCurve:
+    """Готова геометрія кривої для плитки печі. Поле — viewBox `width`×`height`
+    графіка доби; «голова» (`head_*`) — у відсотках плитки, бо крива
+    розтягується на плитку без збереження пропорцій, і коло там стало б
+    еліпсом."""
+
+    lines: list
+    dots: list
+    gaps: list
+    width: int
+    height: int
+    # Остання прочитана температура, якщо вона свіжа (не старша за дірку
+    # графіка). Старої «голови» не малюємо: вона казала б «зараз» про минуле.
+    head_x: Optional[float] = None
+    head_y: Optional[float] = None
+
+
+def curve_from_readings(readings, *, started_at: datetime, ended_at: datetime) -> Optional[TvCurve]:
+    """Показання → крива. Чиста функція; None — показувати нічого."""
+    from app.services.furnace import HISTORY_GAP_SECONDS, build_day_chart
+
+    chart = build_day_chart(readings, started_at=started_at, ended_at=ended_at)
+    if not chart.has_data:
+        return None
+    head_x = head_y = None
+    last = next(
+        (r for r in reversed(readings) if r.captured_at is not None and r.temp_c is not None),
+        None,
+    )
+    if last is not None and (ended_at - last.captured_at).total_seconds() <= HISTORY_GAP_SECONDS:
+        span = max(1.0, (ended_at - started_at).total_seconds())
+        share = min(1.0, max(0.0, (last.captured_at - started_at).total_seconds() / span))
+        head_x = round(share * 100, 2)
+        head_y = round((1 - last.temp_c / chart.top_c) * 100, 2)
+    return TvCurve(
+        lines=list(chart.lines),
+        # Одиночні показання — у відсотках плитки, як і «голова»: коло у
+        # розтягнутому SVG стало б еліпсом.
+        dots=[
+            (round(d.x / chart.width * 100, 2), round(d.y / chart.height * 100, 2))
+            for d in chart.dots
+        ],
+        gaps=list(chart.gaps),
+        width=chart.width,
+        height=chart.height,
+        head_x=head_x,
+        head_y=head_y,
+    )
+
+
+def furnace_curve(db: Session, key: str, *, now: Optional[datetime] = None) -> Optional[TvCurve]:
+    """Крива печі за останні `TV_CURVE_HOURS` годин.
+
+    Час — наївний локальний, як його пише `FurnaceReading` (годинник цеху), а
+    не `business_now()`: інакше вікно зсунулось би на пояс відносно показань.
+    """
+    from app.services.furnace import day_readings
+
+    ended_at = now or datetime.now()
+    started_at = ended_at - timedelta(hours=TV_CURVE_HOURS)
+    readings = day_readings(db, key, now=ended_at, hours=TV_CURVE_HOURS)
+    return curve_from_readings(readings, started_at=started_at, ended_at=ended_at)
+
+
+def _cached_curve(db: Session, key: str) -> Optional[TvCurve]:
+    stamp = time.monotonic()
+    with _curve_lock:
+        hit = _curve_cache.get(key)
+        if hit is not None and stamp - hit[0] < _CURVE_TTL_SECONDS:
+            return hit[1]
+    curve = furnace_curve(db, key)
+    with _curve_lock:
+        _curve_cache[key] = (stamp, curve)
+    return curve
+
+
+def furnace_heat(kind: str, temp: Optional[int]) -> Optional[float]:
+    """Сила жару над піччю в роботі (0.25…1) — від прочитаної температури.
+
+    Лише для `run`: жар над вільною піччю казав би «пече» про холодну. Не
+    прочитали температуру — тихий жар, а не повний: сила тут теж показання.
+    """
+    if kind != "run":
+        return None
+    if temp is None:
+        return 0.35
+    return round(min(1.0, max(0.25, temp / 1500)), 2)
+
+
+@dataclass
+class ShopFurnace:
+    """Плитка печі на табло цеху: картка табло логістів + жар і крива.
+
+    Поля картки ПЕРЕПИСАНІ, а не загорнуті: `BoardCard` — спільний тип двох
+    екранів, і додавати в нього криву, якої табло логістів не малює, означало
+    б тягнути показання з бази й для них."""
+
+    name: str
+    kind: str
+    temp: Optional[int] = None
+    open_day: str = ""
+    open_at: str = ""
+    done_iso: str = ""
+    note: str = ""
+    heat: Optional[float] = None
+    curve: Optional[TvCurve] = None
+
+
 @dataclass
 class ShopView:
     now: datetime
     machines: list[ShopMachine] = field(default_factory=list)
     sisma: Optional[ShopMachine] = None
     # Печі приходять готовими картками з табло логістів — один збирач на два
-    # екрани, щоб числа на них не могли розійтись.
+    # екрани, щоб числа на них не могли розійтись (`ShopFurnace`).
     furnaces: list = field(default_factory=list)
     nearest_name: str = ""
     nearest_at: str = ""
@@ -258,6 +485,8 @@ def _machine(card, token: str) -> ShopMachine:
         portrait=_portrait_of(card, token),
     )
     item.works, item.extra = _works_of(card)
+    # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
+    item.units = disc_units(getattr(card, "orders", None) or [])
     if not item.works:
         # Верстат щойно доробив, а програма вже зникла з екрана (на новому
         # поколінні SUMMARY назви не несе). Тоді картка називає ОСТАННЮ роботу
@@ -302,8 +531,13 @@ def shop_view(
     now: Optional[datetime] = None,
     cards=None,
     furnace_view=None,
+    curves: Optional[dict] = None,
 ) -> ShopView:
-    """Зібрати все, що показує табло цеху. `cards`/`furnace_view` — для тестів."""
+    """Зібрати все, що показує табло цеху.
+
+    `cards`/`furnace_view`/`curves` — для тестів; `curves` — крива за НАЗВОЮ
+    печі (у тестових картках немає ключа печі).
+    """
     from app.services import furnace_board
     from app.services.machines import snapshot
 
@@ -325,7 +559,27 @@ def shop_view(
             view.machines.append(_machine(card, token))
 
     fv = furnace_board.board_view(db, now=now) if furnace_view is None else furnace_view
-    view.furnaces = list(fv.cards)
+    for fc in fv.cards:
+        kind = getattr(fc, "kind", "")
+        temp = getattr(fc, "temp", None)
+        curve = None
+        if kind == "run":
+            key = getattr(fc, "key", "") or ""
+            if curves is not None:
+                curve = curves.get(fc.name)
+            elif db is not None and key:
+                curve = _cached_curve(db, key)
+        view.furnaces.append(ShopFurnace(
+            name=fc.name,
+            kind=kind,
+            temp=temp,
+            open_day=getattr(fc, "open_day", "") or "",
+            open_at=getattr(fc, "open_at", "") or "",
+            done_iso=getattr(fc, "done_iso", "") or "",
+            note=getattr(fc, "note", "") or "",
+            heat=furnace_heat(kind, temp),
+            curve=curve,
+        ))
     view.nearest_name = fv.nearest_name
     view.nearest_at = fv.nearest_at
     view.nearest_day = fv.nearest_day

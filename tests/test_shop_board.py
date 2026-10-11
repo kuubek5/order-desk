@@ -444,6 +444,7 @@ def test_fault_calls_a_human_as_loudly_as_done(app_db, monkeypatch):  # noqa: F8
     # Смуга відсотка на картці з помилкою не малюється: «40 %» читалось би як
     # «працює», хоча верстат стоїть і чекає людину.
     assert 'class="bar"' not in loader
+    assert 'class="disc"' not in loader, "диск із відсотком на помилці теж читався б як «працює»"
     assert "is-fault" not in offline and "підійти" not in offline
 
 
@@ -624,3 +625,166 @@ def test_dancing_cat_shows_over_100_percent_only(app_db, monkeypatch):  # noqa: 
         status, headers, _ = board.get(f"/static/img/{name}")
         assert status == 200, name
         assert headers.get("content-type", "").startswith("image/webp"), name
+
+
+# ── Моушн ТВ 3/4/5 (власник 11.10.26) ───────────────────────────────────────
+
+
+def test_disc_units_only_when_every_quantity_is_a_number():
+    """Коронки на диску — лише з відомої кількості. Одна робота без числа —
+    і диск лишається порожнім (дуга без коронок), а не вгадує."""
+    assert sb.disc_units([_order(quantity="4"), _order(quantity="3")]) == 7
+    assert sb.disc_units([_order(quantity="4"), _order(quantity="")]) is None
+    assert sb.disc_units([_order(quantity="2+1")]) is None
+    assert sb.disc_units([]) is None
+    assert sb.disc_units([_order(quantity=str(sb.DISC_MAX_UNITS + 1))]) is None
+
+
+def test_disc_crowns_fit_the_disc_without_overlap_and_stay_put():
+    import math
+
+    for units in range(1, sb.DISC_MAX_UNITS + 1):
+        crowns = sb.disc_crowns(units, 50)
+        assert len(crowns) == units
+        for c in crowns:
+            assert math.hypot(c.x - 50, c.y - 50) + c.r <= 42, (units, c)
+        for i, a in enumerate(crowns):
+            for b in crowns[i + 1:]:
+                assert math.hypot(a.x - b.x, a.y - b.y) >= a.r + b.r, (units, a, b)
+        # Розкладка не залежить від відсотка: коронки не стрибають по диску.
+        assert [(c.x, c.y) for c in sb.disc_crowns(units, 90)] == [(c.x, c.y) for c in crowns]
+
+
+def test_disc_cuts_whole_units_and_arc_follows_percent():
+    assert [c.cut for c in sb.disc_crowns(7, 99)].count(True) == 6, "на 99 % остання ще не вирізана"
+    assert all(c.cut for c in sb.disc_crowns(7, 100))
+    assert not any(c.cut for c in sb.disc_crowns(7, 0))
+    assert sb.disc_crowns(None, 50) == [] and sb.disc_crowns(7, None) == []
+    full = _view([_card("A", "run", percent=100, orders=[_order("К", "pmma", "3")])]).machines[0]
+    empty = _view([_card("A", "run", percent=0, orders=[_order("К", "pmma", "3")])]).machines[0]
+    assert full.arc_offset == 0 and empty.arc_offset == full.arc_dash
+    # Щойно зняті роботи на диск не потрапляють: він про ту, що на шпинделі.
+    done = _view([_card("A", "done", last_orders=[_order("К", "pmma", "3")])]).machines[0]
+    assert done.units is None
+
+
+def test_board_draws_the_disc_and_alarm_layer(app_db, monkeypatch):  # noqa: F811
+    """Справжній рендер: диск із лунками замість смужки, шар тривоги лише в
+    червоних карток і дані для переходів у розмітці."""
+    from app.routers.furnace_board import create_board_app
+    from app.services import furnace_board as fb
+    from app.services import machines as machines_mod
+    from tests.test_furnace_board import _enable
+
+    _, factory = app_db
+    token = _enable(factory)
+    monkeypatch.setattr("app.db.SessionLocal", factory)
+    monkeypatch.setattr(machines_mod, "snapshot", lambda db: [
+        _card("M-run", "run", percent=43, sum3d="X", orders=[_order("К", "pmma a2", "7")]),
+        _card("M-unknown", "run", percent=43, sum3d="Y", orders=[_order("К", "pmma a2", "")]),
+        _card("M-fault", "fault", percent=40, word="помилка"),
+        _card("M-off", "off", word="немає зв'язку", note="мовчить порт агента"),
+    ])
+    monkeypatch.setattr(fb, "board_view", lambda db, now=None, cards=None: SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso=""))
+
+    status, _, frag = MiniClient(create_board_app()).get(f"/t/{token}/shop/cards")
+    assert status == 200
+    parts = {name: frag.split(f'data-key="{name}"', 1)[1].split('class="mc ', 1)[0]
+             for name in ("M-run", "M-unknown", "M-fault", "M-off")}
+    run = parts["M-run"]
+    assert 'class="disc"' in run and 'data-pct="43"' in run and 'data-cut="3"' in run
+    assert run.count('class="crown') == 7 and run.count("is-cut") == 3
+    assert 'class="bar"' not in frag, "смужки більше немає"
+    unknown = parts["M-unknown"]
+    assert 'class="disc"' in unknown and 'class="crown' not in unknown, "невідома кількість — без коронок"
+    assert 'class="mc-alarm"' in parts["M-fault"] and 'class="mc-alarm"' in parts["M-off"]
+    assert 'class="mc-alarm"' not in run
+    assert 'data-tone="bad"' in frag and 'data-tone="run"' in frag
+
+
+def test_furnace_heat_only_over_a_running_furnace():
+    assert sb.furnace_heat("idle", 1400) is None
+    assert sb.furnace_heat("bad", None) is None
+    assert sb.furnace_heat("run", 1500) == 1.0
+    assert sb.furnace_heat("run", 60) == 0.25
+    assert 0.25 < sb.furnace_heat("run", 900) < 1.0
+    assert sb.furnace_heat("run", None) == 0.35, "не прочитали — тихий жар, не повний"
+
+
+def _reading(minute, temp):
+    from datetime import timedelta
+
+    return SimpleNamespace(captured_at=datetime(2026, 10, 11, 18, 0) + timedelta(minutes=minute),
+                           temp_c=temp)
+
+
+def test_curve_keeps_the_gap_and_shows_a_head_only_when_fresh():
+    from datetime import timedelta
+
+    start = datetime(2026, 10, 11, 18, 0)
+    end = start + timedelta(hours=sb.TV_CURVE_HOURS)
+    # Розігрів, 40 хв тиші (дірка), полиця — і остання точка хвилину тому.
+    readings = [_reading(m, 400 + m * 10) for m in range(0, 60)]
+    readings += [_reading(m, 1450) for m in range(100, 359)]
+    curve = sb.curve_from_readings(readings, started_at=start, ended_at=end)
+    assert curve is not None and len(curve.lines) == 2, "розрив лишається розривом"
+    assert any(abs(g.x - curve.width * 59 / 360) < 2 for g in curve.gaps)
+    assert curve.head_x is not None and curve.head_x > 99
+    assert 0 <= curve.head_y < 10, "1450 °C — під самим верхом шкали"
+
+    stale = sb.curve_from_readings(readings[:60], started_at=start, ended_at=end)
+    assert stale is not None and stale.head_x is None, "стара точка не вдає «зараз»"
+    assert sb.curve_from_readings([_reading(1, None)], started_at=start, ended_at=end) is None
+
+
+def test_furnace_curve_reads_the_database(app_db):  # noqa: F811
+    """Справжній запит до показань: крива — з бази, за ключем печі, і чужа піч
+    у неї не потрапляє."""
+    from datetime import timedelta
+
+    from app.models import FurnaceReading
+
+    _, factory = app_db
+    now = datetime(2026, 10, 11, 23, 0)
+    with factory() as db:
+        for minute in range(0, 120, 2):
+            at = now - timedelta(minutes=minute)
+            db.add(FurnaceReading(host="10.0.0.5", captured_at=at, status="RUN", temp_c=1400))
+            db.add(FurnaceReading(host="10.0.0.6", captured_at=at, status="RUN", temp_c=200))
+        db.add(FurnaceReading(host="10.0.0.5", captured_at=now - timedelta(hours=9),
+                              status="RUN", temp_c=50))
+        db.commit()
+        curve = sb.furnace_curve(db, "10.0.0.5", now=now)
+    assert curve is not None and curve.head_x is not None
+    ys = [float(p.split(",")[1]) for line in curve.lines for p in line.split()]
+    assert ys and max(ys) == min(ys), "лише 1400 °C цієї печі; 200 °C сусідньої й старі 50 °C — поза кривою"
+
+
+def test_shop_view_passes_heat_and_curve_only_for_running_furnaces():
+    curve = sb.TvCurve(lines=["0,10 360,10"], dots=[], gaps=[], width=360, height=110,
+                       head_x=100.0, head_y=9.0)
+    furnace = SimpleNamespace(
+        cards=[
+            SimpleNamespace(name="Бочка", kind="run", temp=1452, open_at="01:38", open_day="завтра",
+                            done_iso="2026-10-12T01:38:00", remaining="", note=""),
+            SimpleNamespace(name="Піч 3", kind="idle", temp=40, open_at="", open_day="",
+                            done_iso="", remaining="", note=""),
+        ],
+        nearest_name="Бочка", nearest_at="01:38", nearest_day="завтра",
+        nearest_iso="2026-10-12T01:38:00")
+    view = sb.shop_view(None, token="t", now=NOW, cards=[], furnace_view=furnace,
+                        curves={"Бочка": curve, "Піч 3": curve})
+    run, idle = view.furnaces
+    assert run.curve is curve and run.heat == 0.97 and run.done_iso
+    assert idle.curve is None and idle.heat is None
+
+
+def test_board_card_carries_the_furnace_key():
+    from app.services import furnace_board as fb
+
+    card = SimpleNamespace(
+        key="10.0.0.5", target=SimpleNamespace(name="Бочка"),
+        state=SimpleNamespace(temp_c=1452, done_at=None, remaining_text="", captured_at=None),
+        is_running=True, is_idle=False, has_problem=False, has_data=True)
+    assert fb.board_view(None, NOW, cards=[card]).cards[0].key == "10.0.0.5"
