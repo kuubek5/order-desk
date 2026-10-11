@@ -4,7 +4,7 @@
 центру, дев'ять файлів ukr.net по три рядки кожен (ім'я, розмір, посилання).
 """
 
-from app.mail_body_view import inline_parts, letter_segments, useful_text
+from app.mail_body_view import SNIPPET_CHARS, inline_parts, letter_snippet, letter_segments, useful_text
 
 TOKEN = "AwHRf2PsB-f7wbn1LkQ72K_ZQZ5-ehj4a3D4IIA_Q8XX2Oo2YGn0y92b:lHaKxUo4W5POddkz"
 BODY = f"""--- Повідомлення, що пересилається ---
@@ -156,3 +156,42 @@ def test_proton_nested_forwards_are_recognised_through_quotes():
 
 def test_preview_skips_mailer_lines_and_quote_marks():
     assert useful_text(letter_segments(PROTON)) == "pmma a3, 2 одиниці"
+
+
+def test_snippet_is_the_customer_words_on_one_line():
+    """Сніпет у широкому списку = те саме, що «Що пише замовник», одним рядком:
+    без пересилання, підпису й списку файлів з токенами."""
+    snippet = letter_snippet(BODY, ".")
+    assert snippet.startswith("Monolith кольору денис, юшков а3.5")
+    assert "\n" not in snippet
+    assert "Від кого" not in snippet and "Sтаханівець" not in snippet
+    assert TOKEN not in snippet
+    assert len(snippet) <= SNIPPET_CHARS
+
+
+def test_snippet_empty_without_body_or_when_it_repeats_the_subject():
+    assert letter_snippet(None) == ""
+    assert letter_snippet("") == ""
+    assert letter_snippet("пмма  А2", "ПММА а2") == ""
+    assert letter_snippet("пмма а2, терміново", "пмма а2") == "пмма а2, терміново"
+
+
+GMAIL_UA_FORWARD = (
+    "---------- Forwarded message ---------\r\n"
+    "Від: Peaky Blinder <kuubek55@gmail.com>\r\n"
+    "Date: ср, 23 вер. 2026\u202fр. о 21:28\r\n"
+    "Subject: Fwd:\r\n"
+    "To: <kyivletter@ukr.net>\r\n"
+    "\r\n\r\n"
+    "mono a3, дві коронки\r\n"
+)
+
+
+def test_gmail_ukrainian_forward_header_is_not_customer_text():
+    """Gmail українською пише «Від:», а не «Від кого:» — заголовок
+    пересилання не має потрапляти ні в «Що пише замовник», ні в сніпет."""
+    segments = letter_segments(GMAIL_UA_FORWARD)
+    assert _kinds(segments) == ["forward", "text"]
+    assert ("Від", "Peaky Blinder <kuubek55@gmail.com>") in segments[0].fields
+    assert useful_text(segments) == "mono a3, дві коронки"
+    assert letter_snippet(GMAIL_UA_FORWARD, "Fwd:") == "mono a3, дві коронки"

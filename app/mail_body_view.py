@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from urllib.parse import urlsplit
 
 # Початок пересланого листа в різних поштовиках.
@@ -27,7 +28,9 @@ _FORWARD_START = re.compile(
 )
 # Поле заголовка пересилання: «Від кого: Iris <…>».
 _FORWARD_FIELD = re.compile(
-    r"^(від кого|кому|копія|тема|дата|от|отправлено|from|to|cc|subject|date|sent)\s*:\s*(.*)$",
+    # «від» — Gmail українською («Від: Peaky Blinder <…>»); без нього перший же
+    # рядок заголовка вважався словами замовника (лист 37 dev, 11.10.26).
+    r"^(від кого|від|кому|копія|тема|дата|от|отправлено|from|to|cc|subject|date|sent)\s*:\s*(.*)$",
     re.IGNORECASE,
 )
 # Маркери цитати: Proton, Thunderbird і Gmail (текстова частина) кладуть
@@ -175,6 +178,31 @@ def useful_text(segments: list[Segment]) -> str:
     parts = ["\n".join(s.lines) for s in segments if s.kind == "text"]
     text = _MD_LINK.sub(r"\1", "\n".join(p for p in parts if p.strip()))
     return _URL.sub(lambda m: f"[{_host(m.group(0))}]", text)
+
+
+SNIPPET_CHARS = 220
+
+
+@lru_cache(maxsize=512)
+def _snippet_of(body: str) -> str:
+    return " ".join(useful_text(letter_segments(body)).split())[:SNIPPET_CHARS]
+
+
+def letter_snippet(body: str | None, subject: str | None = None) -> str:
+    """Початок слів замовника одним рядком — для широкого списку листів.
+
+    Той самий розбір, що й «Що пише замовник» у картці (без пересилання,
+    підпису й списку файлів), тож список не показує службового, якого не
+    показує картка. Кеш за текстом листа: список перемальовує поллом ті самі
+    листи, а розбір — регулярки по всьому тілу. Сніпет, що лише повторює тему,
+    не потрібен — порожньо.
+    """
+    if not body:
+        return ""
+    snippet = _snippet_of(body)
+    if subject and snippet.casefold() == " ".join(subject.split()).casefold():
+        return ""
+    return snippet
 
 
 def _host(url: str) -> str:

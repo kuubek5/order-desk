@@ -890,6 +890,9 @@ templates.env.globals["triage_readiness"] = triage_readiness
 templates.env.globals["hold_label"] = hold_label
 templates.env.globals["hold_reasons"] = HOLD_REASONS
 templates.env.globals["files_on_disk"] = files_on_disk
+# Початок слів замовника в широкому списку листів (_mail_triage_list.html).
+from app.mail_body_view import letter_snippet  # noqa: E402
+templates.env.globals["letter_snippet"] = letter_snippet
 from app.services.machines import machine_model_key  # noqa: E402 — після створення templates
 templates.env.globals["machine_model_key"] = machine_model_key
 from app.services.machines import MACHINE_MODELS  # noqa: E402

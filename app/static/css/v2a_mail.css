@@ -671,6 +671,12 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
   .mailv2 .mailrow{padding:var(--mail-row-pad, 6px) 16px}
 }
 
+/* Сніпет листа після теми — лише в широкому списку (контейнерне правило
+   нижче); вужче тема й так ледве влазить, і сніпет лише з'їв би трикрапкою її
+   кінець. Стоїть ВИЩЕ контейнерного: та сама специфічність, тож пізніше
+   правило перебило б показ. */
+.mailv2 .mailrow .subj-snip{display:none;color:var(--ink-3)}
+
 /* Широкий список — оператор відтягнув межу списку або вікно на весь 27"
    (власник 11.10.26). Колонка відправника лишалась 210px, тема — одразу за
    нею, і середина рядка до «N файл.» стояла порожньою. Тепер колонка імені
@@ -686,6 +692,7 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
   .mailv2 .mailrow .r2{grid-template-columns:minmax(0,1fr) minmax(0, var(--mail-att-col, 120px)) auto;gap:16px}
   .mailv2 .mailrow .att,
   .mailv2 .mailrow .t{font-size:var(--fs-1)}
+  .mailv2 .mailrow .subj-snip{display:inline}
 }
 
 /* ── Поки лист не обрано: список на всю ширину ────────────────────────────

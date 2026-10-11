@@ -124,7 +124,13 @@
                 {# A subject that is nothing but a reply/forward prefix is not a
                    subject — it wasted the whole line on «Fwd:». #}
                 {% set subj = (email.subject or '')|trim %}
-                <span class="subj">{% if subj|lower in ('fwd:', 're:', 'fw:', 'fwd', 're', '') %}Без теми{% else %}{{ subj }}{% endif %}</span>
+                {# Сніпет — початок слів замовника (той самий розбір, що «Що пише
+                   замовник» у картці). У розмітці завжди, видно лише в широкому
+                   списку (контейнер ≥860px, v2a_mail.css) — там між темою й
+                   «N файл.» інакше порожньо (власник 11.10.26). Усередині .subj,
+                   щоб ділити з темою ту саму колонку й трикрапку. #}
+                {% set _snip = letter_snippet(email.body_text, subj) %}
+                <span class="subj">{% if subj|lower in ('fwd:', 're:', 'fw:', 'fwd', 're', '') %}Без теми{% else %}{{ subj }}{% endif %}{% if _snip %}<span class="subj-snip"> — {{ _snip }}</span>{% endif %}</span>
                 {# Рахуємо файли НА ДИСКУ, а не рядки в базі: це той самий обман,
                    від якого вже полагодили панель. «3 з 5» аварійним кольором
                    каже правду там, де оператор веде очима. #}
