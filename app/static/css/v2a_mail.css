@@ -671,6 +671,23 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
   .mailv2 .mailrow{padding:var(--mail-row-pad, 6px) 16px}
 }
 
+/* Широкий список — оператор відтягнув межу списку або вікно на весь 27"
+   (власник 11.10.26). Колонка відправника лишалась 210px, тема — одразу за
+   нею, і середина рядка до «N файл.» стояла порожньою. Тепер колонка імені
+   росте з шириною САМОГО списку (cqi = 1% ширини контейнера maillist), а ім'я,
+   тема, файли й час — на крок крупніші, щоб читались з відстані. Межі clamp:
+   не вужче 260 (ім'я + чіп матеріалу на шрифті кроком більшим) і не ширше
+   360 — ширша колонка лишала дірку між коротким іменем і темою (заміряно на
+   списку 1250px: 30cqi = 375px при іменах до ~260px). Тема отримує решту. */
+@container maillist (min-width: 860px){
+  .mailv2 .mailrow .rowmain{grid-template-columns:var(--mail-from-col, clamp(260px, 24cqi, 360px)) minmax(0,1fr);gap:16px}
+  .mailv2 .mailrow .from{font-size:var(--fs-3)}
+  .mailv2 .mailrow .subj{font-size:var(--fs-2)}
+  .mailv2 .mailrow .r2{grid-template-columns:minmax(0,1fr) minmax(0, var(--mail-att-col, 120px)) auto;gap:16px}
+  .mailv2 .mailrow .att,
+  .mailv2 .mailrow .t{font-size:var(--fs-1)}
+}
+
 /* ── Поки лист не обрано: список на всю ширину ────────────────────────────
    Двопанельна розкладка має сенс, коли є ЩО показувати праворуч. Доки лист
    не відкрито, права половина — порожнеча, і чим ширший монітор, тим вона
@@ -1378,7 +1395,7 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .detail-panel{max-height:calc(100vh - 236px - var(--m-strips-h, 0px))}
 /* 941–1200: вкладки переносяться у два ряди, панель починається нижче —
    запас під кнопку зворотного зв'язку треба більший. */
-@media (min-width:961px) and (max-width:1280px){
+@media (width > 960px) and (max-width:1280px){
   .mailv2 .detail-panel{max-height:calc(100vh - 280px - var(--m-strips-h, 0px))}
 }
 
@@ -1539,8 +1556,11 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    100vh−236 (запас під кнопку зворотного зв'язку, див. вище), тож список
    звисав на 46 px нижче картки. Тепер обидві беруть висоту картки — запас під
    кнопку лишається, а список коротшає на ті самі 46 px. Змінна на
-   .worklayout, бо --m-strips-h ставить app.js на .mailv2 (предок). */
-@media (min-width:961px){
+   .worklayout, бо --m-strips-h ставить app.js на .mailv2 (предок).
+   `width > 960px`, а не `min-width:961px`: з масштабом Windows ширина вікна
+   дробова (960.5), і між «≤960» та «≥961» була щілина, де панелі стояли
+   поруч, але з різною висотою (спіймано заміром 11.10.26). */
+@media (width > 960px){
   .mailv2 .worklayout{--m-panel-h:calc(100vh - 236px - var(--m-strips-h, 0px))}
   /* Лише коли в списку є листи: порожня вкладка (Оброблено, На уточненні)
      стискається, як раніше, а не стоїть високою порожньою панеллю. */
@@ -1548,7 +1568,7 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
   .mailv2 .worklayout:has(.list-panel .mailrow)>.detail-panel{height:var(--m-panel-h)}
 }
 /* Та сама поправка, що й для max-height картки на 961–1280 (вкладки в два ряди). */
-@media (min-width:961px) and (max-width:1280px){
+@media (width > 960px) and (max-width:1280px){
   .mailv2 .worklayout{--m-panel-h:calc(100vh - 280px - var(--m-strips-h, 0px))}
 }
 
