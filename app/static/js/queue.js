@@ -1501,7 +1501,7 @@ if (document.readyState === "loading") {
 
 function showHello(box, KEY, day) {
   KMStore.set(KEY, day);
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   box.hidden = false;
   let closed = false;
   const close = () => {

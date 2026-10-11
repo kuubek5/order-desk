@@ -1591,7 +1591,7 @@ document.addEventListener("change", (event) => {
 // Конвеєр сторінку не перезавантажує — там є mailBatchDone. Лише клас на
 // лічильнику й один тимчасовий елемент; prefers-reduced-motion — без польоту.
 (function acceptFlight() {
-  const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const REDUCE = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const FLAG = "kmMailLanded";
   let pulseOnSettle = false;
   const dockCount = () => document.querySelector("#mail-queue-mirror .qmir-count");

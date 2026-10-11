@@ -1846,9 +1846,9 @@ document.addEventListener("toggle", (event) => {
 
 /* ── «Що нового» після оновлення (_whats_new.html, власник 11.10.26, макет №5) ──
    Браузер пам'ятає, до якої версії вже бачив новини (KMStore seenVersion).
-   Перший запуск у браузері — нічого не показуємо, лише запам'ятовуємо: інакше
-   новий ПК побачив би чужі старі новини. Після оновлення — пункти всіх версій
-   новіших за бачену (до 8), один за раз. «Бачив» ставимо одразу при показі:
+   Браузер без позначки (новий ПК або перше встановлення цієї функції) бачить
+   лише пункти ПОТОЧНОЇ версії — свіжі, не всю історію. Після оновлення —
+   пункти всіх версій новіших за бачену (до 8), один за раз. «Бачив» ставимо одразу при показі:
    перезавантаження не повторить картку. Поки картка на екрані, ранкове
    привітання (queue.js) чекає наступного відкриття — не накладається. */
 (function initWhatsNew() {
@@ -1867,13 +1867,12 @@ document.addEventListener("toggle", (event) => {
   };
   const seen = KMStore.get(KEY);
   if (!current) return;
-  if (!seen) { KMStore.set(KEY, current); return; }
-  if (cmp(seen, current) >= 0) return;
+  if (seen && cmp(seen, current) >= 0) return;
   let releases = [];
   try { releases = JSON.parse(data.textContent || "[]"); } catch (e) { return; }
   const items = [];
   releases
-    .filter((r) => cmp(r.version, seen) > 0 && cmp(r.version, current) <= 0)
+    .filter((r) => (seen ? cmp(r.version, seen) > 0 : cmp(r.version, current) === 0) && cmp(r.version, current) <= 0)
     .forEach((r) => (r.items || []).forEach((it) => items.push(Object.assign({ version: r.version }, it))));
   KMStore.set(KEY, current);
   const list = items.slice(0, 8);
@@ -1881,7 +1880,7 @@ document.addEventListener("toggle", (event) => {
   document.documentElement.dataset.whatsNew = "1";
 
   const $ = (id) => document.getElementById(id);
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const card = box.querySelector(".wnew-card");
   const prevFocus = document.activeElement;
   let i = 0;
