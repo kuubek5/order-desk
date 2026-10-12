@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import business_day
 from app.business_day import utc_now
 from app.manual_add_flag import manual_add_running
 from app.material_catalog import (
@@ -194,6 +195,13 @@ _ALL_ROW_FIELDS = (
 _PENDING_SUM3D_FIELDS = frozenset({"sum3d_id", "calculated_raw"})
 
 
+def _local_now() -> datetime:
+    """Київський місцевий час без пояса — шкала `row_seen_at`/`job_code_at`.
+    Через модуль, а не імпорт імені: фікстура `weekday_clock` пінить саме
+    `business_day.business_now`."""
+    return business_day.business_now().replace(tzinfo=None)
+
+
 def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None:
     """Strip a revived order back to a blank slate for the new work in its row.
 
@@ -213,6 +221,11 @@ def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None
     # мить появи рядка, `folder_binding`). Лишити її — і видача впевнено
     # показувала б під новою роботою чужі STL, минаючи будь-яку перевірку.
     order.export_folder_path = None
+    # Моменти статистики (STATS_BRIEF §3) стосувались СТАРОЇ роботи. Коли
+    # зʼявилась нова — невідомо (рядок міг стояти вже давно), тож NULL, а не
+    # хибний час; а шлях нової роботи прийшов разом із нею (job_code_at NULL).
+    order.row_seen_at = None
+    order.job_code_at = None
     for field in _ALL_ROW_FIELDS:
         setattr(order, field, None)
 
@@ -630,6 +643,8 @@ def sync_tab(
     deletion_grace_seconds: float = 120,
     rows_read_at: datetime | None = None,
     force_reconcile: bool = False,
+    stamp_row_seen: bool = False,
+    stamp_job_code: bool = False,
 ) -> SyncResult:
     """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/'')
     drives ONLY client-row "видано": the lab clears the blue fill once a client's
@@ -652,7 +667,14 @@ def sync_tab(
     row of a tab left its orders in the queue forever — tomorrow's tab usually
     holds one or two rows, so deleting them empties it entirely and the
     empty-read guard below skipped reconciliation. Omit it to keep the old
-    "any parsed row proves the read worked" behaviour."""
+    "any parsed row proves the read worked" behaviour.
+
+    ``stamp_row_seen`` / ``stamp_job_code`` — моменти для статистики
+    (STATS_BRIEF §3). Вирішує ВИКЛИКАЧ, бо лише він знає, чи це звичайний тік
+    (`sheet_sync_service._stats_stamps`): «побачили зараз» ≈ «сталось зараз»
+    лише для вкладки, яку читаємо щотіку. Імпорт історії й перший імпорт
+    передають False — там момент невідомий, і поле лишається NULL."""
+    now_local = _local_now()
     result = SyncResult()
 
     # Preload every existing order for this tab in ONE query instead of a
@@ -905,6 +927,8 @@ def sync_tab(
                 continue
             order = Order(source=source, sheet_tab=sheet_tab, row_number=row.row_number,
                           status=status, issued_source=issued_source, **fields)
+            if stamp_row_seen:
+                order.row_seen_at = now_local
             order.material_id = resolve_material_id(order.material_color, alias_rows, name_to_id)
             session.add(order)
             session.flush()
@@ -916,6 +940,10 @@ def sync_tab(
             continue
 
         changed = False
+        # job_code_at ставимо лише роботі, що ДО цього рядка вже жила в черзі
+        # (не архівна й не віддана щойно іншій роботі): у воскреслої момент
+        # заповнення шляху стався, поки її не бачили, — він невідомий.
+        job_code_moment_known = stamp_job_code and existing.archived_at is None
 
         # Row reused for the OTHER kind of work (client ↔ lab) while the order
         # is still ACTIVE. Un-archiving via a buggy earlier build could leave a
@@ -945,6 +973,7 @@ def sync_tab(
         own_mail_note = existing.source == "email" and source == "sheet_client"
         if existing.archived_at is None and existing.source != source and not own_mail_note:
             _reset_order_for_new_work(existing, source=source, status=status)
+            job_code_moment_known = False
             changed = True
         if own_mail_note:
             # У нотатці колонка «Вид» — це ім'я клієнта (`_client_fields` кладе
@@ -1108,6 +1137,17 @@ def sync_tab(
                 # authoritative is the invariant the whole queue rests on.
                 setattr(existing, field, value)
                 changed = True
+                if (
+                    field == "job_code"
+                    and value
+                    and not was_filled
+                    and job_code_moment_known
+                    and existing.job_code_at is None
+                ):
+                    # Технік уперше здав роботу (шлях зʼявився). Повторне
+                    # заповнення після стирання час НЕ переписує: рахуємо
+                    # перше здавання (STATS_BRIEF §3).
+                    existing.job_code_at = now_local
                 if was_filled and field in TECHNICIAN_EDITED_FIELDS:
                     edited.append(TECHNICIAN_EDITED_FIELDS[field])
 

@@ -404,6 +404,35 @@ def _parse_tab_date(title: str) -> date | None:
 
 
 _LAST_FULL_SYNC_KEY = "last_full_sync_date"
+def _has_sheet_history(session: Session) -> bool:
+    """Чи база вже має імпорт таблиці — та сама ознака, що в
+    `_worksheets_to_sync` відрізняє перший імпорт (30 днів назад) від тіку."""
+    return session.scalar(
+        select(Order.id).where(Order.source == "lab").limit(1)
+    ) is not None
+
+
+def _stats_stamps(
+    tab_title: str, *, work_today: date, regular_tick: bool
+) -> tuple[bool, bool]:
+    """(stamp_row_seen, stamp_job_code) для `sync_tab` — STATS_BRIEF §3.
+
+    «Побачили рядок/шлях зараз» дорівнює «це сталось зараз» лише на вкладці,
+    яку синк читає КОЖЕН тік: поточній (`row_seen_at`) або в робочому вікні
+    вчора/сьогодні/завтра (`job_code_at`). Імпорт усієї історії й перший
+    імпорт на порожній базі (`regular_tick=False`) не ставлять нічого — там
+    рядки створюються пачкою, і час імпорту був би хибним часом появи.
+    Вікно рахується від ВКЛАДКИ дня (`tab_day`): у вихідні поточна — п'ятнична."""
+    if not regular_tick:
+        return False, False
+    tab_date = _parse_tab_date(tab_title)
+    if tab_date is None:
+        return False, False
+    current = tab_day(work_today)
+    in_window = prev_tab_day(current) <= tab_date <= next_tab_day(current)
+    return tab_date == current, in_window
+
+
 def _last_full_sync_date(session: Session) -> date | None:
     """Дата останнього успішного повного синку, або None.
 
@@ -726,6 +755,10 @@ def sync_google_sheets(
             # tab that leaves today±1 would keep its banner forever, and the
             # button (today±1) could never reach it.
             effective_include = set(include_tabs or ()) | set(mass_vanish_pending().keys())
+            # Ознаку «звичайний тік» беремо ДО імпорту: на першому прогоні
+            # перші ж вкладки створять лабораторні роботи, і сьогоднішня
+            # вкладка того самого прогону вже виглядала б «живою».
+            regular_tick = not full_history and _has_sheet_history(session)
             worksheets, all_dated_titles = _worksheets_to_sync(
                 session, spreadsheet, business_today(),
                 effective_include or None, full_history=full_history,
@@ -779,6 +812,9 @@ def sync_google_sheets(
                 # Read fill colours (best-effort) so client rows whose blue was
                 # cleared flip to "видано" and grey SLM rows are filtered out.
                 row_fills = fetch_row_fills(worksheet)
+                stamp_row_seen, stamp_job_code = _stats_stamps(
+                    current_tab, work_today=business_today(), regular_tick=regular_tick,
+                )
                 result = sync_tab(
                     session, current_tab, rows,
                     row_fills=row_fills, raw_row_count=len(raw),
@@ -794,6 +830,8 @@ def sync_google_sheets(
                     # підтверджена вкладка залишала без захисту сусідній день,
                     # прочитаний обрізано (аудит 05.09.26, синк H-4).
                     force_reconcile=current_tab in forced_tabs,
+                    stamp_row_seen=stamp_row_seen,
+                    stamp_job_code=stamp_job_code,
                 )
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.
@@ -1116,6 +1154,7 @@ def sync_hot_tab(
         # 11.09.26) — інакше вихідними гаряча смуга шукала б неіснуючу вкладку,
         # а в неділю п'ятниця випадала б і з «учора».
         base_day = tab_day(today or business_today())
+        regular_tick = _has_sheet_history(session)
         # `neighbours=False` — вузький тік: ТІЛЬКИ сьогоднішня вкладка.
         # Нова робота зʼявляється лише в ній, а вчора й переглянуті дні
         # потрібні видачі, де секунди нічого не вирішують. Один тік коштує
@@ -1148,9 +1187,13 @@ def sync_hot_tab(
             # clears flip to "видано" and grey SLM rows are filtered within
             # one ~15s tick instead of waiting for the next full sync.
             row_fills = fetch_row_fills(worksheet)
+            stamp_row_seen, stamp_job_code = _stats_stamps(
+                tab_title, work_today=base_day, regular_tick=regular_tick,
+            )
             result = sync_tab(
                 session, tab_title, rows, row_fills=row_fills, raw_row_count=len(raw),
                 rows_read_at=read_at,
+                stamp_row_seen=stamp_row_seen, stamp_job_code=stamp_job_code,
             )
             session.commit()
             summary.tabs_processed += 1

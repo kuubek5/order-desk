@@ -22,7 +22,7 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from app.statuses import STATUS_ACCEPTED, STATUS_CALCULATED, STATUS_NEW
-from app.business_day import business_today
+from app.business_day import business_now, business_today
 from app.material_catalog import (
     ensure_seeded,
     load_alias_rows,
@@ -361,6 +361,9 @@ def create_manual_batch(
             )
         # Родину вже визначили перед записом у таблицю — повторно не рахуємо.
         order.material_id = work.get("material_id")
+        # Рядок у таблиці зʼявився щойно — ми його й написали (STATS_BRIEF §3).
+        # `job_code_at` лишається NULL: шлях, якщо є, прийшов разом із роботою.
+        order.row_seen_at = business_now().replace(tzinfo=None)
         db.add(order)
         db.flush()
         db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
