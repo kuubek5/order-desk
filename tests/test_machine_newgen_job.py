@@ -11,9 +11,11 @@
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 from sqlalchemy import create_engine
@@ -64,6 +66,11 @@ SHOP_FRAMES = {
     # Назва довга, і тривалість «2H 08MIN» перенеслась ПІД неї — хвіст
     # читався з «…ISO2H08MIN», табло не знало, що фрезерується.
     "newgen_250i_03-02-10.png": ("2026-10-02", "03-02-10"),
+    # 12.10.26, живі кадри Tolik (250i) і Olejka (150i), зняті для повної
+    # назви програми (див. «Повна назва» нижче). Дата й час читаються тими
+    # самими еталонами цифр, що й досі, — нових цифр не вчили.
+    "newgen_250i_10-09-48.png": ("2026-10-12", "10-09-48"),
+    "newgen_150i_09-49-56.png": ("2026-10-12", "09-49-56"),
 }
 READABLE = {
     FRAME_250I.name: ("2026-09-04", "12-57-22"),
@@ -605,3 +612,290 @@ def test_broken_frame_read_error_is_throttled(db, monkeypatch, caplog):
 
     errors = [r for r in caplog.records if "не прочитано" in r.getMessage()]
     assert len(errors) == 1, f"очікував 1 запис, було {len(errors)}"
+
+
+# ── Повна назва програми: початок до дати (12.10.26) ─────────────────────────
+#
+# Табло цеху показує біля диска весь рядок програми. Що ламається тихо:
+# - вгадана літера чи загублене `_` показали б на телевізорі назву, якої на
+#   верстаті немає, — тому будь-який сумнів дає назву БЕЗ початку (дата й
+#   час, як досі), а не «майже правильну»;
+# - літеру, якої ще не вчили, читач мусить не впізнати, а не підставити
+#   найсхожішу (D замість O, Q замість O) — це перевіряється викиданням
+#   кожного символу з еталонів по черзі;
+# - дата, час і прив'язка до черги від початку назви не залежать ніяк.
+#
+# Назви нижче прочитано з кадрів очима (як на екрані; `.ISO` стає `.iso`).
+FULL_NAMES = {
+    FRAME_250I.name: "1_18-EMOTIONS-A1-X193_2026-09-04_12-57-22",
+    "newgen_progress_0.png": "1_18-EMOTIONS-A1-X193_2026-09-04_12-57-22",
+    FRAME_150I.name: "1_14-EMOTIONS-B1-X71_2026-09-04_14-19-00",
+    "newgen_250i_16-14-29.png": "ZR18_18-MONOLITH-A2-X38_2026-09-10_16-14-29",
+    "newgen_250i_16-38-52.png": "333316-MONOLITH-C3-X03_2026-09-10_16-38-52",
+    "newgen_150i_16-27-26.png": "2_14-MONOLITH-A3-X78_2026-09-10_16-27-26",
+    "newgen_250i_16-29-49.png": "2_16-MONOLITH-A3-5-X46_2026-09-13_16-29-49",
+    "newgen_150i_11-16-16.png": "1_18-EMOTIONS-A2-X354_2026-09-13_11-16-16",
+    "newgen_250i_16-29-24.png": "2_16-MONOLITH-A3-X83_2026-09-17_16-29-24",
+    "newgen_250i_12-26-09.png": "1_14-MONOLITH-A3-X80_2026-09-17_12-26-09",
+    "newgen_150i_18-07-50.png": "ZR16_16-MONOLITH-A3-5-X48_2026-09-17_18-07-50",
+    "newgen_250i_10-09-48.png": "6PMMA25_25-BL3-X36_2026-10-12_10-09-48",
+    "newgen_150i_09-49-56.png": "1_12-MONOLITH-A3-5-X12_2026-10-12_09-49-56",
+}
+# Кадри, де початок назви наразі НЕ читається (такого накреслення цифри «2»
+# серед еталонів немає). Контракт слабший, але незламний: або точно, або
+# порожньо — і дата з часом у будь-якому разі ті самі.
+NAMES_EXACT_OR_EMPTY = {
+    "newgen_250i_03-02-10.png": "PMMA16_16-A2-X184_2026-10-02_03-02-10",
+}
+# Вирізи рядка назви зі скриньки невідомих екранів (kmill_frame part="zone",
+# рідний масштаб, 250i-Sec 25.09–09.10.26). Кружка ▶ у них немає, тож тут
+# перевіряється саме розбір рядка.
+ROWS = FIX / "newgen_rows"
+ROW_NAMES = {
+    "250i_09-37-48.png": "ZR18_18-MONOLITH-A2-X42_2026-09-25_09-37-48",
+    "250i_15-13-05.png": "DDD_14-MONOLITH-A3-X86_2026-10-05_15-13-05",
+    "250i_18-13-55.png": "1--18-ZNATURE-A3-5-X06_2026-10-09_18-13-55",
+}
+
+
+def _head(full: str) -> str:
+    return full.rsplit("_", 2)[0]
+
+
+@pytest.mark.parametrize("name, full", FULL_NAMES.items())
+def test_the_whole_program_line_is_read(name, full):
+    """Перенос на другий рядок, `_`, літери й цифри — назва як на екрані."""
+    program = ng.read_newgen_program(Image.open(FIX / name))
+    assert program is not None
+    assert program.iso_name == f"{full}.iso"
+    # Sum3D ID і дата — ті самі, що й без початку назви.
+    assert (program.date, program.sum3d_id) == READABLE[name]
+
+
+@pytest.mark.parametrize("name, full", NAMES_EXACT_OR_EMPTY.items())
+def test_an_unreadable_head_leaves_date_and_time_alone(name, full):
+    program = ng.read_newgen_program(Image.open(FIX / name))
+    assert (program.date, program.sum3d_id) == READABLE[name]
+    date_time = full[len(_head(full)) + 1:]
+    assert program.iso_name in (f"{full}.iso", f"{date_time}.iso")
+
+
+def test_prefix_from_name_row_crops_is_exact_or_empty():
+    exact = 0
+    for name, full in ROW_NAMES.items():
+        layout = ng._layout_in_zone(Image.open(ROWS / name))
+        prefix, _why = ng._name_prefix(layout)
+        assert prefix in ("", _head(full)), name
+        exact += prefix == _head(full)
+    # Хоч один виріз читається цілком — інакше тест нічого б не доводив.
+    assert exact >= 1
+
+
+def _all_layouts():
+    for name, full in {**FULL_NAMES, **NAMES_EXACT_OR_EMPTY}.items():
+        yield name, full, ng._name_layout(Image.open(FIX / name).convert("RGB"))
+    for name, full in ROW_NAMES.items():
+        yield name, full, ng._layout_in_zone(Image.open(ROWS / name))
+
+
+def test_a_symbol_never_learned_is_never_guessed(monkeypatch):
+    """Кожен символ початку назви по черзі викидаємо з еталонів — так
+    виглядає літера, якої ще не вчили. Читач мусить змовчати, а не підставити
+    найсхожішу (D замість O, 8 замість 3): назва або точна, або порожня."""
+    full_templates = ng.load_newgen_name_glyphs()
+    checked = 0
+    for name, full, layout in _all_layouts():
+        for char in sorted(set(_head(full)) - set("-_.")):
+            without = {k: v for k, v in full_templates.items() if k != char}
+            monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda t=without: t)
+            prefix, why = ng._name_prefix(layout)
+            assert prefix == "", f"{name}: без «{char}» прочитано {prefix!r}"
+            assert why
+            checked += 1
+    assert checked > 150
+
+
+def test_the_exact_copy_shortcut_changes_no_answer(monkeypatch):
+    """Точна копія вивченої бітмапи береться зі словника, без порівнянь
+    (−6 мс на кадр). Відповідь мусить бути тією самою, що й повним
+    порівнянням, — разом із причиною відмови."""
+    full_templates = ng.load_newgen_name_glyphs()
+    assert full_templates.exact, "без словника тест нічого не перевіряв би"
+    plain = dict(full_templates)
+    for _name, _full, layout in _all_layouts():
+        fast = ng._name_prefix(layout)
+        monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: plain)
+        assert ng._name_prefix(layout) == fast
+        monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: full_templates)
+
+
+def test_head_read_with_letters_that_never_saw_the_frame(monkeypatch):
+    """Літери з ІНШИХ кадрів читають живий кадр 150i 12.10.26 цілком.
+
+    Навчене на кадрі читає сам кадр — це нічого не доводить. Тут еталони
+    літер зібрано з решти кадрів (обох верстатів), а цифри — ті самі, що й для
+    хвоста, і цього кадру вони теж не бачили."""
+    target = "newgen_150i_09-49-56.png"
+    templates = {k: v for k, v in ng.load_newgen_name_glyphs().items() if k.isdigit()}
+    letters: dict[str, list] = {}
+    for name, full, layout in _all_layouts():
+        if name == target:
+            continue
+        for glyph, char in zip(layout.glyphs, full.replace("_", "")):
+            if char.isalpha():
+                letters.setdefault(char, []).append(ng._name_norm(glyph.bits))
+    templates.update({k: np.stack(v) for k, v in letters.items()})
+    monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: templates)
+    program = ng.read_newgen_program(Image.open(FIX / target))
+    assert program.iso_name == f"{FULL_NAMES[target]}.iso"
+
+
+def test_no_letter_templates_means_todays_name(monkeypatch):
+    """Еталонів для назви немає — назва рівно така, як до 12.10.26."""
+    monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: {})
+    for name, (day, time) in READABLE.items():
+        program = ng.read_newgen_program(Image.open(FIX / name))
+        assert program.iso_name == f"{day}_{time}.iso", name
+
+
+def test_ink_below_the_baseline_that_is_no_underscore_drops_the_head():
+    """Пляма під літерою (хвіст Q, кома, уламок) — не `_`: початку немає, а
+    дата й час читаються як завжди. Малюємо її під «M» у «EMOTIONS»."""
+    image = _paint(FRAME_250I, (280, 288, 283, 290), colour=(240, 240, 240))
+    program = ng.read_newgen_program(image)
+    assert (program.date, program.sum3d_id) == ("2026-09-04", "12-57-22")
+    assert program.iso_name == "2026-09-04_12-57-22.iso"
+    assert "не підкреслення" in ng.read_newgen_name_prefix_explained(image)[1]
+
+
+def _layout_250i():
+    return ng._name_layout(Image.open(FRAME_250I).convert("RGB"))
+
+
+def test_a_lost_underscore_is_not_glued_over():
+    """`_` у початку назви не знайшлося — злите «118-EMOTIONS» було б
+    вигадкою. Проміжок на його місці ширший за будь-який між літерами."""
+    layout = _layout_250i()
+    assert ng._name_prefix(layout)[0] == "1_18-EMOTIONS-A1-X193"
+    assert [m for m in layout.marks if m.line == 0], "у кадрі мало б бути «1_18»"
+    broken = replace(layout, marks=[m for m in layout.marks if m.line != 0])
+    prefix, why = ng._name_prefix(broken)
+    assert prefix == "" and "пробіл" in why
+
+
+def test_underscores_must_sit_before_date_and_time():
+    layout = _layout_250i()
+    last = [m for m in layout.marks if m.line == 1][-1]
+    broken = replace(layout, marks=[m for m in layout.marks if m is not last])
+    prefix, why = ng._name_prefix(broken)
+    assert prefix == "" and "перед датою" in why
+
+
+def _with_line_break_after(layout, index):
+    """Той самий розклад, але перший рядок перенесено після символу `index`."""
+    glyphs = [replace(g, line=g.line + 1) if (g.line > 0 or i > index) else g
+              for i, g in enumerate(layout.glyphs)]
+    marks = [replace(m, line=m.line + 1) if m.line > 0 else m for m in layout.marks]
+    return replace(layout, glyphs=glyphs, marks=marks)
+
+
+def test_a_wrap_not_after_a_dash_could_hide_a_space():
+    """Софт переносить назву після «-». Перенос посеред слова («EMO|TIONS»)
+    міг би бути переносом на пробілі — склеювати слова навмання не можна."""
+    layout = _layout_250i()
+    # «1_18-EMOTIONS-A1-»: символи 1,1,8,-,E,M,O,T,I,O,N,S,-,A,1,-
+    after_dash = ng._name_prefix(_with_line_break_after(layout, 3))
+    assert after_dash[0] == "1_18-EMOTIONS-A1-X193"
+    mid_word = ng._name_prefix(_with_line_break_after(layout, 6))
+    assert mid_word[0] == "" and "перенос" in mid_word[1]
+
+
+def test_a_gap_like_a_space_drops_the_head():
+    """Пробіл символа не має: без перевірки проміжку «EMO TIONS» прочиталось
+    би як «EMOTIONS»."""
+    layout = _layout_250i()
+    shift = 8  # px при висоті рядка 18 — 0.44: пробіл, а не відступ літер
+    cut = layout.glyphs[6].left
+    glyphs = [replace(g, left=g.left + shift) if g.line == 0 and i > 6 else g
+              for i, g in enumerate(layout.glyphs)]
+    marks = [replace(m, left=m.left + shift, right=m.right + shift) if m.line == 0 and m.left > cut else m
+             for m in layout.marks]
+    prefix, why = ng._name_prefix(replace(layout, glyphs=glyphs, marks=marks))
+    assert prefix == "" and "пробіл" in why
+
+
+def test_one_dash_is_a_dash_two_glued_are_nothing():
+    single = ng._Glyph(bits=np.ones((3, 7), dtype=bool), top=8, cap=18)
+    glued = ng._Glyph(bits=np.ones((3, 15), dtype=bool), top=8, cap=18)
+    assert ng._name_char(single, {})[0] == "-"
+    assert ng._name_char(glued, {})[0] is None
+
+
+def test_an_unsure_tail_digit_does_not_make_the_head_unsure(monkeypatch):
+    """Коли хвіст вирішує черга, назва все одно повна: початок від хвоста не
+    залежить."""
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _blurred_templates())
+    variants = ng.read_newgen_program_variants(Image.open(FRAME_250I))
+    assert variants
+    assert all(p.iso_name.startswith("1_18-EMOTIONS-A1-X193_2026-09-04_") for p in variants)
+
+
+@pytest.mark.parametrize("reader", ["read_newgen_program_explained", "read_newgen_program_variants"])
+def test_the_frame_is_cut_once_per_read(monkeypatch, reader):
+    """Сегментація — ~15 мс із ~20 на кадр JOBS, а читач іде на кожному тіку
+    кожного верстата по черзі. Початок назви мусить братися з того самого
+    розкладу, що й хвіст, а не різати кадр удруге."""
+    # Еталони — заздалегідь: `_blurred_templates` сам ріже кадр, і рахувався б.
+    blurred = _blurred_templates()
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: blurred)
+    calls = []
+    real = ng._layout_in_zone
+
+    def counting(zone):
+        calls.append(1)
+        return real(zone)
+
+    monkeypatch.setattr(ng, "_layout_in_zone", counting)
+    getattr(ng, reader)(Image.open(FRAME_250I))
+    assert len(calls) == 1
+
+
+def test_every_reader_of_iso_name_takes_the_full_name(db):
+    """Повна назва йде тими самими шляхами, що назва RemiCORE із заголовка:
+    розбір `.iso` (видача, «де лежить»), прив'язка до черги, стан верстата."""
+    from app.machine_ocr import parse_iso_title
+
+    program = ng.read_newgen_program(Image.open(FRAME_250I))
+    parsed = parse_iso_title(program.iso_name)
+    assert (parsed.sum3d_id, parsed.date, parsed.iso_name) == (
+        program.sum3d_id, program.date, program.iso_name)
+
+    db.add(Order(source="lab", sheet_tab="04.09.26", row_number=3, sum3d_id="12-57-22"))
+    db.commit()
+    state = ms.poll_target(db, _agent(), None, now=datetime(2026, 9, 4, 12, 10),
+                           frame=Image.open(FRAME_250I), titles=[])
+    assert state.sum3d_id == "12-57-22"
+    assert state.iso_name == "1_18-EMOTIONS-A1-X193_2026-09-04_12-57-22.iso"
+
+
+def test_learn_refuses_a_typo_that_matches_another_symbol(tmp_path, monkeypatch, capsys):
+    """`learn` з одруківкою «0» замість «O» нічого не пише: ця бітмапа вже є
+    еталоном «O», а помилковий еталон гірший за жоден."""
+    import importlib.util
+    import json
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("newgen_glyphs_script", root / "scripts" / "newgen_glyphs.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    glyphs_file = tmp_path / "glyphs.json"
+    original = (root / ng.NEWGEN_GLYPHS_PATH).read_text(encoding="utf-8")
+    glyphs_file.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(script, "GLYPHS_FILE", glyphs_file)
+
+    assert script.learn(FRAME_250I, "1_18-EM0TIONS-A1-X193_2026-09-04_12-57-22.ISO") == 1
+    assert glyphs_file.read_text(encoding="utf-8") == original
+    # Правильна назва — не відмова, і нового нічого (усе вже вивчено).
+    assert script.learn(FRAME_250I, FULL_NAMES[FRAME_250I.name] + ".ISO") == 0
+    assert json.loads(glyphs_file.read_text(encoding="utf-8")) == json.loads(original)
+    capsys.readouterr()

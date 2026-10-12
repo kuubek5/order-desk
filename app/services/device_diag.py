@@ -353,16 +353,26 @@ def zones(db: Session, args: dict) -> dict[str, Any]:
         )
         return head
 
-    from app.machine_newgen_job import load_newgen_glyphs, read_newgen_program_explained
+    from app.machine_newgen_job import (
+        load_newgen_glyphs,
+        load_newgen_name_glyphs,
+        read_newgen_name_prefix_explained,
+        read_newgen_program_explained,
+    )
 
     program, why = read_newgen_program_explained(image)
+    # Повна назва (початок до дати) — лише коли прочитано ЦІЛКОМ; інакше
+    # причина, з номером символу: видно, яку літеру донавчити.
+    prefix_why = read_newgen_name_prefix_explained(image)[1] if program else None
     head.update(
         {
             "екран_jobs": {
                 "прочитано": (
-                    {"sum3d_id": program.sum3d_id, "дата": program.date} if program else None
+                    {"sum3d_id": program.sum3d_id, "дата": program.date,
+                     "програма": program.iso_name} if program else None
                 ),
                 "чому_ні": why,
+                "чому_без_початку_назви": prefix_why,
                 "як_читається": (
                     "назва береться з рядка ▶ екрана JOBS і лише тоді, коли заголовок "
                     "вікна її не дав; порожнє «чому_ні» означає, що читати не було чого "
@@ -370,6 +380,7 @@ def zones(db: Session, args: dict) -> dict[str, Any]:
                 ),
             },
             "еталони_цифр": sorted(load_newgen_glyphs()),
+            "еталони_назви": "".join(sorted(load_newgen_name_glyphs())),
         }
     )
     return head

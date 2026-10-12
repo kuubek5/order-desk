@@ -1,20 +1,27 @@
 """Навчити читання назви програми з екрана JOBS верстатів нового покоління.
 
 Два режими над PNG-кадром верстата (такий кадр пише сам застосунок у
-machine_frames або в теку калібрування):
+machine_frames або в теку калібрування) чи над вирізом рядка назви:
 
     python scripts/newgen_glyphs.py check  кадр.png
-        → що ми з нього читаємо (дата й Sum3D ID або «не прочитано»)
+        → що ми з нього читаємо (дата, Sum3D ID і повна назва або «не прочитано»)
     python scripts/newgen_glyphs.py learn  кадр.png "1_18-EMOTIONS-A1-X193_2026-09-04_12-57-22.ISO"
-        → додати еталони цифр із цього кадру
+        → додати еталони цифр і літер із цього кадру
+    python scripts/newgen_glyphs.py learn  кадр.png "…" --letters-only
+        → лише літери; еталони цифр (ними читаються дата й час) не чіпати
 
 Назву в `learn` пишіть рівно так, як вона стоїть на екрані поруч із ▶, разом
-із `_`: скрипт сам прибирає підкреслення (у розрізанні їх не видно, вони
-лежать нижче базової лінії) і вимагає, щоб кількість символів збіглась до
-одного — інакше нічого не пише, бо еталон не того символу гірший за жоден.
+із `_` і ВЕЛИКИМИ літерами; перенос рядка не пишіть (назва — одним рядком).
+Скрипт вимагає, щоб кількість символів збіглась до одного — інакше нічого не
+пише, бо еталон не того символу гірший за жоден.
+
+Літери вчаться суворіше за цифри (12.10.26): ще й `_` мусять стояти на кадрі
+там, де в назві, «-» і «.» — бути рискою й крапкою за формою, а бітмапа не
+сміє вже бути еталоном ІНШОГО символу (так ловиться «0» замість «O» в назві).
+Не зійшлось — літери не пишуться (цифри — як і раніше).
 
 `learn` додає варіант лише якщо бітмапа нова, тож повторний запуск безпечний.
-Вчаться лише ЦИФРИ: `-`, `.` та `I` читач упізнає за формою.
+`-`, `.` та `_` читач упізнає за формою — їх не вчать.
 """
 
 from __future__ import annotations
@@ -30,21 +37,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.machine_newgen_job import (  # noqa: E402
     NEWGEN_GLYPHS_PATH,
-    _name_glyphs,
-    glyphs_from_name_row,
+    _layout_in_zone,
+    _Layout,
+    _name_layout,
+    _shape_class,
+    _underscore_slots,
+    read_newgen_name_prefix_explained,
     read_newgen_program_explained,
 )
 
 
-def _glyphs(frame: Path):
-    """Символи з кадру АБО з уже вирізаного рядка назви.
+def _layout(frame: Path) -> "_Layout | None":
+    """Розклад рядка назви з кадру АБО з уже вирізаного рядка.
 
     Виріз (`kmill_frame puzzle=N part="zone"`) — це те, що реально доїжджає з
     цеху: сам кадр скринька й MCP віддають зменшеним до 640, а на 640 рядок
     назви не сегментується взагалі. Тому вчити майже завжди доводиться саме з
     вирізу, і скрипт мусить його приймати без окремої команди."""
     image = Image.open(frame)
-    return _name_glyphs(image) or glyphs_from_name_row(image)
+    layout = _name_layout(image)
+    if layout is None or not layout.glyphs:
+        layout = _layout_in_zone(image)
+    return layout
+
 
 GLYPHS_FILE = Path(__file__).resolve().parent.parent / NEWGEN_GLYPHS_PATH
 
@@ -53,29 +68,88 @@ def _rows(bits) -> list[str]:
     return ["".join("1" if v else "0" for v in row) for row in bits.tolist()]
 
 
-def learn(frame: Path, name: str) -> int:
-    glyphs = _glyphs(frame)
-    if not glyphs:
+def _expected_slots(name: str) -> list[int]:
+    """Перед яким символом (без `_`) стоїть кожне `_` назви."""
+    slots, count = [], 0
+    for char in name:
+        if char == "_":
+            slots.append(count)
+        else:
+            count += 1
+    return slots
+
+
+def _letters_problem(layout: "_Layout", name: str) -> "str | None":
+    """Чому літери з цього кадру вчити не можна (None — можна)."""
+    if any(c.isalpha() and not ("A" <= c <= "Z") for c in name):
+        return "літери в назві мусять бути ВЕЛИКИМИ латинськими, як на екрані"
+    slots, why = _underscore_slots(layout)
+    if slots is None:
+        return why
+    if slots != _expected_slots(name):
+        return f"підкреслення на кадрі перед символами {slots}, у назві — {_expected_slots(name)}"
+    for index, (glyph, char) in enumerate(zip(layout.glyphs, name.replace("_", ""))):
+        if char in "-." and _shape_class(glyph) != char:
+            return f"символ №{index + 1} мав бути «{char}», а за формою це не він"
+        if char.isalpha():
+            h, _w = glyph.bits.shape
+            if h < glyph.cap * 0.9 or glyph.top > glyph.cap * 0.1:
+                return f"літера №{index + 1} «{char}» не на всю висоту рядка"
+    return None
+
+
+def learn(frame: Path, name: str, letters_only: bool = False) -> int:
+    layout = _layout(frame)
+    if layout is None or not layout.glyphs:
         print("Ні рядка ▶ з назвою програми, ні вирізу рядка на цьому файлі не знайдено.")
         return 1
-    truth = name.replace("_", "").replace(" ", "")
+    glyphs = layout.glyphs
+    name = name.replace(" ", "")
+    truth = name.replace("_", "")
     if len(glyphs) != len(truth):
         print(f"Символів на кадрі {len(glyphs)}, у назві {len(truth)} — не збігається, нічого не пишу.")
         return 1
     data = json.loads(GLYPHS_FILE.read_text(encoding="utf-8")) if GLYPHS_FILE.exists() else {}
     digits = data.setdefault("digits", {})
-    added = 0
+    letters = data.setdefault("letters", {})
+
+    problem = _letters_problem(layout, name)
+    if problem is not None and any(c.isalpha() for c in truth):
+        print(f"Літери НЕ вчу: {problem}.")
+    # Бітмапа, що вже є еталоном ІНШОГО символу, — майже напевно одруківка в
+    # назві («0» замість «O»). Такий кадр не пише нічого.
+    known = {tuple(rows): char for section in (digits, letters) for char, variants in section.items()
+             for rows in variants}
+    for index, (glyph, char) in enumerate(zip(glyphs, truth)):
+        if not (char.isdigit() or (char.isalpha() and problem is None)):
+            continue
+        other = known.get(tuple(_rows(glyph.bits)))
+        if other is not None and other != char:
+            print(f"Символ №{index + 1} «{char}» на кадрі — точнісінько еталон «{other}». "
+                  f"Перевірте назву; нічого не пишу.")
+            return 1
+
+    added_digits = added_letters = 0
     for glyph, char in zip(glyphs, truth):
-        if not char.isdigit():
+        if char.isdigit() and not letters_only:
+            target = digits
+        elif char.isalpha() and problem is None:
+            target = letters
+        else:
             continue
         rows = _rows(glyph.bits)
-        variants = digits.setdefault(char, [])
+        variants = target.setdefault(char, [])
         if rows not in variants:
             variants.append(rows)
-            added += 1
+            if target is digits:
+                added_digits += 1
+            else:
+                added_letters += 1
     data["digits"] = {k: digits[k] for k in sorted(digits)}
+    data["letters"] = {k: letters[k] for k in sorted(letters)}
     GLYPHS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"Додано варіантів: {added}. Цифри в еталонах: {''.join(sorted(digits))}")
+    print(f"Додано варіантів: цифр {added_digits}, літер {added_letters}. "
+          f"Цифри в еталонах: {''.join(sorted(digits))}; літери: {''.join(sorted(letters))}")
     return 0
 
 
@@ -84,7 +158,10 @@ def check(frame: Path) -> int:
     if program is None:
         print(f"не прочитано: {why}" if why else "не прочитано: рядка ▶ на кадрі немає (не екран JOBS)")
         return 1
-    print(f"дата {program.date} · Sum3D ID {program.sum3d_id}")
+    print(f"дата {program.date} · Sum3D ID {program.sum3d_id} · програма {program.iso_name}")
+    prefix, why_not = read_newgen_name_prefix_explained(Image.open(frame))
+    if not prefix:
+        print(f"початок назви не прочитано: {why_not}")
     return 0
 
 
@@ -96,9 +173,11 @@ def main() -> int:
     p_learn = sub.add_parser("learn")
     p_learn.add_argument("frame", type=Path)
     p_learn.add_argument("name")
+    p_learn.add_argument("--letters-only", action="store_true",
+                         help="вчити лише літери, еталони цифр хвоста не чіпати")
     args = parser.parse_args()
     if args.cmd == "learn":
-        return learn(args.frame, args.name)
+        return learn(args.frame, args.name, letters_only=args.letters_only)
     return check(args.frame)
 
 

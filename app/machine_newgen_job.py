@@ -49,12 +49,21 @@
 150i впізнаються еталонами 250i — перевірено на всіх 20 цифрах кадру 150i.
 Тому еталони спільні, а цифри, яких на одному верстаті ще не траплялось,
 береться з іншого.
+
+**Повна назва (12.10.26).** Табло цеху показує біля диска весь рядок програми,
+тож читається й початок назви до дати (`1_14-MONOLITH-A3-X89`) — літери,
+цифри, `-`, `_` і перенос на другий рядок. Правило те саме, ще суворіше: один
+непевний символ, незнайома позначка під рядком чи перенос не після «-» — і
+початку немає зовсім, назва лишається датою й часом, як досі. На Sum3D ID і
+прив'язку до черги початок назви не впливає. Подробиці — у розділі «Повна
+назва» нижче.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -123,6 +132,31 @@ class _Glyph:
     bits: np.ndarray    # bool, рядки × колонки
     top: int            # відступ від верху рядка
     cap: int            # висота рядка від верху до базової лінії
+    # Де символ стоїть: ліва колонка в рядку назви й номер рядка (назва
+    # переноситься). Хвостові дата й час цього не потребують; потрібно це
+    # повній назві — щоб поставити `_` між правильними символами.
+    left: int = 0
+    line: int = 0
+
+
+@dataclass(frozen=True)
+class _Mark:
+    """Чорнило НИЖЧЕ базової лінії рядка. У назві програми це лише `_`.
+
+    `underscore=False` — там є щось інше (хвіст Q, кома, уламок рамки, рядок,
+    чию базову лінію визначено хибно). Повна назва тоді не читається зовсім:
+    вгадувати, що це було, не беремося."""
+
+    line: int
+    left: int
+    right: int
+    underscore: bool
+
+
+@dataclass(frozen=True)
+class _Layout:
+    glyphs: list[_Glyph]
+    marks: list[_Mark]
 
 
 @_cache_only_success
@@ -226,12 +260,28 @@ def name_row_crop(image: Image.Image) -> Optional[Image.Image]:
     return image.crop(box).convert("RGB") if box is not None else None
 
 
-def _name_glyphs(image: Image.Image) -> Optional[list[_Glyph]]:
-    """Символи назви поточної програми, рядок за рядком, зліва направо."""
+#: Розклад кадру, уже розрізаного в межах ОДНОГО виклику читача (див.
+#: `read_newgen_program_variants`). Лише на час виклику й лише свого потоку:
+#: тотожність `is` того самого об'єкта кадру в одному виклику — гарантія,
+#: що це ті самі пікселі.
+_layout_memo = threading.local()
+
+
+def _name_layout(image: Image.Image) -> Optional[_Layout]:
+    """Символи назви поточної програми + чорнило під базовою лінією (`_`)."""
+    memo = getattr(_layout_memo, "pair", None)
+    if memo is not None and memo[0] is image:
+        return memo[1]
     box = _name_box(image)
     if box is None:
         return None
-    return _glyphs_in_zone(image.crop(box))
+    return _layout_in_zone(image.crop(box))
+
+
+def _name_glyphs(image: Image.Image) -> Optional[list[_Glyph]]:
+    """Символи назви поточної програми, рядок за рядком, зліва направо."""
+    layout = _name_layout(image)
+    return None if layout is None else layout.glyphs
 
 
 def glyphs_from_name_row(image: Image.Image) -> Optional[list[_Glyph]]:
@@ -248,6 +298,15 @@ def glyphs_from_name_row(image: Image.Image) -> Optional[list[_Glyph]]:
 
 def _glyphs_in_zone(zone_image: Image.Image) -> Optional[list[_Glyph]]:
     """Сегментація символів у вже вибраній зоні рядка назви."""
+    layout = _layout_in_zone(zone_image)
+    return None if layout is None else layout.glyphs
+
+
+def _layout_in_zone(zone_image: Image.Image) -> Optional[_Layout]:
+    """Сегментація зони рядка назви: символи й чорнило під базовою лінією.
+
+    Символи — рівно ті, що завжди (хвіст дата+час читається з них без змін);
+    позначки під базовою лінією — додатково, для повної назви."""
     zone = np.asarray(zone_image.convert("RGB")).astype(np.int16)
     ink = (zone.min(axis=2) >= INK_MIN) & ((zone.max(axis=2) - zone.min(axis=2)) <= INK_MAX_SPREAD)
 
@@ -262,6 +321,8 @@ def _glyphs_in_zone(zone_image: Image.Image) -> Optional[list[_Glyph]]:
     name = ink[:, nx0:nx1]
 
     glyphs: list[_Glyph] = []
+    marks: list[_Mark] = []
+    line_no = 0
     for top, bottom in _runs(name.any(axis=1)):
         line = name[top:bottom]
         # Тривалість ПІД назвою (250i-Tolik, 02.10.26): назва
@@ -302,8 +363,39 @@ def _glyphs_in_zone(zone_image: Image.Image) -> Optional[list[_Glyph]]:
         for a, b in _runs(cap_band.any(axis=0)):
             column = cap_band[:, a:b]
             rows = np.flatnonzero(column.any(axis=1))
-            glyphs.append(_Glyph(bits=column[rows[0]: rows[-1] + 1], top=int(rows[0]), cap=base + 1))
-    return glyphs
+            glyphs.append(_Glyph(bits=column[rows[0]: rows[-1] + 1], top=int(rows[0]), cap=base + 1,
+                                 left=int(a), line=line_no))
+        below = line[base + 1:]
+        for a, b in _runs(below.any(axis=0)):
+            marks.append(_Mark(line=line_no, left=int(a), right=int(b),
+                               underscore=_is_underscore(below[:, a:b], base + 1)))
+        line_no += 1
+    return _Layout(glyphs=glyphs, marks=marks)
+
+
+# ── Підкреслення `_` ────────────────────────────────────────────────────────
+# Виміряно на всіх бойових кадрах обох поколінь (12.10.26): суцільний
+# прямокутник одразу під базовою лінією, 2–3 px заввишки, 13–14 px завширшки
+# при висоті рядка 18 (250i) і 16–17 px при 22 (150i), тобто 0.72–0.78 висоти
+# рядка. Злиплі `__` були б удвічі ширші — не пройдуть, і повна назва тоді
+# не читається (скільки їх там, не вгадуємо).
+UNDERSCORE_WIDTH = (0.6, 0.9)
+UNDERSCORE_MAX_HEIGHT = 0.2
+UNDERSCORE_MAX_DROP = 0.1
+
+
+def _is_underscore(piece: np.ndarray, cap: int) -> bool:
+    rows = np.flatnonzero(piece.any(axis=1))
+    if rows.size == 0:
+        return False
+    body = piece[rows[0]: rows[-1] + 1]
+    h, w = body.shape
+    return bool(
+        rows[0] <= max(1, cap * UNDERSCORE_MAX_DROP)
+        and h <= max(2, cap * UNDERSCORE_MAX_HEIGHT)
+        and UNDERSCORE_WIDTH[0] * cap <= w <= UNDERSCORE_WIDTH[1] * cap
+        and body.mean() >= 0.9
+    )
 
 
 def _shape_class(glyph: _Glyph) -> Optional[str]:
@@ -388,7 +480,13 @@ def _tail_picks(
     image: Image.Image, templates: "dict[str, list[np.ndarray]]"
 ) -> "tuple[Optional[list[_Pick]], Optional[str]]":
     """Хвіст назви посимвольно. `None, None` — тут нема чого читати."""
-    glyphs = _name_glyphs(image)
+    return _tail_picks_in(_name_glyphs(image), templates)
+
+
+def _tail_picks_in(
+    glyphs: "Optional[list[_Glyph]]", templates: "dict[str, list[np.ndarray]]"
+) -> "tuple[Optional[list[_Pick]], Optional[str]]":
+    """Те саме над уже розрізаними символами (кадр ріжеться один раз)."""
     # Короткий рядок біля кружка — не назва програми (SUMMARY теж має кружок
     # і кілька слів поруч): читати нема чого, це не відмова.
     if glyphs is None or len(glyphs) < len(TAIL):
@@ -420,8 +518,235 @@ def _tail_picks(
     return picks, None
 
 
-def _program_from_text(s: str) -> "tuple[Optional[MillingProgram], Optional[str]]":
-    """Зібрати програму з прочитаного хвоста, перевіривши дату й час."""
+# ── Повна назва: початок до дати (12.10.26) ─────────────────────────────────
+#
+# Навіщо. Табло цеху показує біля диска ВЕСЬ рядок програми
+# (`1_14-MONOLITH-A3-X89_2026-10-12_09-42-30`): за ним людина впізнає диск,
+# не шукаючи Sum3D ID. RemiCORE дає його заголовком вікна; тут — лише з
+# екрана, а досі читались тільки дата й час.
+#
+# Правило те саме: або точно, або нічого. Початок назви або прочитано ЦІЛКОМ —
+# кожен символ, кожне `_`, кожен перенос, — або його немає зовсім, і назва
+# лишається такою, як була (`2026-10-12_09-42-30.iso`). Хвіст (дата, час,
+# Sum3D ID, прив'язка до черги) від цього не залежить ніяк.
+#
+# Чому не тим самим зведенням, що цифри хвоста. Цифри зводяться до 12×16 і
+# втрачають пропорцію — для них це байдуже, а для літер ні: «O» і «0», «B» і
+# «8» відрізняються саме шириною. Тут символ зводиться до спільної ВИСОТИ
+# зі збереженою пропорцією й стає посередині полотна 32×24.
+#
+# Пороги — з виміру на 17 бойових рядках (12.10.26, 578 символів на всю
+# висоту, кожен звірено з еталонами ЛИШЕ з інших кадрів):
+#   - найближчі РІЗНІ символи — 3/8 на 25.3, далі 5/6 38, C/O 39, P/R 42;
+#     тобто символ, якого ще не вчили, на відстані ≤20 від чужого еталона не
+#     опинився жодного разу — і NAME_MAX_DISTANCE стоїть нижче;
+#   - той самий символ з іншого кадру: медіана 0 (софт малює його тими самими
+#     пікселями), 75 % ≤9, 90 % ≤27 — решта чесно відмовляє, доки накреслення
+#     не довчено (`scripts/newgen_glyphs.py learn`).
+NAME_NORM = (32, 24)            # (ширина, висота)
+NAME_MAX_DISTANCE = 20.0
+NAME_MIN_MARGIN = 10.0
+# Одинарна риска — 0.33–0.41 висоти рядка; злиплі «--» були б ≥0.7.
+DASH_MAX_WIDTH = 0.55
+# Пробіл. Його в назві не буває (ім'я файлу Sum3D; на тому самому стоять і
+# `_ISO_RE`, і BLOCK_GAP), але він не дав би символа — тихо злив би два
+# слова. Тому проміжок між сусідами без `_` між ними обмежено: виміряно не
+# більше 0.28 висоти рядка, а після «1» (у цифр однакова ширина, у «1» великий
+# правий відступ) і «.» — до 0.50. Пробіл Roboto ≈0.35 висоти плюс відступи.
+NAME_GAP = 0.34
+NAME_GAP_WIDE = 0.65
+
+
+class _NameTemplates(dict[str, np.ndarray]):
+    """Символ → стос варіантів NAME_NORM, плюс `exact`: точна бітмапа → символ.
+
+    Навіщо `exact`. Софт малює той самий символ на тому самому місці тими
+    самими пікселями (медіана відстані до свого еталона — 0), тож майже кожен
+    символ назви — точна копія вже вивченого. Для такої копії повне порівняння
+    дало б відомий наперед результат: відстань 0 до свого символу й рівно ту
+    відстань до найближчого ЧУЖОГО, що має сам еталон. Тому в `exact` лише ті
+    еталони, чий найближчий чужий стоїть не ближче NAME_MIN_MARGIN, — для них
+    відповідь та сама, а коштує один пошук у словнику замість ~300 порівнянь
+    (виміряно: −6 мс на кадр JOBS)."""
+
+    exact: "dict[tuple, str]"
+
+
+def _bits_key(bits: np.ndarray) -> tuple:
+    return (bits.shape, np.asarray(bits, dtype=bool).tobytes())
+
+
+@_cache_only_success
+def load_newgen_name_glyphs() -> "dict[str, np.ndarray]":
+    """Еталони для початку назви: символ → стос варіантів NAME_NORM.
+
+    Цифри — ті самі бітмапи, що й для хвоста (`digits`), літери — `letters`.
+    Немає літер — початок назви не читається (а хвіст читається як завжди)."""
+    path = Path(resource_path(NEWGEN_GLYPHS_PATH))
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logger.warning("newgen_glyphs.json не прочитано — повну назву програми з екрана не читаємо")
+        return {}
+    by_char: "dict[str, list[np.ndarray]]" = {}
+    for section in ("digits", "letters"):
+        for char, variants in (raw.get(section) or {}).items():
+            by_char.setdefault(char, []).extend(
+                np.array([[c == "1" for c in row] for row in rows], dtype=bool) for rows in variants
+            )
+    out = _NameTemplates()
+    entries: "list[tuple[str, np.ndarray]]" = []
+    for char, bitmaps in by_char.items():
+        if bitmaps:
+            out[char] = np.stack([_name_norm(b) for b in bitmaps])
+            entries.extend((char, b) for b in bitmaps)
+    out.exact = {}
+    if entries:
+        flat = np.concatenate([out[char] for char in out]).reshape(len(entries), -1)
+        labels = np.array([char for char in out for _ in range(len(out[char]))])
+        for index, (char, bits) in enumerate(entries):
+            others = labels != char
+            nearest_other = float(np.abs(flat[others] - flat[index]).sum(axis=1).min()) if others.any() else np.inf
+            if nearest_other >= NAME_MIN_MARGIN:
+                out.exact[_bits_key(bits)] = char
+    return out
+
+
+def _name_norm(bits: np.ndarray) -> np.ndarray:
+    """Символ на полотні NAME_NORM: спільна висота, власна пропорція."""
+    h, w = bits.shape
+    width = max(1, min(NAME_NORM[0], round(w * NAME_NORM[1] / h)))
+    scaled = Image.fromarray(bits.astype(np.uint8) * 255).resize((width, NAME_NORM[1]), Image.Resampling.BILINEAR)
+    canvas = np.zeros((NAME_NORM[1], NAME_NORM[0]), dtype=np.float32)
+    x0 = (NAME_NORM[0] - width) // 2
+    canvas[:, x0: x0 + width] = np.asarray(scaled, dtype=np.float32) / 255.0
+    return canvas
+
+
+def _name_char(glyph: _Glyph, templates: "dict[str, np.ndarray]") -> "tuple[Optional[str], str]":
+    """Один символ початку назви — впевнено, або (None, чому)."""
+    h, w = glyph.bits.shape
+    shape = _shape_class(glyph)
+    if shape == "-":
+        if w <= DASH_MAX_WIDTH * glyph.cap:
+            return "-", ""
+        return None, f"риска {w} px — ширша за одну (злиплі «--»?)"
+    if shape == ".":
+        return ".", ""
+    if h < glyph.cap * 0.9 or glyph.top > glyph.cap * 0.1:
+        return None, f"символ {w}×{h} не на всю висоту рядка"
+    exact = getattr(templates, "exact", None)
+    if exact:
+        known = exact.get(_bits_key(glyph.bits))
+        if known is not None:
+            return known, ""
+    probe = _name_norm(glyph.bits)
+    ranked = sorted(
+        ((char, float(np.abs(stack - probe).sum(axis=(1, 2)).min())) for char, stack in templates.items()),
+        key=lambda kv: kv[1],
+    )
+    if not ranked:
+        return None, "еталонів немає"
+    char, distance = ranked[0]
+    runner_up = ranked[1] if len(ranked) > 1 else ("", float("inf"))
+    if distance > NAME_MAX_DISTANCE or runner_up[1] - distance < NAME_MIN_MARGIN:
+        return None, (
+            f"не впізнано ({char}={distance:.0f}, {runner_up[0]}={runner_up[1]:.0f}; треба "
+            f"≤{NAME_MAX_DISTANCE:.0f} і відрив ≥{NAME_MIN_MARGIN:.0f})"
+        )
+    return char, ""
+
+
+def _underscore_slots(layout: _Layout) -> "tuple[Optional[list[int]], Optional[str]]":
+    """Де стоять `_`: номер символу, ПЕРЕД яким кожне (перенос — наскрізно).
+
+    Підкреслення наприкінці рядка й на початку наступного дають той самий
+    номер: це одне місце в назві."""
+    glyphs = layout.glyphs
+    first: "dict[int, int]" = {}
+    last: "dict[int, int]" = {}
+    for index, glyph in enumerate(glyphs):
+        first.setdefault(glyph.line, index)
+        last[glyph.line] = index + 1
+    slots: "list[int]" = []
+    for mark in layout.marks:
+        if not mark.underscore:
+            return None, f"під рядком {mark.line + 1} не підкреслення ({mark.right - mark.left} px)"
+        if mark.line not in first:
+            return None, "підкреслення в рядку без символів"
+        centre = (mark.left + mark.right) / 2
+        line_glyphs = glyphs[first[mark.line]: last[mark.line]]
+        if any(g.left <= centre < g.left + g.bits.shape[1] for g in line_glyphs):
+            return None, "підкреслення під символом, а не між символами"
+        before = sum(1 for g in line_glyphs if g.left + g.bits.shape[1] / 2 < centre)
+        slots.append(first[mark.line] + before)
+    if len(set(slots)) != len(slots):
+        return None, "два підкреслення в одному місці"
+    return sorted(slots), None
+
+
+def _name_prefix(layout: _Layout) -> "tuple[str, Optional[str]]":
+    """Початок назви до `_дата` — цілком або "" з причиною.
+
+    Що мусить зійтися, щоб початок назви взагалі був:
+      1. підкреслення стоять рівно перед датою й перед часом (так Sum3D пише
+         кожну назву) і ніде більше в хвості; будь-яке інше чорнило під
+         базовою лінією — відмова;
+      2. кожен символ до дати впізнано впевнено (`_name_char`);
+      3. перенос рядка — лише після «-» (за ним софт і переносить): інакше на
+         місці переносу міг стояти пробіл, і злиті слова були б вигадкою;
+      4. між сусідами в рядку немає проміжку, схожого на пробіл.
+    """
+    glyphs = layout.glyphs
+    date_at = len(glyphs) - len(TAIL)
+    if date_at <= 0:
+        return "", "перед датою нічого немає"
+    templates = load_newgen_name_glyphs()
+    if not templates:
+        return "", "еталонів для назви немає"
+    slots, why = _underscore_slots(layout)
+    if slots is None:
+        return "", why
+    if [s for s in slots if s >= date_at] != [date_at, date_at + 10]:
+        return "", "підкреслення не там, де їх ставить Sum3D (перед датою й перед часом)"
+    under = set(slots)
+    chars: "list[str]" = []
+    for index in range(date_at):
+        char, why_not = _name_char(glyphs[index], templates)
+        if char is None:
+            return "", f"символ №{index + 1} назви: {why_not}"
+        chars.append(char)
+    for index in range(date_at - 1):
+        if index + 1 in under:
+            continue
+        a, b = glyphs[index], glyphs[index + 1]
+        if a.line != b.line:
+            if chars[index] != "-":
+                return "", f"перенос рядка після «{chars[index]}», а не після «-»"
+            continue
+        gap = b.left - (a.left + a.bits.shape[1])
+        limit = NAME_GAP_WIDE if chars[index] in "1." else NAME_GAP
+        if gap > limit * a.cap:
+            return "", f"проміжок {gap} px після символа №{index + 1} — схоже на пробіл"
+    return "".join(("_" if i in under else "") + c for i, c in enumerate(chars)), None
+
+
+def read_newgen_name_prefix_explained(image: Image.Image) -> "tuple[str, Optional[str]]":
+    """Початок назви з кадру (діагностика, `check`): (текст, чому ні)."""
+    layout = _name_layout(image)
+    if layout is None:
+        return "", "рядка ▶ з назвою на кадрі немає"
+    return _name_prefix(layout)
+
+
+def _program_from_text(s: str, prefix: str = "") -> "tuple[Optional[MillingProgram], Optional[str]]":
+    """Зібрати програму з прочитаного хвоста, перевіривши дату й час.
+
+    `prefix` — початок назви до дати (`1_14-MONOLITH-A3-X89`), лише коли його
+    прочитано ЦІЛКОМ (`_name_prefix`); інакше порожньо, і назва, як і досі, —
+    сама дата й час. На Sum3D ID і дату префікс не впливає ніяк."""
     # ####-##-## ##-##-## .I??
     year, month, day = s[0:4], s[5:7], s[8:10]
     hour, minute, second = s[10:12], s[13:15], s[16:18]
@@ -431,9 +756,10 @@ def _program_from_text(s: str) -> "tuple[Optional[MillingProgram], Optional[str]
         return None, f"прочитано неможливий час {hour}-{minute}-{second}"
     date_text = f"{year}-{month}-{day}"
     time_text = f"{hour}-{minute}-{second}"
+    head = f"{prefix}_" if prefix else ""
     return (
         MillingProgram(
-            iso_name=f"{date_text}_{time_text}.iso", sum3d_id=time_text, date=date_text
+            iso_name=f"{head}{date_text}_{time_text}.iso", sum3d_id=time_text, date=date_text
         ),
         None,
     )
@@ -457,7 +783,16 @@ def read_newgen_program_variants(image: Image.Image) -> "list[MillingProgram]":
     templates = load_newgen_glyphs()
     if not templates:
         return []
-    picks, _why = _tail_picks(image, templates)
+    # Кадр ріжемо один раз на виклик: той самий розклад дає й хвіст (через
+    # `_tail_picks`), і початок назви. Цей шлях іде на КОЖНОМУ тіку, доки
+    # шрифт не вирішив цифру (у цеху — тисячі разів), тож друга сегментація
+    # (~15 мс) старила б решту верстатів у черзі опитування.
+    layout = _name_layout(image)
+    _layout_memo.pair = (image, layout)
+    try:
+        picks, _why = _tail_picks(image, templates)
+    finally:
+        _layout_memo.pair = None
     if picks is None:
         return []
     unsure = [p for p in picks if p.char is None]
@@ -468,9 +803,16 @@ def read_newgen_program_variants(image: Image.Image) -> "list[MillingProgram]":
         combos *= max(1, len(pick.options))
     if combos > VARIANTS_LIMIT:
         return []
+    combos_text = product(*[p.options if p.char is None else (p.char,) for p in picks])
+    texts = [t for t in ("".join(c) for c in combos_text) if _program_from_text(t)[0] is not None]
+    if not texts:
+        return []
+    # Початок назви від хвоста не залежить: непевна цифра хвоста не робить
+    # непевним «1_14-MONOLITH».
+    prefix = _name_prefix(layout)[0] if layout is not None else ""
     programs: "list[MillingProgram]" = []
-    for combo in product(*[p.options if p.char is None else (p.char,) for p in picks]):
-        program, _bad = _program_from_text("".join(combo))
+    for text in texts:
+        program, _bad = _program_from_text(text, prefix)
         if program is not None:
             programs.append(program)
     return programs
@@ -500,7 +842,10 @@ def read_newgen_program_explained(
     templates = load_newgen_glyphs()
     if not templates:
         return None, None
-    picks, why = _tail_picks(image, templates)
+    # Кадр ріжемо ОДИН раз: ті самі символи дають і хвіст, і початок назви
+    # (сегментація — ~15 мс з ~20 на кадр JOBS, двічі на кожен тік не варто).
+    layout = _name_layout(image)
+    picks, why = _tail_picks_in(layout.glyphs if layout is not None else None, templates)
     if picks is None:
         return None, why
     for index, pick in enumerate(picks):
@@ -514,4 +859,9 @@ def read_newgen_program_explained(
             f"цифру №{index + 1} хвоста не впізнано (схожі: {near}; треба відрив "
             f"≥{MIN_MARGIN:.0f}) — донавчити: scripts/newgen_glyphs.py learn"
         )
-    return _program_from_text("".join(p.char or "" for p in picks))
+    text = "".join(p.char or "" for p in picks)
+    program, bad = _program_from_text(text)
+    if program is None:
+        return None, bad
+    prefix = _name_prefix(layout)[0] if layout is not None else ""
+    return _program_from_text(text, prefix) if prefix else (program, None)
