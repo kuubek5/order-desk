@@ -71,6 +71,12 @@ SHOP_FRAMES = {
     # самими еталонами цифр, що й досі, — нових цифр не вчили.
     "newgen_250i_10-09-48.png": ("2026-10-12", "10-09-48"),
     "newgen_150i_09-49-56.png": ("2026-10-12", "09-49-56"),
+    # 12.10.26, 16:22 — кадри, на яких випущена повна назва мовчала на всіх
+    # трьох верстатах («7» у «7_16», «B» у «B2», «4» у «X45» — нових
+    # накреслень не було серед еталонів назви). Дата й час — як і досі.
+    "newgen_250i_15-13-42.png": ("2026-10-12", "15-13-42"),
+    "newgen_250i_12-38-27.png": ("2026-10-12", "12-38-27"),
+    "newgen_150i_15-43-29.png": ("2026-10-12", "15-43-29"),
 }
 READABLE = {
     FRAME_250I.name: ("2026-09-04", "12-57-22"),
@@ -640,12 +646,12 @@ FULL_NAMES = {
     "newgen_150i_18-07-50.png": "ZR16_16-MONOLITH-A3-5-X48_2026-09-17_18-07-50",
     "newgen_250i_10-09-48.png": "6PMMA25_25-BL3-X36_2026-10-12_10-09-48",
     "newgen_150i_09-49-56.png": "1_12-MONOLITH-A3-5-X12_2026-10-12_09-49-56",
-}
-# Кадри, де початок назви наразі НЕ читається (такого накреслення цифри «2»
-# серед еталонів немає). Контракт слабший, але незламний: або точно, або
-# порожньо — і дата з часом у будь-якому разі ті самі.
-NAMES_EXACT_OR_EMPTY = {
+    # Цифра «2» в «A2» мала накреслення, якого не було серед еталонів, —
+    # доти початок назви тут не читався; довчено в `name_digits` 12.10.26.
     "newgen_250i_03-02-10.png": "PMMA16_16-A2-X184_2026-10-02_03-02-10",
+    "newgen_250i_15-13-42.png": "7_16-MONOLITH-A3-X92_2026-10-12_15-13-42",
+    "newgen_250i_12-38-27.png": "14_25-MONOLITH-B2-X04_2026-10-12_12-38-27",
+    "newgen_150i_15-43-29.png": "7_18-MONOLITH-A2-X45_2026-10-12_15-43-29",
 }
 # Вирізи рядка назви зі скриньки невідомих екранів (kmill_frame part="zone",
 # рідний масштаб, 250i-Sec 25.09–09.10.26). Кружка ▶ у них немає, тож тут
@@ -672,27 +678,41 @@ def test_the_whole_program_line_is_read(name, full):
     assert (program.date, program.sum3d_id) == READABLE[name]
 
 
-@pytest.mark.parametrize("name, full", NAMES_EXACT_OR_EMPTY.items())
-def test_an_unreadable_head_leaves_date_and_time_alone(name, full):
+@pytest.mark.parametrize("name, full", FULL_NAMES.items())
+def test_an_unreadable_head_leaves_date_and_time_alone(monkeypatch, name, full):
+    """Символ початку назви не впізнано (тут — «M» викинуто з еталонів, так
+    виглядає нове накреслення): назва — лише дата й час, і саме ті."""
+    without = {k: v for k, v in ng.load_newgen_name_glyphs().items() if k != "M"}
+    monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: without)
     program = ng.read_newgen_program(Image.open(FIX / name))
     assert (program.date, program.sum3d_id) == READABLE[name]
     date_time = full[len(_head(full)) + 1:]
-    assert program.iso_name in (f"{full}.iso", f"{date_time}.iso")
+    expected = f"{full}.iso" if "M" not in _head(full) else f"{date_time}.iso"
+    assert program.iso_name == expected
 
 
-def test_prefix_from_name_row_crops_is_exact_or_empty():
-    exact = 0
+def test_prefix_from_name_row_crops():
     for name, full in ROW_NAMES.items():
         layout = ng._layout_in_zone(Image.open(ROWS / name))
-        prefix, _why = ng._name_prefix(layout)
-        assert prefix in ("", _head(full)), name
-        exact += prefix == _head(full)
-    # Хоч один виріз читається цілком — інакше тест нічого б не доводив.
-    assert exact >= 1
+        assert ng._name_prefix(layout) == (_head(full), None), name
+
+
+def test_name_templates_never_touch_the_date_and_time_set():
+    """Еталони назви (`letters`, `name_digits`) — окремі розділи: набір, яким
+    читаються дата й час, від навчання назви не змінюється ні на бітмапу."""
+    import json
+
+    raw = json.loads((Path(__file__).resolve().parents[1] / ng.NEWGEN_GLYPHS_PATH).read_text(encoding="utf-8"))
+    tail = ng.load_newgen_glyphs()
+    assert {k: len(v) for k, v in tail.items()} == {k: len(v) for k, v in raw["digits"].items()}
+    for char, variants in raw.get("name_digits", {}).items():
+        assert char.isdigit()
+        for rows in variants:
+            assert rows not in raw["digits"].get(char, []), "дубль еталона хвоста в name_digits"
 
 
 def _all_layouts():
-    for name, full in {**FULL_NAMES, **NAMES_EXACT_OR_EMPTY}.items():
+    for name, full in FULL_NAMES.items():
         yield name, full, ng._name_layout(Image.open(FIX / name).convert("RGB"))
     for name, full in ROW_NAMES.items():
         yield name, full, ng._layout_in_zone(Image.open(ROWS / name))
@@ -730,21 +750,28 @@ def test_the_exact_copy_shortcut_changes_no_answer(monkeypatch):
 
 
 def test_head_read_with_letters_that_never_saw_the_frame(monkeypatch):
-    """Літери з ІНШИХ кадрів читають живий кадр 150i 12.10.26 цілком.
+    """Еталони з ІНШИХ кадрів читають живий кадр 150i 12.10.26 цілком.
 
     Навчене на кадрі читає сам кадр — це нічого не доводить. Тут еталони
     літер зібрано з решти кадрів (обох верстатів), а цифри — ті самі, що й для
     хвоста, і цього кадру вони теж не бачили."""
+    import json
+
     target = "newgen_150i_09-49-56.png"
-    templates = {k: v for k, v in ng.load_newgen_name_glyphs().items() if k.isdigit()}
-    letters: dict[str, list] = {}
+    raw = json.loads((Path(__file__).resolve().parents[1] / ng.NEWGEN_GLYPHS_PATH).read_text(encoding="utf-8"))
+    # Цифри — лише набір хвоста (його вчили задовго до цього кадру) і цифри
+    # назви з ІНШИХ кадрів; `name_digits` з файла не беремо: там є й цей кадр.
+    pool: dict[str, list] = {
+        char: [ng._name_norm(np.array([[c == "1" for c in row] for row in rows], dtype=bool)) for rows in variants]
+        for char, variants in raw["digits"].items()
+    }
     for name, full, layout in _all_layouts():
         if name == target:
             continue
         for glyph, char in zip(layout.glyphs, full.replace("_", "")):
-            if char.isalpha():
-                letters.setdefault(char, []).append(ng._name_norm(glyph.bits))
-    templates.update({k: np.stack(v) for k, v in letters.items()})
+            if char.isalnum():
+                pool.setdefault(char, []).append(ng._name_norm(glyph.bits))
+    templates = {k: np.stack(v) for k, v in pool.items()}
     monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: templates)
     program = ng.read_newgen_program(Image.open(FIX / target))
     assert program.iso_name == f"{FULL_NAMES[target]}.iso"

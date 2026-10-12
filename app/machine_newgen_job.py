@@ -580,7 +580,12 @@ def _bits_key(bits: np.ndarray) -> tuple:
 def load_newgen_name_glyphs() -> "dict[str, np.ndarray]":
     """Еталони для початку назви: символ → стос варіантів NAME_NORM.
 
-    Цифри — ті самі бітмапи, що й для хвоста (`digits`), літери — `letters`.
+    Цифри — ті самі бітмапи, що й для хвоста (`digits`), плюс `name_digits`:
+    накреслення цифр, вивчені САМЕ для назви (`learn --letters-only`). Окремий
+    розділ — щоб навчання назви не змінювало еталонів, якими читаються дата й
+    час (12.10.26: у цеху всі три верстати спотикались на цифрах початку
+    назви — «7» у «7_16», «4» у «X45», — бо в набір хвоста їх ніхто не вчив).
+    Літери — `letters`.
     Немає літер — початок назви не читається (а хвіст читається як завжди)."""
     path = Path(resource_path(NEWGEN_GLYPHS_PATH))
     if not path.exists():
@@ -591,7 +596,7 @@ def load_newgen_name_glyphs() -> "dict[str, np.ndarray]":
         logger.warning("newgen_glyphs.json не прочитано — повну назву програми з екрана не читаємо")
         return {}
     by_char: "dict[str, list[np.ndarray]]" = {}
-    for section in ("digits", "letters"):
+    for section in ("digits", "name_digits", "letters"):
         for char, variants in (raw.get(section) or {}).items():
             by_char.setdefault(char, []).extend(
                 np.array([[c == "1" for c in row] for row in rows], dtype=bool) for rows in variants

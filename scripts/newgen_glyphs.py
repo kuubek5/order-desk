@@ -8,7 +8,8 @@ machine_frames або в теку калібрування) чи над вирі
     python scripts/newgen_glyphs.py learn  кадр.png "1_18-EMOTIONS-A1-X193_2026-09-04_12-57-22.ISO"
         → додати еталони цифр і літер із цього кадру
     python scripts/newgen_glyphs.py learn  кадр.png "…" --letters-only
-        → лише літери; еталони цифр (ними читаються дата й час) не чіпати
+        → лише для назви: літери й цифри назви (окремий розділ `name_digits`);
+          еталони цифр, якими читаються дата й час, не чіпати
 
 Назву в `learn` пишіть рівно так, як вона стоїть на екрані поруч із ▶, разом
 із `_` і ВЕЛИКИМИ літерами; перенос рядка не пишіть (назва — одним рядком).
@@ -112,13 +113,14 @@ def learn(frame: Path, name: str, letters_only: bool = False) -> int:
     data = json.loads(GLYPHS_FILE.read_text(encoding="utf-8")) if GLYPHS_FILE.exists() else {}
     digits = data.setdefault("digits", {})
     letters = data.setdefault("letters", {})
+    name_digits = data.setdefault("name_digits", {})
 
     problem = _letters_problem(layout, name)
     if problem is not None and any(c.isalpha() for c in truth):
         print(f"Літери НЕ вчу: {problem}.")
     # Бітмапа, що вже є еталоном ІНШОГО символу, — майже напевно одруківка в
     # назві («0» замість «O»). Такий кадр не пише нічого.
-    known = {tuple(rows): char for section in (digits, letters) for char, variants in section.items()
+    known = {tuple(rows): char for section in (digits, name_digits, letters) for char, variants in section.items()
              for rows in variants}
     for index, (glyph, char) in enumerate(zip(glyphs, truth)):
         if not (char.isdigit() or (char.isalpha() and problem is None)):
@@ -131,21 +133,28 @@ def learn(frame: Path, name: str, letters_only: bool = False) -> int:
 
     added_digits = added_letters = 0
     for glyph, char in zip(glyphs, truth):
+        rows = _rows(glyph.bits)
         if char.isdigit() and not letters_only:
             target = digits
+        elif char.isdigit() and problem is None:
+            # Цифра лише для НАЗВИ: окремий розділ, еталони дати й часу не
+            # змінюються. Уже відома хвостові бітмапа сюди не дублюється.
+            if rows in digits.get(char, []):
+                continue
+            target = name_digits
         elif char.isalpha() and problem is None:
             target = letters
         else:
             continue
-        rows = _rows(glyph.bits)
         variants = target.setdefault(char, [])
         if rows not in variants:
             variants.append(rows)
-            if target is digits:
-                added_digits += 1
-            else:
+            if target is letters:
                 added_letters += 1
+            else:
+                added_digits += 1
     data["digits"] = {k: digits[k] for k in sorted(digits)}
+    data["name_digits"] = {k: name_digits[k] for k in sorted(name_digits)}
     data["letters"] = {k: letters[k] for k in sorted(letters)}
     GLYPHS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Додано варіантів: цифр {added_digits}, літер {added_letters}. "
@@ -174,7 +183,7 @@ def main() -> int:
     p_learn.add_argument("frame", type=Path)
     p_learn.add_argument("name")
     p_learn.add_argument("--letters-only", action="store_true",
-                         help="вчити лише літери, еталони цифр хвоста не чіпати")
+                         help="вчити лише назву: літери й цифри назви (name_digits); еталони цифр дати й часу не чіпати")
     args = parser.parse_args()
     if args.cmd == "learn":
         return learn(args.frame, args.name, letters_only=args.letters_only)
