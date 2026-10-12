@@ -231,7 +231,46 @@ function refreshAddworkRows(form) {
     const rm = row.querySelector("[data-addwork-removerow]");
     if (rm) rm.hidden = rows.length <= 1;
   });
+  // «Sum3D усім» має сенс лише для кількох рядків. Назад до одного рядка поле
+  // ховається й скидається; уже вписане в рядок лишається.
+  const all = form.querySelector("[data-addwork-s3all]");
+  const allInput = form.querySelector("[data-addwork-s3all-input]");
+  if (all) all.hidden = rows.length <= 1;
+  if (allInput && rows.length <= 1) allInput.value = "";
+  applyAddworkSum3dAll(form);
 }
+
+// «Sum3D усім» (як у Конвеєрі пошти, mail.js::applySum3dAll): значення йде лише
+// в рядки, де Sum3D порожній або вписаний саме звідси (data-from-all). Вписане
+// в рядок руками — рішення оператора, його не перезаписуємо.
+function applyAddworkSum3dAll(form) {
+  const allInput = form.querySelector("[data-addwork-s3all-input]");
+  if (!allInput) return;
+  const rows = form.querySelectorAll("[data-addwork-row]");
+  if (rows.length <= 1) return; // поле сховане; що вже лягло в рядок — лишається
+  const value = allInput.value.trim();
+  rows.forEach((row) => {
+    const el = row.querySelector('[name="sum3d_id"]');
+    if (!el) return;
+    if (el.value === "" || el.dataset.fromAll === "1") {
+      el.value = value;
+      if (value) el.dataset.fromAll = "1";
+      else delete el.dataset.fromAll;
+    }
+  });
+}
+
+document.addEventListener("input", (event) => {
+  const el = event.target;
+  if (!el || !el.closest) return;
+  const form = el.closest("[data-addwork]");
+  if (!form) return;
+  if (el.hasAttribute("data-addwork-s3all-input")) {
+    applyAddworkSum3dAll(form);
+  } else if (el.name === "sum3d_id") {
+    delete el.dataset.fromAll; // правка руками — більше не «з усіх»
+  }
+});
 
 document.addEventListener("click", (event) => {
   const toggle = event.target.closest("[data-addwork-toggle]");
@@ -263,7 +302,7 @@ document.addEventListener("click", (event) => {
     const rowsBox = form.querySelector("[data-addwork-rows]");
     const rows = rowsBox.querySelectorAll("[data-addwork-row]");
     const clone = rows[rows.length - 1].cloneNode(true);
-    clone.querySelectorAll("input").forEach((el) => { el.value = ""; });
+    clone.querySelectorAll("input").forEach((el) => { el.value = ""; delete el.dataset.fromAll; });
     // Скинути стан комбобокса матеріалу на клоні: список несе застарілі опції й
     // (найгірше) той самий id, а два однакові id ламають aria-activedescendant.
     // Порожня форма — closed combobox, id присвоїть materialsuggest.js при
@@ -1361,7 +1400,9 @@ function restoreAddworkDraft(form) {
 // рівно для одного випадку — сторінка перезавантажилась через помилку.
 document.addEventListener("submit", (event) => {
   const form = event.target.closest && event.target.closest("[data-addwork]");
-  if (form) saveAddworkDraft(form);
+  if (!form) return;
+  applyAddworkSum3dAll(form); // страховка: рядки несуть Sum3D усім і при сабміті
+  saveAddworkDraft(form);
 });
 
 function openAddworkFromQuery() {

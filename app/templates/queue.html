@@ -266,6 +266,14 @@
                 </div>
                 <div class="addwork-actions">
                     <button type="button" class="addwork-addrow" data-addwork-addrow>+ ще рядок</button>
+                    {# «Sum3D усім»: видно лише коли рядків кілька (queue.js, refreshAddworkRows).
+                       Поле без name — у payload їдуть лише sum3d_id самих рядків; сервер не змінено. #}
+                    <label class="addwork-s3all" data-addwork-s3all hidden>
+                        <span>Sum3D усім</span>
+                        <input type="text" class="addwork-input addwork-qty mono" data-addwork-s3all-input
+                               placeholder="12-01-45" autocomplete="off" inputmode="numeric"
+                               title="Вписати один Sum3D ID у всі рядки, де він порожній">
+                    </label>
                     <button type="submit" class="addwork-submit apex" data-addwork-submit>
                         {% include "_mill_spinner.svg" %}
                         <span class="addwork-submit-label">Додати в чергу і таблицю</span>
