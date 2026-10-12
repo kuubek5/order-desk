@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.services import shop_board as sb
@@ -411,6 +412,11 @@ def test_shop_page_really_renders(app_db, monkeypatch):  # noqa: F811
     assert board.get("/t/wrong/shop/cards")[0] == 404
     # Полотно анімації віддається, а решта теки js — ні.
     assert board.get("/static/js/shop_board_slm.js")[0] == 200
+    # Файли стилів SISMA — теж (інакше обраний стиль мовчки впав би на 404).
+    assert board.get("/static/js/shop_board_slm_melt.js")[0] == 200
+    assert board.get("/static/js/shop_board_slm_tower.js")[0] == 200
+    assert board.get("/static/js/shop_board_slm_neon.js")[0] == 404
+    assert board.get("/static/js/shop_board_prog.js")[0] == 200
     assert board.get("/static/js/app.js")[0] == 404
 
 
@@ -913,14 +919,16 @@ def test_board_shows_the_program_instead_of_the_sum3d_digits(app_db, monkeypatch
 
     prog = _card_html(frag, "M-prog")
     assert "<em>програма</em>" in prog and "has-prog" in prog
-    assert ('<span class="prog"><span class="ph">2_18-Emotions-a1-x193_2026-10-12_</span>'
-            '<b>09-09-40</b></span>') in prog
+    # Один рядок (власник 12.10.26): голова й хвіст — на доріжці `.pt`
+    # всередині рамки `.prog`; рух, коли не влазить, додає JS.
+    assert ('<span class="prog"><span class="pt"><span class="ph">2_18-Emotions-a1-x193_2026-10-12_</span>'
+            '<b>09-09-40</b></span></span>') in prog
     assert ".iso" not in prog
     assert "<em>sum3d</em>" not in prog
     assert "Новодент" in prog and "emo a1" in prog, "клієнт і матеріал лишились"
 
     lab_html = _card_html(frag, "M-lab")
-    assert '<span class="prog"><span class="ph">2026-10-12_</span><b>09-34-59</b></span>' in lab_html
+    assert '<span class="prog"><span class="pt"><span class="ph">2026-10-12_</span><b>09-34-59</b></span></span>' in lab_html
     assert "24122" in lab_html and "mono a3" in lab_html, "лабораторна робота: наряд і матеріал"
 
     plain = _card_html(frag, "M-plain")
@@ -945,6 +953,183 @@ def test_board_shows_the_program_instead_of_the_sum3d_digits(app_db, monkeypatch
 
     # Назва без Sum3D-хвоста: показується вся, без `<b>`, і ще не «sum3d».
     notail = _card_html(frag, "M-notail")
-    assert '<span class="prog no-tail"><span class="ph">custom-program</span></span>' in notail
+    assert '<span class="prog no-tail"><span class="pt"><span class="ph">custom-program</span></span></span>' in notail
     id_row = notail.split('class="mc-id', 1)[1].split('class="mc-bot"', 1)[0]
     assert "<b>" not in id_row and "<em>sum3d</em>" not in id_row
+
+
+# ── Вигляд плитки SISMA (власник 12.10.26) ────────────────────────────────
+
+
+def _sisma_frag(style):
+    from app.routers.deps import templates
+
+    furnace = SimpleNamespace(cards=[], nearest_name="", nearest_at="",
+                              nearest_day="", nearest_iso="")
+    view = sb.shop_view(None, token="t", now=NOW, furnace_view=furnace, sisma_style=style,
+                        cards=[_card("350i · 1", "run", percent=63),
+                               _card("SISMA", "run", sisma=True, layers=(412, 780))])
+    return templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
+
+
+def test_sisma_style_defaults_to_classic_and_never_empty(app_db):  # noqa: F811
+    """Без вибору — «як зараз». Порожнє чи невідоме значення читається як
+    `classic`, а не як «стилю немає» (CLAUDE.md §14, «Порожнє поле»)."""
+    _, factory = app_db
+    with factory() as db:
+        assert sb.read_sisma_style(db) == "classic"
+    assert sb.read_sisma_style(None) == "classic"
+    for raw in ("", None, "  ", "neon"):
+        assert sb.normalize_sisma_style(raw) == "classic", raw
+    assert [key for key, _, _ in sb.SISMA_STYLES] == ["classic", "melt", "tower"]
+
+
+def test_admin_sets_the_sisma_style_operator_cannot(app_db):  # noqa: F811
+    from tests.test_settings_slabs_render import OPERATOR
+
+    app, factory = app_db
+    operator = MiniClient(app)
+    operator.login(*OPERATOR)
+    status, _, _ = operator.post("/settings/feedback/board/sisma-style", {"style": "melt"})
+    assert status in (302, 303, 403)
+    with factory() as db:
+        assert sb.read_sisma_style(db) == "classic", "оператор змінив вигляд табло"
+
+    admin = MiniClient(app)
+    admin.login(*ADMIN)
+    assert admin.post("/settings/feedback/board/sisma-style", {"style": "tower"})[0] == 303
+    with factory() as db:
+        assert sb.read_sisma_style(db) == "tower"
+    # Невідоме слово не зберігається і не скидає обраного.
+    admin.post("/settings/feedback/board/sisma-style", {"style": "neon"})
+    with factory() as db:
+        assert sb.read_sisma_style(db) == "tower"
+    status, _, html = admin.get("/settings/feedback")
+    assert status == 200 and 'id="sisma-style"' in html
+    assert 'value="tower" checked' in html and "Розпечена ванна" in html and "Вежа" in html
+    assert "Розріз камери (як зараз)" in html
+
+
+def test_board_tile_carries_the_style_and_nothing_else_changes():
+    """Стиль міняє лише те, що малюється В полотні: розмітка плитки (розмір,
+    футер, `data-printing`, полотно) та сама, різниця — лише `data-style`."""
+    frags = {style: _sisma_frag(style) for style in ("classic", "melt", "tower")}
+    for style, frag in frags.items():
+        assert f'data-style="{style}"' in frag, style
+    base = frags["classic"].replace(' data-style="classic"', "")
+    for style in ("melt", "tower"):
+        assert frags[style].replace(f' data-style="{style}"', "") == base, style
+    assert sb.shop_view(None, token="t", now=NOW, cards=[], furnace_view=SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso="")).sisma_style == "classic"
+
+
+def test_page_markup_does_not_depend_on_the_style():
+    """Файл стилю підвантажує `shop_board_slm.js` сам — сторінка «як зараз»
+    не отримує зайвих тегів, і вибір діє з наступного свапу без перезавантаження."""
+    from app.routers.deps import templates
+
+    furnace = SimpleNamespace(cards=[], nearest_name="", nearest_at="",
+                              nearest_day="", nearest_iso="")
+    pages = {}
+    for style in ("classic", "melt"):
+        view = sb.shop_view(None, token="t", now=NOW, furnace_view=furnace, sisma_style=style,
+                            cards=[_card("SISMA", "run", sisma=True, layers=(1, 2))])
+        pages[style] = templates.env.get_template("shop_board.html").render(
+            view=view, token="t", refresh=30).replace(f' data-style="{style}"', "")
+    assert pages["classic"] == pages["melt"]
+    assert "shop_board_slm_melt" not in pages["classic"]
+    assert "shop_board_slm_tower" not in pages["classic"]
+
+
+def test_style_scripts_are_whitelisted_and_exist():
+    from app.routers import furnace_board as fbr
+
+    root = Path(__file__).resolve().parents[1] / "app" / "static" / "js"
+    for key, _, _ in sb.SISMA_STYLES:
+        if key == "classic":
+            continue
+        name = f"shop_board_slm_{key}.js"
+        assert name in fbr._JS, name
+        assert (root / name).is_file(), name
+
+
+# ── Рядок програми одним рядком, що їде (власник 12.10.26) ──────────────────
+
+_PROG_JS = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "shop_board_prog.js"
+
+_PROG_NODE = r"""
+const api = require(process.argv[2]);
+const out = {};
+out.fits = api.plan(300, 280);
+out.equal = api.plan(300, 300.4);
+const p = api.plan(200, 290);
+out.over = { d: p.d, period: p.period,
+             offsets: p.keyframes.map(k => +k.offset.toFixed(4)),
+             tf: p.keyframes.map(k => k.transform) };
+// apply() на підробленому DOM: що влазить — без класу, що ні — клас і --prog-d.
+function box(boxW, textW) {
+  const cls = new Set(), props = {}, anims = [];
+  const track = { scrollWidth: textW, animate(kf, opt) { const a = { kf, opt, currentTime: 0, cancel() {} }; anims.push(a); return a; } };
+  return { clientWidth: boxW, track, anims, cls, props,
+           querySelector() { return track; },
+           classList: { add: c => cls.add(c), remove: c => cls.delete(c) },
+           style: { setProperty: (k, v) => { props[k] = v; }, removeProperty: k => { delete props[k]; } } };
+}
+const a = box(300, 280), b = box(200, 290);
+const doc = { querySelectorAll() { return [a, b]; } };
+api.apply(doc, 123456);
+out.applyFit = { run: a.cls.has("is-run"), d: a.props["--prog-d"] || null, anims: a.anims.length };
+out.applyOver = { run: b.cls.has("is-run"), d: b.props["--prog-d"], anims: b.anims.length,
+                  phase: b.anims[0].currentTime, period: b.anims[0].opt.duration,
+                  iterations: b.anims[0].opt.iterations };
+console.log(JSON.stringify(out));
+"""
+
+
+def _run_prog_node(tmp_path):
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node не знайдено")
+    script = tmp_path / "prog.js"
+    script.write_text(_PROG_NODE, encoding="utf-8")
+    res = subprocess.run([node, str(script), str(_PROG_JS)], capture_output=True, text=True, timeout=30)
+    assert res.returncode == 0, res.stderr
+    return json.loads(res.stdout)
+
+
+def test_program_line_moves_only_when_it_does_not_fit(tmp_path):
+    """Влазить — стоїть (ні класу, ні змінної, ні анімації). Не влазить — зсув
+    рівно на різницю ширин (без напівпорожньої рамки), пауза на обох кінцях,
+    туди й назад без стрибка; фаза — від годинника, не від свапу."""
+    out = _run_prog_node(tmp_path)
+    assert out["fits"] is None and out["equal"] is None
+    over = out["over"]
+    assert over["d"] == 90
+    # 30 px/с: 3 с туди, 3 с назад + 2 × 2 с паузи.
+    assert over["period"] == 10000
+    assert over["offsets"] == [0, 0.2, 0.5, 0.7, 1]
+    assert over["tf"] == ["translateX(0px)", "translateX(0px)", "translateX(-90px)",
+                          "translateX(-90px)", "translateX(0px)"], "останній кадр = перший: без стрибка"
+    assert out["applyFit"] == {"run": False, "d": None, "anims": 0}
+    assert out["applyOver"]["run"] is True and out["applyOver"]["d"] == "90px"
+    assert out["applyOver"]["anims"] == 1
+    assert out["applyOver"]["iterations"] is None, "Infinity (у JSON — null): безкінечно"
+    assert out["applyOver"]["phase"] == 123456 % 10000
+
+
+def test_program_line_is_one_line_only_with_motion():
+    """reduced-motion лишає перенос, як було (доріжка `display:contents`);
+    з рухом — рамка в один рядок, обрізається лише рамкою, а не трикрапкою."""
+    html = (Path(__file__).resolve().parents[1] / "app" / "templates" / "shop_board.html").read_text(encoding="utf-8")
+    assert ".mc-id .pt{display:contents}" in html
+    motion = html.split("@media (prefers-reduced-motion:no-preference){", 1)[1]
+    assert ".mc-id .prog{display:block;overflow:hidden;white-space:nowrap}" in motion
+    assert "text-overflow" not in motion.split("}", 3)[0]
+    assert '<script src="/static/js/shop_board_prog.js" defer></script>' in html
+    assert "window.KMProg.apply(document)" in html, "після свапу рамки не переміряні"

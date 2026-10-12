@@ -33,7 +33,11 @@ _IMAGES = {
     # Танцюючі котики над «100» / «зняти» (власник 02.10.26), по черзі.
     "shop-cat-a.webp", "shop-cat-b.webp",
 }
-_JS = {"shop_board_slm.js"}
+# Стилі плитки SISMA (Налаштування → табло) — `shop_board_slm.js` сам
+# підвантажує файл обраного стилю; без рядка тут він мовчки отримав би 404.
+# `shop_board_prog.js` — рядок програми біля диска одним рядком, що їде.
+_JS = {"shop_board_slm.js", "shop_board_slm_melt.js", "shop_board_slm_tower.js",
+       "shop_board_prog.js"}
 
 
 def _db():

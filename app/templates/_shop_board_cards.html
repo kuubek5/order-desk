@@ -77,9 +77,13 @@
            вміщається в три рядки (на вузькій картці з котиком так буває з
            усіма справжніми назвами), `line-clamp` мусить урізати голову
            трикрапкою, а не хвіст — доти він зникав саме в тому місці, заради
-           якого рядок і виводять. #}
+           якого рядок і виводять.
+           `.pt` — доріжка (власник 12.10.26): рядок ОДИН, а що не влазить —
+           повільно їде туди й назад (`shop_board_prog.js`); при
+           reduced-motion доріжки ніби немає (`display:contents`) і лишається
+           перенос, як було. #}
         <div class="mc-id{% if m.has_prog %} has-prog{% endif %}">
-          {% if m.has_prog %}<em>програма</em><span class="prog{% if not m.prog_tail %} no-tail{% endif %}">{% if m.prog_head %}<span class="ph">{{ m.prog_head }}</span>{% endif %}{% if m.prog_tail %}<b>{{ m.prog_tail }}</b>{% endif %}</span>
+          {% if m.has_prog %}<em>програма</em><span class="prog{% if not m.prog_tail %} no-tail{% endif %}"><span class="pt">{% if m.prog_head %}<span class="ph">{{ m.prog_head }}</span>{% endif %}{% if m.prog_tail %}<b>{{ m.prog_tail }}</b>{% endif %}</span></span>
           {% elif m.sum3d %}<em>sum3d</em>{{ m.sum3d }}{% endif %}
         </div>
 
@@ -131,8 +135,11 @@
          Малювати рух на завершеному друці означає казати «працює» про те, що
          вже стоїть (скарга з цеху 15.09.26). Читається ЩОКАДРУ, бо цей шматок
          свапається кожні 30 с, а полотно переїжджає в нову розмітку. #}
-      {# Розтягується на вільні клітинки останнього ряду (`sisma_span`). #}
-      <div class="mc sis t-{{ s.tone }}" data-printing="{{ '1' if s.state == 'run' else '' }}"{% if view.sisma_span > 1 %} style="grid-column: span {{ view.sisma_span }}"{% endif %}>
+      {# Розтягується на вільні клітинки останнього ряду (`sisma_span`).
+         `data-style` — лише ЩО малює полотно (Налаштування → табло, власник
+         12.10.26); розмір, футер і правило `data-printing` ті самі. Читається
+         щокадру, тож новий стиль діє з наступного оновлення шматка. #}
+      <div class="mc sis t-{{ s.tone }}" data-style="{{ view.sisma_style }}" data-printing="{{ '1' if s.state == 'run' else '' }}"{% if view.sisma_span > 1 %} style="grid-column: span {{ view.sisma_span }}"{% endif %}>
         <div class="mc-top"><b>{{ s.name }}</b><span class="sub">SLM</span>
           <em>{{ s.word or "друкує" }}</em></div>
         {# Сюди JS повертає живе полотно після кожного оновлення. #}

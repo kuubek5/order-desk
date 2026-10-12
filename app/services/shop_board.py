@@ -54,6 +54,35 @@ _TONES = {
 # власника 15.09.26). Третя й далі не вміщаються — за ними «ще N».
 MAX_NAMED_WORKS = 2
 
+# Як малюється плитка SISMA на телевізорі (власник 12.10.26). Вибір — лише
+# картинка ВСЕРЕДИНІ полотна; плитка, футер і правило «рух лише під час
+# друку» однакові для всіх. Кожен стан має ВЛАСНЕ слово, порожнього значення
+# немає (CLAUDE.md §14 «Порожнє поле = поля не було»): невідоме чи порожнє
+# читається як `classic` — той самий розріз камери, що був до вибору.
+SISMA_STYLE_KEY = "shop_board_sisma_style"
+SISMA_STYLES: tuple[tuple[str, str, str], ...] = (
+    ("classic", "Розріз камери (як зараз)",
+     "камера збоку: подача порошку, ракель, платформа опускається, лазер"),
+    ("melt", "Розпечена ванна",
+     "вигляд згори у вікно машини: лазер штрихує перерізи, свіжий слід остигає з бурштину в сталь"),
+    ("tower", "Вежа",
+     "профіль збоку: коронки й міст виростають рівно на N з M шарів, верхній шар гарячий"),
+)
+DEFAULT_SISMA_STYLE = "classic"
+
+
+def normalize_sisma_style(value: Optional[str]) -> str:
+    value = (value or "").strip()
+    return value if value in {key for key, _, _ in SISMA_STYLES} else DEFAULT_SISMA_STYLE
+
+
+def read_sisma_style(db: Optional[Session]) -> str:
+    if db is None:
+        return DEFAULT_SISMA_STYLE
+    from app.settings_store import get_setting
+
+    return normalize_sisma_style(get_setting(db, SISMA_STYLE_KEY))
+
 
 # ── Диск, що вифрезеровується (ТВ 3, власник 11.10.26) ─────────────────────
 # Замість точкової смужки — заготовка, на якій із відсотком проступають
@@ -362,6 +391,8 @@ class ShopView:
     nearest_at: str = ""
     nearest_day: str = ""
     nearest_iso: str = ""
+    # Стиль малюнка в полотні SISMA (`SISMA_STYLES`); плитку не змінює.
+    sisma_style: str = DEFAULT_SISMA_STYLE
 
     @property
     def columns(self) -> int:
@@ -581,11 +612,13 @@ def shop_view(
     cards=None,
     furnace_view=None,
     curves: Optional[dict] = None,
+    sisma_style: Optional[str] = None,
 ) -> ShopView:
     """Зібрати все, що показує табло цеху.
 
     `cards`/`furnace_view`/`curves` — для тестів; `curves` — крива за НАЗВОЮ
-    печі (у тестових картках немає ключа печі).
+    печі (у тестових картках немає ключа печі). `sisma_style` — для тестів;
+    інакше стиль читається з налаштувань.
     """
     from app.services import furnace_board
     from app.services.machines import snapshot
@@ -593,6 +626,8 @@ def shop_view(
     now = now or business_now()
     source = snapshot(db) if cards is None else list(cards)
     view = ShopView(now=now)
+    view.sisma_style = (normalize_sisma_style(sisma_style) if sisma_style is not None
+                        else read_sisma_style(db))
 
     for card in source:
         # Верстат, прибраний із табло в Налаштуваннях, сюди не потрапляє —

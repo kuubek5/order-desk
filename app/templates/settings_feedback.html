@@ -235,6 +235,21 @@
                         {% endfor %}
                         <p class="stand-note">Якщо посилання не відкривається з іншого ПК: при першому ввімкненні Windows питає, чи дозволити KuubMill доступ до мережі — потрібно «Приватні мережі». Змінити посилання — старе одразу перестане працювати.</p>
                         {% endif %}
+                        {# Вигляд плитки SISMA на телевізорі (власник 12.10.26): лише
+                           ЩО малює полотно; плитка, числа й «рух лише під час
+                           друку» ті самі. Своє слово в кожного варіанта. #}
+                        <form method="post" action="/settings/feedback/board/sisma-style" class="sisma-style" id="sisma-style">
+                            <p class="settings-help"><b>SISMA на телевізорі</b> — що малює плитка принтера. Розмір плитки, шар N з M, відсоток і час кінця однакові в усіх варіантах; рух — лише поки машина друкує.</p>
+                            <div class="sisma-style-opts" role="radiogroup" aria-label="Вигляд SISMA на табло">
+                                {% for key, name, hint in sisma_styles %}
+                                <label class="schip" title="{{ hint }}"><input type="radio" name="style" value="{{ key }}" {% if sisma_style == key %}checked{% endif %}> {{ name }}</label>
+                                {% endfor %}
+                            </div>
+                            {% for key, name, hint in sisma_styles %}
+                            <p class="stand-note"><b>{{ name }}</b> — {{ hint }}.</p>
+                            {% endfor %}
+                            <button type="submit" class="settings-secondary-button">Зберегти вигляд</button>
+                        </form>
                         {# Ряд кнопок — не рядок реєстру: `.stand-drow` малює межу
                            згори й розтягує вміст, наче це запис у переліку. #}
                         <div class="sbtnrow">

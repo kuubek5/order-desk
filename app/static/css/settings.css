@@ -1174,6 +1174,9 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
   color: var(--ink);
 }
 .schip:focus-within { outline: 2px solid rgba(var(--accent-rgb), .5); outline-offset: 1px; }
+/* Вибір вигляду SISMA на табло (Зворотний зв'язок → табло). */
+.sisma-style { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 4px 0 10px; }
+.sisma-style-opts { display: flex; flex-wrap: wrap; gap: 6px; }
 
 @media (max-width: 860px) {
   .secmgr-head { display: none; }

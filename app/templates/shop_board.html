@@ -154,6 +154,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
    відступаємо 9vh — інакше на шести колонках назва стискалась у стовпчик на
    6 рядків і наповзала на рядок матеріалу (12.10.26). */
 .mc.has-cat .mc-id .prog{max-width:calc(100% - clamp(44px,9vh,150px))}
+/* Доріжка рядка програми. Без руху (reduced-motion) її ніби немає — голова
+   й хвіст переносяться, як описано вище. З рухом — див. блок нижче. */
+.mc-id .pt{display:contents}
 
 .mc-bot{margin-top:auto;display:flex;align-items:flex-end;gap:.7vw;min-width:0}
 /* Диск, що вифрезеровується (ТВ 3, власник 11.10.26) — замість точкової
@@ -352,6 +355,13 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 #shop-live{flex:1;display:flex;flex-direction:column;min-height:0}
 
 @media (prefers-reduced-motion:no-preference){
+  /* Рядок програми — ОДИН рядок (власник 12.10.26). Рамка — `.prog` (її
+     ширина й запас під котика — правила вище), доріжка `.pt` всередині не
+     переноситься; не влазить — `shop_board_prog.js` везе її `transform`-ом
+     туди й назад рівно на різницю ширин (`--prog-d`). */
+  .mc-id .prog{display:block;overflow:hidden;white-space:nowrap}
+  .mc-id .pt{display:inline-flex;align-items:flex-start;white-space:nowrap}
+  .mc-id .prog.is-run .pt{will-change:transform}
   .mc.t-done{animation:callme 2.4s ease-in-out infinite}
   @keyframes callme{50%{border-color:rgba(var(--accent-rgb),.28)}}
   /* Помилка дихає краєм — повільніше за раз на 1.5 с, без блимання;
@@ -521,6 +531,8 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
       });
       applyCat();
       phaseLock(document);
+      // Рядок програми: поміряти нові рамки, фаза руху — від годинника.
+      if (window.KMProg) window.KMProg.apply(document);
       animateChanges(seen);
       document.getElementById("shop-lost").hidden = true;
       syncOffset();
@@ -546,5 +558,6 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 })();
 </script>
 <script src="/static/js/shop_board_slm.js" defer></script>
+<script src="/static/js/shop_board_prog.js" defer></script>
 </body>
 </html>

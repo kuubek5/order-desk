@@ -288,8 +288,108 @@
   // Малюємо КОЖЕН кадр, який дає браузер. Обмеження в 60 кадрів/с пробували
   // 15.09.26 й прибрали: на цеховому телевізорі 60 Гц воно не давало нічого
   // (rAF там і так 60), а на швидшому екрані лише різало плавність.
+  // ── Інші стилі (Налаштування → табло, власник 12.10.26) ──
+  // `data-style` на плитці каже, ЩО малювати в цьому самому полотні. «Як
+  // зараз» (`classic`) — код вище без жодної зміни. Для інших стилів файл
+  // підвантажується сам, коли плитка вперше його попросила, — тому розмітка
+  // сторінки для «як зараз» та сама, а новий стиль діє з наступного свапу без
+  // перезавантаження. Поки файл іде — полотно лишається як було (мілісекунди);
+  // не прийшов зовсім (404) — малюємо «як зараз», а не порожнечу.
+  var STYLES = { melt: 1, tower: 1 };
+  var requested = {}, failed = {};
+  function styleOf() {
+    var tile = document.querySelector(".mc.sis");
+    var st = tile && tile.dataset.style;
+    return st && STYLES[st] ? st : "classic";
+  }
+  function drawerFor(st) {
+    if (st === "classic") return null;
+    var reg = window.KMSlm;
+    if (reg && reg[st]) return reg[st];
+    if (!requested[st]) {
+      requested[st] = true;
+      var el = document.createElement("script");
+      el.src = "/static/js/shop_board_slm_" + st + ".js";
+      el.onerror = function () { failed[st] = true; };
+      el.onload = function () { if (!(window.KMSlm && window.KMSlm[st])) failed[st] = true; };
+      document.head.appendChild(el);
+    }
+    return null;
+  }
+  function numbers() {
+    var tile = document.querySelector(".mc.sis");
+    var lay = tile && tile.querySelector(".sis-foot .lay");
+    var of = tile && tile.querySelector(".sis-foot .of");
+    return {
+      layer: lay ? parseInt(lay.textContent, 10) || 0 : 0,
+      total: of ? parseInt(String(of.textContent).replace(/\D+/g, ""), 10) || 0 : 0
+    };
+  }
+  // «Завершено» — той самий стан, що й «ЗНЯТИ» на верстатах (тон `done`):
+  // «ГОТОВО» на полотні стоїть, поки плитка в ньому, а не гасне саме.
+  function finished() {
+    var tile = document.querySelector(".mc.sis");
+    return !!(tile && tile.classList.contains("t-done"));
+  }
+  var vT = 0, vStopAt = null, vWasPrinting = false, vFrozen = "";
+  function styledFrame(drawer, st, ms) {
+    var live = printing();
+    if (live) {
+      if (!still && !document.hidden) vT += Math.min(0.05, (ms - (last || ms)) / 1000);
+      vStopAt = null;
+    } else if (vWasPrinting) {
+      vStopAt = ms;   // зупинку бачили наживо — коротке остигання має сенс
+    }
+    vWasPrinting = live;
+    last = ms;
+    // Зупинку, якої не бачили (сторінку відкрили вже на завершеному друці),
+    // не малюємо «щойно остиглою»: одразу кінцевий кадр.
+    var doneT = live ? null : (still || vStopAt === null ? 99 : (ms - vStopAt) / 1000);
+    var fin = finished();
+    var n = numbers();
+    var cv = document.getElementById("slm");
+    if (!cv) return;
+    // Статичний кадр (стоїть / reduced-motion / остигло й «ГОТОВО» вже
+    // проявилось) перемальовуємо лише коли є що змінити — як «як зараз».
+    var settled = live ? still : doneT > 3;
+    if (settled) {
+      var sig = st + ":" + cv.clientWidth + "x" + cv.clientHeight + ":" + n.layer + "/" + n.total + ":" + fin + ":" + live;
+      if (sig === vFrozen) return;
+      if (vPaint(drawer, cv, { t: vT, doneT: doneT, still: still, finished: fin, layer: n.layer, total: n.total })) vFrozen = sig;
+      return;
+    }
+    vFrozen = "";
+    vPaint(drawer, cv, { t: vT, doneT: doneT, still: still, finished: fin, layer: n.layer, total: n.total });
+  }
+  function vPaint(drawer, cv, s) {
+    var w = Math.round(cv.clientWidth * DPR), h = Math.round(cv.clientHeight * DPR);
+    if (w < 8 || h < 8) return false;
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    drawer.draw(cv.getContext("2d"), w, h, s);
+    return true;
+  }
+
   var frozenAt = "";
+  var lastStyle = "classic";
   function frame(ms) {
+    var st = styleOf();
+    var drawer = drawerFor(st);
+    if (drawer) {
+      lastStyle = st;
+      styledFrame(drawer, st, ms);
+      requestAnimationFrame(frame);
+      return;
+    }
+    if (st !== "classic" && !failed[st]) {
+      requestAnimationFrame(frame);   // файл стилю ще в дорозі
+      return;
+    }
+    if (lastStyle !== "classic") {
+      // Повернулись до «як зараз»: статичний кадр «як зараз» перемалювати.
+      lastStyle = "classic";
+      frozenAt = "";
+      vFrozen = "";
+    }
     var live = printing();
     if (live && !still && !document.hidden) {
       phaseT += Math.min(0.05, (ms - (last || ms)) / 1000);
@@ -316,6 +416,7 @@
     requestAnimationFrame(frame);
   }
 
-  paint();
+  // Інший стиль — файл просимо одразу, а «як зараз» на мить не малюємо.
+  if (drawerFor(styleOf()) === null && styleOf() === "classic") paint();
   requestAnimationFrame(frame);
 })();

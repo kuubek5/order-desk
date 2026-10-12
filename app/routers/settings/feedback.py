@@ -55,6 +55,8 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "shop_links": shop_board.shop_links(db),
             "board_status": furnace_board.status_snapshot(),
             "board_port": furnace_board.BOARD_PORT,
+            "sisma_styles": shop_board.SISMA_STYLES,
+            "sisma_style": shop_board.read_sisma_style(db),
             "flash": flash,
         },
     )
@@ -279,6 +281,25 @@ def regenerate_furnace_board_link(request: Request, db: Session = Depends(get_db
     furnace_board.regenerate_token(db)
     db.commit()
     return _board_flash(request, "success", "Нове посилання готове — старе більше не відкривається.")
+
+
+@router.post("/settings/feedback/board/sisma-style")
+def save_sisma_style(request: Request, style: str = Form(...), db: Session = Depends(get_db)):
+    """Що малює плитка SISMA на табло цеху (власник 12.10.26). Плитку, футер
+    і правило «рух лише під час друку» стиль не міняє — лише картинку в
+    полотні. Зберігається власне слово стилю, ніколи не порожнє."""
+    require_settings_admin(request, db)
+    from app.services import shop_board
+
+    names = {key: name for key, name, _ in shop_board.SISMA_STYLES}
+    if style not in names:
+        return _board_flash(request, "error", "Такого вигляду SISMA немає.")
+    set_setting(db, shop_board.SISMA_STYLE_KEY, style)
+    db.commit()
+    return _board_flash(
+        request, "success",
+        f"SISMA на табло: «{names[style]}». Телевізор підхопить з наступним оновленням (до 30 с).",
+    )
 
 
 @router.post("/settings/feedback/member/{member_id}/warehouse")

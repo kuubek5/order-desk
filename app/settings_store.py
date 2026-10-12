@@ -282,6 +282,9 @@ PREFERENCE_KEYS = {
     # змінюється кнопкою, і старе посилання перестає працювати).
     "furnace_board_enabled",
     "furnace_board_token",
+    # Що малює плитка SISMA на табло цеху: "classic" | "melt" | "tower"
+    # (`shop_board.SISMA_STYLES`); не задано — "classic", як до вибору.
+    "shop_board_sisma_style",
     # Доступ до `/mcp` по мережі (app/services/mcp_gateway.py): окремий слухач
     # на порту 8011, лише читання. enabled — "1"/""; token — єдина межа
     # доступу, бо запит приходить з ІНШОЇ машини (тунель), а не з петлі. У
