@@ -27,7 +27,6 @@ from app import perf
 
 from app import sync_control
 from app.business_day import (
-    business_now,
     business_tab_today,
     business_today,
     next_tab_day,
@@ -71,7 +70,6 @@ from app.services.queue import (
     queue_week_summary,
     sort_orders_by_column,
 )
-from app.services.handout import handout_default_day_clients
 from app.services.sheet_stuck_writes import failed_sheet_writes
 from app.services.sum3d_capture import cached_projects
 from app.settings_store import get_sum3d_projects_path
@@ -82,7 +80,6 @@ from app.sheet_sync_service import (
     is_sheet_sync_running,
     mass_vanish_pending,
 )
-from app.services.formatting import pluralize_uk
 from app.statuses import STATUSES, is_overdue
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed, record_viewed_day
 from app.sync_heartbeat import sync_status_pair
@@ -99,49 +96,6 @@ QUEUE_ROWS_MAX = 5000
 # QUEUE_SLOW_POLL_SECONDS: свіжість «Раніше» не варта мегабайтів щочверть хвилини.
 QUEUE_POLL_SLOW_ROWS = 150
 QUEUE_SLOW_POLL_SECONDS = 60
-
-
-_WEEKDAYS_UK = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
-
-
-def morning_hello(user, today_orders: list, clients_waiting: int, tab_day, now=None) -> dict:
-    """Привітання над чергою раз на робочий день (власник 11.10.26, макет №8).
-
-    Три числа — з тих самих джерел, що вже показують екрани, щоб нічого не
-    розходилось: робіт у вкладці «Сьогодні» (лічильник вкладки), з них «можна
-    брати» (готовність саме цієї вкладки, незалежно від відкритого фільтра) і
-    клієнтів на видачу — як у шапці видачі (`handout_default_day_clients`).
-    `day` — ключ «уже бачив сьогодні»: робоча дата, межа 07:30 (позначка — на
-    акаунті users.seen_hello_day і в браузері, див. queue.js initMorningHello).
-    У вихідні вкладка — п'ятниця, і про це сказано окремим рядком.
-    """
-    # Дата — через business_today (тести й решта черги пінують саме його),
-    # з business_now — лише година для «доброго ранку / дня».
-    today = business_today(now) if now else business_today()
-    hour = (now or business_now()).hour
-    if 5 <= hour < 12:
-        greet = "Доброго ранку"
-    elif 12 <= hour < 18:
-        greet = "Добрий день"
-    elif 18 <= hour < 23:
-        greet = "Добрий вечір"
-    else:
-        greet = "Доброї ночі"
-    name = ((getattr(user, "full_name", None) or "").split() or [""])[0]
-    return {
-        "day": today.isoformat(),
-        "greet": f"{greet}, {name}" if name else greet,
-        "date_label": f"{_WEEKDAYS_UK[today.weekday()]} · {today.strftime('%d.%m')}",
-        "tab_note": (
-            f"вкладка {_WEEKDAYS_UK[tab_day.weekday()]} {tab_day.strftime('%d.%m')}"
-            if tab_day != today else ""
-        ),
-        "today": len(today_orders),
-        "today_label": pluralize_uk(len(today_orders), "робота сьогодні", "роботи сьогодні", "робіт сьогодні"),
-        "can_take": count_by_readiness(today_orders)["can_take"],
-        "clients": clients_waiting,
-        "clients_label": pluralize_uk(clients_waiting, "клієнт на видачу", "клієнти на видачу", "клієнтів на видачу"),
-    }
 
 
 def clamp_rows_limit(limit) -> int:
@@ -574,13 +528,6 @@ def build_queue_view(
             "source_counts": source_counts,
             "show_overdue": show_overdue,
             "kpis": kpis,
-            # Ранкове привітання (_morning_hello.html, раз на робочий день на оператора).
-            # Лише на повному відкритті: полли його не малюють, а клієнтів на
-            # видачу рахує ще один запит (той самий ланцюжок, що й екран видачі).
-            "hello": (
-                morning_hello(user, buckets["today"], handout_default_day_clients(db, business_today()), today)
-                if partial not in ("rows", "filters") else None
-            ),
             "peeks": peeks,
             "sync_status": sync_status,
             # Банер масового видалення: вкладки, чиї видалення тримає запобіжник

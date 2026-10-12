@@ -615,14 +615,6 @@ def ui_prefs(request: Request) -> dict:
         "load_metrics": "crm,pc,ram",
         # Сховані віджети шапки черги (шестерня вигляду): "" = усе видно.
         "hidden_widgets": "",
-        # «Що нового»: до якої версії картку вже бачено на АКАУНТІ ("" = жодної).
-        # Браузер (app.js initWhatsNew) порівнює її зі своєю позначкою і бере
-        # вищу — позначка браузера сама по собі гинула з даними сайту.
-        "whats_new_seen": "",
-        # Ранкове привітання: за який робочий день (ISO) вже бачено на АКАУНТІ
-        # ("" = ще ні). queue.js initMorningHello бере пізнішу з цієї й
-        # браузерної позначки — з тієї ж причини, що й «Що нового».
-        "hello_seen_day": "",
     }
     mirrored = False
     try:
@@ -657,8 +649,6 @@ def ui_prefs(request: Request) -> dict:
                         "strip_order": user.queue_strip_order or "",
                         "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
                         "hidden_widgets": user.queue_hidden_widgets or "",
-                        "whats_new_seen": user.seen_whats_new or "",
-                        "hello_seen_day": user.seen_hello_day or "",
                     }
                     mirrored = True
             finally:
@@ -903,9 +893,6 @@ templates.env.globals["files_on_disk"] = files_on_disk
 # Початок слів замовника в широкому списку листів (_mail_triage_list.html).
 from app.mail_body_view import letter_snippet  # noqa: E402
 templates.env.globals["letter_snippet"] = letter_snippet
-# «Що нового» після оновлення (_whats_new.html у base.html).
-from app.changelog import whats_new_releases  # noqa: E402
-templates.env.globals["whats_new_releases"] = whats_new_releases
 from app.services.machines import machine_model_key  # noqa: E402 — після створення templates
 templates.env.globals["machine_model_key"] = machine_model_key
 from app.services.machines import MACHINE_MODELS  # noqa: E402
