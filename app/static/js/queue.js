@@ -1470,11 +1470,15 @@ if (document.readyState === "loading") {
 }
 
 /* ── Ранкове привітання (_morning_hello.html, власник 11.10.26) ──────────
-   Раз на робочий день у цьому браузері: ключ — робоча дата з сервера
-   (`data-day`, межа доби 07:30), тож нічна зміна після 07:30 побачить його
-   знову, а перезавантаження сторінки — ні. Числа «докручуються» від нуля до
-   значення, яке вже стоїть у розмітці (без JS чи з prefers-reduced-motion
-   видно одразу кінцеве). Зникає сам за ~6 с, від кліку будь-де або будь-якої
+   Раз на робочий день НА ОПЕРАТОРА: ключ — робоча дата з сервера (`data-day`,
+   ISO, межа доби 07:30), тож нічна зміна після 07:30 побачить його знову, а
+   перезавантаження сторінки — ні. «Вже бачив за день» живе у ДВОХ місцях: на
+   акаунті (`data-seen`, users.seen_hello_day) і в браузері (KMStore helloDay);
+   береться ПІЗНІША. Лише браузерна позначка гинула з даними сайту (чищення
+   при закритті, другий ПК) — і привітання вилазило щоразу (власник 12.10.26:
+   «це теж потрібно тільки один раз бачити»). ISO-дати порівнюються рядком.
+   Числа «докручуються» від нуля до значення, яке вже стоїть у розмітці (без
+   JS чи з prefers-reduced-motion видно одразу кінцеве). Зникає сам за ~6 с, від кліку будь-де або будь-якої
    клавіші; клавішу не перехоплюємо — вона доходить, куди йшла (Ctrl+K, пошук).
    Чергу відкрили у фоновій вкладці — чекаємо, поки її покажуть: інакше
    таймер закрив би привітання непоміченим, а «бачив сьогодні» вже стояло б. */
@@ -1483,9 +1487,20 @@ if (document.readyState === "loading") {
   if (!box) return;
   const KEY = "helloDay";
   const day = box.dataset.day || "";
-  if (!day || KMStore.get(KEY) === day) return;
+  if (!day) return;
+  const local = (window.KMStore && KMStore.get(KEY)) || "";
+  const account = box.dataset.seen || "";
+  const seen = local > account ? local : account;
+  if (seen >= day) {
+    // Цей браузер сьогодні вже бачив, а акаунт ні (позначка з часів «лише
+    // браузер» або фоновий запис не дійшов) — дописати, щоб інший ПК не
+    // показав привітання вдруге.
+    if (account < day) markHelloOnAccount(day);
+    return;
+  }
   // Після оновлення на екрані «Що нового» (app.js) — не накладатись: день не
-  // витрачено, привітання покажеться при наступному відкритті черги.
+  // витрачено (ні браузер, ні акаунт не позначено), привітання покажеться при
+  // наступному відкритті черги.
   if (document.documentElement.dataset.whatsNew) return;
   if (document.hidden) {
     const onVisible = () => {
@@ -1499,8 +1514,23 @@ if (document.readyState === "loading") {
   showHello(box, KEY, day);
 })();
 
+// Позначка на акаунті — у фоні, без очікування: не дійшла (мережа) — браузерна
+// лишається, а наступне відкриття черги допише акаунт (гілка вище).
+function markHelloOnAccount(day) {
+  try {
+    fetch("/account/hello-seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ day: day }).toString(),
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) { /* без fetch — лишається позначка браузера */ }
+}
+
 function showHello(box, KEY, day) {
-  KMStore.set(KEY, day);
+  if (window.KMStore) KMStore.set(KEY, day);
+  markHelloOnAccount(day);
   const reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   box.hidden = false;
   let closed = false;

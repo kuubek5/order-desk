@@ -7,6 +7,7 @@ middleware, решта ні.
 
 import logging
 import re
+from datetime import date
 from threading import Lock
 
 from fastapi import APIRouter, Depends, Form
@@ -626,6 +627,47 @@ async def post_account_whats_new_seen(
     stored = user.seen_whats_new or ""
     if not _RELEASE_VERSION.fullmatch(stored) or _version_key(version) > _version_key(stored):
         user.seen_whats_new = version
+        db.commit()
+    return Response(status_code=204)
+
+
+_ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _iso_day(value: str) -> date | None:
+    """Робочий день із рядка `YYYY-MM-DD`; будь-що інше (і 30 лютого) — None."""
+    if not _ISO_DAY.fullmatch(value or ""):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+@router.post("/account/hello-seen", status_code=204)
+async def post_account_hello_seen(
+    request: Request, day: str = Form(""), db: Session = Depends(get_db)
+):
+    """Ранкове привітання за робочий день `day` оператор уже бачив — на АКАУНТІ.
+
+    Власник 12.10.26: «Це теж потрібно тільки один раз бачити!!!» — та сама
+    вада, що й у «Що нового»: позначка лише в localStorage гинула з даними
+    сайту. Кличе queue.js (initMorningHello) у фоні, щойно привітання
+    показано, і дописує акаунт, коли браузер бачив сьогодні, а акаунт ні.
+    Лише вхід (оператор, і з мережевого ПК). День — робочий (межа 07:30,
+    `business_today`, не календар): майбутній відхиляється, бо «бачив завтра»
+    сховало б завтрашнє привітання; позначка лише росте — стара вкладка,
+    відкрита вчора, сьогоднішню не опускає.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    seen = _iso_day((day or "").strip())
+    if seen is None or seen > business_today():
+        return Response(status_code=422)
+    stored = _iso_day(user.seen_hello_day or "")
+    if stored is None or seen > stored:
+        user.seen_hello_day = seen.isoformat()
         db.commit()
     return Response(status_code=204)
 

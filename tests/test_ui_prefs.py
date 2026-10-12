@@ -115,7 +115,7 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": "", "handout_flow": "",
                      "machine_art": "", "machine_strip": "", "machine_card": "",
                      "side_order": "", "strip_order": "", "load_metrics": "crm,pc,ram",
-                     "hidden_widgets": "", "whats_new_seen": ""}
+                     "hidden_widgets": "", "whats_new_seen": "", "hello_seen_day": ""}
     # кеш на request.state: другий виклик не ходить у БД
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: (_ for _ in ()).throw(AssertionError("no cache")))
     assert deps_mod.ui_prefs(req) is prefs
@@ -127,7 +127,7 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": "", "handout_flow": "",
                      "machine_art": "", "machine_strip": "", "machine_card": "",
                      "side_order": "", "strip_order": "", "load_metrics": "crm,pc,ram",
-                     "hidden_widgets": "", "whats_new_seen": ""}
+                     "hidden_widgets": "", "whats_new_seen": "", "hello_seen_day": ""}
     assert deps_mod.ui_prefs(_request(teal_op.id)) == teal_prefs
     # без сесії — дефолт (Amber Forge), без падіння
     assert deps_mod.ui_prefs(_request(None)) == dict(teal_prefs, theme="forge")

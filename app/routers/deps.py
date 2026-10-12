@@ -619,6 +619,10 @@ def ui_prefs(request: Request) -> dict:
         # Браузер (app.js initWhatsNew) порівнює її зі своєю позначкою і бере
         # вищу — позначка браузера сама по собі гинула з даними сайту.
         "whats_new_seen": "",
+        # Ранкове привітання: за який робочий день (ISO) вже бачено на АКАУНТІ
+        # ("" = ще ні). queue.js initMorningHello бере пізнішу з цієї й
+        # браузерної позначки — з тієї ж причини, що й «Що нового».
+        "hello_seen_day": "",
     }
     mirrored = False
     try:
@@ -654,6 +658,7 @@ def ui_prefs(request: Request) -> dict:
                         "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
                         "hidden_widgets": user.queue_hidden_widgets or "",
                         "whats_new_seen": user.seen_whats_new or "",
+                        "hello_seen_day": user.seen_hello_day or "",
                     }
                     mirrored = True
             finally:

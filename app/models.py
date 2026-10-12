@@ -126,6 +126,12 @@ class User(Base):
     # сервера), тож картка лізла знову й знову. На акаунті вона їде за людиною;
     # браузер бере вищу з двох (app.js initWhatsNew). NULL = ще не бачив жодної.
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Ранкове привітання над чергою (власник 12.10.26: «це теж потрібно тільки
+    # один раз бачити!!!»): за який РОБОЧИЙ день (ISO, межа 07:30) оператор
+    # його вже бачив. Та сама історія, що й у «Що нового»: позначка лише в
+    # localStorage гинула з даними сайту, і привітання вилазило щоразу. Браузер
+    # бере пізнішу з двох (queue.js initMorningHello). NULL = ще не бачив.
+    seen_hello_day: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

@@ -1437,7 +1437,7 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
 .q2 .rowmenu-remark-form + .rowmenu-h,.q2 .rowmenu-remark-clear + .rowmenu-h{margin-top:6px;padding-top:8px;border-top:1px solid var(--line)}
 
 /* ── Ранкове привітання (власник 11.10.26, макет №8) ─────────────────────────
-   _morning_hello.html, показ — queue.js (раз на робочий день у браузері).
+   _morning_hello.html, показ — queue.js (раз на робочий день на оператора).
    Шар над усім, але кліки не ловить, доки не з'явився: pointer-events лише в
    стані is-in. Колір — лише токени теми. Рух — один в'їзд і один виїзд,
    без петель; prefers-reduced-motion → без руху (queue.js ще й не рахує числа). */
