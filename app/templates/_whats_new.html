@@ -1,10 +1,13 @@
 {# «Що нового» після оновлення (власник 11.10.26, макет №5 «Моушн у KuubMill»).
    Дані — останні ВИПУЩЕНІ версії з CHANGELOG.md (app.changelog.whats_new_releases),
    той самий журнал, що й «Про застосунок». Чи показувати, вирішує браузер
-   (whats_new.js): «уже бачив до версії X» живе в KMStore, бо двоє операторів
-   працюють з різних ПК. Картка будується скриптом із цього JSON; без JS —
-   нічого не з'являється, журнал лишається в Налаштуваннях. #}
-<script type="application/json" id="whats-new-data" data-version="{{ app_version }}">{{ whats_new_releases()|tojson }}</script>
+   (app.js initWhatsNew) за ДВОМА позначками «уже бачив до версії X»: акаунта
+   (`data-seen`, users.seen_whats_new — їде за оператором на будь-який ПК і
+   браузер) і браузера (KMStore), береться вища. Лише браузерна позначка гинула
+   з даними сайту, і картка поверталась щоразу (власник 12.10.26). Картка
+   будується скриптом із цього JSON; без JS — нічого не з'являється, журнал
+   лишається в Налаштуваннях. ui_prefs кешований на запит — БД тут не чіпаємо. #}
+<script type="application/json" id="whats-new-data" data-version="{{ app_version }}" data-seen="{{ ui_prefs(request).whats_new_seen or '' }}">{{ whats_new_releases()|tojson }}</script>
 <div class="wnew" id="whats-new" hidden role="dialog" aria-modal="true" aria-labelledby="wnew-title">
     <div class="wnew-card">
         <div class="wnew-top">

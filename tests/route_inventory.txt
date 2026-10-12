@@ -276,3 +276,4 @@ POST /mail/filters
 POST /sync/pause
 POST /settings/test-imap
 POST /license
+POST /account/whats-new-seen

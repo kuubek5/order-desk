@@ -1845,12 +1845,17 @@ document.addEventListener("toggle", (event) => {
 }, true);
 
 /* ── «Що нового» після оновлення (_whats_new.html, власник 11.10.26, макет №5) ──
-   Браузер пам'ятає, до якої версії вже бачив новини (KMStore seenVersion).
-   Браузер без позначки (новий ПК або перше встановлення цієї функції) бачить
-   лише пункти ПОТОЧНОЇ версії — свіжі, не всю історію. Після оновлення —
-   пункти всіх версій новіших за бачену (до 8), один за раз. «Бачив» ставимо одразу при показі:
-   перезавантаження не повторить картку. Поки картка на екрані, ранкове
-   привітання (queue.js) чекає наступного відкриття — не накладається. */
+   «До якої версії вже бачив» живе у ДВОХ місцях: на акаунті оператора
+   (`data-seen`, сервер, users.seen_whats_new) і в браузері (KMStore
+   seenVersion); береться ВИЩА. Лише браузерна позначка гинула з даними сайту
+   (чищення при закритті, другий ПК, інша адреса сервера) — і картка лізла
+   щоразу (власник 12.10.26: «повинна один раз показуватись»).
+   Без жодної позначки (новий акаунт, перше встановлення) — лише пункти
+   ПОТОЧНОЇ версії, не вся історія. Після оновлення — пункти всіх версій
+   новіших за бачену (до 8), один за раз. «Бачив» ставимо одразу при показі,
+   і в браузер, і на акаунт: ні перезавантаження, ні інший ПК картку не
+   повторять. Поки картка на екрані, ранкове привітання (queue.js) чекає
+   наступного відкриття — не накладається. */
 (function initWhatsNew() {
   const data = document.getElementById("whats-new-data");
   const box = document.getElementById("whats-new");
@@ -1865,9 +1870,29 @@ document.addEventListener("toggle", (event) => {
     }
     return 0;
   };
-  const seen = KMStore.get(KEY);
+  // Позначка на акаунті — у фоні, без очікування: не дійшла (мережа) — браузерна
+  // лишається, а наступне відкриття сторінки допише акаунт (гілка нижче).
+  const markAccount = (version) => {
+    try {
+      fetch("/account/whats-new-seen", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ version: version }).toString(),
+        credentials: "same-origin",
+        keepalive: true,
+      }).catch(() => {});
+    } catch (e) { /* без fetch — лишається позначка браузера */ }
+  };
+  const local = KMStore.get(KEY) || "";
+  const account = data.dataset.seen || "";
+  const seen = !local ? account : !account ? local : (cmp(local, account) >= 0 ? local : account);
   if (!current) return;
-  if (seen && cmp(seen, current) >= 0) return;
+  if (seen && cmp(seen, current) >= 0) {
+    // Цей браузер уже бачив, а акаунт ще ні (позначка з часів «лише браузер»
+    // або фоновий запис не дійшов) — дописати, щоб інший ПК не показав знову.
+    if (!account || cmp(account, current) < 0) markAccount(current);
+    return;
+  }
   let releases = [];
   try { releases = JSON.parse(data.textContent || "[]"); } catch (e) { return; }
   const items = [];
@@ -1875,6 +1900,7 @@ document.addEventListener("toggle", (event) => {
     .filter((r) => (seen ? cmp(r.version, seen) > 0 : cmp(r.version, current) === 0) && cmp(r.version, current) <= 0)
     .forEach((r) => (r.items || []).forEach((it) => items.push(Object.assign({ version: r.version }, it))));
   KMStore.set(KEY, current);
+  markAccount(current);
   const list = items.slice(0, 8);
   if (!list.length) return;
   document.documentElement.dataset.whatsNew = "1";

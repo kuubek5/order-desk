@@ -6,6 +6,7 @@ middleware, решта ні.
 """
 
 import logging
+import re
 from threading import Lock
 
 from fastapi import APIRouter, Depends, Form
@@ -15,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app.__version__ import VERSION
 from app.auth import hash_password, verify_password
 from app.business_day import business_today
 from app.license import (
@@ -585,6 +587,46 @@ async def post_account_look(
         request.session.pop(UI_SESSION_KEY, None)
     except Exception:  # noqa: BLE001 — налаштування не варте зламаного запиту
         logger.debug("не вдалось скинути дзеркало ui в сесії", exc_info=True)
+    return Response(status_code=204)
+
+
+# Лише через fullmatch: `$` у re.match пропускає хвостовий "\n".
+_RELEASE_VERSION = re.compile(r"\d{1,4}\.\d{1,5}\.\d{1,6}")
+
+
+def _version_key(value: str) -> tuple[int, ...]:
+    """Як `cmp` у app.js: нечислова частина = 0 — не падати на чужому рядку."""
+    keys = []
+    for part in value.split("."):
+        digits = re.match(r"\d*", part)
+        keys.append(int(digits.group()) if digits and digits.group() else 0)
+    return tuple(keys)
+
+
+@router.post("/account/whats-new-seen", status_code=204)
+async def post_account_whats_new_seen(
+    request: Request, version: str = Form(""), db: Session = Depends(get_db)
+):
+    """Картку «Що нового» до `version` оператор уже бачив — на АКАУНТІ.
+
+    Власник 12.10.26: картка має показатись один раз, а показувалась
+    постійно — позначка жила лише в localStorage браузера й гинула з ним.
+    Кличе app.js (initWhatsNew) у фоні, щойно картку показано; дія
+    оператора, не адміна, і з мережевого ПК теж (лише вхід, як решта
+    /account/*). Записується тільки справжня версія не новіша за запущену
+    (інакше підроблене «99.0.0» назавжди сховало б наступні оновлення) і
+    лише вгору: стара вкладка з попередньою версією позначку не опускає.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    version = (version or "").strip()
+    if not _RELEASE_VERSION.fullmatch(version) or _version_key(version) > _version_key(VERSION):
+        return Response(status_code=422)
+    stored = user.seen_whats_new or ""
+    if not _RELEASE_VERSION.fullmatch(stored) or _version_key(version) > _version_key(stored):
+        user.seen_whats_new = version
+        db.commit()
     return Response(status_code=204)
 
 

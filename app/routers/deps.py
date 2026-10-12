@@ -615,6 +615,10 @@ def ui_prefs(request: Request) -> dict:
         "load_metrics": "crm,pc,ram",
         # Сховані віджети шапки черги (шестерня вигляду): "" = усе видно.
         "hidden_widgets": "",
+        # «Що нового»: до якої версії картку вже бачено на АКАУНТІ ("" = жодної).
+        # Браузер (app.js initWhatsNew) порівнює її зі своєю позначкою і бере
+        # вищу — позначка браузера сама по собі гинула з даними сайту.
+        "whats_new_seen": "",
     }
     mirrored = False
     try:
@@ -649,6 +653,7 @@ def ui_prefs(request: Request) -> dict:
                         "strip_order": user.queue_strip_order or "",
                         "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
                         "hidden_widgets": user.queue_hidden_widgets or "",
+                        "whats_new_seen": user.seen_whats_new or "",
                     }
                     mirrored = True
             finally:

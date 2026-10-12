@@ -119,6 +119,13 @@ class User(Base):
     # сховані, а не показані: порожньо = усе видно, тож наявні акаунти й новий
     # віджет, доданий пізніше, нічого не втрачають.
     queue_hidden_widgets: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    # «Що нового» після оновлення (власник 12.10.26: «повинна один раз
+    # показуватись, а не постійно»): до якої версії оператор уже бачив картку.
+    # Раніше позначка жила ЛИШЕ в localStorage браузера — і гинула з ним
+    # (чищення даних сайту при закритті, інший ПК чи інша адреса того самого
+    # сервера), тож картка лізла знову й знову. На акаунті вона їде за людиною;
+    # браузер бере вищу з двох (app.js initWhatsNew). NULL = ще не бачив жодної.
+    seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
