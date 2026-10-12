@@ -1,0 +1,38 @@
+{# Бічна панель «Статистики»: роботи дня / клітинки / без кількості / браку,
+   згруповані за вкладкою. Рядок → паспорт роботи. #}
+<div class="sx-sh">
+    <div class="sx-sh-t"><h3>{{ side.title }}</h3>{% if side.tag %}<span class="sx-tag">{{ side.tag }}</span>{% endif %}
+        <button type="button" class="sx-x sx-close" data-side-close aria-label="Закрити список">✕</button></div>
+    <div class="sx-sum"><span><b>{{ side.works_n }}</b> робіт</span><span><b>{{ side.units }}</b> од.</span>
+        <span class="sx-lg"><i class="sx-sw-lab"></i><b>{{ side.lab }}</b></span><span class="sx-lg"><i class="sx-sw-cli"></i><b>{{ side.client }}</b></span>
+        {% if side.noqty %}<span class="sx-q" title="Кількість не число — у суму не входить">? {{ side.noqty }}</span>{% endif %}</div>
+</div>
+{% if side.blames %}
+<div class="sx-blames">
+    {% set bmax = (side.blames|map(attribute='units')|max) or 1 %}
+    {% for b in side.blames %}
+    <div class="sx-lr sx-lr3"><span class="sx-nm">{{ b.blame }}</span><span class="sx-bt"><span class="sx-c sx-blame" style="width:{{ (b.units / bmax * 100)|round(1) }}%"></span></span><span class="sx-val">{{ b.units }}<small>{{ b.cases }} вип.</small></span></div>
+    {% endfor %}
+</div>
+{% endif %}
+<div class="sx-wl">
+    {% for g in side.groups %}
+    <details class="sx-grp"{% if side.open_all or loop.first %} open{% endif %}>
+        <summary><b>{{ g.title }}</b><span>{{ 'без вкладки' if 'без вкладки' in g.tab else 'вкладка ' ~ g.tab }}</span><span class="sx-n">{{ g.rows|length }} · {{ g.units }} од.</span></summary>
+        {% for w in g.rows %}
+        <a class="sx-wr" href="/orders/{{ w.id }}" title="Паспорт роботи">
+            <span class="sx-rn">{{ w.row if w.row is not none else '' }}</span>
+            <span class="sx-who">{% if w.kind == 'lab' %}<span class="sx-wo">{{ w.wo or '—' }}</span><span class="sx-tn">{{ w.tech or '—' }}</span>{% else %}{{ w.client or 'Без імені' }}{% endif %}{% if w.rework %}<span class="sx-tn">{{ w.rework }}</span>{% endif %}</span>
+            <span class="sx-mc"><i class="sx-m-{{ w.group }}"></i>{{ w.color or '—' }}</span>
+            <span class="sx-u">{{ w.units if w.units is not none else '?' }}</span>
+            <span class="sx-s3{% if w.sum3d %} has{% endif %}">{{ w.sum3d or '—' }}</span>
+        </a>
+        {% endfor %}
+    </details>
+    {% else %}
+    <div class="sx-empty sx-side-empty">Робіт немає.</div>
+    {% endfor %}
+    {% if side.limit_hit %}<div class="sx-foot">Показано перші 2000 — повний список у файлі.</div>{% endif %}
+</div>
+<div class="sx-sf">Клік по рядку → паспорт роботи<span class="sx-sp"></span>
+    <a class="sx-btn" href="/stats/list/export{{ side.export_qs }}" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3z"/><path d="M6 7.5l4 4.5M10 7.5l-4 4.5"/></svg>Список у Excel</a></div>

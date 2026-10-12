@@ -1,0 +1,110 @@
+{# Вкладка «Огляд». Головне число порівняння — СЕРЕДНЄ НА РОБОЧИЙ ДЕНЬ
+   (вкладку), сума — дрібно поруч: кількість вкладок у періодах різна, і сума
+   сама по собі бреше (рішення власника 12.10.26). #}
+{% from "_stats_macros.html" import day_chart %}
+{% set k = ov.kpis %}
+<div class="sx-layout sx-layout-ov">
+<div class="sx-col">
+    <div class="sx-kpis">
+        <div class="sx-card sx-kpi">
+            <div class="sx-l">Середньо на робочий день</div>
+            <div class="sx-v"><span class="sx-num" data-v="{{ k.per_day.v if k.per_day.v is not none else '' }}" data-was="{{ k.per_day.was if k.per_day.was is not none else '' }}">{{ k.per_day.text }}</span><small>од.</small><small class="sx-sum">сума {{ k.per_day.sum }} · {{ k.per_day.tab_days }} вкл.</small></div>
+            <div class="sx-d sx-cmp-only">{% if k.per_day.arrow %}<span class="sx-ar{% if k.per_day.arrow.sym == '↓' %} down{% endif %}">{{ k.per_day.arrow.sym }} {{ k.per_day.arrow.text }}</span>{% endif %}<span class="sx-was-t">було {{ k.per_day.was_text }} · {{ k.per_day.was_tab_days }} вкл.</span></div>
+        </div>
+        <div class="sx-card sx-kpi">
+            <div class="sx-l">Одиниці за {{ p.period.length }} днів</div>
+            <div class="sx-v"><span class="sx-num" data-v="{{ k.units.v }}" data-was="{{ k.units.was }}">{{ k.units.text }}</span></div>
+            <div class="sx-d"><span class="sx-was-t">{{ k.units.works }} робіт</span><span class="sx-was-t sx-cmp-only">· було {{ k.units.was_text }}</span>
+                {% if k.units.noqty %}<a class="sx-noqty" href="#" data-side-open="noqty=1" title="Кількість у таблиці не число — у суму не входять">? {{ k.units.noqty }} без кількості</a>{% endif %}</div>
+        </div>
+        <div class="sx-card sx-kpi">
+            <div class="sx-l">Лаба · Клієнти</div>
+            {% if k.split.lab_pct is not none %}
+            <div class="sx-v"><span class="sx-num" data-v="{{ k.split.lab_pct|round(0) }}">{{ k.split.lab_pct|round(0)|int }}</span><small>% · {{ (100 - k.split.lab_pct)|round(0)|int }} %</small></div>
+            <div class="sx-split" aria-hidden="true"><i class="sx-split-lab" style="width:{{ k.split.lab_pct|round(1) }}%"></i><i class="sx-split-cli"></i></div>
+            <div class="sx-d"><span class="sx-was-t sx-mono">{{ k.split.lab }} · {{ k.split.client }} од.</span></div>
+            {% else %}<div class="sx-v sx-na-v">—</div>{% endif %}
+        </div>
+        <a class="sx-card sx-kpi sx-kpi-link" href="#" data-side-open="rework=1" title="Розклад браку за винуватцями">
+            <div class="sx-l">Брак</div>
+            {% if k.rework.pct is not none %}
+            <div class="sx-v"><span class="sx-num" data-v="{{ k.rework.pct|round(2) }}" data-was="{{ k.rework.was_pct|round(2) if k.rework.was_pct is not none else '' }}" data-dec="1">{{ '%.1f'|format(k.rework.pct)|replace('.', ',') }}</span><small>% · {{ k.rework.units }} од.</small></div>
+            <div class="sx-d">{% if k.rework.arrow %}<span class="sx-ar sx-cmp-only{% if k.rework.arrow.bad %} bad{% endif %}">{{ '▲' if k.rework.arrow.sym == '↑' else ('▼' if k.rework.arrow.sym == '↓' else '→') }} {{ k.rework.arrow.text }}</span>{% endif %}{% if k.rework.was_pct is not none %}<span class="sx-was-t sx-cmp-only">було {{ '%.1f'|format(k.rework.was_pct)|replace('.', ',') }} %</span>{% endif %}<span class="sx-was-t">{{ k.rework.cases }} вип.</span></div>
+            {% else %}<div class="sx-v sx-na-v">—</div><div class="sx-d"><span class="sx-was-t">немає одиниць за період</span></div>{% endif %}
+        </a>
+        {% if k.lead.ready %}
+        <div class="sx-card sx-kpi">
+            <div class="sx-l">Наряд → модель, медіана</div>
+            <div class="sx-v sx-v-text">{{ k.lead.median }}</div>
+            <div class="sx-d"><span class="sx-was-t">{{ k.lead.n }} робіт з обома моментами{% if k.lead.n < 10 %} — замало для висновку{% endif %}</span></div>
+        </div>
+        {% else %}
+        <div class="sx-card sx-kpi sx-na">
+            <div class="sx-l">Наряд → модель, медіана</div>
+            <div class="sx-v">{{ 'збирається' if k.lead.collecting else '—' }}</div>
+            <div class="sx-d"><span class="sx-tag">з 12.10.26</span><span class="sx-was-t">{{ 'час появи шляху' if k.lead.collecting else 'за період вимірів немає' }}</span></div>
+        </div>
+        {% endif %}
+        <div class="sx-card sx-kpi sx-na">
+            <div class="sx-l">Прогноз на тиждень</div>
+            <div class="sx-v">—</div>
+            <div class="sx-d"><span class="sx-tag">етап 5</span><span class="sx-was-t">потрібно ≥ 6 тижнів</span></div>
+        </div>
+    </div>
+
+    <section class="sx-card sx-daycard">
+        <div class="sx-ch">
+            <h2>Одиниці по днях</h2><span class="sx-meta">день = вкладка таблиці; п'ятниця несе й вихідні</span>
+            <span class="sx-r">
+                <span class="sx-lg"><i class="sx-sw-lab"></i>Лаба <b>{{ ov.lab_text }}</b></span>
+                <span class="sx-lg"><i class="sx-sw-cli"></i>Клієнти <span class="sx-long">(пошта)</span> <b>{{ ov.client_text }}</b></span>
+                <span class="sx-lg"><svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" class="sx-avg"/></svg>середнє</span>
+                <span class="sx-lg sx-cmp-only"><svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" class="sx-prev"/></svg>попередні</span>
+                <span class="sx-lg sx-long"><i class="sx-sw-hatch"></i>немає вкладки</span>
+            </span>
+        </div>
+        <div class="sx-plot">
+            {{ day_chart(ov.chart_wide, "dw", ov.selected_day.isoformat() if ov.selected_day else None) }}
+            {{ day_chart(ov.chart_compact, "dc", ov.selected_day.isoformat() if ov.selected_day else None, True) }}
+        </div>
+        <div class="sx-foot sx-phone-only">Торкніться стовпчика — список робіт. {{ chrome.cover_have }} з {{ chrome.cover_total }} днів мають вкладку.</div>
+    </section>
+
+    <div class="sx-row2">
+        <section class="sx-card">
+            <div class="sx-ch"><h2>Матеріали</h2><span class="sx-meta">частка й зміна до попередніх {{ p.period.length }}<span class="sx-cmp-only"> · риска = було</span></span></div>
+            <div class="sx-lst">
+                {% for m in ov.mat_rows %}
+                <div class="sx-lr">
+                    {% if m.qs %}<a class="sx-nm" href="/stats{{ m.qs }}" hx-get="/stats{{ m.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root" title="Лише {{ m.label }}"><i class="sx-m-{{ m.group }}"></i>{{ m.label }}</a>
+                    {% else %}<span class="sx-nm"><i class="sx-m-{{ m.group }}"></i>{{ m.label }}</span>{% endif %}
+                    <span class="sx-bt"><span class="sx-c sx-m-{{ m.group }}" style="width:{{ m.pct_w }}%"></span>{% if m.prev_w is not none %}<span class="sx-p sx-was" style="left:{{ m.prev_w }}%"></span>{% endif %}</span>
+                    <span class="sx-val">{{ m.units_text }}<small>{{ m.share }} %</small></span>
+                    <span class="sx-dl sx-cmp-only">{% if m.dpp is not none %}{{ '+' if m.dpp >= 0 else '−' }}{{ '%.1f'|format(m.dpp|abs)|replace('.', ',') }} в.п.{% endif %}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        <section class="sx-card">
+            <div class="sx-ch"><h2>Клієнти</h2><span class="sx-meta">топ {{ [8, ov.client_rows|length]|min }} із {{ ov.clients_total }}<span class="sx-cmp-only"> · риска = попередні {{ p.period.length }}</span></span>
+                {% if ov.client_rows|length > 8 %}<span class="sx-r"><button type="button" class="sx-chip sx-more" data-more>усі →</button></span>{% endif %}</div>
+            <div class="sx-lst sx-clients">
+                {% for cl in ov.client_rows %}
+                <div class="sx-lr{% if loop.index > 8 %} sx-extra{% endif %}{% if loop.index > 5 %} sx-desk{% endif %}">
+                    <a class="sx-nm" href="/stats{{ cl.qs }}" hx-get="/stats{{ cl.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root" title="Лише {{ cl.label }}">{{ cl.label }}</a>
+                    <span class="sx-bt"><span class="sx-c sx-sw-cli" style="width:{{ cl.pct_w }}%"></span>{% if cl.prev_w %}<span class="sx-p sx-was" style="left:{{ cl.prev_w }}%"></span>{% endif %}</span>
+                    <span class="sx-val">{{ cl.units_text }}</span>
+                    <span class="sx-dl sx-cmp-only">{% if cl.new %}нові{% elif cl.delta is not none %}{{ '↑' if cl.delta >= 0 else '↓' }} {{ cl.delta|abs }} %{% endif %}</span>
+                </div>
+                {% else %}
+                <div class="sx-empty">клієнтських робіт за період немає</div>
+                {% endfor %}
+                {% if ov.nameless_units %}<div class="sx-foot">Ще {{ ov.nameless_units }} од. — рядки без імені клієнта.</div>{% endif %}
+            </div>
+        </section>
+    </div>
+</div>
+<aside class="sx-card sx-side sx-side-col{% if side %} has-data{% endif %}" id="sx-side" aria-label="Роботи вибраного дня">
+    <div class="sx-side-body" id="sx-side-body">{% if side %}{% include "_stats_side.html" %}{% else %}<div class="sx-empty sx-side-empty">Клікніть стовпчик — тут будуть роботи того дня.</div>{% endif %}</div>
+</aside>
+</div>

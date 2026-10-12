@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine, event
@@ -16,7 +16,7 @@ from app.routers import queue as queue_router_mod
 from app.routers import handout as handout_router_mod
 from app.routers import stats as stats_router_mod
 from app.db import Base
-from app.models import Order, StatusEvent, User
+from app.models import Order, User
 
 
 def test_blocking_get_handlers_are_sync_for_fastapi_threadpool():
@@ -26,61 +26,48 @@ def test_blocking_get_handlers_are_sync_for_fastapi_threadpool():
     assert not inspect.iscoroutinefunction(handout_router_mod.get_handout)
 
 
-def test_stats_eager_loads_status_events_in_constant_query_count(monkeypatch):
+def test_stats_query_count_does_not_grow_with_orders():
+    """«Статистика» рахує агрегатами в SQL (STATS_BRIEF §7): число запитів
+    екрана не залежить від кількості робіт — ні N+1, ні вантаження всіх
+    робіт у Python. 20 і 80 робіт мусять дати однаковий лічильник."""
+    from app.business_day import business_today
+    from app.services import stats_data, stats_view
+
     test_engine = create_engine("sqlite://", poolclass=StaticPool)
     Base.metadata.create_all(test_engine)
+    today = business_today()
 
-    with Session(test_engine, expire_on_commit=False) as db:
-        user = User(
-            username="admin",
-            password_hash="unused",
-            full_name="Admin",
-            role="адмін",
-        )
-        db.add(user)
-        db.flush()
-        now = datetime.now()
-        for index in range(20):
-            order = Order(source="sheet", sheet_tab=now.strftime("%d.%m.%y"))
-            db.add(order)
-            db.flush()
-            db.add_all(
-                [
-                    StatusEvent(order_id=order.id, status="нове", occurred_at=now),
-                    StatusEvent(
-                        order_id=order.id,
-                        status="відфрезеровано",
-                        occurred_at=now + timedelta(hours=index + 1),
-                    ),
-                ]
-            )
+    def add_orders(db, n):
+        for index in range(n):
+            day = today - timedelta(days=index % 20)
+            db.add(Order(source="lab" if index % 2 else "sheet_client", sheet_tab=day.strftime("%d.%m.%y"),
+                         quantity=str(index % 5 + 1), sum3d_id="12-01-45", client_name=f"К{index % 7}"))
         db.commit()
-        user_id = user.id
-        db.expunge_all()
 
+    def count(db):
+        stats_data.clear_cache()
         queries = 0
 
-        def count_query(*_args):
+        def on_query(*_args):
             nonlocal queries
             queries += 1
 
-        event.listen(test_engine, "before_cursor_execute", count_query)
-        monkeypatch.setattr(
-            web.templates,
-            "TemplateResponse",
-            lambda request, template, context: context,
-        )
-        request = SimpleNamespace(session={"user_id": user_id})
+        event.listen(test_engine, "before_cursor_execute", on_query)
+        try:
+            for tab in ("overview", "intake"):
+                params = stats_view.parse_params({"tab": tab}, today, is_admin=True)
+                stats_router_mod.page_context(db, params, admin=True)
+        finally:
+            event.remove(test_engine, "before_cursor_execute", on_query)
+        return queries
 
-        context = stats_router_mod.get_stats(request=request, period="all", db=db)
-
-        event.remove(test_engine, "before_cursor_execute", count_query)
-        assert context["avg_hours"] is not None
-        # User, orders, select-in status events, rework records — плюс два
-        # читання стану розділу (гейт «Блокування розділів»: blocked_response і
-        # admin_banner читають section_state). Усі КОНСТАНТНІ: 20 робіт дають
-        # той самий count, тож захист від N+1 на status_events лишається.
-        assert queries <= 6
+    with Session(test_engine, expire_on_commit=False) as db:
+        add_orders(db, 20)
+        small = count(db)
+        add_orders(db, 60)
+        big = count(db)
+    stats_data.clear_cache()
+    assert small == big, f"запитів стало більше з ростом робіт: {small} → {big}"
 
 
 def _queue_poll_query_count(monkeypatch, n_orders: int) -> int:

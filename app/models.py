@@ -134,7 +134,9 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(String(50))
-    sheet_tab: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # index: «Статистика» фільтрує період списком вкладок (`sheet_tab IN (...)`,
+    # app/services/stats_data.py) — без індексу кожен графік = повний перебір.
+    sheet_tab: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     row_number: Mapped[Optional[int]] = mapped_column(nullable=True)
     work_order_no: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     job_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

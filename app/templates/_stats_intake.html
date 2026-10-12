@@ -1,0 +1,53 @@
+{# Вкладка «Надходження»: коли заходить робота. Карта — за часом Sum3D (взяття
+   в роботу), бо справжній час появи рядка збирається лише з 12.10.26;
+   перемикач «поява рядка» оживає, коли вимірів набереться ≥ 7 днів. #}
+{% from "_stats_macros.html" import heatmap, week_chart, ramp %}
+<div class="sx-hmode">
+    <span class="sx-flab">Час на карті</span>
+    <div class="sx-srcsw">
+        <a class="sx-opt{% if it.mode == 'sum3d' %} on{% endif %}" href="/stats{{ it.sum3d_qs }}" hx-get="/stats{{ it.sum3d_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">Взяття в роботу · Sum3D</a>
+        {% if it.row_ready %}
+        <a class="sx-opt{% if it.mode == 'row' %} on{% endif %}" href="/stats{{ it.row_qs }}" hx-get="/stats{{ it.row_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">Поява рядка</a>
+        {% else %}
+        <span class="sx-opt off" aria-disabled="true" title="Днів з часом появи рядка: {{ it.row_seen_days }} з потрібних 7">Поява рядка · збирається з 12.10.26</span>
+        {% endif %}
+    </div>
+    <span class="sx-note"><span class="sx-i">i</span>{% if it.mode == 'row' %}Карта за часом появи рядка в таблиці — справжнє «надходження».{% else %}За часом взяття в роботу (Sum3D); час надходження збирається з 12.10.26.{% endif %}</span>
+</div>
+
+<div class="sx-g2">
+    {% for m in it.maps %}
+    <section class="sx-card">
+        <div class="sx-ch"><h2><span class="sx-lg sx-lg-h"><i class="sx-sw-{{ 'lab' if m.kind == 'lab' else 'cli' }}"></i>{{ m.label }}</span></h2><span class="sx-meta">{{ m.n }} робіт з часом {{ 'появи рядка' if it.mode == 'row' else 'Sum3D' }}</span><span class="sx-r">{{ ramp(m.kind, m.chart.peak) }}</span></div>
+        <div class="sx-hm">{{ heatmap(m.chart) }}</div>
+        <div class="sx-offs">
+            {% if m.off_pct is not none %}<span class="sx-big">{{ m.off_pct }}<small>% поза робочими годинами</small></span>
+            <span class="sx-note">{{ m.off_text }} з {{ m.total_text }} од. · рамка — {{ it.work_frame }} (згодом налаштовується адміном)</span>
+            {% else %}<span class="sx-note">За період немає робіт з часом {{ 'появи рядка' if it.mode == 'row' else 'Sum3D' }}.</span>{% endif %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+
+<div class="sx-g3">
+    <section class="sx-card">
+        <div class="sx-ch"><h2>Матеріали по тижнях</h2><span class="sx-meta">12 тижнів, щоб видно тренд · одиниці</span>
+            <span class="sx-r"><span class="sx-lg"><i class="sx-m-zr"></i>Цирконій</span><span class="sx-lg"><i class="sx-m-pmma"></i>ПММА</span><span class="sx-lg"><i class="sx-m-ti"></i>Титан</span><span class="sx-lg"><i class="sx-m-oth"></i>Інше</span></span></div>
+        <div class="sx-plot">{{ week_chart(it.weeks_chart) }}</div>
+    </section>
+    <section class="sx-card">
+        <div class="sx-ch"><h2>Кольори</h2><span class="sx-meta">за {{ p.period.length }} днів · топ {{ it.color_rows|length }}, одиниці</span></div>
+        <div class="sx-lst">
+            {% for c in it.color_rows %}
+            <div class="sx-lr sx-lr3"><span class="sx-nm sx-mono"><i class="sx-m-{{ c.group }}"></i>{{ c.color }}</span>
+                <span class="sx-bt"><span class="sx-c sx-m-{{ c.group }}" style="width:{{ c.pct_w }}%"></span></span><span class="sx-val">{{ c.units_text }}</span></div>
+            {% else %}
+            <div class="sx-empty">немає кольорів за період</div>
+            {% endfor %}
+        </div>
+        <div class="sx-foot">Написання зведено: «моно А3» = «mono a3», «a35» = «a3.5».</div>
+    </section>
+</div>
+<aside class="sx-card sx-side sx-side-drawer" id="sx-side" aria-label="Роботи вибраної клітинки">
+    <div class="sx-side-body" id="sx-side-body"></div>
+</aside>

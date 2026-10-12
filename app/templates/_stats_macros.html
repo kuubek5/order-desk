@@ -1,0 +1,70 @@
+{# Графіки «Статистики» — inline SVG. Геометрія з app/services/stats_charts.py,
+   кольори лише токенами (`--sx-*` у stats.css ← tokens.css). Кожен стовпчик —
+   `<g class="sx-bar" data-key>`: stats.js за ключем «перетікає» стару висоту
+   в нову (FLIP), підсвічує клік і показує підказку з data-tip. #}
+
+{% macro day_chart(c, id, sel=None, compact=False) %}
+<svg class="sx-chart sx-days{% if compact %} sx-days-c{% else %} sx-days-w{% endif %}" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="Одиниці по днях: лаба й клієнти стосом" data-chart="{{ id }}">
+    <defs><pattern id="sx-hatch-{{ id }}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" class="sx-hatch-line"/></pattern></defs>
+    {% for t in c.ticks %}
+    <line class="sx-grid{% if loop.first %} is-base{% endif %}" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+    <text class="sx-ax" x="{{ c.left - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.v }}</text>
+    {% endfor %}
+    {% for b in c.bars %}
+    <g class="sx-bar{% if b.empty %} is-empty{% endif %}{% if b.key == sel %} is-sel{% endif %}{% if b.show_total %} is-peak{% endif %}" data-key="{{ b.key }}" data-day="{{ b.key }}" data-tip="{{ b.tip }}"{% if not b.empty %} tabindex="0" role="button" aria-label="{{ b.tip }} — список робіт"{% endif %}>
+        <rect class="sx-hit" x="{{ b.slot_x }}" y="{{ c.top }}" width="{{ b.slot_w }}" height="{{ c.base - c.top }}"/>
+        {% if not b.has %}<rect class="sx-hatch" x="{{ b.x }}" y="{{ c.hatch_y }}" width="{{ b.w }}" height="{{ c.hatch_h }}" rx="3" fill="url(#sx-hatch-{{ id }})"/>{% endif %}
+        <g class="sx-stack">{% for s in b.segs %}<path class="sx-seg sx-{{ s.cls }}" d="{{ s.d }}"/>{% endfor %}</g>
+        {% if not b.empty %}<rect class="sx-selring" x="{{ b.x - 4 }}" y="{{ b.top - 4 }}" width="{{ b.w + 8 }}" height="{{ b.base - b.top + 4 }}" rx="6"/>{% endif %}
+        {% if not compact and b.total %}<text class="sx-total" x="{{ b.cx }}" y="{{ b.top - 10 }}" text-anchor="middle">{{ b.total }}</text>{% endif %}
+        {% if b.label %}<text class="sx-xl" x="{{ b.cx }}" y="{{ c.label_y }}" text-anchor="middle">{{ b.label }}</text>{% endif %}
+        {% if b.sub %}<text class="sx-xs" x="{{ b.cx }}" y="{{ c.sub_y }}" text-anchor="middle">{{ b.sub }}</text>{% endif %}
+    </g>
+    {% endfor %}
+    {% if c.avg %}
+    <line class="sx-avg" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.avg.y }}" y2="{{ c.avg.y }}"/>
+    {% if not compact %}<text class="sx-avg-t" x="{{ c.left + 8 }}" y="{{ c.avg.y - 7 }}">середнє {{ c.avg.v }}</text>{% endif %}
+    {% endif %}
+    {% if c.prev %}
+    <g class="sx-was">
+        <line class="sx-prev" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.prev.y }}" y2="{{ c.prev.y }}"/>
+        {% if not compact %}<text class="sx-prev-t" x="{{ c.left + 8 }}" y="{{ c.prev.y + 16 }}">попередні: {{ c.prev.v }}</text>{% endif %}
+    </g>
+    {% endif %}
+</svg>
+{% endmacro %}
+
+{% macro week_chart(c) %}
+<svg class="sx-chart sx-weeks" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="Одиниці по тижнях за матеріалами" data-chart="weeks">
+    <defs><pattern id="sx-hatch-weeks" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" class="sx-hatch-line"/></pattern></defs>
+    {% for t in c.ticks %}
+    <line class="sx-grid{% if loop.first %} is-base{% endif %}" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+    <text class="sx-ax" x="{{ c.left - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.v }}</text>
+    {% endfor %}
+    {% for b in c.bars %}
+    <g class="sx-bar sx-wbar{% if not b.total %} is-empty{% endif %}" data-key="{{ b.key }}" data-tip="{{ b.tip }}">
+        <rect class="sx-hit" x="{{ b.slot_x }}" y="0" width="{{ b.slot_w }}" height="{{ c.base }}"/>
+        {% if not b.total %}<rect class="sx-hatch" x="{{ b.x }}" y="{{ c.hatch_y }}" width="{{ b.w }}" height="40" rx="3" fill="url(#sx-hatch-weeks)"/>{% endif %}
+        <g class="sx-stack">{% for s in b.segs %}<path class="sx-seg sx-m-{{ s.cls }}" d="{{ s.d }}"/>{% endfor %}</g>
+        {% if b.partial and b.total %}<text class="sx-xs" x="{{ b.cx }}" y="{{ b.top - 8 }}" text-anchor="middle">неповний</text>{% endif %}
+        <text class="sx-xl" x="{{ b.cx }}" y="{{ c.label_y }}" text-anchor="middle">{{ b.label }}</text>
+        <text class="sx-xs" x="{{ b.cx }}" y="{{ c.sub_y }}" text-anchor="middle">{{ b.sub }}</text>
+    </g>
+    {% endfor %}
+</svg>
+{% endmacro %}
+
+{% macro heatmap(h) %}
+<svg class="sx-chart sx-heat sx-heat-{{ h.kind }}" viewBox="0 0 {{ h.w }} {{ h.h }}" role="img" aria-label="Одиниці за днем тижня й годиною" data-chart="heat-{{ h.kind }}">
+    {% for t in h.hours %}<text class="sx-ax" x="{{ t.x }}" y="{{ h.head_y }}">{{ t.t }}</text>{% endfor %}
+    {% for r in h.rows %}<text class="sx-ax sx-dow{% if r.weekend %} is-we{% endif %}" x="{{ h.left - 8 }}" y="{{ r.y }}" text-anchor="end">{{ r.t }}</text>{% endfor %}
+    {% for cell in h.cells %}
+    <rect class="sx-cell{% if not cell.v %} is-zero{% endif %}" x="{{ cell.x }}" y="{{ cell.y }}" width="{{ cell.w }}" height="{{ cell.h }}" rx="3"{% if cell.v %} style="fill-opacity:{{ cell.op }}" data-cell="{{ h.kind }}:{{ cell.dow }}:{{ cell.hour }}" tabindex="0" role="button" aria-label="{{ cell.tip }} — список робіт"{% endif %} data-tip="{{ cell.tip }}{% if cell.v %} · клік — список робіт{% endif %}"/>
+    {% endfor %}
+    <rect class="sx-frame" x="{{ h.frame.x }}" y="{{ h.frame.y }}" width="{{ h.frame.w }}" height="{{ h.frame.h }}" rx="5"/>
+</svg>
+{% endmacro %}
+
+{% macro ramp(kind, peak) %}
+<span class="sx-lg sx-ramp"><span class="sx-mono">1</span><span class="sx-ramp-c">{% for o in [0.16, 0.34, 0.55, 0.78, 1.0] %}<i class="sx-ramp-{{ kind }}" style="opacity:{{ o }}"></i>{% endfor %}</span><span class="sx-mono">{{ peak }}</span> од./год</span>
+{% endmacro %}

@@ -1,108 +1,26 @@
 {% extends "base.html" %}
+{# «Статистика» 2.0 (STATS_BRIEF.md, етап 1). Еталон вигляду — погоджений
+   макет stats_overview / stats_intake / stats_phone (12.10.26). Уся сторінка
+   під `.sx`, класи `sx-` (CSS глобальний — без збігів імен). Вміст
+   `#sx-root` — фрагмент `_stats_root.html`: вкладки, період і фільтри
+   свапають саме його (адреса оновлюється, нею можна поділитись). Слухачі
+   кліків, графіки й рух — stats.js, лише на цьому екрані. #}
 
 {% block title %}Статистика — KuubMill{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/stats.css?v={{ static_ver('css/stats.css') }}">
 {% if section_banner %}<link rel="stylesheet" href="/static/css/blocked.css?v={{ static_ver('css/blocked.css') }}">{% endif %}
+<script src="/static/js/stats.js?v={{ static_ver('js/stats.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
 {% set topbar_active = 'stats' %}
 {% include "_topbar_nav.html" %}
 
-<main class="statsv2">
+<main class="sx-main">
     {% include "_section_admin_banner.html" %}
-    <h1>{{ page_title }}</h1>
-
-    <nav class="tab-nav" aria-label="Період статистики">
-        <a href="/stats?period=today" class="tab-link {% if period == 'today' %}active{% endif %}"{% if period == 'today' %} aria-current="page"{% endif %}>Сьогодні</a>
-        <a href="/stats?period=week" class="tab-link {% if period == 'week' %}active{% endif %}"{% if period == 'week' %} aria-current="page"{% endif %}>Тиждень</a>
-        <a href="/stats?period=month" class="tab-link {% if period == 'month' %}active{% endif %}"{% if period == 'month' %} aria-current="page"{% endif %}>Місяць</a>
-        <a href="/stats?period=all" class="tab-link {% if period == 'all' %}active{% endif %}"{% if period == 'all' %} aria-current="page"{% endif %}>Весь час</a>
-    </nav>
-
-    <div class="stat-row">
-        <section class="panel stat-card">
-            <div class="panel-body">
-                <div class="dlabel">Робіт за період</div>
-                <div class="stat-chips"><span class="stat-chip"><b class="tnum">{{ order_count }}</b> <span class="unit">робіт</span></span></div>
-            </div>
-        </section>
-        <section class="panel stat-card">
-            <div class="panel-body">
-                <div class="dlabel">Одиниць за період</div>
-                <div class="stat-chips"><span class="stat-chip"><b class="tnum">{{ quantity_sum }}</b> <span class="unit">од.</span></span></div>
-            </div>
-        </section>
-        <section class="panel stat-card">
-            <div class="panel-body">
-                <div class="dlabel">Сер. «нове → відфрезеровано»</div>
-                <div class="stat-chips">
-                    {% if avg_hours is not none %}
-                    <span class="stat-chip"><b class="tnum mono">{{ avg_hours|round(1) }}</b> <span class="unit">год.</span></span>
-                    {% else %}
-                    <span class="muted">немає даних</span>
-                    {% endif %}
-                </div>
-            </div>
-        </section>
-        {# Ця плитка НЕ періодна: rework_records читаються без period_start,
-           тобто завжди за весь час. Стоячи четвертою в ряду з трьома
-           періодними й у тому самому стилі, вона читалась як «за обраний
-           період» — а це цифра, що йде в гроші й звітність. #}
-        <section class="panel stat-card is-alltime">
-            <div class="panel-body">
-                <div class="dlabel">Переробок · за весь час, не за період</div>
-                <div class="stat-chips">
-                    <span class="stat-chip is-warn"><b class="tnum">{{ rework_groups|sum(attribute='count') if rework_groups else 0 }}</b> <span class="unit">випадків</span></span>
-                    <span class="stat-sep" aria-hidden="true"></span>
-                    <span class="stat-chip is-warn"><b class="tnum">{{ rework_groups|sum(attribute='redo_quantity_sum') if rework_groups else 0 }}</b> <span class="unit">од.</span></span>
-                </div>
-            </div>
-        </section>
-    </div>
-
-    <section class="panel">
-        <div class="card-head">
-            <h2>Матеріали — за період</h2>
-            <span class="meta">одиниць по категоріях</span>
-        </div>
-        {% if material_groups %}
-        {% set max_mat_units = (material_groups|map(attribute='quantity_sum')|max) or 1 %}
-        <div class="stage-list">
-            {% for group in material_groups %}
-            <div class="stage-row">
-                <span class="lb">{{ group.material }}</span>
-                <span class="bar"><i style="width:{{ (group.quantity_sum / max_mat_units * 100)|round(0) if max_mat_units else 0 }}%"></i></span>
-                <span class="n">{{ group.quantity_sum }} од. <span class="pct">· {{ group.order_count }} робіт</span></span>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="empty-note">немає робіт за період</p>
-        {% endif %}
-    </section>
-
-    <section class="panel">
-        <div class="card-head">
-            <h2>Брак — розподіл по винуватцях</h2>
-            <span class="meta">за весь час</span>
-        </div>
-        {% if rework_groups %}
-        {% set max_units = (rework_groups|map(attribute='redo_quantity_sum')|max) or 1 %}
-        <div class="stage-list">
-            {% for group in rework_groups %}
-            <div class="stage-row">
-                <span class="lb">{{ group.blame or 'без причини' }}</span>
-                <span class="bar"><i style="width:{{ (group.redo_quantity_sum / max_units * 100)|round(0) if max_units else 0 }}%"></i></span>
-                <span class="n">{{ group.redo_quantity_sum }} од. <span class="pct">· {{ group.count }} випадків</span></span>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="empty-note">переробок не зафіксовано — за весь час обліку</p>
-        {% endif %}
-    </section>
+    {% include "_stats_root.html" %}
+    <div class="sx-tip" id="sx-tip" role="tooltip" hidden></div>
 </main>
 {% endblock %}

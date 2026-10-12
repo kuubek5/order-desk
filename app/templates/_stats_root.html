@@ -1,0 +1,86 @@
+{# Фрагмент «Статистики», який свапають вкладки, період і фільтри
+   (hx-target="#sx-root", outerHTML). data-qs — поточні параметри адреси:
+   stats.js додає їх до запиту бічної панелі. #}
+{% set c = chrome %}
+{% macro nav(qs) -%}
+href="/stats{{ qs }}" hx-get="/stats{{ qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root"
+{%- endmacro %}
+{% macro keep(skip) -%}
+{% for k, v in c.hidden.items() if k not in skip %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+{%- endmacro %}
+<div id="sx-root" class="sx{% if p.cmp %} cmp-on{% endif %}" data-tab="{{ p.tab }}" data-qs="{{ c.export_qs }}">
+    <div class="sx-top">
+        <h1 class="sx-h1">Статистика</h1>
+        <nav class="sx-tabs" aria-label="Вкладки статистики">
+            {% for t in c.tabs %}
+            <a class="sx-tab{% if t.on %} on{% endif %}" {{ nav(t.qs) }}{% if t.on %} aria-current="page"{% endif %}>{{ t.label }}{% if t.admin %}<span class="sx-lock">адмін</span>{% elif t.stage %}<span class="sx-soon">· етап {{ t.stage }}</span>{% endif %}</a>
+            {% endfor %}
+        </nav>
+        <span class="sx-sp"></span>
+        <div class="sx-seg" role="group" aria-label="Період">
+            {% for o in c.periods %}
+            <a class="{% if o.on %}on{% endif %}" {{ nav(o.qs) }}{% if o.on %} aria-current="true"{% endif %}><span class="sx-long">{{ o.label }}</span><span class="sx-short">{{ o.short }}</span></a>
+            {% endfor %}
+            <details class="sx-custom{% if c.custom_on %} on{% endif %}">
+                <summary>{% if c.custom_on %}{{ c.period_label }}{% else %}Свій…{% endif %}</summary>
+                <form class="sx-custom-form" action="/stats" hx-get="/stats" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">
+                    {{ keep(["period", "from", "to"]) }}
+                    <input type="hidden" name="period" value="custom">
+                    <label>з <input type="date" name="from" value="{{ p.period.start.isoformat() }}" required></label>
+                    <label>по <input type="date" name="to" value="{{ p.period.end.isoformat() }}" required></label>
+                    <button type="submit" class="sx-btn">Показати</button>
+                </form>
+            </details>
+        </div>
+        <a class="sx-cmp" href="/stats{{ c.cmp_qs_off if p.cmp else c.cmp_qs_on }}" data-cmp-toggle role="switch" aria-checked="{{ 'true' if p.cmp else 'false' }}">
+            <span class="sx-tgl" aria-hidden="true"></span><span class="sx-long">порівняти з попередніми {{ c.period_days }}</span><span class="sx-short">з попер.</span>
+        </a>
+        {% if c.can_export %}
+        <a class="sx-btn sx-xls" href="/stats/export{{ c.export_qs }}" download title="Поточна вкладка у файл Excel (.xlsx)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3z"/><path d="M6 7.5l4 4.5M10 7.5l-4 4.5"/></svg><span class="sx-long">У Excel</span>
+        </a>
+        {% endif %}
+    </div>
+
+    <div class="sx-filters">
+        <span class="sx-flab">Фільтри</span>
+        <a class="sx-chip{% if c.src_lab_on %} on{% else %} off{% endif %}" {{ nav(c.src_lab_qs) }} aria-pressed="{{ 'true' if c.src_lab_on else 'false' }}"><span class="sx-sw sx-sw-lab"></span><b>Лаба</b></a>
+        <a class="sx-chip{% if c.src_client_on %} on{% else %} off{% endif %}" {{ nav(c.src_client_qs) }} aria-pressed="{{ 'true' if c.src_client_on else 'false' }}"><span class="sx-sw sx-sw-cli"></span><b>Клієнти <span class="sx-long">(пошта)</span></b></a>
+        <form class="sx-chip sx-pick{% if p.filters.mat %} on{% endif %}" action="/stats" hx-get="/stats" hx-trigger="change" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">
+            {{ keep(["mat"]) }}
+            <label>Матеріал <select name="mat" aria-label="Матеріал">{% for v, label in c.mat_options %}<option value="{{ v }}"{% if v == p.filters.mat %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            {% if p.filters.mat %}<a class="sx-x" {{ nav(c.clear_mat_qs) }} aria-label="Зняти фільтр матеріалу">×</a>{% endif %}
+        </form>
+        {% if c.show_tech %}
+        <form class="sx-chip sx-pick{% if p.filters.tech %} on{% endif %}" action="/stats" hx-get="/stats" hx-trigger="change" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">
+            {{ keep(["tech"]) }}
+            <label>Технік <select name="tech" aria-label="Технік">{% for v, label in c.tech_options %}<option value="{{ v }}"{% if v == p.filters.tech %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            {% if p.filters.tech %}<a class="sx-x" {{ nav(c.clear_tech_qs) }} aria-label="Зняти фільтр техніка">×</a>{% endif %}
+        </form>
+        {% endif %}
+        {% if c.show_client %}
+        <form class="sx-chip sx-pick{% if p.filters.client %} on{% endif %}" action="/stats" hx-get="/stats" hx-trigger="change" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">
+            {{ keep(["client"]) }}
+            <label>Клієнт <select name="client" aria-label="Клієнт">{% for v, label in c.client_options %}<option value="{{ v }}"{% if v == p.filters.client %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+            {% if p.filters.client %}<a class="sx-x" {{ nav(c.clear_client_qs) }} aria-label="Зняти фільтр клієнта">×</a>{% endif %}
+        </form>
+        {% endif %}
+        <span class="sx-cover" title="Вкладки таблиці за робочі дні періоду (пт несе й вихідні)">
+            <span class="sx-cover-bar" aria-hidden="true">{% for d in c.cover %}<i class="{% if d.has %}y{% endif %}" data-tip="{{ d.tip }}"></i>{% endfor %}</span>
+            вкладки є за {{ c.cover_have }} з {{ c.cover_total }} робочих днів · {{ c.period_label }}
+        </span>
+    </div>
+
+    {% if p.tab == "overview" %}
+    {% include "_stats_overview.html" %}
+    {% elif p.tab == "intake" %}
+    {% include "_stats_intake.html" %}
+    {% else %}
+    <section class="sx-card sx-stage">
+        <div class="sx-stage-n">етап {{ stage[2] }}</div>
+        <h2>{{ stage[1] }}</h2>
+        <p>{{ stage_text }}</p>
+        <p class="sx-note">Вкладка зʼявиться окремим релізом. Огляд і Надходження вже працюють.</p>
+    </section>
+    {% endif %}
+</div>
