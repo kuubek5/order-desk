@@ -24,7 +24,8 @@ NOW = datetime(2026, 9, 14, 14, 22)
 
 
 def _card(name, state_key, *, percent=None, sum3d=None, orders=(), sisma=False,
-          layers=None, word="", note="", machine_id=None, last_orders=()):
+          layers=None, word="", note="", machine_id=None, last_orders=(),
+          iso_name=None):
     return SimpleNamespace(
         key=name,
         target=SimpleNamespace(name=name, machine_id=machine_id, portrait_model="",
@@ -32,7 +33,7 @@ def _card(name, state_key, *, percent=None, sum3d=None, orders=(), sisma=False,
         state_key=state_key, state_word=word, state_note=note,
         percent=percent, sum3d_id=sum3d, orders=list(orders),
         last_orders=list(last_orders),
-        is_sisma_machine=sisma, layers=layers,
+        is_sisma_machine=sisma, layers=layers, iso_name=iso_name,
     )
 
 
@@ -788,3 +789,162 @@ def test_board_card_carries_the_furnace_key():
         state=SimpleNamespace(temp_c=1452, done_at=None, remaining_text="", captured_at=None),
         is_running=True, is_idle=False, has_problem=False, has_data=True)
     assert fb.board_view(None, NOW, cards=[card]).cards[0].key == "10.0.0.5"
+
+
+# ── Назва програми поруч із диском (власник 12.10.26, макет B) ─────────────
+
+# Назви, що справді стояли на верстатах цеху 11–12.10.26 (kmill_devices), +
+# нове покоління, де назва — лише дата й час.
+PROD_ISO_NAMES = [
+    ("2_18-Emotions-a1-x193_2026-10-12_09-09-40.iso",
+     "2_18-Emotions-a1-x193_2026-10-12_", "09-09-40"),
+    ("1--20-Monolith-a3-5-x30_2026-10-11_14-34-50.iso",
+     "1--20-Monolith-a3-5-x30_2026-10-11_", "14-34-50"),
+    ("26--pmma16_16-a1-x90_2026-10-11_15-37-17.iso",
+     "26--pmma16_16-a1-x90_2026-10-11_", "15-37-17"),
+    ("3--ti212-5_2026-10-11_14-55-04.iso",
+     "3--ti212-5_2026-10-11_", "14-55-04"),
+    ("2026-10-12_09-34-59.iso", "2026-10-12_", "09-34-59"),
+]
+
+
+def test_program_line_strips_iso_and_splits_the_sum3d_tail():
+    for raw, head, tail in PROD_ISO_NAMES:
+        assert sb.program_line(raw) == (head, tail), raw
+    # Розширення — у будь-якому регістрі, зайві пробіли по краях не заважають.
+    assert sb.program_line("  2026-10-12_09-34-59.ISO \n") == ("2026-10-12_", "09-34-59")
+
+
+def test_program_line_without_name_gives_nothing():
+    for empty in (None, "", "   ", ".iso", " .ISO ", 123, b"x_09-09-40.iso"):
+        assert sb.program_line(empty) == ("", ""), repr(empty)
+
+
+def test_program_line_without_a_time_tail_keeps_the_whole_name():
+    # Хвоста-часу немає — це не привід вигадувати межу.
+    assert sb.program_line("custom-program.iso") == ("custom-program", "")
+    assert sb.program_line("crown_set_3.iso") == ("crown_set_3", "")
+    # Дата без часу: `26-10-12` — це кінець РОКУ, а не час. Різати рік не можна.
+    assert sb.program_line("job_2026-10-12.iso") == ("job_2026-10-12", "")
+    # Час не в кінці назви — теж не хвіст.
+    assert sb.program_line("job_09-09-40_final.iso") == ("job_09-09-40_final", "")
+
+
+def test_machine_card_takes_the_program_name_from_the_card():
+    named = _view([
+        _card("M-a", "run", percent=10, sum3d="09-09-40",
+              iso_name="2_18-Emotions-a1-x193_2026-10-12_09-09-40.iso"),
+    ]).machines[0]
+    assert named.has_prog
+    assert (named.prog_head, named.prog_tail) == ("2_18-Emotions-a1-x193_2026-10-12_", "09-09-40")
+    assert named.sum3d == "09-09-40", "Sum3D лишається в даних — це запасний рядок"
+
+    plain = _view([_card("M-b", "run", percent=10, sum3d="09-09-40")]).machines[0]
+    assert not plain.has_prog and plain.sum3d == "09-09-40"
+
+    # Картка-підробка без самого поля (як SimpleNamespace у інших тестах)
+    # не падає: `iso_name` читається через getattr.
+    bare = _card("M-c", "run", percent=10, sum3d="09-09-40")
+    del bare.iso_name
+    assert not _view([bare]).machines[0].has_prog
+
+
+def test_finished_machine_keeps_a_program_name_only_while_the_screen_has_it():
+    # `done`: екран ще тримає назву — вона називає диск, який треба зняти.
+    held = _view([_card("M-d1", "done", percent=100,
+                        iso_name="3--ti212-5_2026-10-11_14-55-04.iso",
+                        last_orders=[_order("Дельта", "титан", "5")])]).machines[0]
+    assert held.works_are_last and held.has_prog and held.prog_tail == "14-55-04"
+    # Назву вже стерто (`MachineCard.iso_name` = None) — звичайний рядок, а
+    # якщо немає й Sum3D, то порожньо: стара назва не показується.
+    gone = _view([_card("M-d2", "done", percent=100,
+                        last_orders=[_order("Дельта", "титан", "5")])]).machines[0]
+    assert gone.works_are_last and not gone.has_prog and gone.sum3d == ""
+
+
+def _card_html(frag, key):
+    """Розмітка однієї картки: від її відкривального тега до наступної."""
+    at = frag.index(f'data-key="{key}"')
+    start = frag.rindex('<div class="mc ', 0, at)
+    end = frag.find('<div class="mc ', at)
+    return frag[start:end if end != -1 else len(frag)]
+
+
+def test_board_shows_the_program_instead_of_the_sum3d_digits(app_db, monkeypatch):  # noqa: F811
+    """Справжній рендер: з назвою програми рядок біля диска — «програма» + вся
+    назва без `.iso` і Sum3D-хвіст у `<b>`; без назви — як було («sum3d» +
+    шість цифр). Клієнт і матеріал стоять в обох варіантах (лабораторна й
+    поштова робота однаково), а клас `has-cat` — лише на 100 % не-«зняти».
+    Назва — дані з екрана верстата, тож екранується, а не вставляється як є."""
+    from app.routers.furnace_board import create_board_app
+    from app.services import furnace_board as fb
+    from app.services import machines as machines_mod
+    from tests.test_furnace_board import _enable
+
+    _, factory = app_db
+    token = _enable(factory)
+    monkeypatch.setattr("app.db.SessionLocal", factory)
+    lab = SimpleNamespace(id=1, client_name=None, material_color="mono a3", quantity="4",
+                          kind="анатомія", work_order_no="24122", technician_name="Іван")
+    monkeypatch.setattr(machines_mod, "snapshot", lambda db: [
+        _card("M-prog", "run", percent=74, sum3d="09-09-40",
+              orders=[_order("Новодент", "emo a1", "2")],
+              iso_name="2_18-Emotions-a1-x193_2026-10-12_09-09-40.iso"),
+        _card("M-lab", "run", percent=20, sum3d="09-34-59", orders=[lab],
+              iso_name="2026-10-12_09-34-59.iso"),
+        _card("M-plain", "run", percent=43, sum3d="12-01-45",
+              orders=[_order("Дента Люкс", "mono A3", "6")]),
+        _card("M-cat", "run", percent=100, sum3d="14-55-04",
+              orders=[_order("Дельта", "титан", "5")],
+              iso_name="3--ti212-5_2026-10-11_14-55-04.iso"),
+        _card("M-done", "done", percent=100, sum3d="15-37-17",
+              orders=[_order("Смайл", "pmma a1", "90")],
+              iso_name="26--pmma16_16-a1-x90_2026-10-11_15-37-17.iso"),
+        _card("M-bad", "fault", percent=100, word="помилка", sum3d="10-10-10",
+              iso_name="2026-10-12_10-10-10.iso"),
+        _card("M-xss", "run", percent=5, iso_name="<img src=x onerror=alert(1)>_09-09-40.iso"),
+        _card("M-notail", "run", percent=5, sum3d="10-10-10", iso_name="custom-program.iso"),
+    ])
+    monkeypatch.setattr(fb, "board_view", lambda db, now=None, cards=None: SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso=""))
+
+    status, _, frag = MiniClient(create_board_app()).get(f"/t/{token}/shop/cards")
+    assert status == 200
+
+    prog = _card_html(frag, "M-prog")
+    assert "<em>програма</em>" in prog and "has-prog" in prog
+    assert ('<span class="prog"><span class="ph">2_18-Emotions-a1-x193_2026-10-12_</span>'
+            '<b>09-09-40</b></span>') in prog
+    assert ".iso" not in prog
+    assert "<em>sum3d</em>" not in prog
+    assert "Новодент" in prog and "emo a1" in prog, "клієнт і матеріал лишились"
+
+    lab_html = _card_html(frag, "M-lab")
+    assert '<span class="prog"><span class="ph">2026-10-12_</span><b>09-34-59</b></span>' in lab_html
+    assert "24122" in lab_html and "mono a3" in lab_html, "лабораторна робота: наряд і матеріал"
+
+    plain = _card_html(frag, "M-plain")
+    assert "<em>sum3d</em>12-01-45" in plain
+    assert "програма" not in plain and "has-prog" not in plain and 'class="prog"' not in plain
+    assert "Дента Люкс" in plain and "mono A3" in plain
+
+    # Котик: has-cat рівно там, де є сам котик (100 %, не «зняти», не помилка).
+    for key, expect in (("M-cat", True), ("M-prog", False), ("M-plain", False),
+                        ("M-done", False), ("M-bad", False)):
+        html = _card_html(frag, key)
+        opening = html.split(">", 1)[0]
+        assert ("has-cat" in opening) is expect, key
+        assert ('class="mc-cat"' in html) is expect, key
+    # На картці з котиком програма теж стоїть, хвіст у `<b>`.
+    assert "<b>14-55-04</b>" in _card_html(frag, "M-cat")
+
+    # Назва з екрана екранується; `<b>` лише той, що ставить шаблон.
+    xss = _card_html(frag, "M-xss")
+    assert "<img src=x" not in xss
+    assert '<span class="ph">&lt;img src=x onerror=alert(1)&gt;_</span><b>09-09-40</b>' in xss
+
+    # Назва без Sum3D-хвоста: показується вся, без `<b>`, і ще не «sum3d».
+    notail = _card_html(frag, "M-notail")
+    assert '<span class="prog no-tail"><span class="ph">custom-program</span></span>' in notail
+    id_row = notail.split('class="mc-id', 1)[1].split('class="mc-bot"', 1)[0]
+    assert "<b>" not in id_row and "<em>sum3d</em>" not in id_row

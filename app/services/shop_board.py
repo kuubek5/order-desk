@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import functools
 import math
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -183,6 +184,15 @@ class ShopMachine:
     left_text: str = ""
     # Одиниць на диску (див. `disc_units`); None — коронок не малюємо.
     units: Optional[int] = None
+    # Назва ПОТОЧНОЇ програми верстата без «.iso», розкладена `program_line`:
+    # голова + Sum3D-хвіст. Обидва порожні — назви немає, картка показує
+    # просто Sum3D. Шаблон сам обгортає хвіст у `<b>` (екранування тоді його).
+    prog_head: str = ""
+    prog_tail: str = ""
+
+    @property
+    def has_prog(self) -> bool:
+        return bool(self.prog_head or self.prog_tail)
 
     @property
     def crowns(self) -> list[DiscCrown]:
@@ -471,6 +481,38 @@ def _portrait_of(card, token: str) -> str:
     return f"/static/img/machine-portrait-{key}.jpg"
 
 
+# Sum3D-хвіст назви програми — час `HH-MM-SS`. `(?<!\d)` обовʼязковий: без нього
+# назва, що закінчується ДАТОЮ (`…_2026-10-12`), віддала б хвіст `26-10-12` і
+# розрізала рік навпіл.
+_PROGRAM_SUM3D_TAIL = re.compile(r"(?P<head>.*?)(?<!\d)(?P<tail>\d{2}-\d{2}-\d{2})", re.S)
+_ISO_EXT = re.compile(r"\.iso$", re.I)
+
+
+def program_line(iso_name) -> tuple[str, str]:
+    """Назва програми верстата для картки: (голова, Sum3D-хвіст).
+
+    «2_18-Emotions-a1-x193_2026-10-12_09-09-40.iso» дає
+    («2_18-Emotions-a1-x193_2026-10-12_», «09-09-40»). Розширення `.iso`
+    (будь-який регістр) відкидається — воно нічого не каже оку з проходу.
+    Хвіст — завершальний `HH-MM-SS`: за ним оператор шукає диск і звіряє з
+    рядком Sum3D у таблиці, тому шаблон підсвічує його окремо.
+
+    Хвоста немає (інша назва, дата без часу) — (вся назва, ""): краще
+    показати назву як є, ніж вигадати межу. Порожнє/не рядок — ("", ""), і
+    картка лишається з рядком `sum3d`. Чисте перетворення рядка: екранування
+    — справа шаблону, тож Markup звідси не повертаємо.
+    """
+    if not isinstance(iso_name, str):
+        return "", ""
+    name = _ISO_EXT.sub("", iso_name.strip()).strip()
+    if not name:
+        return "", ""
+    match = _PROGRAM_SUM3D_TAIL.fullmatch(name)
+    if match is None:
+        return name, ""
+    return match.group("head"), match.group("tail")
+
+
 def _machine(card, token: str) -> ShopMachine:
     state = card.state_key
     item = ShopMachine(
@@ -485,6 +527,13 @@ def _machine(card, token: str) -> ShopMachine:
         portrait=_portrait_of(card, token),
     )
     item.works, item.extra = _works_of(card)
+    # Повна назва програми замість шести цифр Sum3D (власник 12.10.26, макет
+    # B). `MachineCard.iso_name` уже None для застарілого кадру й обриву
+    # зв'язку, тож стара назва не стане «поточною». `getattr`, бо в тестах
+    # картки — SimpleNamespace без цього поля. У стані `done` назва, якщо
+    # екран її ще тримає, лишається (вона називає диск, який треба зняти);
+    # зникла — картка показує звичайний рядок sum3d.
+    item.prog_head, item.prog_tail = program_line(getattr(card, "iso_name", None))
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
     if not item.works:

@@ -132,6 +132,28 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   overflow:hidden;min-width:0}
 .mc-id em{font-style:normal;font-size:clamp(9px,.75vw,15px);color:var(--ink-3);
   letter-spacing:.14em;text-transform:uppercase;font-family:var(--font-body)}
+/* Повна назва програми замість шести цифр (власник 12.10.26): підпис над
+   рядком, сама назва — до трьох рядків (моноширинна, без пробілів, тож
+   переноситься по будь-якому символу). Sum3D-хвіст (`b`) яскравіший — за ним
+   шукають диск, тому він НІКОЛИ не рветься й не урізається; хвіст — окремий
+   елемент (flex-wrap): стоїть після голови, а коли разом не вміщаються — цілим
+   на наступному рядку. Голову (`.ph`) теж НЕ урізаємо трикрапкою: вона і є
+   позначка диска («…-a3-5-x30»), і на шести колонках із котиком трикрапка
+   з'їдала саме її (12.10.26) — нехай краще переноситься на 3–4 рядки, місця
+   над диском у картці на це вистачає. Один `line-clamp` на весь рядок з'їдав саме хвіст: на
+   вузькій картці з котиком так було з усіма справжніми назвами цеху.
+   Котик (`has-cat`, над «100%» справа) відбирає ширину: інакше хвіст
+   опинився б під ним. */
+.mc-id.has-prog{flex-direction:column;align-items:flex-start;justify-content:flex-end;
+  gap:.25vh;white-space:normal}
+.mc-id .prog{display:flex;flex-wrap:wrap;align-items:flex-start;min-width:0;max-width:100%;
+  font:500 clamp(11px,.85vw,17px)/1.25 var(--font-mono);color:#cbbfae;letter-spacing:-.01em}
+.mc-id .ph{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.mc-id .prog b{flex:none;font-weight:600;color:#ffd489;white-space:nowrap}
+/* Сам котик на картинці вужчий за свою квадратну рамку (12vh), тож
+   відступаємо 9vh — інакше на шести колонках назва стискалась у стовпчик на
+   6 рядків і наповзала на рядок матеріалу (12.10.26). */
+.mc.has-cat .mc-id .prog{max-width:calc(100% - clamp(44px,9vh,150px))}
 
 .mc-bot{margin-top:auto;display:flex;align-items:flex-end;gap:.7vw;min-width:0}
 /* Диск, що вифрезеровується (ТВ 3, власник 11.10.26) — замість точкової
@@ -340,7 +362,7 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   @keyframes alarm-in{0%{opacity:0}10%{opacity:1}100%{opacity:0}}
   .disc-arc{transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1)}
   .crown.is-fresh{transform-box:fill-box;transform-origin:center;
-    animation:crown-in .9s cubic-bezier(.2,.9,.25,1.2) both}
+    animation:crown-in .9s cubic-bezier(.16,1,.3,1) both}
   @keyframes crown-in{from{opacity:0;transform:scale(.2)}to{opacity:1;transform:none}}
   .fc-heat i{animation:fc-heat 4.2s ease-in-out infinite;will-change:opacity}
   @keyframes fc-heat{0%,100%{opacity:.35}50%{opacity:1}}

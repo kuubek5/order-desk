@@ -12,7 +12,12 @@
          свапається кожні 30 с, і анімація, прив'язана до самого стану, грала б
          щоразу. Скрипт порівнює з попереднім шматком і вмикає її лише там, де
          стан справді змінився. #}
-      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}" data-key="{{ m.key }}" data-tone="{{ m.tone }}">
+      {# Котик стоїть над числом «100%» — поза «зняти» й помилкою (власник
+         02.10.26). Умова одна, і ця змінна керує і котиком у нижньому рядку, і
+         класом `has-cat` на картці: клас потрібен рядку програми, щоб його
+         хвіст (Sum3D) не опинився під котиком. Дві копії умови розійшлись би. #}
+      {% set cat_on = m.percent == 100 and m.state not in ('done', 'fault') %}
+      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}{% if cat_on %} has-cat{% endif %}" data-key="{{ m.key }}" data-tone="{{ m.tone }}">
         {% if m.portrait %}<div class="mc-port"><i style="background-image:url('{{ m.portrait }}')"></i></div>{% endif %}
         {# Тривога (ТВ 4): товста рамка й легка заливка поверх фото, без
            ореолу. Один сильний імпульс — лише на переході в червоне; далі в
@@ -63,8 +68,19 @@
           <div class="mc-note">{{ m.note }}</div>
         {% endif %}
 
-        <div class="mc-id">
-          {% if m.sum3d %}<em>sum3d</em>{{ m.sum3d }}{% endif %}
+        {# Повна назва поточної програми (власник 12.10.26): оператор шукає
+           диск саме за нею, а шести цифр Sum3D для цього мало. Клієнт і
+           матеріал вище лишаються як були. Хвіст `HH-MM-SS` — окремо в `<b>`,
+           щоб світився яскравіше; обидві частини виводяться екрановано
+           (жодного Markup із сирого рядка). Назви немає — старий рядок sum3d.
+           Голова й хвіст — ОКРЕМІ елементи (`.ph`, `b`): коли назва не
+           вміщається в три рядки (на вузькій картці з котиком так буває з
+           усіма справжніми назвами), `line-clamp` мусить урізати голову
+           трикрапкою, а не хвіст — доти він зникав саме в тому місці, заради
+           якого рядок і виводять. #}
+        <div class="mc-id{% if m.has_prog %} has-prog{% endif %}">
+          {% if m.has_prog %}<em>програма</em><span class="prog{% if not m.prog_tail %} no-tail{% endif %}">{% if m.prog_head %}<span class="ph">{{ m.prog_head }}</span>{% endif %}{% if m.prog_tail %}<b>{{ m.prog_tail }}</b>{% endif %}</span>
+          {% elif m.sum3d %}<em>sum3d</em>{{ m.sum3d }}{% endif %}
         </div>
 
         <div class="mc-bot">
@@ -101,7 +117,7 @@
               <circle class="disc-arc" cx="50" cy="50" r="47" transform="rotate(-90 50 50)"
                       stroke-dasharray="{{ m.arc_dash }}" style="stroke-dashoffset:{{ m.arc_offset }}"></circle>
             </svg>
-            <span class="pc">{{ m.percent }}<small>%</small>{% if m.percent == 100 %}{{ _cat }}{% endif %}</span>
+            <span class="pc">{{ m.percent }}<small>%</small>{% if cat_on %}{{ _cat }}{% endif %}</span>
           {% elif has_work and m.note %}
             <span class="nd">{{ m.note }}</span>
           {% endif %}
