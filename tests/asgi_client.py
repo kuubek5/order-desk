@@ -91,16 +91,26 @@ class MiniClient:
 
         sent = False
         messages: list[dict] = []
+        done = asyncio.Event()
 
         async def receive():
             nonlocal sent
             if not sent:
                 sent = True
                 return {"type": "http.request", "body": body, "more_body": False}
+            # Як справжній клієнт: «відʼєднався» лише ПІСЛЯ повної відповіді.
+            # Миттєвий disconnect Starlette 1.8 (13.10.26) сприймає як обрив і
+            # скасовує віддачу FileResponse — тест бачив 200 з порожнім тілом,
+            # хоча uvicorn файл віддає.
+            await done.wait()
             return {"type": "http.disconnect"}
 
         async def send(message):
             messages.append(message)
+            if message.get("type") == "http.response.pathsend" or (
+                message.get("type") == "http.response.body" and not message.get("more_body")
+            ):
+                done.set()
 
         await self.app(scope, receive, send)
 
