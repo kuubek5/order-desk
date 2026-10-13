@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Iterable, Optional
 
@@ -85,9 +85,14 @@ class Place:
     label: str
     raw: str = ""
     percent: Optional[int] = None
-    # Поставила телеметрія (диск зараз на верстаті), а не клітинка. Таку мітку
-    # оператор не міняє — меню печей у рядку немає.
+    # Поставила телеметрія (диск зараз на верстаті), а не клітинка. Саму мітку
+    # верстата оператор не міняє і в таблицю вона не пишеться.
     live: bool = False
+    # Лише в живої мітки: піч, яку оператор уже обрав диску, поки той ще
+    # фрезерується (власник 13.10.26: «оператор уже знає, в яку піч піде»).
+    # Це звичайна мітка печі з клітинки N — той самий `set_disc_place`, той
+    # самий запис; рядок показує обидві, а кошик смуги лишається «на верстаті».
+    planned: Optional["Place"] = None
 
     @property
     def bucket(self) -> str:
@@ -351,12 +356,19 @@ def build_place_view(
     """Місце кожної роботи екрана й смуга лічильників з ТОГО САМОГО набору.
 
     Верстат з телеметрії головніший за клітинку: диск, що зараз фрезерується,
-    у печі бути не може."""
+    у печі бути не може. Але піч, уже вписана в клітинку, не губиться: це
+    піч, куди диск піде ПІСЛЯ верстата (`Place.planned`)."""
     names = list(machine_names)
     on_machine = machine_places(machine_cards, orders)
     places: dict[int, Optional[Place]] = {}
     for order in orders:
-        places[order.id] = on_machine.get(order.id) or place_of(order.milled_raw, names)
+        cell = place_of(order.milled_raw, names)
+        live = on_machine.get(order.id)
+        if live is not None:
+            planned = cell if cell is not None and cell.kind == KIND_FURNACE else None
+            places[order.id] = replace(live, planned=planned)
+        else:
+            places[order.id] = cell
     counts: dict[str, int] = {}
     for place in places.values():
         bucket = place.bucket if place else BUCKET_NONE

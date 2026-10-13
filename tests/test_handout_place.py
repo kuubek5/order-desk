@@ -352,3 +352,97 @@ def test_place_route_marks_the_disc_and_writes_the_sheet(app_db, monkeypatch):  
     assert "Перша: 3 роботи диска 21-22-23" in html
     places = re.findall(r'class="wrow[^"]*" data-order="\d+" data-place="(\w+)"', html)
     assert sorted(places) == ["none", "p1", "p1", "p1"]
+
+
+# ── піч наперед, поки диск ще на верстаті (13.10.26) ─────────────────────
+# Власник: «оператор уже знає, в яку піч піде робота». Мітка верстата лишається
+# системною (без меню й без запису в таблицю), а поруч — звичайне меню печі.
+
+
+def _live_works(raw):
+    work = _work("A", "10-00-00", tab="07.10.26", milled_raw=raw)
+    work.id = 1
+    card = _card("350i-Boris", "10-00-00", "x_2026-10-07_10-00-00.iso", percent=33)
+    return work, card
+
+
+@pytest.mark.parametrize("raw, planned", [
+    ("бочка", "bk"), ("1", "p1"), (None, None), ("RR 09:12", None),
+    ("350i-Boris", None), ("лоток у шафі", None),
+])
+def test_live_place_carries_the_furnace_from_the_cell(raw, planned):
+    work, card = _live_works(raw)
+    view = hp.build_place_view([work], machine_cards=[card], machine_names=MACHINES)
+
+    place = view.of(1)
+    assert place.live and place.label == "350i-Boris" and place.percent == 33
+    assert (place.planned.key if place.planned else None) == planned
+    assert view.bucket(1) == "mc", "диск фізично на верстаті — кошик не міняється"
+
+
+def _live_telemetry(monkeypatch, sum3d):
+    from app.services import machines
+
+    card = _card("350i-Boris", sum3d, f"x_2026-10-07_{sum3d}.iso", percent=33)
+    monkeypatch.setattr(machines, "snapshot", lambda db: [card])
+    monkeypatch.setattr(machines, "list_machines", lambda db, **kw: [SimpleNamespace(name="350i-Boris")])
+
+
+def _row_html(html, order_id):
+    start = html.index(f'data-order="{order_id}"')
+    end = html.find('class="wrow', start)
+    return html[start:end if end != -1 else len(html)]
+
+
+@pytest.mark.parametrize("flow", ["", "sheet"])
+def test_live_row_has_the_furnace_menu_in_both_views(app_db, monkeypatch, flow):  # noqa: F811
+    app, factory = app_db
+    _seed(factory, flow)
+    _live_telemetry(monkeypatch, "22-34-07")
+    with factory() as db:
+        live_id = db.scalars(select(Order).where(Order.client_name == "Сміл")).one().id
+
+    _, html = _page(app)
+
+    row = _row_html(html, live_id)
+    assert 'data-place="mc"' in row
+    assert "350i-Boris · 33 %" in row, "плашка верстата з відсотком лишається"
+    assert row.count(f'hx-post="/handout/place/{live_id}"') == 4, "меню з чотирьох печей"
+    assert "піч?" in row and "прибрати мітку" not in row
+
+
+def test_furnace_picked_while_milling_is_a_normal_mark(app_db, monkeypatch):  # noqa: F811
+    app, factory = app_db
+    _seed(factory, "")
+    _live_telemetry(monkeypatch, "22-34-07")
+    with factory() as db:
+        engine = db.get_bind()
+        live_id = db.scalars(select(Order).where(Order.client_name == "Сміл")).one().id
+    ws = _stub_sheet(monkeypatch, engine, lambda o: o.row_number + HEADER_ROWS)
+
+    client, _ = _page(app)
+    ws.batch_update.assert_not_called()  # рендер живої мітки нічого не пише
+    status, _, html = client.post(
+        f"/handout/place/{live_id}", {"place": "p1", "source": "all", "day": TAB},
+        headers={"HX-Request": "true"},
+    )
+
+    assert status == 200, html[:400]
+    with factory() as db:
+        assert db.get(Order, live_id).milled_raw == "1", "у N — слово печі, не назва верстата"
+        log = db.scalars(select(ActionLog).where(ActionLog.order_id == live_id)).all()
+        assert [(a.action_type, a.new_value) for a in log] == [("place", "1")]
+    (updates,), _ = ws.batch_update.call_args
+    assert updates == [{"range": f"N{62 + HEADER_ROWS}", "values": [["1"]]}]
+
+    row = _row_html(html, live_id)
+    assert 'data-place="mc"' in row, "кошик не міняється, поки диск на верстаті"
+    assert "350i-Boris · 33 %" in row and "→ Перша" in row, "видно і верстат, і піч"
+    assert "прибрати мітку" in row
+
+    # Фрезерування скінчилось — верстата немає, піч лишилась звичайною міткою.
+    from app.services import machines
+    monkeypatch.setattr(machines, "snapshot", lambda db: [])
+    _, _, html = client.get(f"/handout?source=all&day={TAB}")
+    row = _row_html(html, live_id)
+    assert 'data-place="p1"' in row and "350i-Boris" not in row and "→" not in row

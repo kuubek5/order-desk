@@ -608,6 +608,9 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .wplace-clear{font:inherit;font-size:var(--fs-1);align-self:flex-start;padding:0;border:0;
   background:none;color:var(--ink-3);text-decoration:underline;cursor:pointer}
 .handoutv2 .wplace-clear:hover{color:var(--ink)}
+/* Диск ще на верстаті, піч обрано наперед (13.10.26): чіп печі — пунктиром,
+   бо диск у ній ще не лежить. Після фрезерування мітка стає звичайною. */
+.handoutv2 .wplace.is-next > summary:not(.none){border-style:dashed;border-color:rgba(var(--pl-rgb), .6)}
 
 .handoutv2 #handout-list.with-nav > .hplace-note{grid-column:1 / -1}
 

@@ -130,27 +130,34 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
             </span>
             {% endif %}
             {# «Де лежить» (бриф HANDOUT_PLACE_BRIEF.md). Верстат ставить
-               система з телеметрії — мітка без меню. Піч — меню з чотирьох
-               печей, один клік, і мітка лягає на ВЕСЬ диск (той самий Sum3D у
-               цій вкладці), у всіх клієнтів. Після «знайдено» мітка лишається:
-               це історія, де робота лежала. #}
-            {% if place and place.live %}
-            <span class="pl mc" title="Диск зараз на верстаті {{ place.label }} — мітку ставить система з екрана верстата">{{ place.label }}{% if place.percent is not none %} · {{ place.percent }} %{% endif %}</span>
-            {% else %}
-            <details class="wplace">
-                <summary class="pl {{ place.bucket if place else 'none' }}"
-                         title="{% if place %}Лежить: {{ place.label }}{% if place.kind == 'other' %} (так написано в таблиці){% endif %}. Змінити піч{% else %}Вказати піч{% endif %}{% if order.sum3d_id %} — для всього диска {{ order.sum3d_id }}{% endif %}">{{ place.label if place else 'піч?' }}</summary>
+               система з телеметрії — його мітку оператор не міняє. Піч — меню
+               з чотирьох печей, один клік, і мітка лягає на ВЕСЬ диск (той
+               самий Sum3D у цій вкладці), у всіх клієнтів. Після «знайдено»
+               мітка лишається: це історія, де робота лежала.
+
+               Диск ще на верстаті — поруч із «верстат · %» те саме меню печі
+               (власник 13.10.26: оператор уже знає, куди піде диск). Обрана
+               піч — звичайна мітка в N (`Place.planned`); після фрезерування
+               верстат зникає, а піч лишається. #}
+            {% set live_place = place if place and place.live else none %}
+            {% set fplace = live_place.planned if live_place else place %}
+            {% if live_place %}
+            <span class="pl mc" title="Диск зараз на верстаті {{ live_place.label }} — мітку ставить система з екрана верстата">{{ live_place.label }}{% if live_place.percent is not none %} · {{ live_place.percent }} %{% endif %}</span>
+            {% endif %}
+            <details class="wplace{% if live_place %} is-next{% endif %}">
+                <summary class="pl {{ fplace.bucket if fplace else 'none' }}"
+                         title="{% if live_place %}{% if fplace %}Після фрезерування — у піч: {{ fplace.label }}. Змінити піч{% else %}Вказати піч, куди диск піде після фрезерування{% endif %}{% elif fplace %}Лежить: {{ fplace.label }}{% if fplace.kind == 'other' %} (так написано в таблиці){% endif %}. Змінити піч{% else %}Вказати піч{% endif %}{% if order.sum3d_id %} — для всього диска {{ order.sum3d_id }}{% endif %}">{% if live_place and fplace %}→ {% endif %}{{ fplace.label if fplace else 'піч?' }}</summary>
                 <div class="wplace-pop" role="group" aria-label="Піч для диска">
                     <div class="wplace-opts">
                         {% for f in place_furnaces %}
-                        <button type="button" class="wplace-opt {{ f.key }}{% if place and place.key == f.key %} on{% endif %}"
+                        <button type="button" class="wplace-opt {{ f.key }}{% if fplace and fplace.key == f.key %} on{% endif %}"
                                 hx-post="/handout/place/{{ order.id }}" hx-target="#handout-list" hx-swap="outerHTML"
                                 hx-vals='{{ {"place": f.key, "source": source, "day": day_param}|tojson }}'
                                 data-kload="self">{{ f.label }}</button>
                         {% endfor %}
                     </div>
-                    <small>{% if order.sum3d_id %}Для всього диска <span class="mono">{{ order.sum3d_id }}</span> — усі клієнти{% else %}Лише ця робота: Sum3D немає{% endif %}</small>
-                    {% if place %}
+                    <small>{% if live_place %}Диск ще на верстаті — піч на потім. {% endif %}{% if order.sum3d_id %}Для всього диска <span class="mono">{{ order.sum3d_id }}</span> — усі клієнти{% else %}Лише ця робота: Sum3D немає{% endif %}</small>
+                    {% if fplace %}
                     <button type="button" class="wplace-clear"
                             hx-post="/handout/place/{{ order.id }}" hx-target="#handout-list" hx-swap="outerHTML"
                             hx-vals='{{ {"place": "", "source": source, "day": day_param}|tojson }}'
@@ -158,7 +165,6 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
                     {% endif %}
                 </div>
             </details>
-            {% endif %}
             {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
             {# Заливка рядка не доїхала в таблицю. Доти цей збій був НІМИЙ: у
                CRM робота видана, у таблиці лишилось синє — а видачу вся
