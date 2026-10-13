@@ -1031,6 +1031,11 @@ document.addEventListener("htmx:afterSettle", (event) => {
   if (!match) return;
   const row = document.getElementById("order-row-" + match[1]);
   if (!row || !row.classList.contains("queue-row-focus")) return;
+  // Док екрана пошти пришпилені вгору НЕ сортує (порядок там — листи згори,
+  // лаба як у таблиці, з роздільником між ними): підйом на клієнті поставив
+  // би рядок у чужий блок, а наступний полл повернув би його назад — стрибок
+  // під рукою (§2). Шпилька там лише збирає набір для групового Sum3D.
+  if (row.closest("#mail-queue-mirror")) return;
   const body = row.parentElement;
   if (!body) return;
 

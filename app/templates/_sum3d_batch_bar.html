@@ -14,12 +14,24 @@
    оновлення сторінки»). Той сигнал уже шлють шпилька (`/orders/{id}/focus`),
    «зняти всі» і груповий Sum3D — тож набір і смуга не розходяться. Сама смуга —
    від ДВОХ пришпилених: для однієї роботи ID простіше вписати в її рядок. #}
-<div id="sum3d-batch-slot" hx-get="/orders/focus/bar" hx-trigger="refresh-queue from:body" hx-swap="outerHTML">
+{# `batch_ctx == "mail"` — смуга в доці екрана «Нові з пошти» (власник 13.10.26:
+   лабу в доці теж рахують одним проєктом на кілька робіт). Там форма йде
+   htmx-ом (повний перехід скинув би відкритий лист), відповідь — ця сама смуга
+   + тост і `mail-dock-refresh`; самоперепит несе `?ctx=mail`, інакше після
+   першої шпильки смуга повернулась би черговою формою з редіректом у чергу. #}
+{% set _mail = batch_ctx is defined and batch_ctx == "mail" %}
+<div id="sum3d-batch-slot" hx-get="/orders/focus/bar{% if _mail %}?ctx=mail{% endif %}" hx-trigger="refresh-queue from:body" hx-swap="outerHTML">
 {% if focus_count and focus_count >= 2 %}
 {% set _n = focus_count %}
 {% set _word = 'робота' if (_n % 10 == 1 and _n % 100 != 11) else ('роботи' if (_n % 10 in [2,3,4] and _n % 100 not in [12,13,14]) else 'робіт') %}
+{% if _mail %}
+<form class="sum3d-batch" method="post" action="/orders/sum3d-batch"
+      hx-post="/orders/sum3d-batch" hx-target="#sum3d-batch-slot" hx-swap="outerHTML">
+    <input type="hidden" name="ctx" value="mail">
+{% else %}
 <form class="sum3d-batch" method="post" action="/orders/sum3d-batch"
       onsubmit="sessionStorage.setItem('od-scroll', String(window.scrollY)); var tw=document.querySelector('.tablewrap'); if(tw) sessionStorage.setItem('od-tablescroll', String(tw.scrollTop));">
+{% endif %}
     <span class="sb-pin" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" class="duo"/><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
     </span>

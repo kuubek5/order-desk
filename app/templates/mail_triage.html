@@ -379,8 +379,17 @@
             </button>
             <div class="qmir-ctl" id="qmir-ctl">{% include "_mail_dock_controls.html" %}</div>
         </header>
+        {# Груповий Sum3D (власник 13.10.26): лабу в доці, як і листи, часто
+           рахують ОДНИМ проєктом Sum3D на кілька робіт. Та сама смуга й той самий
+           набір «мої зараз», що в черзі (шпилька в рядку доку), — лише форма
+           htmx-ова (`batch_ctx`). Поза .qmir-body: полл свапає тіло щотіку, і
+           недописаний ID зник би разом зі старою розміткою. Сама смуга — від
+           двох пришпилених, тож у звичайний день її тут немає. #}
+        <div class="qmir-batch">{% with batch_ctx = "mail", focus_count = (focused_ids|length if focused_ids else 0) %}{% include "_sum3d_batch_bar.html" %}{% endwith %}</div>
+        {# `mail-dock-refresh` — відповідь групового Sum3D: рядки з новим ID
+           перемальовуються одразу, а не з наступним поллом. #}
         <div class="qmir-body q2" id="qmir-body"
-             hx-get="/mail/queue-mirror" hx-trigger="load, every 15s[!document.hidden]"
+             hx-get="/mail/queue-mirror" hx-trigger="load, every 15s[!document.hidden], mail-dock-refresh from:body"
              hx-swap="innerHTML">
             {% include "_mail_queue_mirror.html" %}
         </div>

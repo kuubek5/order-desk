@@ -739,6 +739,11 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
    листів. */
 .mailv2 .qmir-body{overflow:visible}
 .mailv2 .qmir-collapsed .qmir-body{display:none}
+/* Смуга групового Sum3D у доці (власник 13.10.26) — та сама .sum3d-batch, що
+   над чергою (queue.css), лише з відступами шапки доку; згорнутий док ховає її
+   разом із рядками, де стоять шпильки. */
+.mailv2 .qmir-batch .sum3d-batch{margin:10px 16px 0}
+.mailv2 .qmir-collapsed .qmir-batch{display:none}
 /* --mail-dock-h — висота з акаунта оператора (ручка .qmir-grip, mail.js →
    /account/look dock_height). Не задана — та сама стеля, що й до доку. */
 .mailv2 .qmir-body .tablewrap{max-height:var(--mail-dock-h, min(60vh,520px))}

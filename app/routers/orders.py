@@ -202,45 +202,22 @@ async def set_sum3d_id(
     return response
 
 
-@router.post("/orders/sum3d-batch")
-def set_sum3d_batch(
-    request: Request,
-    sum3d_id: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    """Призначити ОДИН Sum3D ID усім роботам набору «мої зараз».
+#: Слово контексту смуги групового Sum3D, коли вона стоїть у доці екрана пошти
+#: (власник 13.10.26: лабу в доці теж рахують одним проєктом). У черзі поля
+#: немає зовсім — там смуга лишається звичайною формою з редіректом.
+SUM3D_BATCH_CTX_MAIL = "mail"
 
-    Один Sum3D-проєкт часто накриває кілька робіт — кілька клієнтів з пошти, а
-    буває й лаба+пошта разом. Оператор пришпилює їх шпилькою, рахує в Sum3D і тут
-    вписує отриманий time-id ОДИН раз: портал кладе його в кожен рядок і бере
-    роботи в роботу рівно як одиночна дія (`apply_sum3d`), знімаючи шпильки.
 
-    Звичайний `def` (threadpool), не `async`: звичайна робота пише в таблицю
-    через `queue_sheet_fields` (не блокує event loop), а переробки в пачку не
-    йдуть — вони ЧЕКАЮТЬ на запис (await) і лишаються оператору на одиночну дію.
+def _sum3d_batch_assign(db: Session, user: User, value: str) -> tuple[str, str]:
+    """Ядро групового Sum3D: один ID усім пришпиленим роботам — (kind, message).
 
-    Набір береться з СЕРВЕРА (`focused_ids`), а не зі списку id у формі: так
-    вибір не залежить від 15-секундного полла черги й немає гонок. Редірект назад
-    зберігає фільтри (`back_to_queue`), тост їде через сесію (queue.py читає
-    flash), а не через рядок — змінюється відразу кілька рядків.
+    Спільне для черги (редірект + flash) і доку пошти (htmx-фрагмент + тост),
+    щоб два входи не розійшлись у правилах: переробки пропускаються, вже взяті
+    роботи НЕ перезаписуються, кожне призначення — `apply_sum3d` (позначка
+    «ще не в таблиці», літера, статус, зняття шпильки, undo-запис), запис у
+    таблицю — ПІСЛЯ коміту пачкою `queue_sheet_fields` (воркер, не event loop;
+    звірка позицій і `note_write_*` — у `write_fields_bulk`).
     """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-
-    back = back_to_queue(request)
-
-    value = sum3d_id.strip() or None
-    if value is None:
-        request.session["toast_flash"] = {
-            "kind": "error", "message": "Введіть Sum3D ID, щоб призначити його набору.",
-        }
-        return RedirectResponse(back, status_code=303)
-
-    if sync_control.is_paused():
-        request.session["toast_flash"] = {"kind": "info", "message": SYNC_PAUSED_MSG}
-        return RedirectResponse(back, status_code=303)
-
     ids = focused_ids(db, user)
     orders = list(db.scalars(select(Order).where(Order.id.in_(ids)))) if ids else []
 
@@ -248,7 +225,7 @@ def set_sum3d_batch(
     skipped_rework = 0
     skipped_taken = 0
     for order in orders:
-        # Переробку пачкою не чіпаємо (див. докстрінг): лишаємо на одиночну дію.
+        # Переробку пачкою не чіпаємо (див. докстрінг роуту): лишаємо на одиночну дію.
         if order.active_rework is not None:
             skipped_rework += 1
             continue
@@ -272,19 +249,87 @@ def set_sum3d_batch(
             message = "Sum3D не призначено: усі пришпилені роботи вже взяті або є переробками."
         else:
             message = "Немає пришпилених робіт — познач роботи шпилькою «мої зараз», тоді признач Sum3D."
-        request.session["toast_flash"] = {"kind": "warning", "message": message}
-    else:
-        extra = []
-        if skipped_taken:
-            extra.append(f"{skipped_taken} вже взято")
-        if skipped_rework:
-            extra.append(f"{skipped_rework} переробок пропущено")
-        tail = f" ({', '.join(extra)})" if extra else ""
-        _w = "роботі" if assigned == 1 else "роботам"
-        request.session["toast_flash"] = {
-            "kind": "success",
-            "message": f"Sum3D {value} призначено {assigned} {_w}{tail}.",
-        }
+        return "warning", message
+    extra = []
+    if skipped_taken:
+        extra.append(f"{skipped_taken} вже взято")
+    if skipped_rework:
+        extra.append(f"{skipped_rework} переробок пропущено")
+    tail = f" ({', '.join(extra)})" if extra else ""
+    _w = "роботі" if assigned == 1 else "роботам"
+    return "success", f"Sum3D {value} призначено {assigned} {_w}{tail}."
+
+
+def _sum3d_batch_mail_response(
+    request: Request, db: Session, user: User, kind: str, message: str
+) -> Response:
+    """Відповідь доку пошти: свіжа смуга (набір уже без знятих шпильок) і в
+    заголовку — тост плюс `mail-dock-refresh`, на який док одразу перепитує
+    свої рядки (інакше нові Sum3D зʼявились би лише з 15-секундним поллом).
+    ensure_ascii лишається увімкненим — кирилиця в заголовку (див. deps)."""
+    response = templates.TemplateResponse(
+        request, "_sum3d_batch_bar.html",
+        {"focus_count": focus_count(db, user), "batch_ctx": SUM3D_BATCH_CTX_MAIL},
+    )
+    response.headers["HX-Trigger"] = json.dumps(
+        {"toast": {"message": message, "kind": kind}, "mail-dock-refresh": True}
+    )
+    return response
+
+
+@router.post("/orders/sum3d-batch")
+def set_sum3d_batch(
+    request: Request,
+    sum3d_id: str = Form(""),
+    ctx: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Призначити ОДИН Sum3D ID усім роботам набору «мої зараз».
+
+    Один Sum3D-проєкт часто накриває кілька робіт — кілька клієнтів з пошти, а
+    буває й лаба+пошта разом. Оператор пришпилює їх шпилькою, рахує в Sum3D і тут
+    вписує отриманий time-id ОДИН раз: портал кладе його в кожен рядок і бере
+    роботи в роботу рівно як одиночна дія (`apply_sum3d`), знімаючи шпильки.
+
+    Звичайний `def` (threadpool), не `async`: звичайна робота пише в таблицю
+    через `queue_sheet_fields` (не блокує event loop), а переробки в пачку не
+    йдуть — вони ЧЕКАЮТЬ на запис (await) і лишаються оператору на одиночну дію.
+
+    Набір береться з СЕРВЕРА (`focused_ids`), а не зі списку id у формі: так
+    вибір не залежить від 15-секундного полла черги й немає гонок. Редірект назад
+    зберігає фільтри (`back_to_queue`), тост їде через сесію (queue.py читає
+    flash), а не через рядок — змінюється відразу кілька рядків.
+
+    `ctx=mail` — та сама смуга в доці екрана «Нові з пошти» (лаба й пошта, що
+    рахуються одним проєктом, власник 13.10.26). Там форма йде htmx-ом і
+    сторінку НЕ перезавантажує: повний перехід скинув би відкритий лист і
+    недописану картку. Правила призначення — ті самі (`_sum3d_batch_assign`).
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+
+    mail = ctx == SUM3D_BATCH_CTX_MAIL
+    back = back_to_queue(request)
+
+    value = sum3d_id.strip() or None
+    if value is None:
+        message = "Введіть Sum3D ID, щоб призначити його набору."
+        if mail:
+            return _sum3d_batch_mail_response(request, db, user, "error", message)
+        request.session["toast_flash"] = {"kind": "error", "message": message}
+        return RedirectResponse(back, status_code=303)
+
+    if sync_control.is_paused():
+        if mail:
+            return _sum3d_batch_mail_response(request, db, user, "info", SYNC_PAUSED_MSG)
+        request.session["toast_flash"] = {"kind": "info", "message": SYNC_PAUSED_MSG}
+        return RedirectResponse(back, status_code=303)
+
+    kind, message = _sum3d_batch_assign(db, user, value)
+    if mail:
+        return _sum3d_batch_mail_response(request, db, user, kind, message)
+    request.session["toast_flash"] = {"kind": kind, "message": message}
     return RedirectResponse(back, status_code=303)
 
 
@@ -712,17 +757,20 @@ def toggle_order_focus(request: Request, order_id: int, db: Session = Depends(ge
 
 
 @router.get("/orders/focus/bar", response_class=HTMLResponse)
-def order_focus_bar(request: Request, db: Session = Depends(get_db)):
+def order_focus_bar(request: Request, ctx: str = "", db: Session = Depends(get_db)):
     """Смуга групового Sum3D для набору «мої зараз» — окремо від сторінки.
 
     Обгортка смуги сама перепитує цей роут на `refresh-queue` (шпилька,
     «зняти всі», груповий Sum3D), тож смуга зʼявляється й зникає без оновлення
-    сторінки (власник 29.09.26)."""
+    сторінки (власник 29.09.26). `?ctx=mail` — смуга з доку пошти: та сама, але
+    з htmx-формою (див. `set_sum3d_batch`)."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    batch_ctx = SUM3D_BATCH_CTX_MAIL if ctx == SUM3D_BATCH_CTX_MAIL else ""
     return templates.TemplateResponse(
-        request, "_sum3d_batch_bar.html", {"focus_count": focus_count(db, user)}
+        request, "_sum3d_batch_bar.html",
+        {"focus_count": focus_count(db, user), "batch_ctx": batch_ctx},
     )
 
 
