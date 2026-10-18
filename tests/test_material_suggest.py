@@ -406,13 +406,28 @@ def test_doceram_a2_is_the_800_disc_and_monochrome_is_not_monolith():
         assert row_label(session, "Цирконій", text)["text"] == "800"
         # Кирилицею, A1 → 500.
         assert best_material(session, "Цирконій", "Доцерам А1") == "500"
-        # Doceram з невідомим кодом — нічого, а не чужа лінія.
-        assert best_material(session, "Цирконій", "Doceram A3") is None
-        assert canonical_suggestions(session, "Цирконій", context="Doceram A3") == []
+        # Doceram з невідомим кодом — нічого, а не чужа лінія. (A3 до 18.10.26
+        # теж був невідомим — тепер `1000`, див. тест нижче.)
+        assert best_material(session, "Цирконій", "Doceram B1") is None
+        assert canonical_suggestions(session, "Цирконій", context="Doceram B1") == []
         # «Монохромний» сам по собі — не Monolith (поле не заповнюється).
         assert best_material(session, "Цирконій", "монохромний A2") is None
         # А Monolith, назване поруч, лишається Monolith.
         assert best_material(session, "Monolith", "моноліт монохромний a2") == "mono a2"
+
+
+def test_doceram_a3_is_the_1000_disc_even_misspelled():
+    """18.10.26, Ковтун: «вкладки з діоксиду цирконію Docrem A3» — картка дала
+    «цирконій». Власник: це `1000`, A3 опак. Одруківка без «а» теж Doceram."""
+    from app.services.material_suggest import best_material
+
+    with _canon_session() as session:
+        add_orders(session, {"1000": 4, "800": 6, "mono a3": 9})
+        invalidate_cache()
+        text = "Доброго дня Фрезеровані вкладки з діоксиду цирконію Docrem A3"
+        assert best_material(session, "цирконій", text) == "1000"
+        assert best_material(session, "Цирконій", "Доцрем А3") == "1000"
+        assert best_material(session, "Цирконій", "Doceram A3") == "1000"
 
 
 def test_canonical_material_builds_missing_spelling_in_latin():
