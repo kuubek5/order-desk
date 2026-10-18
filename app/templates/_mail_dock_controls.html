@@ -9,11 +9,36 @@
 
    Кнопки шлють /account/look (scope=mail, dock=… / dock_ready=…) і одразу
    смикають полл (mail.js, [data-dock-scope] / [data-dock-ready]). Канон на
-   дроті — "mail", не "" (пастка «порожнє поле = поля не було», CLAUDE.md §14). #}
-<h2 class="qmir-title" id="qmir-title">{{ dock.title }} <span class="qmir-count">{{ dock.orders|length }}</span></h2>
+   дроті — "mail", не "" (пастка «порожнє поле = поля не було», CLAUDE.md §14).
+
+   День доку (власник 18.10.26) — ті самі «Вчора / Сьогодні / Завтра», що в
+   періодах черги (prev/next_tab_day: у понеділок «Вчора» — пʼятниця), плюс
+   ‹ › по сусідніх днях з роботами, як смуга «Дні». Кнопки [data-dock-day]
+   НЕ пишуть в акаунт: mail.js ставить день на секцію доку й смикає полл з
+   pick=1 (сервер кладе день у куку до кінця робочого дня). «Сьогодні» має
+   ВЛАСНЕ слово "today" — порожнє значення сервер читає як «поля не було». #}
+{%- macro day_btn(d, label) -%}
+<button type="button" data-dock-day="{{ 'today' if d == dock.today else d.strftime('%d.%m.%y') }}"
+        aria-pressed="{{ 'true' if d == dock.day else 'false' }}"
+        title="Вкладка {{ d.strftime('%d.%m.%y') }}">{{ label }} <span class="n">{{ dock.day_counts.get(d, 0) }}</span></button>
+{%- endmacro -%}
+<h2 class="qmir-title" id="qmir-title">{{ dock.title }}{% if not dock.is_today %} <span class="qmir-dayflag mono" title="Док показує не сьогоднішню вкладку">{{ dock.day.strftime('%d.%m') }}</span>{% endif %} <span class="qmir-count">{{ dock.orders|length }}</span></h2>
+<div class="qmir-seg qmir-day" role="group" aria-label="День вкладки в доці">
+    {% if dock.prev_day %}<button type="button" class="qmir-arw" data-dock-day="{{ 'today' if dock.prev_day == dock.today else dock.prev_day.strftime('%d.%m.%y') }}"
+            title="Попередній день з роботами · {{ dock.prev_day.strftime('%d.%m.%y') }}" aria-label="Попередній день">‹</button>
+    {% else %}<span class="qmir-arw is-off" aria-hidden="true">‹</span>{% endif %}
+    {% if dock.other_day and dock.day < dock.yesterday %}{{ day_btn(dock.day, dock.day.strftime('%d.%m')) }}{% endif %}
+    {{ day_btn(dock.yesterday, "Вчора") }}
+    {{ day_btn(dock.today, "Сьогодні") }}
+    {{ day_btn(dock.tomorrow, "Завтра") }}
+    {% if dock.other_day and dock.day > dock.tomorrow %}{{ day_btn(dock.day, dock.day.strftime('%d.%m')) }}{% endif %}
+    {% if dock.next_day %}<button type="button" class="qmir-arw" data-dock-day="{{ 'today' if dock.next_day == dock.today else dock.next_day.strftime('%d.%m.%y') }}"
+            title="Наступний день з роботами · {{ dock.next_day.strftime('%d.%m.%y') }}" aria-label="Наступний день">›</button>
+    {% else %}<span class="qmir-arw is-off" aria-hidden="true">›</span>{% endif %}
+</div>
 <div class="qmir-seg" role="group" aria-label="Що показує док">
     <button type="button" data-dock-scope="mail" aria-pressed="{{ 'true' if dock.scope == '' else 'false' }}"
-            title="Лише роботи, прийняті з пошти сьогодні">Прийняте з пошти <span class="n">{{ dock.mail_count }}</span></button>
+            title="Лише роботи, прийняті з пошти, цієї вкладки">Прийняте з пошти <span class="n">{{ dock.mail_count }}</span></button>
     <button type="button" data-dock-scope="lab" aria-pressed="{{ 'true' if dock.scope == 'lab' else 'false' }}"
             title="Плюс лабораторні роботи вкладки дня, у порядку таблиці">+ Лабораторія <span class="n">{{ dock.lab_count }}</span></button>
     <button type="button" data-dock-scope="labonly" aria-pressed="{{ 'true' if dock.scope == 'labonly' else 'false' }}"

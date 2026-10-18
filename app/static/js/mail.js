@@ -1382,7 +1382,32 @@ document.addEventListener("htmx:afterSwap", (event) => {
   function dockFailed() {
     if (window.showToast) window.showToast("Не вдалось зберегти вигляд доку", "error");
   }
+  // ── Док: день вкладки (власник 18.10.26) ─────────────────────────────────
+  // Обраний день живе на секції (data-dock-day: "today" або "дд.мм.рр"), і
+  // КОЖЕН запит доку — полл тіла, `mail-dock-refresh`, оновлення після
+  // прийняття, клік по шапці — несе його в `day`. Одне місце замість трьох
+  // викликів: інакше будь-який із них повертав би док на сьогодні.
+  document.body.addEventListener("htmx:configRequest", (event) => {
+    const d = event.detail || {};
+    if (!d.path || d.path.indexOf("/mail/queue-mirror") !== 0 || !d.parameters) return;
+    d.parameters.day = mirror.dataset.dockDay || "today";
+  });
+
   mirror.addEventListener("click", (event) => {
+    const dayBtn = event.target.closest("[data-dock-day]");
+    if (dayBtn && mirror.contains(dayBtn)) {
+      // Свідомий вибір дня: не в акаунт, а на сторінку + pick=1 (сервер кладе
+      // день у куку до кінця робочого дня — переживе перезавантаження /mail).
+      mirror.dataset.dockDay = dayBtn.dataset.dockDay || "today";
+      dayBtn.parentElement.querySelectorAll("button[data-dock-day]:not(.qmir-arw)").forEach((b) => {
+        b.setAttribute("aria-pressed", b.dataset.dockDay === mirror.dataset.dockDay ? "true" : "false");
+      });
+      if (mirror.classList.contains("qmir-collapsed") && btn) btn.click();
+      if (window.htmx) {
+        window.htmx.ajax("GET", "/mail/queue-mirror?pick=1", { target: "#qmir-body", swap: "innerHTML" });
+      }
+      return;
+    }
     const scopeBtn = event.target.closest("[data-dock-scope]");
     const readyBtn = scopeBtn ? null : event.target.closest("[data-dock-ready]");
     const target = scopeBtn || readyBtn;

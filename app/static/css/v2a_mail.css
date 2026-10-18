@@ -770,6 +770,14 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
 .mailv2 .qmir-seg .n{display:inline-block;min-width:18px;padding:1px 6px;border-radius:999px;font-family:var(--font-mono);font-size:var(--fs-0);background:color-mix(in srgb,var(--ink) 8%,transparent);text-align:center}
 .mailv2 .qmir-seg button[aria-pressed="true"] .n{background:rgba(var(--accent-rgb),.22);color:var(--accent-c)}
 .mailv2 .qmir-note{margin-left:auto;font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap}
+/* День доку: ‹ › — вузькі кнопки того самого seg (як стрілки смуги «Дні» в
+   черзі); вимкнена стрілка — приглушений знак на місці, щоб група не
+   «стрибала» шириною при переході на крайній день. Мітка дати в заголовку —
+   лише коли док НЕ на сьогоднішній вкладці: приймеш лист — він ляже в
+   сьогоднішню, і без мітки «не видно в доці» читалось би як «загубилось». */
+.mailv2 .qmir-seg .qmir-arw{padding:0 9px;font-family:var(--font-mono)}
+.mailv2 .qmir-seg span.qmir-arw{height:26px;display:inline-flex;align-items:center;color:var(--ink-3);opacity:.35}
+.mailv2 .qmir-dayflag{font-size:var(--fs-1);font-weight:500;padding:1px 8px;border-radius:999px;color:var(--accent-c);background:rgba(var(--accent-base-rgb),.16);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.34)}
 /* Роздільник між блоком пошти і блоком лаби (лише scope="lab"): рядок на всю
    ширину, моно-підпис, тонка лінія зверху — межа двох порядків, не ще один
    рядок роботи. */

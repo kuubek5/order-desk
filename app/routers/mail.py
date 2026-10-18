@@ -144,7 +144,13 @@ from app.services.stl_units import count_units, is_model_file, letter_quantity, 
 from app.services.sheet_writeback import write_sheet_fields
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
 from app.services.mail_folder_journal import VIA_CRM, log_folder_move
-from app.services.mail_mirror import mail_dock_for
+from app.services.mail_mirror import (
+    DOCK_DAY_COOKIE,
+    dock_day_cookie,
+    dock_day_from_cookie,
+    dock_day_from_wire,
+    mail_dock_for,
+)
 from app.services.focus import focused_ids
 from app.statuses import STATUSES
 from app.services.config_state import (
@@ -792,7 +798,10 @@ def get_mail(
                 _mail_panel_context(db, open_email, user)
             )
 
-    dock = mail_dock_for(db, user)
+    # День доку — з куки цього браузера (лише поставленої сьогодні): повні
+    # переходи /mail (прийняття з картки, перемикач вигляду) не мають скидати
+    # обраний оператором день назад на сьогодні.
+    dock = mail_dock_for(db, user, _dock_day_of(request))
     return templates.TemplateResponse(
         request,
         "mail_triage.html",
@@ -886,11 +895,27 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(f"/mail?synced={count}", status_code=303)
 
 
+def _dock_day_of(request: Request):
+    """День доку з куки цього браузера (None — сьогодні). `getattr`, бо тести
+    кличуть get_mail напряму з легкою заглушкою запиту без `.cookies` (той
+    самий прийом, що з `.headers` у get_queue)."""
+    cookies = getattr(request, "cookies", None) or {}
+    return dock_day_from_cookie(cookies.get(DOCK_DAY_COOKIE))
+
+
 @router.get("/mail/queue-mirror", response_class=HTMLResponse)
-def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
+def get_mail_queue_mirror(
+    request: Request, day: str = "", pick: str = "", db: Session = Depends(get_db)
+):
     """Полл-фрагмент доку черги (рядки + oob-шапка з лічильниками) — свопається
     в .qmir-body кожні 15с. Склад — за налаштуваннями оператора
     (User.mail_dock_*, mail_dock_for): канон — лише прийняте з пошти.
+
+    `day` — вкладка доку (`"today"` або `"дд.мм.рр"`); кожен запит зі сторінки
+    несе її сам (mail.js, `htmx:configRequest`), тож полл не перескакує на
+    сьогодні. Порожнє `day` = «поля не було» → день із куки. `pick=1` — свідомий
+    вибір дня кнопкою: лише він переписує куку (полл другої вкладки браузера
+    чужий вибір не стирає).
 
     Оголошено ВИЩЕ за `/mail/{email_id}`: інакше FastAPI матчив би «queue-mirror»
     як email_id (та сама пастка, що з `/settings/furnaces/password`)."""
@@ -900,7 +925,11 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
     blocked = blocked_response(request, db, user, "mail")
     if blocked is not None:
         return blocked
-    dock = mail_dock_for(db, user)
+    chosen = (
+        dock_day_from_wire(day) if day
+        else _dock_day_of(request)
+    )
+    dock = mail_dock_for(db, user, chosen)
     orders = dock.orders
     # Іконки папок (export + STL-прев'ю) — саме на поллі, як #queue-rows у черзі:
     # скан мережевої шари дорогий, тож повний рендер сторінки його пропускає, а
@@ -911,7 +940,7 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
     # архів лишаються на спільному `attach_export_folder_uris`.
     attach_mail_mirror_folder_uris(db, orders)
     attach_job_code_folder_uris(db, orders)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "_mail_queue_mirror.html",
         {
             "dock": dock,
@@ -924,6 +953,15 @@ def get_mail_queue_mirror(request: Request, db: Session = Depends(get_db)):
             "focused_ids": focused_ids(db, user),
         },
     )
+    if pick == "1":
+        value = dock_day_cookie(chosen)
+        if value:
+            # Сесійна кука (без терміну) і лише для /mail; дійсність — до кінця
+            # робочого дня, перевіряє dock_day_from_cookie.
+            response.set_cookie(DOCK_DAY_COOKIE, value, path="/mail", httponly=True, samesite="lax")
+        else:
+            response.delete_cookie(DOCK_DAY_COOKIE, path="/mail")
+    return response
 
 
 # ВИЩЕ за `/mail/{email_id}`: інакше FastAPI бере «move-folders» за id і дає 422.
