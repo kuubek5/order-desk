@@ -467,7 +467,8 @@ def test_kapa_letter_without_colour_fills_the_field():
     with _canon_session() as session:
         assert best_material(session, None, text) == "kappa"
         assert row_label(session, None, text)["text"] == "kappa"
-        for word in ("капу", "капи", "каппа", "splint"):
+        # «Сплінт» кирилицею (Шилюк 18.10.26, тема «Сплінт Фр.») — теж капа.
+        for word in ("капу", "капи", "каппа", "splint", "сплінт", "Сплинт"):
             assert best_material(session, None, f"фрезерування {word}") == "kappa", word
         # Колір названо — він лишається (як і було).
         assert best_material(session, "", "капа а2") == "kappa a2"

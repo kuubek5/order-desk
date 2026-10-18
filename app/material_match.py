@@ -204,7 +204,9 @@ _VOWELS = "aeiouy"
 _SYNONYMS: dict[str, frozenset[str]] = {
     "wax": frozenset({"wax", "visk", "vosk"}),
     "tit": frozenset({"tit", "titan", "ti"}),
-    "kapa": frozenset({"kapa", "splint", "miorelaks"}),
+    # `cplint` — «сплінт» після `match_key` (кирилична «с» = латинська «c»):
+    # лист «Сплінт Фр.» лишав поле порожнім (Шилюк, 18.10.26).
+    "kapa": frozenset({"kapa", "splint", "cplint", "miorelaks"}),
     "tr": frozenset({"tr", "trans", "translucent", "transliucent"}),
     # HIPC (ПММА-композит): у таблиці пишуть і `hips` (Поліщук, 11.09.26 —
     # тека «Hipc колір A3» не знаходилась).
