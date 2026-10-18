@@ -4,14 +4,19 @@
    fires a `dl-all` body event, and app.js feeds the rows a `dl-go` each, two
    at a time (all at once froze the page: the browser's 6 connections were all
    busy with Drive downloads — 08.10.26). Needs: email, link, and
-   (after a fetch) link_status in done|skip|error + link_message / result_name. #}
+   (after a fetch) link_status in done|skip|error + link_message / result_name.
+   data-link-mail/data-link-ref — за ними черга app.js знаходить рядок і після
+   перемальовування картки (тримати лише DOM-вузол = мовчки згубити решту
+   черги, прод 16–17.10.26). Рядок однієї висоти в усіх станах: примітка в
+   один рядок із трикрапкою, повний текст — у title. #}
 <div class="linkrow {{ link_status }}"
+     data-link-mail="{{ email.id }}" data-link-ref="{{ link.file_id or link.url }}"
      hx-post="/mail/{{ email.id }}/fetch-link"
      hx-vals='{"ref": {{ (link.file_id or link.url)|tojson }}}'
      hx-trigger="click, keyup[key=='Enter'], keyup[key==' '], dl-go"
      hx-target="this" hx-swap="outerHTML"
      hx-disabled-elt="this"
-     role="button" tabindex="0" title="{% if link_status in ('done', 'skip', 'handled') %}Скачати ще раз{% else %}Скачати цей файл{% endif %}">
+     role="button" tabindex="0" title="{% if link_status in ('done', 'skip', 'handled') %}Скачати ще раз{% elif link_status == 'error' %}Не скачано: {{ link_message }} — клік, щоб спробувати ще раз{% else %}Скачати цей файл{% endif %}">
     <span class="link-ic" aria-hidden="true">
         {% if link_status in ('done', 'skip', 'handled') %}
         <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
@@ -24,7 +29,7 @@
     <span class="name mono">{{ result_name or link.display }}</span>
     {% if link_status == 'skip' %}<span class="link-note">такий файл уже є серед вкладень</span>{% endif %}
     {% if link_status == 'handled' %}<span class="link-note">опрацьовано</span>{% endif %}
-    {% if link_status == 'error' %}<span class="link-note err">{{ link_message }}</span>{% endif %}
+    {% if link_status == 'error' %}<span class="link-note err" title="{{ link_message }}">{{ link_message }}</span><span class="link-note link-retry">повторити</span>{% endif %}
     <span class="link-spin1 htmx-indicator" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>
     </span>

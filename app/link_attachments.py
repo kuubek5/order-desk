@@ -20,7 +20,9 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 import logging
 import re
+import time
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urljoin, urlsplit, unquote
 
 import requests
@@ -54,9 +56,35 @@ _CHUNK = 65536
 # запас є, але ланцюжок не нескінченний (петля редиректів = зависання).
 _MAX_REDIRECTS = 5
 
+# Повтор ТИМЧАСОВИХ відмов (обрив, таймаут, 429/5xx, сторінка Google без файлу
+# посеред серії скачувань). Паузи між спробами → три спроби разом. Бюджет у
+# секундах — щоб повтори не пережили страхувальний дедлайн браузера на
+# fetch-link (300 с, app.js HTMX_SLOW_TIMEOUT_MS): після нього відповідь уже
+# нікому не потрібна. Прод 17.10.26: на листі з ~20 файлами Drive один віддав
+# «сторінку без файлу й без форми» за 30 с — разовий збій, не закритий доступ.
+_RETRY_DELAYS: tuple[float, ...] = (2.0, 5.0)
+_RETRY_BUDGET_S = 150.0
+
 
 class LinkDownloadError(Exception):
     """A link could not be downloaded (not shared, too large, host refused…)."""
+
+
+class TransientLinkError(LinkDownloadError):
+    """Відмова, яку варто повторити: сервер файлів тимчасово не віддав файл
+    (429/5xx, сторінка квоти або порожня сторінка Google). Остаточна відмова
+    («файл закритий», «недозволений хост», «завеликий») — звичайний
+    LinkDownloadError, її не повторюємо: результат був би той самий."""
+
+
+# Мережеві збої requests, що минають самі: таймаут, обрив/скидання зʼєднання
+# (сюди ж SSLError і ProxyError — підкласи ConnectionError), обрив посеред
+# потоку файлу.
+_TRANSIENT_NETWORK = (
+    requests.exceptions.Timeout,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+)
 
 
 @dataclass
@@ -192,6 +220,12 @@ def _get_checked(
             allow_redirects=False,
         )
         if not response.is_redirect:
+            status = getattr(response, "status_code", 200) or 200
+            if status == 429 or status >= 500:
+                # Перевантаження/збій сервера файлів — минає саме; повтор у
+                # download_link. Тіло такої відповіді файлом не є ніколи.
+                response.close()
+                raise TransientLinkError(f"сервер файлів тимчасово відмовив (код {status})")
             return response
         location = response.headers.get("location") or response.headers.get("Location")
         response.close()
@@ -238,6 +272,16 @@ def _finish(
     """Skip (return None) when a file with the same name is already attached —
     a repeat click on "download links" must not pile up duplicates. Otherwise
     stream it to disk."""
+    status = getattr(response, "status_code", 200) or 200
+    if not 200 <= status < 300:
+        # 404/403/410 не-HTML: тіло — текст помилки, а не коронка. Раніше воно
+        # зберігалось як файл (ім'я з адреси), посилання ставало «скачаним», і
+        # гейт прийняття обходився хибним успіхом — та сама пастка, що зі
+        # сторінкою входу (аудит 08.09.26).
+        response.close()
+        raise LinkDownloadError(
+            f"сервер відповів кодом {status} — файл не знайдено або посилання прострочене"
+        )
     safe = safe_attachment_filename(filename, 1, "")
     if safe in existing_names:
         response.close()
@@ -292,9 +336,17 @@ _ACCESS_PAGE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Сторінка «Забагато користувачів переглянули чи скачали файл» / «перевищено
+# квоту скачування» — тимчасова, минає за години чи хвилини.
+_QUOTA_PAGE_RE = re.compile(
+    r"Too many users have viewed or downloaded|download quota|quota (?:is |has been )?exceeded|"
+    r"перевищено квоту|превышена квота",
+    re.IGNORECASE,
+)
+
 
 def _download_drive(
-    file_id: str, dest_dir: Path, session: requests.Session, timeout: int,
+    file_id: str, dest_dir: Path, session: requests.Session, timeout: tuple[int, int],
     existing_names: frozenset[str],
 ) -> Path | None:
     base = "https://drive.google.com/uc?export=download"
@@ -313,6 +365,11 @@ def _download_drive(
             # (хост звіряє _get_checked), поля — як є.
             action, fields = form
             response = _get_checked(session, urljoin(base, action), params=fields, timeout=timeout)
+        elif _QUOTA_PAGE_RE.search(page):
+            logger.warning("Drive %s: сторінка квоти — Google тимчасово не віддає файл", file_id)
+            raise TransientLinkError(
+                "Google тимчасово обмежив скачування цього файлу (квота) — спробуйте пізніше"
+            )
         elif _ACCESS_PAGE_RE.search(page):
             logger.warning("Drive %s: сторінка доступу — файл не відкрито за посиланням", file_id)
             raise LinkDownloadError(
@@ -320,8 +377,11 @@ def _download_drive(
                 "(у браузері відкривається, бо там вхід у Google-акаунт з доступом)"
             )
         else:
+            # Ні токена, ні форми, ні сторінки доступу. Прод 17.10.26: так
+            # відповів ОДИН файл із ~20 того самого листа посеред серії — тобто
+            # разовий збій Google, а не закритий файл; варто повторити.
             logger.warning("Drive %s: сторінка без файлу й без форми скачування", file_id)
-            raise LinkDownloadError("файл не розшарено «всім за посиланням» або недоступний")
+            raise TransientLinkError("файл не розшарено «всім за посиланням» або недоступний")
         if "text/html" in (response.headers.get("content-type") or "").lower():
             response.close()
             logger.warning("Drive %s: після підтвердження знову сторінка, не файл", file_id)
@@ -333,7 +393,7 @@ def _download_drive(
 
 
 def _download_direct(
-    url: str, dest_dir: Path, session: requests.Session, timeout: int,
+    url: str, dest_dir: Path, session: requests.Session, timeout: tuple[int, int],
     existing_names: frozenset[str],
 ) -> Path | None:
     response = _get_checked(session, url, timeout=timeout)
@@ -364,13 +424,19 @@ def download_link(
     session: requests.Session | None = None,
     timeout: int = 90,
     existing_names: frozenset[str] = frozenset(),
+    sleep: Callable[[float], None] = time.sleep,
 ) -> Path | None:
     """Download one whitelisted link into ``dest_dir``; return the saved path, or
     None if a same-named file is already attached (repeat-click dedup). Raises
     LinkDownloadError on any refusal (not shared, too big, non-whitelisted
     redirect). The host of the ORIGINAL link is re-checked here as a
     belt-and-braces guard on top of extract_download_links only ever emitting
-    whitelisted links."""
+    whitelisted links.
+
+    Тимчасові збої (`TransientLinkError`, таймаут, обрив) повторюються тут
+    самі — до трьох спроб із паузами `_RETRY_DELAYS`, у межах `_RETRY_BUDGET_S`.
+    Обрізаний файл невдалої спроби `_stream_to_file` уже стер, тож повтор не
+    плодить двійників «(2)». Остаточна відмова не повторюється."""
     if not _host_allowed(link.url):
         raise LinkDownloadError("хост не в білому списку")
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -388,6 +454,36 @@ def download_link(
     # proxy or offline link must not hang the request for the full read window —
     # while still allowing a slow-but-alive transfer up to `timeout` seconds.
     request_timeout = (10, timeout)
-    if link.kind == "drive" and link.file_id:
-        return _download_drive(link.file_id, dest_dir, session, request_timeout, existing_names)
-    return _download_direct(link.url, dest_dir, session, request_timeout, existing_names)
+    host = urlsplit(link.url).hostname or "?"
+    started = time.monotonic()
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            if link.kind == "drive" and link.file_id:
+                return _download_drive(
+                    link.file_id, dest_dir, session, request_timeout, existing_names
+                )
+            return _download_direct(link.url, dest_dir, session, request_timeout, existing_names)
+        except (TransientLinkError, *_TRANSIENT_NETWORK) as exc:
+            out_of_budget = time.monotonic() - started > _RETRY_BUDGET_S
+            if attempt > len(_RETRY_DELAYS) or out_of_budget:
+                logger.warning(
+                    "Посилання (%s): %d спроб(и) не вдались — %s",
+                    host, attempt, _brief(exc),
+                )
+                raise
+            delay = _RETRY_DELAYS[attempt - 1]
+            # Лише тип і наш текст: str() винятку requests несе повну адресу
+            # з токеном обмінника.
+            logger.info(
+                "Посилання (%s): спроба %d не вдалась (%s) — повтор через %.0f с",
+                host, attempt, _brief(exc), delay,
+            )
+            sleep(delay)
+
+
+def _brief(exc: BaseException) -> str:
+    if isinstance(exc, LinkDownloadError):
+        return str(exc)
+    return type(exc).__name__

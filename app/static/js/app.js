@@ -1078,17 +1078,81 @@ window.showToast = showToast;
 // fires mailFilesChanged; re-render the whole detail panel once, debounced so a
 // "download all" of many links refreshes a single time after the last one.
 let mailFilesRefreshTimer = null;
+let mailCardRefreshInFlight = false;
+
+// Перемалювати картку листа, НЕ зсунувши її (власник 18.10.26: «картка не
+// має стрибати»). Свіжа картка приходить з УСІМ згорнутим, тож без цього
+// розкритий список посилань (<details class="mc-dl">) схлопувався на сотні
+// пікселів, прокрутка панелі обрізалась, а причини відмов у рядках посилань
+// зникали — рядок знову виглядав «ще не качали». Тому зберігаємо: розкриті
+// <details>, прокрутку панелі, вписане оператором і рядки посилань із
+// помилкою (якщо свіжа картка не вважає їх уже скачаними).
+function refreshMailCardKeepingPlace(id) {
+  const detail = document.getElementById("mail-detail");
+  const root = detail && detail.querySelector("[data-mail-id]");
+  if (!root || !window.htmx || String(root.dataset.mailId) !== String(id)) return null;
+  // Змінене оператором (клієнт, матеріал, к-сть) не має злетіти від
+  // перемальовування: запамʼятати поля, чиє значення вже не те, що прийшло з
+  // сервера (defaultValue), і повернути їх у свіжу картку.
+  const edited = {};
+  root.querySelectorAll("input[id]:not([type=checkbox]):not([type=hidden]), textarea[id]").forEach((el) => {
+    if (el.value !== el.defaultValue) edited[el.id] = el.value;
+  });
+  const openDetails = [];
+  root.querySelectorAll("details[class][open]").forEach((d) => openDetails.push(d.className));
+  const failed = {};
+  root.querySelectorAll(".linkrow.error[data-link-ref]").forEach((row) => {
+    failed[row.dataset.linkRef] = row.outerHTML;
+  });
+  const scrollTop = detail.scrollTop;
+  mailCardRefreshInFlight = true;
+  return window.htmx
+    .ajax("GET", `/mail/${id}?panel=1`, { target: "#mail-detail", swap: "innerHTML" })
+    .then(() => {
+      // Своп іде синхронно перед цим колбеком (мікрозадача до малювання), тож
+      // проміжного згорнутого кадру оператор не бачить.
+      Object.keys(edited).forEach((key) => {
+        const el = document.getElementById(key);
+        if (el) el.value = edited[key];
+      });
+      openDetails.forEach((cls) => {
+        const d = detail.querySelector("details[class='" + cls.replace(/'/g, "\\'") + "']");
+        if (d) d.open = true;
+      });
+      detail.querySelectorAll(".linkrow[data-link-ref]").forEach((row) => {
+        const html = failed[row.dataset.linkRef];
+        if (!html || row.classList.contains("handled")) return;
+        const tpl = document.createElement("template");
+        tpl.innerHTML = html.trim();
+        const restored = tpl.content.firstElementChild;
+        if (!restored) return;
+        restored.classList.remove("htmx-request");
+        restored.removeAttribute("disabled");
+        row.replaceWith(restored);
+        window.htmx.process(restored);
+      });
+      detail.scrollTop = scrollTop;
+    })
+    .finally(() => {
+      mailCardRefreshInFlight = false;
+    });
+}
 
 function scheduleMailFilesRefresh() {
   window.clearTimeout(mailFilesRefreshTimer);
   mailFilesRefreshTimer = window.setTimeout(() => {
+    mailFilesRefreshTimer = null;
     // Ще качаються інші посилання («Скачати за посиланням» шле всі разом, і
     // вони закінчуються в різний час) — НЕ перемальовувати: своп викинув би
     // рядки, чий запит у дорозі, їхні відповіді вже не дійшли б до body (сигнал
     // з відірваного елемента не спливає), і файли, скачані пізніше, та їхнє
     // STL-прев'ю зʼявлялись би лише після F5 (власник 25.09.26). Чекаємо, поки
     // допрацює останнє, — і оновлюємо картку ОДИН раз.
-    if (linkQueueBusy() || document.querySelector("#mail-detail .linkrow.htmx-request")) {
+    if (
+      linkQueueBusy() ||
+      mailCardRefreshInFlight ||
+      document.querySelector("#mail-detail .linkrow.htmx-request")
+    ) {
       scheduleMailFilesRefresh();
       return;
     }
@@ -1097,28 +1161,15 @@ function scheduleMailFilesRefresh() {
     // обробник мовчки нічого не робив: скачані за посиланням файли й прев'ю
     // зʼявлялись лише після F5 (власник 25.09.26).
     const root = document.querySelector("#mail-detail [data-mail-id]");
-    if (!root || !window.htmx) return;
-    const id = root.dataset.mailId;
-    if (!id) return;
-    // Змінене оператором (клієнт, матеріал, к-сть) не має злетіти від
-    // перемальовування: запамʼятати поля, чиє значення вже не те, що прийшло з
-    // сервера (defaultValue), і повернути їх у свіжу картку.
-    const edited = {};
-    root.querySelectorAll("input[id]:not([type=checkbox]):not([type=hidden]), textarea[id]").forEach((el) => {
-      if (el.value !== el.defaultValue) edited[el.id] = el.value;
-    });
-    window.htmx
-      .ajax("GET", `/mail/${id}?panel=1`, { target: "#mail-detail", swap: "innerHTML" })
-      .then(() => {
-        Object.keys(edited).forEach((key) => {
-          const el = document.getElementById(key);
-          if (el) el.value = edited[key];
-        });
-      });
+    if (!root) return;
+    refreshMailCardKeepingPlace(root.dataset.mailId);
   }, 450);
 }
 
 document.body.addEventListener("mailFilesChanged", scheduleMailFilesRefresh);
+// mail.js (лист докачався у фоні) оновлює картку цим самим шляхом, а не
+// власним GET: інакше картка перемальовувалась посеред черги посилань.
+window.kmScheduleMailCardRefresh = scheduleMailFilesRefresh;
 
 // «Скачати за посиланням» — ЧЕРГОЮ, по LINK_PARALLEL файлів одночасно.
 //
@@ -1129,20 +1180,60 @@ document.body.addEventListener("mailFilesChanged", scheduleMailFilesRefresh);
 // поки ті качались, і сторінка «зависала» (власник 08.10.26). Тепер у дорозі
 // не більше двох скачувань, чотири зʼєднання лишаються сторінці.
 //
+// Черга тримає НЕ вузли DOM, а (лист, посилання): прод 16–17.10.26 — кожне
+// натискання качало рівно 3–4 файли й зупинялось. Перший скачаний файл будив
+// оновлення списку, а воно — перемальовування картки (mail.js), і решта черги
+// лишалась на відірваних вузлах, які пропускались мовчки. Тепер рядок шукається
+// в живій картці в момент запуску, а картку посеред черги не перемальовує
+// ніхто (`window.kmScheduleMailCardRefresh` чекає, поки черга спорожніє).
+//
 // Уже скачані рядки (done/skip/handled) у чергу не йдуть — сервер однаково
 // відповів би «такий файл уже є». Клік по ОДНОМУ рядку працює як був.
 const LINK_PARALLEL = 2;
 const linkQueue = [];
 let linkInFlight = 0;
+let linkBatch = null;
 
 function linkQueueBusy() {
   return linkQueue.length > 0 || linkInFlight > 0;
 }
 
+function findLinkRow(mailId, ref) {
+  const rows = document.querySelectorAll('#mail-detail .linkrow[data-link-mail="' + mailId + '"]');
+  for (const row of rows) {
+    if (row.dataset.linkRef === ref) return row;
+  }
+  return null;
+}
+
+function linkBatchSummary() {
+  const batch = linkBatch;
+  linkBatch = null;
+  if (!batch || !window.showToast) return;
+  let ok = 0;
+  let failed = 0;
+  batch.refs.forEach((ref) => {
+    const row = findLinkRow(batch.mailId, ref);
+    if (!row) return;
+    if (row.matches(".done, .skip, .handled")) ok += 1;
+    else failed += 1;
+  });
+  if (failed) {
+    window.showToast(
+      "Не скачано за посиланням: " + failed + " з " + (ok + failed) + " — причина в рядку, клік по ньому повторює",
+      "error",
+    );
+  } else if (ok) {
+    window.showToast("Скачано всі файли за посиланням (" + ok + ")", "success");
+  }
+}
+
 function pumpLinkQueue() {
   while (linkInFlight < LINK_PARALLEL && linkQueue.length) {
-    const row = linkQueue.shift();
-    if (!row.isConnected || !window.htmx) continue;
+    const item = linkQueue.shift();
+    const row = findLinkRow(item.mailId, item.ref);
+    // Лист закрито (відкрито інший) або рядок уже скачано / в дорозі.
+    if (!row || !window.htmx || row.matches(".done, .skip, .handled, .htmx-request")) continue;
     linkInFlight += 1;
     let settled = false;
     const done = () => {
@@ -1160,13 +1251,24 @@ function pumpLinkQueue() {
     window.setTimeout(done, HTMX_SLOW_TIMEOUT_MS + 5000);
     window.htmx.trigger(row, "dl-go");
   }
+  if (!linkQueueBusy() && linkBatch) {
+    // Відповідь останнього рядка ще свопається — підсумок після неї.
+    window.setTimeout(linkBatchSummary, 50);
+  }
 }
 
 document.body.addEventListener("dl-all", () => {
-  const rows = document.querySelectorAll("#mail-detail .linkrow:not(.done):not(.skip):not(.handled)");
+  const rows = document.querySelectorAll("#mail-detail .linkrow[data-link-ref]:not(.done):not(.skip):not(.handled)");
   rows.forEach((row) => {
-    if (!linkQueue.includes(row) && !row.classList.contains("htmx-request")) linkQueue.push(row);
+    const item = { mailId: row.dataset.linkMail, ref: row.dataset.linkRef };
+    if (row.classList.contains("htmx-request")) return;
+    if (linkQueue.some((q) => q.mailId === item.mailId && q.ref === item.ref)) return;
+    linkQueue.push(item);
   });
+  const all = document.querySelectorAll("#mail-detail .linkrow[data-link-ref]");
+  if (all.length) {
+    linkBatch = { mailId: all[0].dataset.linkMail, refs: [...all].map((r) => r.dataset.linkRef) };
+  }
   pumpLinkQueue();
 });
 

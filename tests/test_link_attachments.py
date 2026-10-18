@@ -338,3 +338,138 @@ def test_drive_access_page_says_file_is_private(tmp_path):
                           url="https://drive.google.com/file/d/ID/view", display="…")
     with pytest.raises(LinkDownloadError, match="файл закритий"):
         download_link(link, tmp_path, session=_Session([page]))
+
+
+# ── Повтор тимчасових відмов (власник 18.10.26: «скачати все» скачує не все) ──
+# Мережа — лише підставна сесія; паузи між спробами — підставний sleep.
+
+import requests  # noqa: E402
+
+from app import link_attachments as la  # noqa: E402
+
+
+class _ScriptSession(_Session):
+    """Як _Session, але елемент черги може бути винятком — тоді його кидає get()."""
+
+    def get(self, url, params=None, stream=False, timeout=None, allow_redirects=None):
+        self.calls.append((url, params, allow_redirects))
+        item = self._responses.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
+def _file_resp(name=b"crown.stl", chunks=None, status=200):
+    return _Resp(
+        "https://dl.ukr.net/x/big.stl",
+        headers={"content-type": "application/octet-stream",
+                 "content-disposition": f'attachment; filename="{name.decode()}"'},
+        chunks=chunks or [b"STL"],
+        status_code=status,
+    )
+
+
+_UKR = LinkAttachment(kind="ukrnet", url="https://dl.ukr.net/x/big.stl", display="…")
+_DRIVE = LinkAttachment(kind="drive", file_id="ID",
+                        url="https://drive.google.com/file/d/ID/view", display="…")
+
+
+def test_transient_5xx_and_429_are_retried_until_the_file_arrives(tmp_path):
+    pauses = []
+    busy = _Resp("https://dl.ukr.net/x/big.stl", status_code=503)
+    limited = _Resp("https://dl.ukr.net/x/big.stl", status_code=429)
+    session = _ScriptSession([busy, limited, _file_resp()])
+    path = download_link(_UKR, tmp_path, session=session, sleep=pauses.append)
+    assert path.read_bytes() == b"STL"
+    assert len(session.calls) == 3
+    assert pauses == list(la._RETRY_DELAYS)
+    assert [p.name for p in tmp_path.iterdir()] == ["crown.stl"]
+
+
+def test_network_errors_are_retried(tmp_path):
+    session = _ScriptSession([
+        requests.exceptions.ConnectionError("reset by peer"),
+        requests.exceptions.ReadTimeout("slow"),
+        _file_resp(),
+    ])
+    path = download_link(_UKR, tmp_path, session=session, sleep=lambda _s: None)
+    assert path.name == "crown.stl"
+
+
+def test_broken_stream_leaves_no_partial_file_and_no_twin_on_retry(tmp_path):
+    """Обрив посеред файлу: обрізаний шматок стирається, повтор пише той самий
+    файл під тим самим іменем — без двійника «crown (2).stl» (правило 0.21.59)."""
+
+    class _Broken(_Resp):
+        def iter_content(self, _size):
+            yield b"half-"
+            raise requests.exceptions.ChunkedEncodingError("cut")
+
+    broken = _Broken("https://dl.ukr.net/x/big.stl",
+                     headers={"content-disposition": 'attachment; filename="crown.stl"'})
+    session = _ScriptSession([broken, _file_resp(chunks=[b"WHOLE"])])
+    path = download_link(_UKR, tmp_path, session=session, sleep=lambda _s: None)
+    assert [p.name for p in tmp_path.iterdir()] == ["crown.stl"]
+    assert path.read_bytes() == b"WHOLE"
+
+
+def test_permanent_refusal_is_not_retried(tmp_path):
+    page = _Resp("https://drive.google.com/uc?export=download&id=ID",
+                 headers={"content-type": "text/html"},
+                 text="<html><h1>You need access</h1></html>")
+    session = _ScriptSession([page, _file_resp()])
+    with pytest.raises(LinkDownloadError, match="файл закритий"):
+        download_link(_DRIVE, tmp_path, session=session, sleep=lambda _s: None)
+    assert len(session.calls) == 1
+
+
+def test_transient_failure_that_persists_gives_up_after_three_attempts(tmp_path):
+    session = _ScriptSession([_Resp(_UKR.url, status_code=502) for _ in range(5)])
+    with pytest.raises(la.TransientLinkError, match="502"):
+        download_link(_UKR, tmp_path, session=session, sleep=lambda _s: None)
+    assert len(session.calls) == 1 + len(la._RETRY_DELAYS)
+    assert not list(tmp_path.iterdir())
+
+
+def test_retry_budget_stops_further_attempts(tmp_path, monkeypatch):
+    monkeypatch.setattr(la, "_RETRY_BUDGET_S", -1.0)
+    session = _ScriptSession([_Resp(_UKR.url, status_code=503), _file_resp()])
+    with pytest.raises(la.TransientLinkError):
+        download_link(_UKR, tmp_path, session=session, sleep=lambda _s: None)
+    assert len(session.calls) == 1
+
+
+def test_error_status_body_is_never_saved_as_a_file(tmp_path):
+    """404 з текстом помилки (не HTML) раніше ставав «файлом» — і посилання
+    вважалось скачаним. Тепер це відмова, без повтору й без файлу."""
+    gone = _Resp(_UKR.url, headers={"content-type": "text/plain"},
+                 chunks=[b"Not Found"], status_code=404)
+    session = _ScriptSession([gone, _file_resp()])
+    with pytest.raises(LinkDownloadError, match="404"):
+        download_link(_UKR, tmp_path, session=session, sleep=lambda _s: None)
+    assert len(session.calls) == 1
+    assert not list(tmp_path.iterdir())
+
+
+def test_drive_blank_page_mid_series_is_retried(tmp_path):
+    """Прод 17.10.26: один файл Drive із ~20 віддав сторінку без файлу й без
+    форми — разовий збій. Повтор забирає файл."""
+    blank = _Resp("https://drive.google.com/uc?export=download&id=ID",
+                  headers={"content-type": "text/html"}, text="<html><body></body></html>")
+    real = _Resp("https://drive.usercontent.google.com/download",
+                 headers={"content-type": "application/octet-stream",
+                          "content-disposition": "attachment; filename=model.stl"},
+                 chunks=[b"STL"])
+    session = _ScriptSession([blank, real])
+    path = download_link(_DRIVE, tmp_path, session=session, sleep=lambda _s: None)
+    assert path.name == "model.stl"
+
+
+def test_drive_quota_page_is_named_and_retried(tmp_path):
+    quota = _Resp("https://drive.google.com/uc?export=download&id=ID",
+                  headers={"content-type": "text/html"},
+                  text="<html>Too many users have viewed or downloaded this file recently</html>")
+    session = _ScriptSession([quota, quota, quota])
+    with pytest.raises(la.TransientLinkError, match="квота"):
+        download_link(_DRIVE, tmp_path, session=session, sleep=lambda _s: None)
+    assert len(session.calls) == 3

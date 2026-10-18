@@ -426,8 +426,13 @@ main.mailv2{max-width:none;margin:0;padding:18px 20px}
 .mailv2 .linkrow .link-ic{display:inline-flex;flex:0 0 15px}
 .mailv2 .linkrow .link-ic svg{width:15px;height:15px;stroke:var(--accent-c);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .linkrow .name{flex:1;min-width:0;font-size:var(--fs-1);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mailv2 .linkrow .link-note{flex:0 0 auto;font-size:var(--fs-0);color:var(--ink-3)}
+/* Примітка — в ОДИН рядок: довгий текст відмови («файл закритий: відправник
+   не відкрив…») переносився на 2–3 рядки, і кожен рядок, що отримав помилку,
+   ріс по висоті й штовхав сусідів униз посеред «скачати все». Повний текст —
+   у title рядка й примітки. */
+.mailv2 .linkrow .link-note{flex:0 1 auto;min-width:0;max-width:55%;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mailv2 .linkrow .link-note.err{color:var(--alarm)}
+.mailv2 .linkrow .link-note.link-retry{flex:0 0 auto;max-width:none;color:var(--ink-2);text-decoration:underline;text-underline-offset:2px}
 /* Done / error tint the whole row and its icon. */
 .mailv2 .linkrow.done{border-color:rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .08);cursor:default}
 .mailv2 .linkrow.done .link-ic svg{stroke:var(--accent-c);stroke-width:2.4}
@@ -906,6 +911,11 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .mc-attprev svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 /* Чіп статусу файлів, далі розкриття дій */
 .mailv2 .mc-dl{align-self:flex-start}
+/* Розкрите меню файлів — на всю ширину колонки. Стиснуте по вмісту, воно
+   ширшало щоразу, як рядок посилання отримував текст відмови, і всі рядки
+   списку розʼїжджались посеред «Скачати за посиланням» (власник 18.10.26:
+   картка не має стрибати). */
+.mailv2 .mc-dl[open]{align-self:stretch;min-width:0}
 .mailv2 .mc-dl>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-0);border-radius:999px;padding:3px 11px;border:1px solid var(--line-2)}
 .mailv2 .mc-dl>summary::-webkit-details-marker{display:none}
 .mailv2 .mc-filechip.ok{color:var(--accent-c);background:rgba(var(--accent-base-rgb), .1);border-color:rgba(var(--accent-rgb), .3)}

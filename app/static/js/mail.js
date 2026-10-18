@@ -115,7 +115,14 @@ document.addEventListener("htmx:afterSettle", (event) => {
     if (window.showToast) window.showToast("Файли листа скачано — клікніть лист, щоб оновити картку", "info");
     return;
   }
-  if (window.htmx) window.htmx.ajax("GET", "/mail/" + shownId + "?panel=1", {target: "#mail-detail", swap: "innerHTML"});
+  // Через спільне відкладене оновлення app.js, а не власним GET: воно чекає,
+  // поки допрацює черга «Скачати за посиланням», зливається з оновленням
+  // після скачаного файлу в одне й зберігає розкрите та прокрутку. Власний GET
+  // тут обривав чергу — прод 16–17.10.26 кожне натискання качало 3–4 файли з
+  // ~20 і зупинялось: перший скачаний файл будив оновлення списку, а воно —
+  // перемальовування картки посеред черги.
+  if (window.kmScheduleMailCardRefresh) window.kmScheduleMailCardRefresh();
+  else if (window.htmx) window.htmx.ajax("GET", "/mail/" + shownId + "?panel=1", {target: "#mail-detail", swap: "innerHTML"});
 });
 
 // Оператор щось вписав у картку — свіжою її не підтягуємо (див. вище).
