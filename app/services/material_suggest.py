@@ -329,7 +329,7 @@ _MONOCHROME_KEYS = ("monoxpom", "monoxrom", "monochrom", "monocrom")
 початком «mono…» слово ставало `mono` (07.10.26, Михно: «Циркон Doceram
 монохромний A2» → `mono a2` замість `800`)."""
 
-_DOCERAM_KEYS = ("doceram", "docepam", "dokepam", "docerem", "docepem", "docrem", "docpem", "dokpem")
+_DOCERAM_KEYS = ("docera", "docepa", "dokepa", "docerem", "docepem", "docrem", "docpem", "dokpem")
 """Doceram латиницею й кирилицею («Доцерам», «Досерам», «Докерам») після
 `match_key`, і з одруківками без «а» («Docrem», «Доцрем» — Ковтун 18.10.26:
 картка не впізнала Doceram і дала «цирконій»)."""

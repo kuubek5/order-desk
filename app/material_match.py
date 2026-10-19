@@ -128,6 +128,9 @@ def _tokens(text: str | None) -> list[str]:
         return []
     norm = unicodedata.normalize("NFC", text).strip().lower()
     norm = re.sub(r"(?<=\d)[,_](?=\d)", ".", norm)
+    # `A-3/5`, `A3/5` — теж A3.5 (Веклин 19.10.26: «РММА А-3/5» ставало `pmma a3`).
+    # Лише «літера відтінку + цифра / 5»: дати й дроби (`15/06`) не чіпаємо.
+    norm = re.sub(r"(?<![a-zа-яіїєґ])([a-dабвгдсб][\s-]?[1-4])/5(?!\d)", r"\g<1>.5", norm)
     norm = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", norm)
     norm = re.sub(r"[,;:+()\[\]!?/\\_«»\"–—-]", " ", norm)
     raw = norm.split()

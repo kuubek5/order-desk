@@ -505,3 +505,28 @@ def test_alternatives_skip_one_off_typos_in_the_sheet():
     with _canon_session() as session:
         texts = [c.text for c in canonical_suggestions(session, "пмма а3")]
         assert texts[0] == "pmma a3" and "pmmma a3" not in texts
+
+
+def test_slash_half_shade_is_a35():
+    """19.10.26, Веклин: «РММА А-3/5» — картка показувала `pmma a3`. Скісна
+    риска між 3 і 5 тут — десятковий роздільник; дати й дроби не чіпаємо."""
+    from app.material_match import _tokens
+    from app.services.material_suggest import best_material
+
+    assert _tokens("PMMA A-3/5") == ["pmma", "a3.5"]
+    assert _tokens("A 3/5") == ["a3.5"]
+    assert _tokens("нова пошта 15/5") == ["нова", "пошта", "15", "5"]
+    assert _tokens("15/05 a3") == ["15", "05", "a3"]
+    with _canon_session() as session:
+        assert best_material(session, "", "Без теми\nPMMA A-3/5 Басараб") == "pmma a3.5"
+        assert best_material(session, "PMMA A3/5") == "pmma a3.5"
+
+
+def test_doceram_without_final_m_is_still_doceram():
+    """19.10.26, Хома: «циркон docera--3.5». Doceram без «м» — теж Doceram, тож
+    чужа лінія (mono/emo) не підставляється; коду для A3.5 власник не давав."""
+    from app.services.material_suggest import best_material, doceram_code
+
+    assert doceram_code("", "циркон docera--3.5")[0] is True
+    with _canon_session() as session:
+        assert best_material(session, "", "циркон docera--3.5") is None
