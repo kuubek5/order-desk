@@ -1401,7 +1401,10 @@ document.addEventListener("htmx:afterSwap", (event) => {
   });
 
   mirror.addEventListener("click", (event) => {
-    const dayBtn = event.target.closest("[data-dock-day]");
+    // Лише КНОПКА дня: сама секція доку теж несе data-dock-day (обраний
+    // день), і `closest` без `button` ловив її на БУДЬ-ЯКОМУ кліку в доці —
+    // фільтри й відкриття тек мовчки не працювали (0.21.72, 19.10.26).
+    const dayBtn = event.target.closest("button[data-dock-day]");
     if (dayBtn && mirror.contains(dayBtn)) {
       // Свідомий вибір дня: не в акаунт, а на сторінку + pick=1 (сервер кладе
       // день у куку до кінця робочого дня — переживе перезавантаження /mail).

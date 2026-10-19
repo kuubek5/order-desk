@@ -326,3 +326,20 @@ def test_service_is_the_only_day_parser():
     """Свій strptime поряд з `parse_sheet_tab` — заборонено (§14 «Синк таблиці»)."""
     src = Path(mail_mirror.__file__).read_text(encoding="utf-8")
     assert "strptime(" not in src and "date.today(" not in src
+
+
+def test_day_click_handler_matches_only_day_buttons():
+    """0.21.72 (19.10.26): сама секція доку несе `data-dock-day` (обраний день),
+    і `closest("[data-dock-day]")` знаходив її на БУДЬ-ЯКОМУ кліку в доці —
+    кожен клік ставав «вибором дня»: фільтри готовності й джерела не
+    перемикались, подвійний клік по шляху не відкривав теку (перший клік
+    перемальовував рядки). Обробник мусить брати лише кнопку дня."""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "app/static/js/mail.js").read_text(encoding="utf-8")
+    assert 'closest("button[data-dock-day]")' in js
+    assert 'closest("[data-dock-day]")' not in js
+    tpl = (Path(__file__).resolve().parents[1] / "app/templates/mail_triage.html").read_text(encoding="utf-8")
+    assert 'id="mail-queue-mirror"' in tpl and "data-dock-day=" in tpl, (
+        "секція несе день — тому селектор у mail.js мусить бути вужчим"
+    )
