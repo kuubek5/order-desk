@@ -60,7 +60,6 @@ from app.services.handout import (
     handout_day_totals,
     HANDOUT_ALL_DAYS,
     bump_found_units,
-    entries_for_material,
     start_stl_for,
     found_units,
     handout_client_matches,
@@ -72,14 +71,13 @@ from app.services.handout import (
     mark_group_found,
     matched_folders,
     night_claims_of,
+    pick_export_folders,
+    pins_by_folder,
     scan_export_for_clients,
     scan_export_latest_for_clients,
     similar_group_names,
-    stale_folder_day,
     work_units,
 )
-from app.services import folder_binding
-from app.services.folder_binding import entry_fully_bound, rel_key
 from app.services.handout_place import FURNACE_BY_KEY, FURNACES, place_view_for, set_disc_place
 from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
@@ -339,6 +337,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             match, _export_root, _preview_roots, _validated_roots
         )
         client_claims = night_claims.get(client_name, ())
+        # Закріплені теки клієнта — по ВСІХ днях видачі, як і нічні клейми.
+        client_pins = pins_by_folder(by_client.get(client_name, ()))
         for order in group_orders:
             # Лічильник одиниць рахуємо ТУТ, а не в шаблоні: обидва режими
             # списку малюють один партіал (`_handout_work_row.html`), і
@@ -362,28 +362,20 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                 # Теку, закріплену за ІНШОЮ роботою (прийняття листа чи прив'язка
                 # в мить появи рядка, `folder_binding`), нечіткий збіг уже не
                 # пропонує: одна тека — одна робота. Саме так bitesplint 4482
-                # висів би й під 4490 (Середюк 24.09.26).
-                bound_elsewhere = {
-                    rel_key(o.export_folder_path)
-                    for o in by_client.get(client_name, ())
-                    if o.export_folder_path and o.id != order.id
-                } if folder_binding.ENABLED else set()
-                candidates = (
-                    [e for e in export_entries if not entry_fully_bound(e, bound_elsewhere)]
-                    if bound_elsewhere
-                    else export_entries
-                )
-                order.export_matches = entries_for_material(
-                    order.material_color, candidates, work_day, client_claims, order.id
-                )
-                # Теки за день роботи немає, є лише старіші з тим самим кольором —
-                # їх НЕ показуємо (хибна тека гірша за жодну), а рядок каже про
-                # це й дає одним кліком теку клієнта (рішення власника 11.09.26).
-                order.export_stale_day = (
-                    None if order.export_matches
-                    else stale_folder_day(
-                        order.material_color, candidates, work_day, client_claims, order.id
-                    )
+                # висів би й під 4490 (Середюк 24.09.26), а тека листа на 5
+                # одиниць — під рядком, вписаним руками (20.10.26). Діє й при
+                # паузі `folder_binding`: закріплює ще й прийняття листа.
+                # Теки за день роботи немає (або вона чужа), є лише старіші з
+                # тим самим кольором — їх НЕ показуємо (хибна тека гірша за
+                # жодну), а рядок каже про це й дає одним кліком теку клієнта
+                # (рішення власника 11.09.26).
+                (
+                    order.export_matches,
+                    order.export_stale_day,
+                    _taken,
+                ) = pick_export_folders(
+                    order.material_color, export_entries, work_day, client_claims,
+                    order.id, client_pins,
                 )
             # З якого STL відкривати прев'ю, коли в теці кольору кілька партій
             # за день (Середюк 24.09): своя підпартія за часом Sum3D.

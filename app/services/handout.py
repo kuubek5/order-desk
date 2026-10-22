@@ -38,7 +38,9 @@ from app.export_scanner import (
 )
 from app.material_match import materials_match
 from app.services.clients import quantity_units
+from app.services.folder_binding import rel_key, units_of
 from app.services.folder_merge import folder_sibling_map
+from app.services.stl_units import count_units
 from app.models import ClientNameAlias, Order, StatusEvent
 from app.services.order_dates import parse_sheet_tab
 from app.sheet_writer import apply_status_markers
@@ -207,6 +209,81 @@ def stale_folder_day(
         return None
     # Лишились самі старіші (пізніші `entries_for_material` вже віддав би).
     return max(_batch_day(e) for e in matched)
+
+
+def pins_by_folder(orders) -> dict[str, list[Order]]:
+    """Закріплені теки групи: `rel_key(export_folder_path)` → роботи з нею.
+
+    Хто закріплює: прийняття листа (точна тека, куди воно переклало файли) і —
+    коли його ввімкнуть — `folder_binding`. Архівних тут немає: `orders` — це
+    роботи видачі, а архів у видачу не потрапляє."""
+    pins: dict[str, list[Order]] = {}
+    for order in orders:
+        if order.export_folder_path:
+            pins.setdefault(rel_key(order.export_folder_path), []).append(order)
+    return pins
+
+
+def folder_taken(entry, pins: dict[str, list[Order]], order_id: int | None) -> bool:
+    """Чи тека з нечіткого збігу належить ІНШИМ роботам — тоді цій її не пропонуємо.
+
+    Одна тека — одна робота (бойовий випадок 20.10.26: тека листа на 5 одиниць
+    висіла ще й під рядком, вписаним у таблицю руками, і та сама коронка
+    показувалась у прев'ю двічі). Але відкидаємо лише те, що ДОВЕДЕНО чуже:
+
+    - тека з кількох партій (`units_of`) — лише коли закріплена КОЖНА партія;
+      частково закріплена лишається кандидатом для решти;
+    - тека однієї партії, у назвах STL якої більше зубів, ніж одиниць у робіт,
+      що її закріпили, — лишається: це лист, розписаний у таблиці на кілька
+      рядків (бойовий 08.10.26: технік зменшив кількість поштового рядка й
+      дописав окремий рядок на решту — файли решти лежать у тій самій теці).
+      Назви без номерів зубів запасу не доводять.
+
+    Свою роботу (`order_id`) не рахуємо: її тека зникла з диска — і вона
+    шукає нечітко, як усі."""
+    units = units_of(entry)
+    if not units:
+        return False
+    holders_per_unit = []
+    for unit in units:
+        holders = [o for o in pins.get(rel_key(unit.rel), ()) if o.id != order_id]
+        if not holders:
+            return False
+        holders_per_unit.append(holders)
+    if len(units) == 1:
+        in_folder = count_units(getattr(entry, "files", None) or ()).units
+        claimed = sum(quantity_units(o.quantity) for o in holders_per_unit[0])
+        if in_folder > claimed:
+            return False
+    return True
+
+
+def pick_export_folders(
+    material_color: str | None,
+    entries: list,
+    work_day,
+    night_claims,
+    order_id: int | None,
+    pins: dict[str, list[Order]],
+):
+    """Теки рядка видачі: (показати, день для «теки немає», відкинуті як чужі).
+
+    Нечіткий збіг (`entries_for_material`) лишається тим самим; закріплені за
+    іншими роботами теки (`folder_taken`) з РЕЗУЛЬТАТУ лише прибираються —
+    нової, якої до цього не було, ми не підставляємо (інакше на місце чужої
+    теки дня приходила б «найраніша пізніша» — теж чужа). Усе прибрали —
+    рядок каже «за ДД.ММ теки немає» і дає теку клієнта, як для старіших.
+
+    Не залежить від `folder_binding.ENABLED`: закріплює й прийняття листа, а
+    воно працює завжди (власник 22.10.26)."""
+    matched = entries_for_material(material_color, entries, work_day, night_claims, order_id)
+    taken = [e for e in matched if folder_taken(e, pins, order_id)] if pins else []
+    shown = [e for e in matched if not any(e is t for t in taken)]
+    if shown:
+        return shown, None, taken
+    if taken:
+        return [], max(_batch_day(e) for e in taken), taken
+    return [], stale_folder_day(material_color, entries, work_day, night_claims, order_id), []
 
 
 def _material_matches(material_color: str | None, entries: list) -> list:

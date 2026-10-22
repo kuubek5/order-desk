@@ -132,14 +132,15 @@ def test_bound_folders_are_shown_and_not_offered_to_others(app_db, monkeypatch, 
     третя, неприв'язана робота того самого кольору цю теку в кандидатах уже
     не отримує (одна тека — одна робота).
 
-    Механізм НА ПАУЗІ (власник 27.09.26), тож прапорець вмикаємо тут: тест
-    стереже саме логіку, щоб вона була справною в мить, коли її ввімкнуть."""
+    Прив'язка НА ПАУЗІ (власник 27.09.26), але сторож «чужу закріплену теку не
+    пропонувати» від вимикача не залежить (22.10.26): закріплює й прийняття
+    листа. Тому тест іде з `ENABLED = False`, як на проді."""
     from sqlalchemy import select
 
     import app.web as web
     from app.services import folder_binding
 
-    monkeypatch.setattr(folder_binding, "ENABLED", True)
+    assert folder_binding.ENABLED is False
     from app.models import Order, User
     from app.order_folder import folder_to_file_uri
     from app.routers import handout as handout_router_mod

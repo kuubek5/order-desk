@@ -24,18 +24,16 @@ from app.export_scanner import (
     list_export_client_names_cached,
     scan_export_client_cached,
 )
-from app.services import folder_binding
-from app.services.folder_binding import entry_fully_bound, rel_key
 from app.services.handout import (
     NAMELESS_CLIENT_KEY,
     covered_days,
-    entries_for_material,
     handout_client_matches,
     handout_eligible_orders,
     handout_group_key,
     handout_not_before,
     night_claims_of,
-    stale_folder_day,
+    pick_export_folders,
+    pins_by_folder,
     start_stl_for,
 )
 from app.services.order_dates import parse_sheet_tab
@@ -95,6 +93,7 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
 
     orders = groups[target_key]
     claims = night_claims_of(orders)
+    pins = pins_by_folder(orders)
 
     export_root = Path(get_export_folder_path(db))
     folder_names = list_export_client_names_cached(export_root)
@@ -132,7 +131,7 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
     for order in orders:
         work_day = parse_sheet_tab(order.sheet_tab)
         # Та сама логіка, що на екрані (`routers/handout.py`): закріплена тека
-        # б'є будь-який збіг, а чужі закріплені теки з кандидатів випадають.
+        # б'є будь-який збіг, а чужі закріплені теки з нечіткого збігу випадають (`pick_export_folders`).
         if order.export_folder_path:
             exists = entry_for_folder(export_root, order.export_folder_path) is not None
             works.append(
@@ -149,18 +148,8 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
                 }
             )
             continue
-        bound_elsewhere = {
-            rel_key(o.export_folder_path)
-            for o in orders
-            if o.export_folder_path and o.id != order.id
-        } if folder_binding.ENABLED else set()
-        candidates = (
-            [e for e in entries if not entry_fully_bound(e, bound_elsewhere)]
-            if bound_elsewhere
-            else entries
-        )
-        matched = entries_for_material(
-            order.material_color, candidates, work_day, claims, order.id
+        matched, stale, taken = pick_export_folders(
+            order.material_color, entries, work_day, claims, order.id, pins
         )
         if matched:
             result = "зіставлено з текою: " + ", ".join(
@@ -175,17 +164,22 @@ def diagnose_handout_client(db: Session, query: str) -> dict:
                 result += "; прев'ю відкриє: " + ", ".join(starts)
         elif not matched_folder:
             result = "тека клієнта НЕ зіставлена (ім'я не знайшло теки в export)"
-        else:
-            stale = stale_folder_day(
-                order.material_color, candidates, work_day, claims, order.id
+        elif taken:
+            result = (
+                "тека дня закріплена за іншою роботою — не показуємо: "
+                + ", ".join(f"{e.batch_folder_name}/{e.material_color_folder_name}" for e in taken)
             )
-            if stale is not None:
-                result = (
-                    f"партії того дня немає; є СТАРІША тека ({stale.strftime('%d.%m')}) "
-                    "— не показуємо (може бути чужа попередня робота)"
-                )
-            else:
-                result = "немає партії цього дня з цим матеріалом"
+        elif stale is not None:
+            result = (
+                f"партії того дня немає; є СТАРІША тека ({stale.strftime('%d.%m')}) "
+                "— не показуємо (може бути чужа попередня робота)"
+            )
+        else:
+            result = "немає партії цього дня з цим матеріалом"
+        if matched and taken:
+            result += "; відкинуто як чужі (закріплені): " + ", ".join(
+                f"{e.batch_folder_name}/{e.material_color_folder_name}" for e in taken
+            )
         works.append(
             {
                 "id": order.id,
