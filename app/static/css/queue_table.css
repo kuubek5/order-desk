@@ -288,6 +288,7 @@ html.q-parsing .q2 .tablewrap {
 }
 .swf-link { font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .swf-tab, .swf-since { opacity: 0.75; }
+.swf-queue-link { font-size: var(--fs-1); color: inherit; opacity: 0.7; text-decoration: underline; text-underline-offset: 2px; }
 .swf-kind { opacity: 0.9; }
 .swf-more { margin-top: 2px; opacity: 0.75; }
 /* «Записати зараз» не допоміг — помітно, але без нового кольору. */

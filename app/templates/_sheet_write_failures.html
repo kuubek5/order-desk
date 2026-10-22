@@ -19,8 +19,14 @@
         <ul class="swf-list">
             {% for f in _shown %}
             <li class="swf-item">
-                <a class="swf-link" href="/?{{ {'ready': 'all', 'source': 'all', 'date': f.tab or '', 'focus': f.order_id} | urlencode }}"
-                   title="Перейти до рядка роботи">{{ f.who }}</a>
+                {# Імʼя — ПАСПОРТ роботи (у черзі — у бічній панелі, data-order-detail):
+                   робота «знайдено при видачі» в черзі не стоїть, і перехід із
+                   фокусом не вів нікуди — власник не міг дістатись «Видалити»
+                   (22.10.26, #6472). Перехід до рядка черги — окремим малим посиланням. #}
+                <a class="swf-link" href="/orders/{{ f.order_id }}" data-order-detail="{{ f.order_id }}"
+                   title="Відкрити паспорт роботи">{{ f.who }}</a>
+                <a class="swf-queue-link" href="/?{{ {'ready': 'all', 'source': 'all', 'date': f.tab or '', 'focus': f.order_id} | urlencode }}"
+                   title="Показати рядок роботи в черзі (якщо вона там є)">у черзі</a>
                 {% if f.tab %}<span class="mono swf-tab">{{ f.tab }}</span>{% endif %}
                 <span class="swf-kind">{{ f.kind_text }}</span>
                 <span class="swf-reason"{% if f.detail %} title="{{ f.detail }}"{% endif %}>— {{ f.reason_text }}</span>

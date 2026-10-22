@@ -76,6 +76,30 @@ def test_banner_offers_both_actions_only_when_the_row_is_lost(app_db):  # noqa: 
     assert 'hx-post="/sheets/write-failures/retry"' in html
 
 
+def test_work_name_opens_the_passport(app_db):  # noqa: F811
+    """Імʼя роботи в банері — паспорт (у черзі — бічна панель). Робота
+    «знайдено при видачі» в черзі не стоїть, і перехід із фокусом не вів
+    нікуди: до «Видалити» власник дістатись не міг (#6472)."""
+    import re
+
+    app, session_factory = app_db
+    with session_factory() as db:
+        order = _mail_order(db)
+        stuck.note_write_failed("fill", order, ROW_LOST)
+
+    client = _client(app)
+    # Видача тягне той самий фрагмент поллом (/sheets/write-failures).
+    for path in ("/sheets/write-failures", "/"):
+        status, _, html = client.get(path)
+        assert status == 200, path
+        link = re.search(r'<a class="swf-link"[^>]*>', html)
+        assert link, path
+        assert f'href="/orders/{order.id}"' in link.group(0)
+        assert f'data-order-detail="{order.id}"' in link.group(0)
+        # Перехід до рядка черги лишився — окремим малим посиланням.
+        assert "swf-queue-link" in html and f"focus={order.id}" in html
+
+
 def test_archive_once_per_work_and_no_forget_for_sum3d(app_db):  # noqa: F811
     """Sum3D і заливка однієї роботи — два записи банера, але «прибрати» —
     один. «Забути» для Sum3D немає: без позначки синк стер би Sum3D."""
