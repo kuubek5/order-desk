@@ -80,6 +80,9 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 .shiftv2 .sh-note.is-action{background:rgba(var(--warn-rgb), .07);border-color:rgba(var(--warn-rgb), .4)}
 @keyframes sh-appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.shiftv2 .sh-note{animation:none}}
+/* Прийшли зі сліду скріншотів у картці черги — показати, ЯКА записка. */
+.shiftv2 .sh-note{scroll-margin-top:72px}
+.shiftv2 .sh-note:target{border-color:var(--accent-c);box-shadow:var(--sh-pop),0 0 0 2px rgba(var(--accent-rgb), .35)}
 
 /* шпилька зверху по центру — єдина декоративна деталь «дошки» */
 .shiftv2 .sh-pin-dot{position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;
@@ -160,6 +163,34 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 .sh-card-btn:hover{background:var(--card-3)}
 .sh-card-btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
 .sh-card-btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c)}
+
+/* Слід скріншотів у рядку картки: іконка + число, на широкому — ще одна
+   мініатюра першого. Висота 22px < 24px кнопки — рядок не росте; мініатюра
+   має свої width/height, тож лінива підгрузка й полл картки не зсувають
+   текст. Клік веде на записку на дошці (/shift#shift-note-N). */
+.sh-card-shots{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 7px 0 3px;
+  border-radius:7px;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink-2);
+  font-size:var(--fs-1);font-weight:600;line-height:1;text-decoration:none}
+.sh-card-shots:hover{border-color:var(--accent-c);color:var(--accent-c)}
+/* Слід стоїть ОДРАЗУ за текстом, а не біля кнопок: так читається як
+   частина записки. Текст тоді не розтягується, але й далі стискається з
+   трикрапкою; вільне місце бере відступ сліду. */
+.sh-card-row:has(.sh-card-shots) .sh-card-text{flex:0 1 auto}
+.sh-card-row .sh-card-shots{margin-right:auto}
+.sh-card-shots:focus-visible{outline:2px solid var(--accent-c);outline-offset:1px}
+.sh-card-shots svg{width:14px;height:14px;margin-left:3px;stroke:var(--accent-c);fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.sh-card-shot-thumb{display:block;width:30px;height:16px;border-radius:4px;object-fit:cover;
+  background:var(--card-3);border:1px solid var(--line)}
+.sh-card-shot-thumb+svg{margin-left:0}
+/* Файлу немає (не відновився з бекапу) — лишаємо іконку з числом, без
+   розбитої картинки; клас ставить shift.js по img.error. */
+.sh-card-shots.no-thumb .sh-card-shot-thumb{display:none}
+.sh-card-shots.no-thumb svg{margin-left:3px}
+@media (max-width:1100px){
+  .sh-card-shot-thumb{display:none}
+  .sh-card-shot-thumb+svg{margin-left:3px}
+}
 
 /* --- скріншоти ---
    Мініатюри в полі написання (до відправки) і зображення в стікері. */

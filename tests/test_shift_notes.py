@@ -442,3 +442,107 @@ def test_shift_card_sits_outside_the_polled_queue_rows():
     rows = markup.index('_queue_rows.html')
     assert card < rows, "картку пересунули всередину полла черги"
     assert '"worklayout"' in markup and card < markup.index('"worklayout"')
+
+
+# 10 — слід скріншотів у картці на черзі
+
+
+def _shot(db, note, n=1, pruned=False):
+    """Рядок зображення без файлу: картці потрібні лише id і стан, байти
+    віддає окремий роут."""
+    from app.models import ShiftNoteImage
+
+    stamp = datetime(2026, 8, 28, 1, 41)
+    db.add(ShiftNoteImage(
+        note_id=note.id, filename=f"image{n}.png", saved_path=f"2026-08/{note.id}/{n:02d}.png",
+        created_at=stamp, pruned_at=stamp if pruned else None,
+    ))
+    db.commit()
+
+
+def _card_html(db, user):
+    return shift_router.get_shift_card(request=_request(user.id), db=db).body.decode("utf-8")
+
+
+def test_shift_card_marks_a_note_with_screenshots_and_its_count():
+    with Session(_database()) as db:
+        user = _user(db)
+        with_shots = _note(db, text="01:41 Sec, pmma a2", at=datetime(2026, 8, 28, 1, 41))
+        _shot(db, with_shots, 1)
+        _shot(db, with_shots, 2)
+        _note(db, text="піч 2 о 9:00", at=datetime(2026, 8, 28, 1, 0))
+        html = _card_html(db, user)
+        first_image_id = with_shots.images[0].id
+
+    assert html.count('class="sh-card-shots"') == 1, "слід лише в записки зі скріншотами"
+    assert f'href="/shift#shift-note-{with_shots.id}"' in html
+    assert 'title="2 скріншоти"' in html
+    assert '<span class="tnum">2</span>' in html
+    assert f'src="/shift/images/{first_image_id}"' in html
+    assert 'loading="lazy"' in html and 'width="30" height="16"' in html
+
+
+def test_shift_card_without_screenshots_has_no_marker():
+    with Session(_database()) as db:
+        user = _user(db)
+        _note(db, text="піч 2 о 9:00")
+        html = _card_html(db, user)
+
+    assert "sh-card-shots" not in html
+    assert "/shift/images/" not in html
+
+
+def test_shift_card_counts_pruned_screenshots_but_draws_no_thumbnail_for_them():
+    """Прибраний через 6 міс. скріншот лишається слідом («тут була картинка»),
+    але мініатюри з нього немає: файл уже не віддається, був би 404."""
+    with Session(_database()) as db:
+        user = _user(db)
+        note = _note(db, text="стара записка")
+        _shot(db, note, 1, pruned=True)
+        html = _card_html(db, user)
+
+    assert 'title="1 скріншот"' in html
+    assert "sh-card-shot-thumb" not in html
+
+
+def test_shift_card_queries_do_not_grow_with_notes():
+    """Картка рендериться на кожен полл: число скріншотів береться з тих
+    самих `note.images`, що їх `open_notes` тягне одним selectinload, а не
+    окремим запитом на записку."""
+    from sqlalchemy import event
+
+    def count_queries(notes):
+        engine = _database()
+        with Session(engine) as db:
+            user = _user(db)
+            for i in range(notes):
+                note = _note(db, text=f"записка {i}", at=datetime(2026, 8, 28, 1, i))
+                _shot(db, note, 1)
+                _shot(db, note, 2)
+            db.expire_all()
+            seen = []
+
+            def listener(*args, **kwargs):
+                seen.append(1)
+
+            event.listen(engine, "before_cursor_execute", listener)
+            try:
+                html = _card_html(db, user)
+            finally:
+                event.remove(engine, "before_cursor_execute", listener)
+            assert html.count('class="sh-card-shots"') == min(notes, 3)
+            return len(seen)
+
+    assert count_queries(1) == count_queries(5)
+
+
+def test_board_note_has_the_anchor_the_card_links_to():
+    with Session(_database()) as db:
+        user = _user(db)
+        note = _note(db, text="верстат 4 стоїть", author=user)
+        _shot(db, note, 1)
+        html = shift_router.get_shift(
+            request=_request(user.id), partial="board", db=db
+        ).body.decode("utf-8")
+
+    assert f'id="shift-note-{note.id}"' in html

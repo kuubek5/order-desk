@@ -97,6 +97,10 @@
       if (!img.matches || !img.matches("[data-shot]")) return;
       const shot = img.closest(".sh-shot");
       if (shot) shot.classList.add("is-gone");
+      // Слід скріншотів у картці зміни на черзі: без мініатюри лишається
+      // іконка з числом, а не розбита картинка.
+      const mark = img.closest(".sh-card-shots");
+      if (mark) mark.classList.add("no-thumb");
     },
     true
   );

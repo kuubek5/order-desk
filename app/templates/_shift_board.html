@@ -20,7 +20,9 @@
         <div class="sh-stack">
             {% for note in board %}
             {% set is_action = note.kind == 'action' %}
-            <article class="sh-note{% if is_action %} is-action{% endif %}">
+            {# id — адреса для слідів скріншотів у картці зміни на черзі
+               (`/shift#shift-note-N`): картка й дошка — той самий `open_notes`. #}
+            <article class="sh-note{% if is_action %} is-action{% endif %}" id="shift-note-{{ note.id }}">
                 <span class="sh-pin-dot" aria-hidden="true"></span>
 
                 {% if is_action %}
