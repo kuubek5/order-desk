@@ -620,12 +620,46 @@ def sheet_write_failures_retry(request: Request, db: Session = Depends(get_db)):
     elif not left:
         toast = {"kind": "success", "message": f"Записано в таблицю: {len(items)}."}
     else:
+        # Що саме не дійшло — по кожній роботі, а не одна загальна причина:
+        # 22.10.26 (#6472, рядок видалено свідомо) власник тиснув кнопку, і
+        # нічого видимого не мінялось. Тепер і тост, і сам банер (позначка
+        # «спробували о …», яку бачить і полл) кажуть, що повтор не допоміг.
+        sheet_stuck_writes.note_manual_retry(left)
+        left = sheet_stuck_writes.failed_sheet_writes()
         done = max(0, len(items) - len(left))
         toast = {
             "kind": "error",
-            "message": f"Записано {done} з {len(items)}. Не дійшло: {left[0].reason_text}.",
+            "message": f"Записано {done} з {len(items)}. Не дійшло: {_retry_failure_lines(left)}",
         }
     return _write_failures_response(request, user, toast)
+
+
+# Скільки робіт називати в тості поіменно; решта — «і ще N» (повний список —
+# у банері під тостом).
+_RETRY_TOAST_NAMED = 3
+
+
+def _retry_failure_lines(left: list) -> str:
+    """«Басараб 20.10.26 (синя заливка): рядок … — …» по кожній роботі.
+
+    Для «рядок не підтверджено» окремо сказано, що повтор цього НЕ виправить:
+    рядок роботи видалили або на його місці вже інша робота, і скільки не
+    тисни — таблиця не зміниться, поки рядок не виправлено."""
+    parts = []
+    for item in left[:_RETRY_TOAST_NAMED]:
+        where = f"{item.who} {item.tab}" if item.tab else item.who
+        line = f"{where} ({item.kind_text}): {item.reason_text}"
+        if item.reason == "row":
+            line += (
+                " — рядка цієї роботи в таблиці немає або на ньому вже інша "
+                "робота, тож повтор цього не виправить"
+            )
+        parts.append(line)
+    more = len(left) - _RETRY_TOAST_NAMED
+    text = "; ".join(parts)
+    if more > 0:
+        text += f"; і ще {more}"
+    return text + "."
 
 
 @router.get("/system/load", response_class=HTMLResponse)

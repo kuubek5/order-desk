@@ -90,8 +90,12 @@ def retry_pending_mail_rows(
         if submitted >= PENDING_ROW_RETRY_BATCH:
             break
     if submitted:
-        logger.info("Повтор рядків поштових робіт: поставлено %d (чекають усього %d)",
-                    submitted, len(pending))
+        # Той самий глушник, що в повторах Sum3D і заливки
+        # (`sheet_writeback._log_retry_summary`): застрягла робота інакше
+        # писала б цей рядок кожні 2 хв годинами.
+        from app.services.sheet_writeback import _log_retry_summary
+
+        _log_retry_summary("Повтор рядків поштових робіт", "row", submitted, len(pending))
     return submitted
 
 

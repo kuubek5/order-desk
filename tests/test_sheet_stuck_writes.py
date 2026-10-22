@@ -544,3 +544,155 @@ def test_retry_button_says_what_is_still_failing(app_db, monkeypatch):  # noqa: 
     toast = json.loads(headers["hx-trigger"])["toast"]
     assert toast["kind"] == "error" and "виправте рядок" in toast["message"]
     assert "swf-banner" in body
+
+
+
+# --- Шум у лозі: застряглий повтор (22.10.26, #6472) ---------------------------
+#
+# Рядок роботи видалено свідомо, на його місці інша робота — `_resolve_row`
+# чесно відмовляє, а фоновий повтор кличе фарбування кожні 2 хв. Доти кожна
+# спроба писала WARNING (сотні на добу) і INFO «поставлено 1 (чекають усього 1)».
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.t = 1000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    from app import log_throttle
+
+    c = _Clock()
+    monkeypatch.setattr(log_throttle, "monotonic", c)
+    return c
+
+
+def _fill_warnings(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records
+            if r.levelname == "WARNING" and "Заливку рядка" in r.getMessage()]
+
+
+def _run_fill_worker(session, order_id, error):
+    with patch.object(sheet_writeback, "submit_sheet_write", lambda fn, *a, **k: fn(*a, **k)), \
+         patch.object(sheet_writeback, "writeback_session", lambda: _same_session(session)), \
+         patch.object(sheet_writeback, "set_client_row_fill", lambda *a, **k: error):
+        sheet_writeback.set_client_row_fill_background(order_id, blue=False)
+
+
+UNCONFIRMED = "рядок у таблиці не підтверджено — заливку не змінено"
+
+
+def test_repeated_fill_failure_warns_once_then_hourly(caplog, clock):
+    caplog.set_level("INFO")
+    with make_session() as session:
+        order = _order(session, source="sheet_client", client_name="Басараб", row_number=80)
+        other = _order(session, source="sheet_client", client_name="Голій", row_number=81)
+        for _ in range(30):            # година повторів кожні 2 хв
+            _run_fill_worker(session, order.id, UNCONFIRMED)
+            clock.t += 120
+        assert len(_fill_warnings(caplog)) == 1
+        # Сусідня робота не заглушена чужою.
+        _run_fill_worker(session, other.id, UNCONFIRMED)
+        assert len(_fill_warnings(caplog)) == 2
+        # Минула година — нагадування з числом пропущених.
+        clock.t += 3600
+        _run_fill_worker(session, order.id, UNCONFIRMED)
+        warnings = _fill_warnings(caplog)
+        assert len(warnings) == 3 and "ще 29" in warnings[-1]
+        # Сигнал у банері від глушника не залежить: обидві роботи там є.
+        assert {i.order_id for i in stuck.failed_sheet_writes()} == {order.id, other.id}
+        # Дійшло — і новий збій тієї самої роботи видно одразу.
+        _run_fill_worker(session, order.id, None)
+        _run_fill_worker(session, order.id, UNCONFIRMED)
+        assert len(_fill_warnings(caplog)) == 4
+
+
+def test_group_clear_shares_the_fill_throttle(caplog, clock):
+    caplog.set_level("INFO")
+    with make_session() as session:
+        order = _order(session, source="sheet_client", client_name="Басараб", row_number=80)
+        with patch.object(sheet_writeback, "submit_sheet_write", lambda fn, *x, **k: fn(*x, **k)), \
+             patch.object(sheet_writeback, "writeback_session", lambda: _same_session(session)), \
+             patch.object(sheet_writeback, "open_spreadsheet", lambda db=None: object()), \
+             patch.object(sheet_writeback, "get_worksheet_by_name",
+                          lambda _s, _n: type("W", (), {"id": 1})()), \
+             patch.object(sheet_writeback, "resolve_order_row", lambda _w, o: None):
+            sheet_writeback.clear_group_fills_background([order.id])
+        _run_fill_worker(session, order.id, UNCONFIRMED)
+        warnings = _fill_warnings(caplog)
+        assert len(warnings) == 1 and "не знято" in warnings[0]
+
+
+def test_retry_summary_is_throttled(caplog, clock, monkeypatch):
+    from app import sheets
+
+    caplog.set_level("INFO")
+    monkeypatch.setattr(sheets, "quota_is_tight", lambda: False)
+    with make_session() as session:
+        _order(session, source="sheet_client", client_name="Басараб", row_number=80,
+               fill_pending="clear")
+        submitted: list = []
+        monkeypatch.setattr(sheet_writeback, "set_client_row_fill_background",
+                            lambda oid, *, blue: submitted.append(oid))
+        now = 0.0
+        for _ in range(20):
+            sheet_writeback.retry_pending_fills(session, now=now)
+            now += 130
+            clock.t += 130
+        assert len(submitted) == 20          # повтор іде, як і йшов
+        lines = [r.getMessage() for r in caplog.records if "Повторне фарбування" in r.getMessage()]
+        assert len(lines) == 1
+        # Змінилась кількість, що чекає, — нова подія, видно одразу.
+        _order(session, source="sheet_client", client_name="Голій", row_number=81,
+               fill_pending="clear")
+        sheet_writeback.retry_pending_fills(session, now=now)
+        lines = [r.getMessage() for r in caplog.records if "Повторне фарбування" in r.getMessage()]
+        assert len(lines) == 2 and "чекають усього 2" in lines[-1]
+
+
+def test_retry_button_names_the_work_whose_row_is_gone(app_db, monkeypatch):  # noqa: F811
+    """«Записати зараз» на роботі без свого рядка: тост називає роботу й каже,
+    що повтор цього не виправить; банер (і його полл) памʼятає спробу."""
+    import json
+    from concurrent.futures import Future
+
+    app, session_factory = app_db
+    with session_factory() as db:
+        order = _order(db, source="sheet_client", client_name="Басараб", sheet_tab="20.10.26",
+                       row_number=80, fill_pending="clear")
+        stuck.note_write_failed("fill", order, UNCONFIRMED)
+
+    def fake_retry(*_a, **_k):
+        done: Future = Future()
+        done.set_result(None)
+        return [done]
+
+    monkeypatch.setattr(sheet_writeback, "retry_failed_writes_now", fake_retry)
+    client = _client(app)
+    status, headers, body = client.post("/sheets/write-failures/retry")
+    assert status == 200
+    toast = json.loads(headers["hx-trigger"])["toast"]
+    assert toast["kind"] == "error"
+    assert "Басараб 20.10.26 (синя заливка)" in toast["message"]
+    assert "повтор цього не виправить" in toast["message"]
+    assert "swf-tried" in body and "не допоміг" in body
+    # Полл банера через 15 с — позначка спроби на місці, не лише в тості.
+    _, _, fragment = client.get("/sheets/write-failures")
+    assert "не допоміг" in fragment and "повтор цього не виправить" in fragment
+
+
+def test_manual_try_mark_goes_with_success():
+    with make_session() as session:
+        order = _order(session, source="sheet_client", client_name="Басараб", row_number=80)
+        stuck.note_write_failed("fill", order, UNCONFIRMED)
+        stuck.note_manual_retry(stuck.failed_sheet_writes(), wall=datetime(2026, 10, 22, 8, 6))
+        [item] = stuck.failed_sheet_writes()
+        assert item.tried_at == datetime(2026, 10, 22, 8, 6)
+        stuck.note_write_ok("fill", order.id)
+        stuck.note_write_failed("fill", order, UNCONFIRMED)
+        [item] = stuck.failed_sheet_writes()
+        assert item.tried_at is None

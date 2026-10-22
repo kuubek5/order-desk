@@ -19,7 +19,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app import sync_control
+from app import log_throttle, sync_control
 from app.business_day import business_today, tab_day
 from app.db import engine
 from app.models import Comment, Order, SyncLog
@@ -468,9 +468,47 @@ def retry_pending_sum3d(db: Session, *, now: float | None = None) -> int:
         if submitted >= PENDING_SUM3D_RETRY_BATCH:
             break
     if submitted:
-        logger.info("Повторний запис Sum3D у таблицю: поставлено %d (чекають усього %d)",
-                    submitted, len(pending))
+        _log_retry_summary("Повторний запис Sum3D у таблицю", "sum3d", submitted, len(pending))
     return submitted
+
+
+def _log_retry_summary(title: str, kind: str, submitted: int, total: int) -> None:
+    """Підсумок тіку повтору — через глушник (`app/log_throttle.py`).
+
+    Застрягла робота (рядок видалено свідомо, 22.10.26 #6472) повторюється
+    кожні 2 хв годинами, і той самий рядок «поставлено 1 (чекають усього 1)»
+    топив лог. Ключ несе кількість, що чекає: зміна її — нова подія, про яку
+    кажемо одразу; той самий стан — раз на годину з числом пропущених."""
+    skipped = log_throttle.due(f"sheet_writeback.retry:{kind}:{total}")
+    if skipped is None:
+        return
+    logger.info("%s: поставлено %d (чекають усього %d)%s", title, submitted, total,
+                f" (від минулого разу ще {skipped})" if skipped else "")
+
+
+def _fill_warn_key(order_id: int) -> str:
+    return f"sheet_writeback.fill_failed:{order_id}"
+
+
+def _warn_fill_failed(order_id: int, error: str, *, verb: str = "не оновлено") -> None:
+    """«Заливку не оновлено» — перший раз одразу, далі раз на годину.
+
+    Фоновий повтор (`retry_pending_fills`) кличе фарбування кожні 2 хв, і
+    рядок, якого в таблиці більше немає, давав сотні однакових WARNING на добу
+    («Шум у лозі», §14). Ключ — робота: одна застрягла не глушить сусідню.
+    Банер «не дійшло» показує стан і без лога; успіх скидає ключ
+    (`_fill_warn_ok`), тож новий збій тієї самої роботи видно одразу."""
+    skipped = log_throttle.due(_fill_warn_key(order_id))
+    if skipped is None:
+        return
+    logger.warning(
+        "Заливку рядка для роботи %s %s: %s%s", order_id, verb, error,
+        f" (від минулого разу ще {skipped})" if skipped else "",
+    )
+
+
+def _fill_warn_ok(order_id: int) -> None:
+    log_throttle.clear(_fill_warn_key(order_id))
 
 
 # Ті самі межі, що для Sum3D, і з тієї самої причини: причина відмови (мережа,
@@ -524,8 +562,7 @@ def retry_pending_fills(db: Session, *, now: float | None = None) -> int:
         if submitted >= PENDING_FILL_RETRY_BATCH:
             break
     if submitted:
-        logger.info("Повторне фарбування рядків: поставлено %d (чекають усього %d)",
-                    submitted, len(pending))
+        _log_retry_summary("Повторне фарбування рядків", "fill", submitted, len(pending))
     return submitted
 
 
@@ -832,13 +869,12 @@ def set_client_row_fill_background(order_id: int, *, blue: bool):
                 # повтор ніколи не поставить застарілий колір.
                 order.fill_pending = ("blue" if blue else "clear") if error else None
                 if error:
-                    logger.warning(
-                        "Заливку рядка для роботи %s не оновлено: %s", order_id, error
-                    )
+                    _warn_fill_failed(order_id, error)
                 bg.commit()
                 if error:
                     note_write_failed("fill", order, error)
                 else:
+                    _fill_warn_ok(order_id)
                     note_write_ok("fill", order_id)
         except Exception:
             logger.exception("Фонова заливка рядка не вдалася для роботи %s", order_id)
@@ -992,10 +1028,7 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                     # роботу (синк H-5).
                     row = resolve_order_row(worksheet, order)
                     if row is None:
-                        logger.warning(
-                            "Заливку рядка для роботи %s не знято: рядок не підтверджено",
-                            order_id,
-                        )
+                        _warn_fill_failed(order_id, "рядок не підтверджено", verb="не знято")
                         reasons[order_id] = "рядок у таблиці не підтверджено — заливку не змінено"
                         continue
                     fill_rows.append((worksheet.id, row))
@@ -1039,6 +1072,7 @@ def _note_fills(noted: list[tuple[Order, bool]], reasons: dict[int, str]) -> Non
         if failed:
             note_write_failed("fill", order, reasons.get(order.id))
         else:
+            _fill_warn_ok(order.id)
             note_write_ok("fill", order.id)
 
 

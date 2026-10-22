@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from time import monotonic
 
@@ -80,6 +80,10 @@ class FailedWrite:
     reason: str        # ключ REASON_TEXT
     detail: str        # сирий текст помилки — у підказку
     since: datetime    # коли вперше не дійшло (місцевий час)
+    # Коли оператор востаннє тиснув «Записати зараз», а запис так і не дійшов.
+    # Без цього банер після кнопки виглядав рівно як до неї — «нічого не
+    # сталось» (22.10.26, #6472: рядок видалено свідомо, повтор не допоможе).
+    tried_at: datetime | None = None
 
     @property
     def reason_text(self) -> str:
@@ -111,6 +115,8 @@ _first_seen: dict[tuple[str, int], float] = {}
 _first_seen_wall: dict[tuple[str, int], datetime] = {}
 _snapshot: StuckWrites | None = None
 _episode_open = False
+# «Записати зараз» не допоміг: ключ → коли тиснули (місцевий час).
+_manual_tries: dict[tuple[str, int], datetime] = {}
 
 
 def classify(error: str | None) -> str:
@@ -165,10 +171,22 @@ def note_write_ok(kind: str, order_id: int) -> None:
     """Місце запису: таблиця підтвердила."""
     key = (kind, order_id)
     with _lock:
+        _manual_tries.pop(key, None)
         _failures.pop(key, None)
         _unknown.pop(key, None)
         _first_seen.pop(key, None)
         _first_seen_wall.pop(key, None)
+
+
+def note_manual_retry(items: list[FailedWrite], *, wall: datetime | None = None) -> None:
+    """«Записати зараз» натиснули, а ці записи так і не дійшли — банер має це
+    показати при кожному полі, а не лише тостом (тост губиться, коли полл
+    банера встигає замінити кнопку посеред запиту). Знімається успіхом
+    (`note_write_ok`), зникненням позначки (`observe`) і `reset`."""
+    stamp = wall or datetime.now()
+    with _lock:
+        for item in items:
+            _manual_tries[(item.kind, item.order_id)] = stamp
 
 
 def failed_sheet_writes() -> list[FailedWrite]:
@@ -177,6 +195,12 @@ def failed_sheet_writes() -> list[FailedWrite]:
     with _lock:
         items = [item for item, _ in _failures.values()]
         items += [item for key, item in _unknown.items() if key not in _failures]
+        tries = dict(_manual_tries)
+    items = [
+        replace(item, tried_at=tries[(item.kind, item.order_id)])
+        if (item.kind, item.order_id) in tries else item
+        for item in items
+    ]
     return sorted(items, key=lambda item: (item.since, item.kind, item.order_id))
 
 
@@ -194,6 +218,7 @@ def reset() -> None:
         _unknown.clear()
         _first_seen.clear()
         _first_seen_wall.clear()
+        _manual_tries.clear()
         _snapshot = None
         _episode_open = False
 
@@ -258,6 +283,8 @@ def observe(db: Session, *, now: float | None = None, wall: datetime | None = No
         for key in [k for k in _first_seen if k not in pending]:
             del _first_seen[key]
             _first_seen_wall.pop(key, None)
+        for key in [k for k in _manual_tries if k not in pending]:
+            del _manual_tries[key]
         for key in pending:
             _first_seen.setdefault(key, now)
             _first_seen_wall.setdefault(key, wall_now)

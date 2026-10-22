@@ -290,6 +290,8 @@ html.q-parsing .q2 .tablewrap {
 .swf-tab, .swf-since { opacity: 0.75; }
 .swf-kind { opacity: 0.9; }
 .swf-more { margin-top: 2px; opacity: 0.75; }
+/* «Записати зараз» не допоміг — помітно, але без нового кольору. */
+.swf-tried { font-weight: 600; }
 .swf-retry { flex: 0 0 auto; }
 
 .search-container {

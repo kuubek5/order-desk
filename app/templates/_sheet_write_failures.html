@@ -21,6 +21,10 @@
                 <span class="swf-kind">{{ f.kind_text }}</span>
                 <span class="swf-reason"{% if f.detail %} title="{{ f.detail }}"{% endif %}>— {{ f.reason_text }}</span>
                 <span class="mono swf-since">з {{ f.since.strftime('%H:%M') }}</span>
+                {% if f.tried_at %}
+                {# «Записати зараз» не допоміг — видно й після полла, не лише в тості. #}
+                <span class="swf-tried">· «Записати зараз» о <span class="mono">{{ f.tried_at.strftime('%H:%M') }}</span> не допоміг{% if f.reason == 'row' %}: рядка цієї роботи в таблиці немає або на ньому вже інша робота — повтор цього не виправить{% endif %}</span>
+                {% endif %}
             </li>
             {% endfor %}
         </ul>
