@@ -541,19 +541,12 @@ def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
 _RETRY_NOW_WAIT_SECONDS = 25.0
 
 
-def _merged_counts(db: Session, items: list) -> dict[int, int]:
-    """Скільки листів зведено в кожну роботу банера — текст дії «прибрати з
-    CRM» мусить сказати, що прибирається вся зведена робота."""
-    from app.services.mail_merge import merged_letter_count
-
-    ids = sorted({item.order_id for item in items if item.reason in ("row", "lost")})
-    return merged_letter_count(db, ids) if ids else {}
-
-
 def _write_failures_response(
     request: Request, user, toast: dict | None = None, *,
     db: Session | None = None, triggers: dict | None = None,
 ):
+    from app.services.sheet_row_actions import banner_extras
+
     items = sheet_stuck_writes.failed_sheet_writes()
     response = templates.TemplateResponse(
         request,
@@ -561,7 +554,7 @@ def _write_failures_response(
         {
             "user": user,
             "write_failures": items,
-            "write_failure_merged": _merged_counts(db, items) if db is not None else {},
+            **(banner_extras(db, items) if db is not None else {}),
         },
     )
     payload: dict = dict(triggers or {})

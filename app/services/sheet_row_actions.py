@@ -39,6 +39,45 @@ FLAG_BY_KIND = {"fill": "fill_pending", "row": "sheet_row_pending"}
 FORGET_LABEL = {"fill": "Забути про заливку", "row": "Не дописувати рядок"}
 
 
+def sheet_links(db: Session, order_ids) -> dict[int, str]:
+    """«Відкрити в таблиці ↗»: вкладка (gid з памʼяті, `sheets.sheet_row_url`)
+    і збережений рядок роботи. До Google НЕ ходить; gid ще невідомий (щойно
+    після перезапуску, доки синк не прочитав листинг) — посилання просто немає."""
+    from sqlalchemy import select
+
+    from app.parser import HEADER_ROWS
+    from app.settings_store import get_google_sheet_id
+    from app.sheets import sheet_row_url
+
+    ids = sorted(set(order_ids))
+    if not ids:
+        return {}
+    sheet_id = (get_google_sheet_id(db) or "").strip()
+    links: dict[int, str] = {}
+    for order_id, tab, row_number in db.execute(
+        select(Order.id, Order.sheet_tab, Order.row_number).where(Order.id.in_(ids))
+    ):
+        url = sheet_row_url(
+            sheet_id, tab, row_number + HEADER_ROWS if row_number is not None else None
+        )
+        if url:
+            links[order_id] = url
+    return links
+
+
+def banner_extras(db: Session, items: list) -> dict:
+    """Те, що банер «не дійшло» бере з бази на кожен рендер (сторінка черги й
+    полл): скільки листів зведено в роботу (текст «прибрати з CRM») і
+    посилання на рядок у таблиці. Один запит на кожне, лише для робіт банера."""
+    from app.services.mail_merge import merged_letter_count
+
+    lost_ids = sorted({item.order_id for item in items if item.reason in ("row", "lost")})
+    return {
+        "write_failure_merged": merged_letter_count(db, lost_ids) if lost_ids else {},
+        "write_failure_links": sheet_links(db, [item.order_id for item in items]),
+    }
+
+
 def who(order: Order) -> str:
     return order.client_name or order.work_order_no or f"#{order.id}"
 

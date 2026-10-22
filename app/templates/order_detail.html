@@ -249,6 +249,10 @@
                 <span class="mono swf-since">з {{ f.since.strftime('%d.%m %H:%M') }}</span></li>
             {% endfor %}
         </ul>
+        {% if sheet_failure_link %}
+        <p><a class="swf-sheet-link" href="{{ sheet_failure_link }}" target="_blank" rel="noopener"
+              title="Вкладка {{ order.sheet_tab }} у Google Таблиці, рядок, де стояла ця робота">Відкрити в таблиці ↗</a></p>
+        {% endif %}
         {% if _row_lost %}
         <p class="text-muted">Рядка цієї роботи в таблиці немає або на ньому вже інша робота — повтор цього не виправить.
             {% if sheet_failure_merged > 1 %}Це зведена робота з {{ sheet_failure_merged }} листів — «прибрати» прибирає її всю.{% endif %}</p>

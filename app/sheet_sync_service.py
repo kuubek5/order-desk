@@ -33,6 +33,7 @@ from app.sheets import (
     get_worksheet_by_name,
     open_spreadsheet,
     quota_is_tight,
+    remember_tab_gid,
     tab_name_for,
 )
 from app.services.formatting import pluralize_uk
@@ -511,6 +512,9 @@ def _worksheets_to_sync(
         if title != worksheet.title:
             _warn_odd_tab_title(session, worksheet.title, title)
         all_dated_titles.add(title)
+        # gid — для посилання «відкрити рядок у таблиці» (банер, паспорт):
+        # листинг уже в руках, окремого звернення до Google немає.
+        remember_tab_gid(spreadsheet, worksheet)
         if (
             full_history
             or (first_day <= tab_date <= last_day)

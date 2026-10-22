@@ -9,6 +9,7 @@
 {% if write_failures is defined and write_failures %}
 {% set _shown = write_failures[:8] %}
 {% set _merged = write_failure_merged if write_failure_merged is defined else {} %}
+{% set _links = write_failure_links if write_failure_links is defined else {} %}
 {# Одна робота буває в списку двічі (Sum3D і заливка) — «прибрати з CRM»
    показуємо біля першого її запису. #}
 {% set _acted = namespace(ids=[]) %}
@@ -31,6 +32,12 @@
                 <span class="swf-kind">{{ f.kind_text }}{% if f.reason == 'lost' and f.pending %} (не дійшло: {% for k in f.pending %}{{ {'sum3d': 'Sum3D', 'fill': 'синя заливка'}.get(k, k) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}</span>
                 <span class="swf-reason"{% if f.detail %} title="{{ f.detail }}"{% endif %}>— {{ f.reason_text }}</span>
                 <span class="mono swf-since">з {{ f.since.strftime('%H:%M') }}</span>
+                {% if _links.get(f.order_id) %}
+                {# Вкладка й рядок у Google Таблиці (gid з памʼяті синку) — глянути
+                   своїми очима, що там тепер стоїть. #}
+                <a class="swf-sheet-link" href="{{ _links[f.order_id] }}" target="_blank" rel="noopener"
+                   title="Відкрити вкладку {{ f.tab }} у Google Таблиці на рядку, де стояла ця робота">у таблиці ↗</a>
+                {% endif %}
                 {% if f.tried_at %}
                 {# «Записати зараз» не допоміг — видно й після полла, не лише в тості. #}
                 <span class="swf-tried">· «Записати зараз» о <span class="mono">{{ f.tried_at.strftime('%H:%M') }}</span> не допоміг{% if f.reason == 'row' %}: рядка цієї роботи в таблиці немає або на ньому вже інша робота — повтор цього не виправить{% endif %}</span>

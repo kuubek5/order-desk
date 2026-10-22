@@ -614,6 +614,46 @@ def repair_padded_tab_title(
     )
 
 
+# Номер вкладки (gid) за назвою — для посилання «відкрити рядок у таблиці»
+# (банер «не дійшло», паспорт). Запамʼятовуємо там, де вкладка й так у руках
+# (листинг синку, `get_worksheet_by_name`), — рендер сторінки до Google НЕ
+# ходить. Ключ несе ID таблиці: інша таблиця в налаштуваннях = інші gid.
+_tab_gids: dict[tuple[str, str], int] = {}
+_tab_gids_lock = threading.Lock()
+
+
+def remember_tab_gid(spreadsheet, worksheet) -> None:
+    """Запамʼятати gid вкладки. Ніколи не кидає — це лише підказка для
+    посилання, і падіння тут не має зачепити читання чи запис."""
+    try:
+        from app.business_day import canonical_tab_title
+
+        sheet_id = getattr(spreadsheet, "id", None)
+        gid = getattr(worksheet, "id", None)
+        title = getattr(worksheet, "title", None)
+        if not isinstance(sheet_id, str) or not isinstance(gid, int) or not isinstance(title, str):
+            return
+        with _tab_gids_lock:
+            _tab_gids[(sheet_id, canonical_tab_title(title))] = gid
+    except Exception:  # noqa: BLE001 — див. докстрінг
+        logger.debug("gid вкладки не запамʼятано", exc_info=True)
+
+
+def sheet_row_url(sheet_id: str, tab: str | None, sheet_row: int | None) -> str | None:
+    """Посилання на рядок вкладки в Google Таблиці, або None — gid вкладки ще
+    невідомий (після перезапуску, доки синк не прочитав листинг)."""
+    if not sheet_id or not tab:
+        return None
+    with _tab_gids_lock:
+        gid = _tab_gids.get((sheet_id, tab))
+    if gid is None:
+        return None
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit#gid={gid}"
+    if sheet_row:
+        url += f"&range={sheet_row}:{sheet_row}"
+    return url
+
+
 def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gspread.Worksheet | None:
     """Resolve a worksheet by tab name, caching the object per thread — the
     `spreadsheet.worksheet(name)` metadata fetch is another ~18s on the lab PC's
@@ -651,4 +691,5 @@ def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gsprea
     # функція виходить без жодного звернення до Google.
     repair_padded_tab_title(spreadsheet, worksheet)
     cache[name] = worksheet
+    remember_tab_gid(spreadsheet, worksheet)
     return worksheet

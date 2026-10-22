@@ -71,6 +71,7 @@ from app.services.queue import (
     sort_orders_by_column,
 )
 from app.services.sheet_stuck_writes import failed_sheet_writes
+from app.services.sheet_row_actions import banner_extras
 from app.services.sum3d_capture import cached_projects
 from app.settings_store import get_sum3d_projects_path
 from app.services.shift import open_notes as open_shift_notes
@@ -501,6 +502,7 @@ def build_queue_view(
     # Порожній список — валідний перший стан, а не «немає проєктів».
     _s3 = None
 
+    write_failures = failed_sheet_writes()
     context = {
             "page_title": "Черга робіт",
             "orders": orders,
@@ -539,7 +541,11 @@ def build_queue_view(
             # Запис у таблицю, що не дійшов (Sum3D, синя заливка) — власний
             # самополл-банер `_sheet_write_failures.html`, стан у памʼяті
             # сторожа (sheet_stuck_writes).
-            "write_failures": failed_sheet_writes(),
+            "write_failures": write_failures,
+            # Зведені листи й «відкрити в таблиці ↗» — ті самі, що в поллі банера
+            # (`sheet_row_actions.banner_extras`), інакше перший рендер черги
+            # показував би банер без них до першого полла.
+            **banner_extras(db, write_failures),
             "has_any_orders": bool(all_orders),
             "sheets_configured": sheets_configured(db),
             # Флеші живуть у сесії запиту, тобто на HTTP-рівні — їх домішує роут
