@@ -15,17 +15,22 @@
 
    Роздільник між блоком пошти (найновіша згори) і блоком лаби (порядок
    таблиці) — лише в scope="lab", і лише коли є обидва блоки: два порядки
-   поспіль без межі читались би як один. #}
+   поспіль без межі читались би як один.
+
+   `data-pin-lab` на tbody (є блок лаби, `dock.lab_start`): у ньому пришпилені
+   «мої зараз» стоять першими (сервер, mail_mirror._pinned_first), і queue.js
+   підіймає щойно пришпилений рядок лише в межах цього блоку — від роздільника,
+   а без нього від початку tbody. Блок пошти шпильки не сортують. #}
 {% import "_sortable_th.html" as sortcol with context %}
 {% set sortable = false %}
 {% if mirror_orders %}
 <div class="tablewrap">
     <table class="qtable">
         {% include "_queue_table_head.html" %}
-        <tbody>
+        <tbody{% if dock is defined and dock.lab_start is not none %} data-pin-lab{% endif %}>
             {% for order in mirror_orders %}
                 {% if dock is defined and dock.sep_index is not none and loop.index0 == dock.sep_index %}
-                <tr class="qmir-sep"><td colspan="10">Лабораторія · <span class="qmir-sep-n">{{ mirror_orders|length - dock.sep_index }}</span> · порядок як у таблиці</td></tr>
+                <tr class="qmir-sep"><td colspan="10">Лабораторія · <span class="qmir-sep-n">{{ mirror_orders|length - dock.sep_index }}</span> · {% if dock.lab_pinned %}мої зараз першими, далі як у таблиці{% else %}порядок як у таблиці{% endif %}</td></tr>
                 {% endif %}
                 {% include "_order_row.html" %}
             {% endfor %}

@@ -11,8 +11,14 @@
 тих, хто його не вмикав.
 
 Свій легкий прохід, а не build_queue_view: тут не треба ні фільтрів періоду,
-ні шпильок «мої зараз», ні сканування мережевих тек — лише кілька полів на
-компактний рядок.
+ні сканування мережевих тек — лише кілька полів на компактний рядок.
+
+Шпильки «мої зараз» (власник 22.10.26): у блоці ЛАБИ пришпилені оператором
+роботи стоять першими — як у черзі, тим самим порядком набору (час
+пришпилення, `focus.ranks`), далі решта лаби в порядку таблиці. Блок пошти й
+«уся вкладка» шпильки не сортують (рішення власника: поки лише лаба). Набір —
+той самий словник, з якого роут бере `focused_ids` для рядків
+(`MailDock.focus_rank`), тож підсвітка й порядок не можуть розійтись.
 
 Скидається щодня (власник 29.09.26): раніше список тримав 30-денне вікно
 retention, як черга, і робота лишалась видимою тут навіть ПІСЛЯ видачі —
@@ -34,6 +40,7 @@ retention, як черга, і робота лишалась видимою ту
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -55,6 +62,7 @@ from app.services.look_prefs import (
     MAIL_DOCK_SCOPES,
     mail_dock_ready_of,
 )
+from app.services.focus import ranks as focus_ranks
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.queue import RETENTION_DAYS
 
@@ -142,6 +150,19 @@ def _sheet_order_key(order: Order) -> tuple[int, int, int]:
     return (1, order.row_number, order.id)
 
 
+def _pinned_first(rows: list[Order], focus_rank: Mapping[int, int]) -> list[Order]:
+    """Пришпилені оператором — нагору блоку, у порядку НАБОРУ (час
+    пришпилення), решта — як стояла (сортування стабільне, порядок таблиці
+    серед непришпилених не міняється). Рівно правило черги (`queue_view`,
+    «Пришпилені — нагору»): queue.js кладе щойно пришпилений рядок у КІНЕЦЬ
+    набору, і полл мусить повторити той самий порядок — за порядком таблиці
+    серед пришпилених набір перемішувався б під рукою кожні 15 с."""
+    if not focus_rank:
+        return rows
+    big = len(focus_rank)
+    return sorted(rows, key=lambda o: focus_rank.get(o.id, big))
+
+
 def mail_mirror_orders(
     db: Session, *, scope: str = "", ready: str = MAIL_DOCK_READY_DEFAULT, day: date | None = None
 ) -> list[Order]:
@@ -191,6 +212,17 @@ class MailDock:
     #: Найближчі дні з роботами до / після обраного — стрілки ‹ ›.
     prev_day: date | None = None
     next_day: date | None = None
+    #: Набір «мої зараз» оператора: order_id → місце за часом пришпилення.
+    #: Роут бере звідси ж `focused_ids` для рядків (один запит, одне джерело).
+    focus_rank: dict[int, int] = field(default_factory=dict)
+    #: Індекс першого рядка блоку ЛАБИ, всередині якого пришпилені йдуть
+    #: нагору (scope "lab"/"labonly", коли лаба є); None — такого блоку немає
+    #: (канон, «уся вкладка»). Шаблон ставить `data-pin-lab` на tbody, і
+    #: queue.js підіймає пришпилений рядок лише в межах цього блоку.
+    lab_start: int | None = None
+    #: Скільки пришпилених стоїть нагорі блоку лаби — роздільник тоді каже
+    #: «мої зараз першими», а не «порядок як у таблиці» (було б неправдою).
+    lab_pinned: int = 0
 
     @property
     def title(self) -> str:
@@ -232,6 +264,7 @@ def mail_dock(
     ready: str = MAIL_DOCK_READY_DEFAULT,
     height: int = 0,
     day: date | None = None,
+    focus_rank: Mapping[int, int] | None = None,
 ) -> MailDock:
     """Повний стан доку: роботи, роздільник, лічильники. Один запит живих
     робіт; вкладка дня, числа на кнопках дня й стрілки — з нього ж, без
@@ -258,6 +291,8 @@ def mail_dock(
     others = [o for o in day_rows if o.source != "email"]
 
     dock = MailDock(scope=scope, ready=ready, height=DOCK_HEIGHT.clamp_or_zero(height))
+    # Набір «мої зараз» (`focus.ranks`) — лише в блоці лаби пришпилені першими.
+    dock.focus_rank = dict(focus_rank or {})
     dock.day, dock.today = shown, today
     dock.yesterday, dock.tomorrow = prev_tab_day(today), next_tab_day(today)
     # Стрілки ходять по днях, де є живі роботи, у вікні черги (старіше —
@@ -272,6 +307,7 @@ def mail_dock(
     dock.all_count = len(day_rows)
     lab_ready = filter_by_readiness(lab, ready)
     dock.lab_count = len(lab_ready)
+    dock.lab_pinned = sum(1 for o in lab_ready if o.id in dock.focus_rank)
 
     if scope == "":
         dock.orders = mail
@@ -282,14 +318,16 @@ def mail_dock(
         # Лише лаба, у порядку таблиці, під фільтр готовності — без пошти
         # (власник 08.10.26: 50 листів дня ховали 7 лабораторних).
         lab_ready.sort(key=_sheet_order_key)
-        dock.orders = lab_ready
+        dock.orders = _pinned_first(lab_ready, dock.focus_rank)
+        dock.lab_start = 0 if lab_ready else None
         dock.ready_counts = count_by_readiness(lab)
         return dock
 
     if scope == "lab":
         lab_ready.sort(key=_sheet_order_key)
-        dock.orders = mail + lab_ready
+        dock.orders = mail + _pinned_first(lab_ready, dock.focus_rank)
         dock.sep_index = len(mail) if mail and lab_ready else None
+        dock.lab_start = len(mail) if lab_ready else None
         dock.ready_counts = count_by_readiness(lab)
         return dock
 
@@ -303,7 +341,11 @@ def mail_dock(
 def mail_dock_for(db: Session, user: User | None, day: date | None = None) -> MailDock:
     """Док під збережені налаштування оператора (User.mail_dock_*) на вкладку
     `day` (None — сьогодні). День на акаунті не зберігається — див. докстрінг
-    модуля."""
+    модуля. Набір «мої зараз» — цього оператора (`focus.ranks`, один запит);
+    роут бере `focused_ids` з `dock.focus_rank`, а не другим запитом."""
     scope = (getattr(user, "mail_dock_scope", "") or "") if user is not None else ""
     height = (getattr(user, "mail_dock_height", 0) or 0) if user is not None else 0
-    return mail_dock(db, scope=scope, ready=mail_dock_ready_of(user), height=height, day=day)
+    return mail_dock(
+        db, scope=scope, ready=mail_dock_ready_of(user), height=height, day=day,
+        focus_rank=focus_ranks(db, user),
+    )

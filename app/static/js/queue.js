@@ -1030,14 +1030,38 @@ document.addEventListener("htmx:afterSettle", (event) => {
   const match = path.match(/^\/orders\/(\d+)\/focus$/);
   if (!match) return;
   const row = document.getElementById("order-row-" + match[1]);
-  if (!row || !row.classList.contains("queue-row-focus")) return;
-  // Док екрана пошти пришпилені вгору НЕ сортує (порядок там — листи згори,
-  // лаба як у таблиці, з роздільником між ними): підйом на клієнті поставив
-  // би рядок у чужий блок, а наступний полл повернув би його назад — стрибок
-  // під рукою (§2). Шпилька там лише збирає набір для групового Sum3D.
-  if (row.closest("#mail-queue-mirror")) return;
+  if (!row) return;
   const body = row.parentElement;
   if (!body) return;
+
+  // Док екрана пошти (власник 22.10.26): пришпилені йдуть нагору ЛИШЕ в блоці
+  // лаби — сервер шикує їх там тим самим порядком набору (mail_mirror
+  // `_pinned_first`) і позначає tbody `data-pin-lab`. Блок пошти й «уся
+  // вкладка» шпильки не сортують: підйом там поставив би рядок у чужий блок,
+  // а наступний полл повернув би його назад — стрибок під рукою (§2).
+  // Межа блоку — роздільник «Лабораторія» (є, коли вище стоять листи), без
+  // нього — початок tbody.
+  let first = body.firstElementChild;
+  const inDock = !!row.closest("#mail-queue-mirror");
+  if (inDock) {
+    if (!body.hasAttribute("data-pin-lab")) return;
+    const sep = body.querySelector(":scope > tr.qmir-sep");
+    if (sep) {
+      // Рядок вище роздільника — лист: блок пошти шпильками не сортується.
+      if (sep.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING) return;
+      first = sep.nextElementSibling;
+    }
+    if (!row.classList.contains("queue-row-focus")) {
+      // Зняту шпильку на місце ставить СЕРВЕР, і одразу, у відповідь на клік:
+      // док не слухає refresh-queue, тож без цього рядок висів би серед
+      // пришпилених до 15-секундного полла і стрибав би на своє місце вже
+      // без жодної дії оператора — це саме те, що забороняє §2.
+      document.body.dispatchEvent(new CustomEvent("mail-dock-refresh"));
+      return;
+    }
+  } else if (!row.classList.contains("queue-row-focus")) {
+    return;
+  }
 
   // В КІНЕЦЬ набору, а не вгору. Сервер шикує пришпилені за часом
   // пришпилення (services/focus.ranks), і клієнт мусить тримати рівно той
@@ -1045,11 +1069,11 @@ document.addEventListener("htmx:afterSettle", (event) => {
   // кілька секунд серверне оновлення повертало її на місце, і весь набір
   // перемішувався під рукою. Заразом це найспокійніший порядок: жоден уже
   // пришпилений рядок не рухається взагалі, набір росте вниз.
-  let anchor = body.firstElementChild;
+  let anchor = first;
   while (anchor && anchor !== row && anchor.classList.contains("queue-row-focus")) {
     anchor = anchor.nextElementSibling;
   }
-  if (anchor === row) return; // уже стоїть одразу за набором
+  if (!anchor || anchor === row) return; // уже стоїть одразу за набором
 
   const from = row.getBoundingClientRect().top;
   body.insertBefore(row, anchor);
@@ -1058,9 +1082,22 @@ document.addEventListener("htmx:afterSettle", (event) => {
   if (!shift) return;
 
   // Прокрутити до верху списку, інакше рядок «поїде» туди, де оператор його
-  // не бачить, і рух втратить весь сенс.
+  // не бачить, і рух втратить весь сенс. У доці верх списку — це листи, тож
+  // гортаємо лише до початку блоку лаби і лише якщо рядок пішов вище видимого.
   const scroller = row.closest(".tablewrap");
-  if (scroller && scroller.scrollTop > 0) scroller.scrollTo({ top: 0, behavior: "smooth" });
+  if (scroller && inDock) {
+    const head = scroller.querySelector("thead");
+    const headH = head ? head.getBoundingClientRect().height : 0;
+    const top = scroller.getBoundingClientRect().top + headH;
+    const startEl = (first && first.previousElementSibling) || first || row;
+    const rowTop = row.getBoundingClientRect().top;
+    if (rowTop < top) {
+      const delta = startEl.getBoundingClientRect().top - top;
+      scroller.scrollTo({ top: Math.max(0, scroller.scrollTop + delta), behavior: "smooth" });
+    }
+  } else if (scroller && scroller.scrollTop > 0) {
+    scroller.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   row.classList.add("row-rising");

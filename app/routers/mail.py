@@ -152,7 +152,6 @@ from app.services.mail_mirror import (
     dock_day_from_wire,
     mail_dock_for,
 )
-from app.services.focus import focused_ids
 from app.statuses import STATUSES
 from app.services.config_state import (
     mail_preview_roots,
@@ -872,7 +871,10 @@ def get_mail(
             "dock": dock,
             "mirror_orders": dock.orders,
             "statuses": STATUSES,
-            "focused_ids": focused_ids(db, user),
+            # Набір «мої зараз» — з того самого запиту, за яким док шикує
+            # пришпилені лаби нагору (`dock.focus_rank`): підсвітка й порядок
+            # рахуються з одного словника, як у черзі (queue_view).
+            "focused_ids": set(dock.focus_rank),
         },
     )
 
@@ -951,7 +953,8 @@ def get_mail_queue_mirror(
             # число в шапці відставало б від таблиці до перезавантаження.
             "dock_oob": True,
             "statuses": STATUSES,
-            "focused_ids": focused_ids(db, user),
+            # Той самий словник, за яким док підняв пришпилені лаби (див. get_mail).
+            "focused_ids": set(dock.focus_rank),
         },
     )
     if pick == "1":

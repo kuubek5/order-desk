@@ -1318,6 +1318,14 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   const wrap = target.querySelector(".tablewrap");
   savedMirrorScroll = wrap ? wrap.scrollTop : null;
 });
+// Шпилька в доці переставляє рядок ЛОКАЛЬНО (queue.js підіймає пришпилений у
+// блоці лаби), тож DOM більше не дорівнює останній відповіді полла. Без
+// скидання «байт-у-байт та сама» пришпилили→зняли до полла дало б відповідь,
+// ідентичну попередній, своп пропустився б, і рядок лишився б нагорі без шпильки.
+document.addEventListener("htmx:afterSettle", (event) => {
+  const cfg = event.detail && event.detail.requestConfig;
+  if (cfg && /^\/orders\/\d+\/focus$/.test(cfg.path || "")) lastMirrorResponse = null;
+});
 document.addEventListener("htmx:afterSwap", (event) => {
   const target = event.detail.target;
   if (!target || target.id !== "qmir-body") return;
