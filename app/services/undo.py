@@ -17,6 +17,7 @@ from app.business_day import utc_now
 from app.models import ActionLog, Order, StatusEvent, User
 from app.services.sheet_writeback import (
     clear_sheet_row_background,
+    delete_clears_sheet_row,
     restore_sheet_row,
     submit_sheet_write,
     write_calculated_cell_warm,
@@ -29,7 +30,21 @@ from app.services.sheet_writeback import (
 # others may have built on top of a change made long ago.
 UNDO_WINDOW_SECONDS = 5 * 60
 
-UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator", "quantity", "cam_comment", "delete")
+UNDOABLE_ACTION_TYPES = (
+    "sum3d", "status", "operator", "quantity", "cam_comment", "delete", "forget_pending",
+)
+
+# `ActionLog.new_value` дії «delete», коли робота прибрана БЕЗ стирання рядка,
+# бо рядка в таблиці вже немає (банер «не дійшло», `sheet_row_actions`).
+# Скасування тоді не відновлює рядок, а повтор не стирає: стирати нема чого,
+# а за номером рядка тепер може стояти чужа робота.
+ROWLESS_ARCHIVE_MARK = "archived:rowless"
+
+# Позначки «ще не в таблиці», які можна зняти рукою (`sheet_row_actions.
+# forget_pending`), і як значення лягає в журнал. Sum3D тут свідомо немає:
+# без `sum3d_pending` порожня клітинка L у знайденому синком рядку стерла б
+# Sum3D оператора і в базі.
+FORGETTABLE_FLAGS = ("fill_pending", "sheet_row_pending")
 
 
 def _run_sheet_call(sheet_call) -> str | None:
@@ -92,6 +107,22 @@ def log_action(
     )
     db.add(entry)
     return entry
+
+
+def flag_journal_value(field: str, value) -> str:
+    """Позначку «ще не в таблиці» — у текст журналу (`ActionLog.old_value`)."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return "" if value is None else str(value)
+
+
+def _flag_value(field: str, raw: str | None):
+    """Зворотне до `flag_journal_value`: текст журналу — назад у поле."""
+    if not raw:
+        return None
+    if field == "sheet_row_pending":
+        return datetime.fromisoformat(raw)
+    return raw
 
 
 def snapshot_target(order: Order, field: str):
@@ -179,17 +210,29 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
         # with their data by the next sync (sync_tab matches by row_number). On
         # failure the entry stays not-undone, so ← can simply be pressed again
         # once the sheet is sorted out.
-        restore_error = restore_sheet_row(order)
-        if restore_error:
-            return UndoOutcome(
-                "Не вдалося відновити рядок у таблиці: " + restore_error, kind="error"
-            )
+        # Відновлюємо лише те, що видалення справді стерло: поштова робота й
+        # «рядок видалено свідомо» (`sheet_row_actions.archive_rowless`) рядка
+        # не стирали — для них «назад» = просто повернути роботу в чергу в
+        # тому самому стані, у якому її прибрали.
+        if entry.new_value != ROWLESS_ARCHIVE_MARK and delete_clears_sheet_row(order):
+            restore_error = restore_sheet_row(order)
+            if restore_error:
+                return UndoOutcome(
+                    "Не вдалося відновити рядок у таблиці: " + restore_error, kind="error"
+                )
         order.archived_at = None
         sheet_call = None
         db.add(StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="відновлено з видалення",
         ))
+    elif entry.action_type == "forget_pending":
+        if entry.field not in FORGETTABLE_FLAGS:
+            return UndoOutcome("Цей тип дії поки не скасовується", kind="error")
+        if getattr(order, entry.field) is not None:
+            return UndoOutcome("Не можна скасувати — позначку вже поставили знову", kind="info")
+        setattr(order, entry.field, _flag_value(entry.field, entry.old_value))
+        sheet_call = None
     else:
         return UndoOutcome("Цей тип дії поки не скасовується", kind="error")
 
@@ -283,13 +326,18 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
         if order.archived_at is not None:
             return UndoOutcome("Робота вже видалена", kind="info")
         order.archived_at = utc_now()
-        if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
+        if entry.new_value != ROWLESS_ARCHIVE_MARK and delete_clears_sheet_row(order):
             clear_sheet_row_background(order.id)
         sheet_call = None
         db.add(StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="видалено з черги (повторно)",
         ))
+    elif entry.action_type == "forget_pending":
+        if entry.field not in FORGETTABLE_FLAGS:
+            return UndoOutcome("Цей тип дії поки не повторюється", kind="error")
+        setattr(order, entry.field, None)
+        sheet_call = None
     else:
         return UndoOutcome("Цей тип дії поки не повторюється", kind="error")
 

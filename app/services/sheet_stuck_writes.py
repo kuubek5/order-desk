@@ -178,6 +178,14 @@ def note_write_ok(kind: str, order_id: int) -> None:
         _first_seen_wall.pop(key, None)
 
 
+def forget_order(order_id: int, kinds: tuple[str, ...] = ("sum3d", "fill", "row")) -> None:
+    """Людина розібралась із роботою в CRM (прибрала її або зняла позначку,
+    `sheet_row_actions`) — прибрати її з банера одразу, а не через тік
+    сторожа: банер оновлюється відповіддю тієї ж кнопки."""
+    for kind in kinds:
+        note_write_ok(kind, order_id)
+
+
 def note_manual_retry(items: list[FailedWrite], *, wall: datetime | None = None) -> None:
     """«Записати зараз» натиснули, а ці записи так і не дійшли — банер має це
     показати при кожному полі, а не лише тостом (тост губиться, коли полл

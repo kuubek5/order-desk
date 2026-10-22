@@ -186,6 +186,21 @@ def order_writes_to_sheet(order: Order) -> bool:
     return order.source == "email" and getattr(order, "row_number", None) is not None
 
 
+def delete_clears_sheet_row(order: Order) -> bool:
+    """Чи стирає «Видалити з черги» рядок цієї роботи в таблиці — і, отже, чи
+    є що повертати при «Крок назад».
+
+    ОДИН предикат на три місця: видалення (`orders.delete_order`), скасування
+    й повтор (`undo.perform_undo` / `perform_redo`). Поштова робота рядка не
+    стирає (її рядок — нотатка, яку видалення не чіпає), тож і відновлювати
+    нічого: до 22.10.26 скасування все одно пробувало відновити рядок, бачило
+    його зайнятим САМОЮ роботою і відмовляло — поштову роботу видалення не
+    поверталось ніколи."""
+    return bool(
+        order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number
+    )
+
+
 def order_has_client_fill_row(order: Order) -> bool:
     """Чи має ця робота СВОЮ синю заливку в таблиці — вужче за
     `order_writes_to_sheet`: лабораторні («lab») рядки теж пишуть поля, але

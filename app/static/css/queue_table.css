@@ -293,6 +293,9 @@ html.q-parsing .q2 .tablewrap {
 /* «Записати зараз» не допоміг — помітно, але без нового кольору. */
 .swf-tried { font-weight: 600; }
 .swf-retry { flex: 0 0 auto; }
+/* Дії над роботою без рядка (банер і паспорт) — у рядок за текстом, малі. */
+.swf-acts { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+.swf-act.btn.sm { height: 26px; padding: 0 10px; font-size: var(--fs-1); }
 
 .search-container {
   margin-top: var(--space-4);

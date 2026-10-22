@@ -227,6 +227,40 @@
         {% endif %}
     </div>
 
+    {# Запис у таблицю, що не дійшов, — ті самі причини й дії, що в банері
+       черги (_sheet_write_failures.html, app/services/sheet_row_actions.py).
+       Дії — лише коли рядка роботи в таблиці не знайдено: повтор тут не
+       допоможе, вирішує людина. Без діалогу — «Крок назад» (←) поверне. #}
+    {% if not read_only and sheet_failures %}
+    {% set _row_lost = sheet_failures | selectattr('reason', 'equalto', 'row') | list %}
+    <div class="p2-card p2-sheetrow">
+        <h3>Не дійшло в Google Таблицю</h3>
+        <ul class="swf-list">
+            {% for f in sheet_failures %}
+            <li class="swf-item"><span class="swf-kind">{{ f.kind_text }}</span>
+                <span class="swf-reason"{% if f.detail %} title="{{ f.detail }}"{% endif %}>— {{ f.reason_text }}</span>
+                <span class="mono swf-since">з {{ f.since.strftime('%d.%m %H:%M') }}</span></li>
+            {% endfor %}
+        </ul>
+        {% if _row_lost %}
+        <p class="text-muted">Рядка цієї роботи в таблиці немає або на ньому вже інша робота — повтор цього не виправить.
+            {% if sheet_failure_merged > 1 %}Це зведена робота з {{ sheet_failure_merged }} листів — «прибрати» прибирає її всю.{% endif %}</p>
+        <div class="swf-acts">
+            <button type="button" class="btn sm swf-act p2-rowact"
+                    hx-post="/sheets/write-failures/{{ order.id }}/archive"
+                    hx-vals='{"origin": "passport"}' hx-swap="none" hx-disabled-elt="this"
+                    title="Робота піде в «Архів» (історія лишиться), таблицю не чіпаємо. «Крок назад» (←) поверне.">Рядок видалено свідомо — прибрати з CRM</button>
+            {% for f in _row_lost if f.kind in ('fill', 'row') %}
+            <button type="button" class="btn sm swf-act p2-rowact"
+                    hx-post="/sheets/write-failures/{{ order.id }}/forget"
+                    hx-vals='{"origin": "passport", "kind": "{{ f.kind }}"}' hx-swap="none" hx-disabled-elt="this"
+                    title="Робота лишається в CRM; позначку «ще не в таблиці» знято. «Крок назад» (←) поверне.">{% if f.kind == 'fill' %}Забути про заливку{% else %}Не дописувати рядок{% endif %}</button>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     {# Видалення = архівація + очищення рядка в таблиці. Історія й коментарі
        зберігаються, роботу видно в «Архіві». Для архівних приховано. #}
     {% if not read_only %}
@@ -248,6 +282,16 @@
 </main>
 
 <script>
+(function(){
+  // Дії над роботою без рядка в таблиці: тост приходить з відповіді (HX-Trigger),
+  // а паспорт перемальовуємо за мить — робота стала архівною чи зникла позначка.
+  document.querySelectorAll(".passport2 .p2-rowact").forEach(function (btn) {
+    btn.addEventListener("htmx:afterRequest", function (e) {
+      if (e.detail && e.detail.successful === false) return;
+      window.setTimeout(function () { window.location.reload(); }, 1200);
+    });
+  });
+})();
 (function(){
   // Паспорт відкривається у slide-over черги, тому «оновіть сторінку» тут
   // означало F5 усієї черги — тобто втрату скролу, фільтрів і дня. Замість

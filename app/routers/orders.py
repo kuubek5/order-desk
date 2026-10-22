@@ -57,6 +57,7 @@ from app.services.sheet_writeback import (
     await_on_writeback,
     STILL_QUEUED,
     clear_sheet_row_background,
+    delete_clears_sheet_row,
     order_writes_to_sheet,
     submit_sheet_write,
     wait_for_write,
@@ -902,7 +903,7 @@ async def delete_order(
     # користь двох статичних стрілок; називаємо саме їх (прохання власника,
     # 07.09.26).
     kind = "success"
-    if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
+    if delete_clears_sheet_row(order):
         # Чекаємо на таблицю коротко, щоб повідомлення казало ПРАВДУ. Доти тост
         # обіцяв «рядок очищено» ще до спроби, а відмова стирання (рядок не
         # підтверджено) жила лише в журналі синку — 18.09.26 (#3907) оператор
@@ -1240,6 +1241,18 @@ def get_order_detail(
         .order_by(ActionLog.created_at.desc())
     ).scalars().all()
 
+    # Що з цієї роботи не дійшло в таблицю — стан сторожа в памʼяті, той самий,
+    # що в банері черги. Зведена робота: скільки листів (текст дії «прибрати»).
+    from app.services import sheet_stuck_writes
+    from app.services.mail_merge import merged_letter_count
+
+    sheet_failures = [
+        f for f in sheet_stuck_writes.failed_sheet_writes() if f.order_id == order.id
+    ]
+    sheet_failure_merged = (
+        merged_letter_count(db, [order.id]).get(order.id, 0) if sheet_failures else 0
+    )
+
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -1254,6 +1267,8 @@ def get_order_detail(
             # (app/services/order_path.py). Питання «коли прорахували і хто»
             # раніше вимагало зіставляти два списки очима.
             "order_path": build_order_path(order, list(actions)),
+            "sheet_failures": sheet_failures,
+            "sheet_failure_merged": sheet_failure_merged,
         },
     )
 

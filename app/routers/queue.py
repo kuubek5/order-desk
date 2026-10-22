@@ -27,6 +27,7 @@ from app.routers.section_gate import blocked_response
 from app.routers.deps import (
     get_current_user,
     is_trusted_request, TRUSTED_ONLY_DETAIL,
+    toast_response,
     login_redirect,
     get_db,
     templates,
@@ -540,14 +541,34 @@ def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
 _RETRY_NOW_WAIT_SECONDS = 25.0
 
 
-def _write_failures_response(request: Request, user, toast: dict | None = None):
+def _merged_counts(db: Session, items: list) -> dict[int, int]:
+    """Скільки листів зведено в кожну роботу банера — текст дії «прибрати з
+    CRM» мусить сказати, що прибирається вся зведена робота."""
+    from app.services.mail_merge import merged_letter_count
+
+    ids = sorted({item.order_id for item in items if item.reason == "row"})
+    return merged_letter_count(db, ids) if ids else {}
+
+
+def _write_failures_response(
+    request: Request, user, toast: dict | None = None, *,
+    db: Session | None = None, triggers: dict | None = None,
+):
+    items = sheet_stuck_writes.failed_sheet_writes()
     response = templates.TemplateResponse(
         request,
         "_sheet_write_failures.html",
-        {"user": user, "write_failures": sheet_stuck_writes.failed_sheet_writes()},
+        {
+            "user": user,
+            "write_failures": items,
+            "write_failure_merged": _merged_counts(db, items) if db is not None else {},
+        },
     )
+    payload: dict = dict(triggers or {})
     if toast:
-        response.headers["HX-Trigger"] = json.dumps({"toast": toast})
+        payload["toast"] = toast
+    if payload:
+        response.headers["HX-Trigger"] = json.dumps(payload)
     return response
 
 
@@ -558,7 +579,85 @@ def sheet_write_failures_banner(request: Request, db: Session = Depends(get_db))
     user = get_current_user(request, db)
     if user is None:
         return HTMLResponse("")
-    return _write_failures_response(request, user)
+    return _write_failures_response(request, user, db=db)
+
+
+def _row_action_reply(request: Request, user, db: Session, origin: str, toast: dict, *,
+                      refresh_queue: bool = False):
+    """Відповідь дії над роботою без рядка. З банера — свіжий банер у
+    #sheet-writes-slot + тост (+ перечитати чергу, коли робота зникла з неї).
+    З паспорта (``origin=passport``) — лише тост: паспорт сам перемальовується
+    за мить (order_detail.html), щоб тост устиг прочитатись."""
+    triggers = {"refresh-queue": True} if refresh_queue else None
+    if origin == "passport":
+        return toast_response(toast["message"], kind=toast["kind"])
+    return _write_failures_response(request, user, toast, db=db, triggers=triggers)
+
+
+@router.post("/sheets/write-failures/{order_id}/archive", response_class=HTMLResponse)
+def sheet_write_failure_archive(
+    request: Request, order_id: int, origin: str = Form(""), db: Session = Depends(get_db),
+):
+    """«Рядок видалено свідомо — прибрати з CRM» (`sheet_row_actions`).
+
+    Те саме, що «Видалити з черги» (архів, історія лишається, «Крок назад»
+    поверне), але таблицю НЕ чіпає: рядка вже немає, а за його номером може
+    стояти чужа робота. Права — як у видалення: будь-хто, хто увійшов."""
+    from app.services import sheet_row_actions
+    from app.services.mail_merge import merged_letter_count
+
+    user = get_current_user(request, db)
+    if user is None:
+        return HTMLResponse("", status_code=401)
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+    if sync_control.is_paused():
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "info",
+            "message": "Синк на паузі — зніміть паузу, і тоді прибирайте: на паузі «Крок назад» не працює.",
+        })
+    if order.archived_at is not None:
+        sheet_stuck_writes.forget_order(order.id)
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "info", "message": "Робота вже в архіві.",
+        })
+    merged = merged_letter_count(db, [order.id]).get(order.id, 0)
+    message = sheet_row_actions.archive_rowless(db, order, user, merged_letters=merged)
+    return _row_action_reply(
+        request, user, db, origin, {"kind": "success", "message": message}, refresh_queue=True,
+    )
+
+
+@router.post("/sheets/write-failures/{order_id}/forget", response_class=HTMLResponse)
+def sheet_write_failure_forget(
+    request: Request, order_id: int, kind: str = Form(""), origin: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """«Забути про заливку» / «Не дописувати рядок»: зняти позначку «ще не в
+    таблиці», робота лишається в CRM. Журнал дій, «Крок назад» поверне."""
+    from app.services import sheet_row_actions
+
+    user = get_current_user(request, db)
+    if user is None:
+        return HTMLResponse("", status_code=401)
+    if kind not in sheet_row_actions.FLAG_BY_KIND:
+        raise HTTPException(status_code=400, detail="невідомий вид позначки")
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+    if sync_control.is_paused():
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "info",
+            "message": "Синк на паузі — зніміть паузу: на паузі «Крок назад» не працює.",
+        })
+    message = sheet_row_actions.forget_pending(db, order, user, kind)
+    if message is None:
+        sheet_stuck_writes.forget_order(order.id, kinds=(kind,))
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "info", "message": "Позначки вже немає — запис дійшов або її зняли.",
+        })
+    return _row_action_reply(request, user, db, origin, {"kind": "success", "message": message})
 
 
 @router.post("/sheets/write-failures/retry", response_class=HTMLResponse)
@@ -582,18 +681,18 @@ def sheet_write_failures_retry(request: Request, db: Session = Depends(get_db)):
         return _write_failures_response(request, user, {
             "kind": "warning",
             "message": "Синк на паузі — у таблицю зараз не пишемо. Зніміть паузу, і запис піде сам.",
-        })
+        }, db=db)
     if quota_is_tight():
         return _write_failures_response(request, user, {
             "kind": "warning",
             "message": "Google просить зачекати (забагато запитів) — спробуйте за хвилину, повтор іде й сам.",
-        })
+        }, db=db)
 
     items = sheet_stuck_writes.failed_sheet_writes()
     if not items:
         return _write_failures_response(request, user, {
             "kind": "success", "message": "Усе вже в таблиці — записувати нічого.",
-        })
+        }, db=db)
 
     futures = retry_failed_writes_now(
         db,
@@ -631,7 +730,7 @@ def sheet_write_failures_retry(request: Request, db: Session = Depends(get_db)):
             "kind": "error",
             "message": f"Записано {done} з {len(items)}. Не дійшло: {_retry_failure_lines(left)}",
         }
-    return _write_failures_response(request, user, toast)
+    return _write_failures_response(request, user, toast, db=db)
 
 
 # Скільки робіт називати в тості поіменно; решта — «і ще N» (повний список —
