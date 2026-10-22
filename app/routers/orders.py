@@ -1262,7 +1262,7 @@ def get_order_detail(
     sheet_failure_merged = (
         merged_letter_count(db, [order.id]).get(order.id, 0) if sheet_failures else 0
     )
-    from app.services.sheet_row_actions import sheet_links
+    from app.services.sheet_row_actions import can_rewrite_row, sheet_links
 
     sheet_failure_link = (
         sheet_links(db, [order.id]).get(order.id) if sheet_failures else None
@@ -1285,6 +1285,7 @@ def get_order_detail(
             "sheet_failures": sheet_failures,
             "sheet_failure_merged": sheet_failure_merged,
             "sheet_failure_link": sheet_failure_link,
+            "can_rewrite_row": can_rewrite_row(order),
         },
     )
 

@@ -10,6 +10,7 @@
 {% set _shown = write_failures[:8] %}
 {% set _merged = write_failure_merged if write_failure_merged is defined else {} %}
 {% set _links = write_failure_links if write_failure_links is defined else {} %}
+{% set _rewritable = write_failure_rewritable if write_failure_rewritable is defined else [] %}
 {# Одна робота буває в списку двічі (Sum3D і заливка) — «прибрати з CRM»
    показуємо біля першого її запису. #}
 {% set _acted = namespace(ids=[]) %}
@@ -56,6 +57,15 @@
                             hx-target="#sheet-writes-slot" hx-swap="innerHTML"
                             hx-disabled-elt="this" data-kload="self"
                             title="Робота піде в «Архів» (історія лишиться), таблицю не чіпаємо.{% if _n > 1 %} Це зведена робота з {{ _n }} листів — прибирається вся.{% endif %} «Крок назад» (←) поверне.">Рядок видалено свідомо — прибрати з CRM</button>
+                    {% endif %}
+                    {% if f.reason == 'lost' and f.order_id in _rewritable %}
+                    {# Рядок пошти зник ВИПАДКОВО — CRM спершу шукає його в таблиці
+                       («нічий» рядок із тим самим ключем), лише тоді дописує новий. #}
+                    <button type="button" class="btn sm swf-act swf-act-rewrite"
+                            hx-post="/sheets/write-failures/{{ f.order_id }}/rewrite-row"
+                            hx-target="#sheet-writes-slot" hx-swap="innerHTML"
+                            hx-disabled-elt="this" data-kload="self"
+                            title="Рядок загубився випадково: CRM спершу пошукає його у вкладці {{ f.tab }}, а не знайде — допише рядок-нотатку внизу. Якщо рядок видалили свідомо — краще «прибрати з CRM».">Записати рядок наново</button>
                     {% endif %}
                     {# «Забути» — лише коли є що забувати: заливка (окремим записом
                        чи в роботі «без рядка») або рядок пошти, що ще чекає. #}

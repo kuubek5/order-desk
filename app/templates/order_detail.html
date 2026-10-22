@@ -261,6 +261,12 @@
                     hx-post="/sheets/write-failures/{{ order.id }}/archive"
                     hx-vals='{"origin": "passport"}' hx-swap="none" hx-disabled-elt="this"
                     title="Робота піде в «Архів» (історія лишиться), таблицю не чіпаємо. «Крок назад» (←) поверне.">Рядок видалено свідомо — прибрати з CRM</button>
+            {% if can_rewrite_row %}
+            <button type="button" class="btn sm swf-act p2-rowact"
+                    hx-post="/sheets/write-failures/{{ order.id }}/rewrite-row"
+                    hx-vals='{"origin": "passport"}' hx-swap="none" hx-disabled-elt="this"
+                    title="Рядок загубився випадково: CRM спершу пошукає його у вкладці {{ order.sheet_tab }}, а не знайде — допише рядок-нотатку внизу. Якщо рядок видалили свідомо — краще «прибрати з CRM».">Записати рядок наново</button>
+            {% endif %}
             {% for k in _forget %}
             <button type="button" class="btn sm swf-act p2-rowact"
                     hx-post="/sheets/write-failures/{{ order.id }}/forget"

@@ -164,6 +164,7 @@ GET /sheets/write-failures
 POST /sheets/write-failures/retry
 POST /sheets/write-failures/{order_id}/archive
 POST /sheets/write-failures/{order_id}/forget
+POST /sheets/write-failures/{order_id}/rewrite-row
 GET /setup
 POST /actions/undo-last
 GET /machines

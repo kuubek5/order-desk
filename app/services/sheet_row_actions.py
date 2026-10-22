@@ -75,7 +75,71 @@ def banner_extras(db: Session, items: list) -> dict:
     return {
         "write_failure_merged": merged_letter_count(db, lost_ids) if lost_ids else {},
         "write_failure_links": sheet_links(db, [item.order_id for item in items]),
+        "write_failure_rewritable": rewritable_ids(
+            db, [item.order_id for item in items if item.reason == "lost"]
+        ),
     }
+
+
+def can_rewrite_row(order: Order) -> bool:
+    """«Записати рядок наново» — лише поштова робота, чийого рядка синк не
+    бачить (`sheet_row_lost_at`), і не в архіві. Вписаного клієнта (sheet_client)
+    дописувати — окрема робота, на потім (пропозиція 22.10.26, дія b)."""
+    return (
+        order.source == "email"
+        and order.archived_at is None
+        and order.sheet_row_lost_at is not None
+    )
+
+
+def rewritable_ids(db: Session, order_ids) -> set[int]:
+    """Ті з робіт, яким можна запропонувати «Записати рядок наново» — те саме
+    правило, що `can_rewrite_row`, одним запитом для банера."""
+    from sqlalchemy import select
+
+    ids = sorted(set(order_ids))
+    if not ids:
+        return set()
+    return set(db.scalars(
+        select(Order.id).where(
+            Order.id.in_(ids),
+            Order.source == "email",
+            Order.archived_at.is_(None),
+            Order.sheet_row_lost_at.is_not(None),
+        )
+    ))
+
+
+def start_rewrite_row(db: Session, order: Order, user: User) -> None:
+    """Поставити поштову роботу «без рядка» в чергу на запис рядка наново.
+    Комітить. Сам запис робить наявний повтор рядків пошти
+    (`mail_row_retry.append_pending_mail_row_warm`): спершу шукає «нічий»
+    рядок із тим самим ключем і Sum3D (рядок, який повернули руками), і
+    лише тоді дописує рядок-нотатку внизу вкладки.
+
+    Ставимо рівно ті поля, що перевіряє `pending_row_clause()` — `row_number`
+    None і `sheet_row_pending` — інакше банер і повтор розійдуться. Видана
+    робота («знайдено при видачі»/«видано»): новий рядок-нотатка лягає синім,
+    тож одразу ставимо `fill_pending="clear"` — повтор заливки зніме синє,
+    щойно рядок зʼявиться (як `restore_sheet_row_warm` не фарбує виданих).
+
+    «Крок назад» цю дію не скасовує: скасування означало б стерти рядок у
+    спільній таблиці, а це — лише явною кнопкою. Слід — у «Журналі дій»."""
+    from datetime import datetime
+
+    old_row = order.row_number
+    order.row_number = None
+    order.sheet_row_pending = datetime.now()
+    order.sheet_row_lost_at = None
+    if order.status in ("знайдено при видачі", "видано"):
+        order.fill_pending = "clear"
+    log_action(
+        db, order=order, operator=user, action_type="rewrite_row", field="row_number",
+        old="" if old_row is None else str(old_row), new="",
+        note=f"рядок у таблиці записується наново: {who(order)}",
+    )
+    db.commit()
+    sheet_stuck_writes.forget_order(order.id)
 
 
 def who(order: Order) -> str:

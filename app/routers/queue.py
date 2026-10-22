@@ -622,6 +622,64 @@ def sheet_write_failure_archive(
     )
 
 
+@router.post("/sheets/write-failures/{order_id}/rewrite-row", response_class=HTMLResponse)
+def sheet_write_failure_rewrite_row(
+    request: Request, order_id: int, origin: str = Form(""), db: Session = Depends(get_db),
+):
+    """«Записати рядок наново» — поштова робота, чий рядок зник ВИПАДКОВО.
+
+    Звичайний `def` (threadpool): чекаємо пул запису коротко, як «Записати
+    зараз», щоб тост сказав правду. Сам запис — наявний повтор рядків пошти
+    (`mail_row_retry`): спершу «нічий» рядок, лише потім дописування."""
+    from concurrent.futures import wait as wait_futures
+
+    from app.services import sheet_row_actions
+    from app.services.mail_row_retry import retry_pending_mail_rows_now
+    from app.sheets import quota_is_tight
+
+    user = get_current_user(request, db)
+    if user is None:
+        return HTMLResponse("", status_code=401)
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+    if sync_control.is_paused():
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "info", "message": "Синк на паузі — у таблицю зараз не пишемо. Зніміть паузу й спробуйте ще раз.",
+        })
+    if quota_is_tight():
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "warning", "message": "Google просить зачекати (забагато запитів) — спробуйте за хвилину.",
+        })
+    if not sheet_row_actions.can_rewrite_row(order):
+        return _row_action_reply(request, user, db, origin, {
+            "kind": "info",
+            "message": "Записати рядок наново можна лише поштовій роботі, чийого рядка в таблиці немає.",
+        })
+    sheet_row_actions.start_rewrite_row(db, order, user)
+    futures = retry_pending_mail_rows_now(db, {order.id})
+    db.commit()
+    _, not_done = wait_futures(futures, timeout=_RETRY_NOW_WAIT_SECONDS)
+    db.commit()
+    db.refresh(order)
+    sheet_stuck_writes.observe(db)
+    if not_done:
+        toast = {"kind": "info", "message": "Таблиця відповідає повільно — рядок допишеться у фоні, банер оновиться сам."}
+    elif order.row_number is not None:
+        from app.parser import HEADER_ROWS
+
+        toast = {
+            "kind": "success",
+            "message": f"{sheet_row_actions.who(order)}: рядок {order.row_number + HEADER_ROWS} у вкладці {order.sheet_tab} — робота знову в таблиці.",
+        }
+    else:
+        toast = {
+            "kind": "error",
+            "message": f"{sheet_row_actions.who(order)}: рядок поки не записано — повтор іде сам, причина в банері.",
+        }
+    return _row_action_reply(request, user, db, origin, toast, refresh_queue=True)
+
+
 @router.post("/sheets/write-failures/{order_id}/forget", response_class=HTMLResponse)
 def sheet_write_failure_forget(
     request: Request, order_id: int, kind: str = Form(""), origin: str = Form(""),
