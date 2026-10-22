@@ -38,6 +38,25 @@ class FakeWorksheet:
         self.calls.append(f"col_values:{col}")
         return list(self._columns.get(col, []))
 
+    def get(self, rng):
+        """Зона B:J — клієнтський рядок звіряється повним ключем (ім'я +
+        матеріал + кількість). Фікстури задають лише імена в E; матеріал і
+        кількість іменованих рядків — ті самі, що в `_client_order`."""
+        self.calls.append(f"get:{rng}")
+        assert rng == "B:J", rng
+        names = self._columns.get(5, [])
+        columns = dict(self._columns)
+        columns.setdefault(3, ["1" if n else "" for n in names])
+        columns.setdefault(4, ["mono a3" if n else "" for n in names])
+        height = max((len(columns.get(c, [])) for c in range(2, 11)), default=0)
+        return [
+            [
+                columns.get(c, [])[i] if i < len(columns.get(c, [])) else ""
+                for c in range(2, 11)
+            ]
+            for i in range(height)
+        ]
+
     def batch_update(self, updates):
         self.calls.append("batch_update")
         self.updates.extend(updates)
@@ -61,7 +80,9 @@ def test_resolve_rows_bulk_reads_each_column_once():
 
     rows = resolve_rows_bulk(ws, orders)
 
-    assert ws.calls == ["col_values:5"], "одне читання колонки на всю пачку"
+    # Одне читання на всю пачку. До 22.10.26 це була колонка E (лише ім'я);
+    # тепер зона B:J — клієнтський рядок звіряється повним ключем.
+    assert ws.calls == ["get:B:J"], "одне читання зони на всю пачку"
     assert rows[1] == 7 and rows[20] == 26
 
 
@@ -92,6 +113,7 @@ def test_resolve_rows_bulk_skips_everything_when_the_read_fails():
     """Непідтверджений рядок гірший за пропущений запис — і в пачці теж."""
     ws = FakeWorksheet({})
     ws.col_values = MagicMock(side_effect=RuntimeError("проксі обірвав зʼєднання"))
+    ws.get = MagicMock(side_effect=RuntimeError("проксі обірвав зʼєднання"))
     orders = [_client_order(i, i, f"Клієнт{i}") for i in range(1, 4)]
 
     rows = resolve_rows_bulk(ws, orders)
@@ -166,8 +188,9 @@ def test_issue_group_warm_scales_with_the_tab_not_the_batch(db_factory, monkeypa
     error = wb.issue_group_warm({oid: ["calculated_raw"] for oid in ids})
 
     assert error is None
-    # Дванадцять робіт: одне читання імен, одне читання маркерів, один запис.
-    assert ws.calls == ["col_values:5", "col_values:13", "batch_update"]
+    # Дванадцять робіт: одне читання ключів (зона B:J; до 22.10.26 — колонка
+    # імен E), одне читання маркерів, один запис.
+    assert ws.calls == ["get:B:J", "col_values:13", "batch_update"]
     assert len(ws.updates) == 12
     with db_factory() as db:
         assert db.query(SyncLog).filter(SyncLog.status == "ok").count() == 12

@@ -85,7 +85,113 @@ def _identity_cell(order: Order) -> tuple[int | None, str]:
     return None, ""
 
 
-def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
+# Зона, з якої складається ключ клієнтського/поштового рядка — та сама, що в
+# `sync._row_identity`: B (наряд) і J (технік) кажуть, чи рядок узагалі
+# клієнтський, C/D/E — кількість, матеріал, ім'я клієнта.
+_KEY_FIRST, _KEY_LAST = "B", "J"
+
+
+def _client_order_key(order: Order, *, with_quantity: bool = True) -> tuple | None:
+    """Ключ клієнтської/поштової роботи — дзеркало `sync._order_identity`:
+    ім'я клієнта + матеріал + кількість (без імені — матеріал + кількість).
+
+    ``with_quantity=False`` — коли викликач саме ПЕРЕПИСУЄ кількість (правка
+    кількості, «Крок назад», сума зведених листів): у таблиці ще стара, у базі
+    вже нова, і повний ключ не зійшовся б ніколи.
+
+    None — роботі нема чим назватись (не клієнтська, або без імені й без пари
+    матеріал+кількість): тоді звіряти нема з чим."""
+    if getattr(order, "source", None) not in ("sheet_client", "email"):
+        return None
+    client = (getattr(order, "client_name", "") or "").strip().casefold()
+    material = (getattr(order, "material_color", "") or "").strip().casefold()
+    quantity = (getattr(order, "quantity", "") or "").strip()
+    if not client and not (material and quantity):
+        return None
+    return (client, material, quantity if with_quantity else None)
+
+
+def _row_client_key(cells, *, with_quantity: bool = True) -> tuple | None:
+    """Ключ рядка таблиці з клітинок B..J — дзеркало `sync._row_identity`.
+
+    Рядок із нарядом (B) або техніком (J) — не клієнтський і ключа не має:
+    інакше лабораторний рядок, у чиєму «виді» стоїть слово, схоже на ім'я,
+    «впізнався» б як клієнт."""
+    if not isinstance(cells, (list, tuple)):
+        return None
+
+    def cell(col: int) -> str:
+        idx = col - COL_WORK_ORDER_NO
+        value = cells[idx] if 0 <= idx < len(cells) else ""
+        return str(value if value is not None else "").strip()
+
+    if cell(COL_WORK_ORDER_NO) or cell(COL_TECHNICIAN):
+        return None
+    return (
+        cell(COL_KIND).casefold(),
+        cell(COL_MATERIAL_COLOR).casefold(),
+        cell(COL_QUANTITY) if with_quantity else None,
+    )
+
+
+def _client_rows_by_key(values, key: tuple) -> list[int]:
+    """Номери рядків (1-індексні, нижче заголовків), чий ключ = ``key``."""
+    with_quantity = key[2] is not None
+    return [
+        idx for idx, cells in enumerate(values, start=1)
+        if idx > HEADER_ROWS and _row_client_key(cells, with_quantity=with_quantity) == key
+    ]
+
+
+def _resolve_client_row(
+    worksheet: gspread.Worksheet, order: Order, key: tuple
+) -> int | None:
+    """Позиція клієнтського/поштового рядка за ПОВНИМ ключем.
+
+    До 22.10.26 звірялось лише ім'я в E. Бойовий випадок 20.10.26 (#6472):
+    рядок роботи свідомо видалили — і якби у вкладці лишився РІВНО ОДИН інший
+    рядок того самого клієнта (інша робота: інший колір чи кількість), запис
+    «переїхав» би на нього й зняв чи поставив заливку чужій роботі. Те саме на
+    збереженій позиції: після видалення сюди зʼїжджає сусідній рядок, і якщо
+    це той самий клієнт — ім'я збігалось. Тепер рядок наш, лише коли
+    збігаються ім'я, матеріал і кількість, як у синку.
+
+    Звернень до Google стільки ж, скільки було: рядок, а при розбіжності —
+    зона; лише ширші (B:J замість клітинки чи колонки E)."""
+    row = _sheet_row(order)
+    with_quantity = key[2] is not None
+    try:
+        current = call_with_retry(lambda: worksheet.get(f"{_KEY_FIRST}{row}:{_KEY_LAST}{row}"))
+    except Exception:
+        return None  # позицію не підтверджено — пропускаємо запис
+    if not isinstance(current, list):
+        return row  # no real value to compare (e.g. a mock) — trust stored row
+    cells = current[0] if current else []
+    if _row_client_key(cells, with_quantity=with_quantity) == key:
+        return row  # fast path: рядок досі несе цю роботу
+
+    # Розбіжність — рядки зсунулись або рядка вже немає. Шукаємо в зоні, і
+    # лише ЄДИНИЙ збіг повного ключа вважається знайденим: двійник (той самий
+    # клієнт, матеріал і кількість) — неоднозначність, не вгадуємо.
+    try:
+        values = call_with_retry(lambda: worksheet.get(f"{_KEY_FIRST}:{_KEY_LAST}"))
+    except Exception:
+        return None  # перерахувати позицію не вдалося — пропускаємо запис
+    if not isinstance(values, list):
+        return None
+    matches = _client_rows_by_key(values, key)
+    if len(matches) != 1:
+        return None  # gone or ambiguous — skip rather than clobber a neighbour
+    order.row_number = matches[0] - HEADER_ROWS
+    return matches[0]
+
+
+def _resolve_row(
+    worksheet: gspread.Worksheet,
+    order: Order,
+    *,
+    rewriting_quantity: bool = False,
+) -> int | None:
     """The sheet row that ACTUALLY holds this order's work right now.
 
     row_number is captured at import time, but deleting a row in Google Sheets
@@ -95,12 +201,20 @@ def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
     client and, when a shift has moved it, relocates by scanning the identity
     column and corrects order.row_number in place.
 
+    Клієнтський і поштовий рядок звіряється ПОВНИМ ключем (ім'я + матеріал +
+    кількість, `_resolve_client_row`), лабораторний — нарядом, як і в синку.
+    ``rewriting_quantity`` — викликач саме ПЕРЕПИСУЄ кількість: у таблиці
+    вона ще стара, тож ключ звіряється без неї (ім'я + матеріал).
+
     Returns the correct 1-indexed row, or None when the work can't be located
     unambiguously (row genuinely gone, or a repeated наряд/duplicate client makes
     the match ambiguous) — the caller must then SKIP the write rather than risk
     clobbering someone else's row. The DB keeps the value regardless; the next
     sync re-links row_number and a later write reaches the right cell."""
     row = _sheet_row(order)
+    client_key = _client_order_key(order, with_quantity=not rewriting_quantity)
+    if client_key is not None:
+        return _resolve_client_row(worksheet, order, client_key)
     col, expected = _identity_cell(order)
     if col is None or not expected:
         return row  # nothing to verify against — trust the stored position
@@ -172,17 +286,56 @@ def resolve_rows_bulk(
     ЄДИНИЙ збіг вважається знайденим; читання колонки впало — `None`
     (непідтверджений рядок гірший за пропущений запис).
 
+    Клієнтські й поштові роботи звіряються ПОВНИМ ключем (ім'я + матеріал +
+    кількість, як `_resolve_client_row`) з однієї зони B:J на всю пачку.
+    Кількість тут завжди частина ключа: пакетні шляхи (видача, пачка правок
+    черги, мітка печі) кількість не переписують — її пише лише
+    `write_order_fields` (правка кількості, «Крок назад», зведені листи), і
+    там ключ без неї. Пустиш кількість у пачку — додай сюди те саме виключення,
+    інакше кожен такий запис мовчки пропуститься.
+
     Повертає {order.id: рядок або None}.
     """
     resolved: dict[int, int | None] = {}
     by_column: dict[int, list[Order]] = {}
+    client_orders: list[tuple[Order, tuple]] = []
     for order in orders:
+        client_key = _client_order_key(order)
+        if client_key is not None:
+            client_orders.append((order, client_key))
+            continue
         col, expected = _identity_cell(order)
         if col is None or not expected:
             # Нема з чим звіряти — довіряємо збереженій позиції, як і поодинці.
             resolved[order.id] = _sheet_row(order)
             continue
         by_column.setdefault(col, []).append(order)
+
+    if client_orders:
+        try:
+            zone = call_with_retry(lambda: worksheet.get(f"{_KEY_FIRST}:{_KEY_LAST}"))
+        except Exception:
+            logger.warning("Пакетна звірка позицій: зону %s:%s не прочитано", _KEY_FIRST, _KEY_LAST)
+            zone = None
+        for order, key in client_orders:
+            if zone is None:
+                resolved[order.id] = None
+                continue
+            if not isinstance(zone, list):
+                # no real value to compare (e.g. a mock) — trust stored row
+                resolved[order.id] = _sheet_row(order)
+                continue
+            stored = _sheet_row(order)
+            at_stored = zone[stored - 1] if 0 < stored <= len(zone) else []
+            if _row_client_key(at_stored, with_quantity=key[2] is not None) == key:
+                resolved[order.id] = stored
+                continue
+            hits = _client_rows_by_key(zone, key)
+            if len(hits) != 1:
+                resolved[order.id] = None
+                continue
+            order.row_number = hits[0] - HEADER_ROWS
+            resolved[order.id] = hits[0]
 
     for col, col_orders in by_column.items():
         try:
@@ -534,7 +687,12 @@ def write_order_fields(
     би її назад у базу (перевірено наживо 15.09.26 — колонка М лишалась «ЦЦ»
     після очищення ID).
     """
-    row = _resolve_row(worksheet, order)
+    # Кількість, яку саме переписуємо (правка кількості, «Крок назад», сума
+    # зведених листів), у таблиці ще стара — тоді ключ звіряється без неї.
+    if "quantity" in fields:
+        row = _resolve_row(worksheet, order, rewriting_quantity=True)
+    else:
+        row = _resolve_row(worksheet, order)
     if row is None:
         # The row shifted and can't be re-located unambiguously — skip rather
         # than write sum3d/markers onto a neighbour's row. The DB keeps the value

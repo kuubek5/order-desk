@@ -161,12 +161,25 @@ class TestWritesLeaveTheEventLoop:
         assert error == "Google відмовив"
 
 
+def _client_zone(ws, cell_value, column_values):
+    """Та сама таблиця очима клієнтської звірки (з 22.10.26 — зона B:J, повний
+    ключ ім'я + матеріал + кількість). ``cell_value`` — E збереженого рядка,
+    ``column_values`` — колонка E; матеріал і кількість порожні, як і в
+    робіт цих тестів."""
+    def get(rng):
+        if rng == "B:J":
+            return [["", "", "", value or ""] for value in column_values]
+        return [["", "", "", cell_value or ""]]
+    ws.get.side_effect = get
+
+
 class TestWritesConfirmTheRow:
     def _worksheet(self, cell_value, column_values):
         ws = MagicMock()
         ws.id = 11
         ws.cell.return_value = SimpleNamespace(value=cell_value)
         ws.col_values.return_value = column_values
+        _client_zone(ws, cell_value, column_values)
         return ws
 
     def _lab_order(self):
@@ -274,6 +287,7 @@ class TestEmptyCellIsNotAConfirmation:
         ws.id = 11
         ws.cell.return_value = SimpleNamespace(value=cell_value)
         ws.col_values.return_value = column_values
+        _client_zone(ws, cell_value, column_values)
         return ws
 
     def _lab_order(self):
