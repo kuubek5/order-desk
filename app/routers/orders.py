@@ -1249,6 +1249,16 @@ def get_order_detail(
     sheet_failures = [
         f for f in sheet_stuck_writes.failed_sheet_writes() if f.order_id == order.id
     ]
+    # «Рядка немає» стоїть у базі — паспорт показує його й тоді, коли сторож
+    # ще не встиг (перший тік після рестарту): один запис замість окремих.
+    if (
+        order.sheet_row_lost_at is not None
+        and order.archived_at is None
+        and not any(f.reason == "lost" for f in sheet_failures)
+    ):
+        sheet_failures = [sheet_stuck_writes.lost_entry(
+            order, tuple(f.kind for f in sheet_failures if f.kind in ("sum3d", "fill")),
+        )]
     sheet_failure_merged = (
         merged_letter_count(db, [order.id]).get(order.id, 0) if sheet_failures else 0
     )

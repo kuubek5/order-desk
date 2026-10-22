@@ -232,7 +232,14 @@
        Дії — лише коли рядка роботи в таблиці не знайдено: повтор тут не
        допоможе, вирішує людина. Без діалогу — «Крок назад» (←) поверне. #}
     {% if not read_only and sheet_failures %}
-    {% set _row_lost = sheet_failures | selectattr('reason', 'equalto', 'row') | list %}
+    {% set _row_lost = sheet_failures | selectattr('reason', 'in', ['row', 'lost']) | list %}
+    {# Що можна «забути»: заливку (окремий запис чи в роботі без рядка) і
+       рядок пошти, що ще чекає. Sum3D — ні (див. sheet_row_actions). #}
+    {% set _forget = [] %}
+    {% for f in _row_lost %}
+        {% if (f.kind == 'fill' or (f.reason == 'lost' and 'fill' in f.pending)) and 'fill' not in _forget %}{% set _ = _forget.append('fill') %}{% endif %}
+        {% if f.kind == 'row' and f.reason == 'row' and 'row' not in _forget %}{% set _ = _forget.append('row') %}{% endif %}
+    {% endfor %}
     <div class="p2-card p2-sheetrow">
         <h3>Не дійшло в Google Таблицю</h3>
         <ul class="swf-list">
@@ -250,11 +257,11 @@
                     hx-post="/sheets/write-failures/{{ order.id }}/archive"
                     hx-vals='{"origin": "passport"}' hx-swap="none" hx-disabled-elt="this"
                     title="Робота піде в «Архів» (історія лишиться), таблицю не чіпаємо. «Крок назад» (←) поверне.">Рядок видалено свідомо — прибрати з CRM</button>
-            {% for f in _row_lost if f.kind in ('fill', 'row') %}
+            {% for k in _forget %}
             <button type="button" class="btn sm swf-act p2-rowact"
                     hx-post="/sheets/write-failures/{{ order.id }}/forget"
-                    hx-vals='{"origin": "passport", "kind": "{{ f.kind }}"}' hx-swap="none" hx-disabled-elt="this"
-                    title="Робота лишається в CRM; позначку «ще не в таблиці» знято. «Крок назад» (←) поверне.">{% if f.kind == 'fill' %}Забути про заливку{% else %}Не дописувати рядок{% endif %}</button>
+                    hx-vals='{"origin": "passport", "kind": "{{ k }}"}' hx-swap="none" hx-disabled-elt="this"
+                    title="Робота лишається в CRM; позначку «ще не в таблиці» знято. «Крок назад» (←) поверне.">{% if k == 'fill' %}Забути про заливку{% else %}Не дописувати рядок{% endif %}</button>
             {% endfor %}
         </div>
         {% endif %}

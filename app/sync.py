@@ -18,7 +18,7 @@ from app.material_catalog import (
     resolve_material_id,
 )
 from app.services.opak import opak_units
-from app.models import Comment, Order, ReworkRecord, StatusEvent
+from app.models import Comment, Order, ReworkRecord, StatusEvent, SyncLog
 from app.parser import HEADER_ROWS, OrderRow
 from app.services.order_dates import parse_sheet_tab
 from app.services.vyrobitok import slm_totals_from_rows, store_slm_totals
@@ -217,6 +217,8 @@ def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None
     order.sheet_changed_fields = None
     # Недійшлий Sum3D стосувався СТАРОЇ роботи — у новій його бути не може.
     order.sum3d_pending = None
+    # «Рядка немає» стосувалось СТАРОЇ роботи — нова щойно знайшлась у рядку.
+    order.sheet_row_lost_at = None
     # Тека з файлами теж була СТАРОЇ роботи (прийняття листа чи прив'язка в
     # мить появи рядка, `folder_binding`). Лишити її — і видача впевнено
     # показувала б під новою роботою чужі STL, минаючи будь-яку перевірку.
@@ -1380,4 +1382,131 @@ def sync_tab(
                 order.archived_at = utc_now()
                 result.deleted += 1
 
+        if not result.held_mass_vanish:
+            _note_rowless_works(
+                session, sheet_tab, tab_orders, rows, matched_ids, grace_cutoff, now_local,
+            )
+
     return result
+
+
+# «Рядка в таблиці немає» — скільки проходів поспіль (у памʼяті процесу, як
+# `_absent_streak` у синку вкладок). Один прохід — не доказ: обірване читання
+# виглядає так само. Скидається, щойно ключ роботи знову трапився.
+ROWLESS_PASSES = 3
+_rowless_streak: dict[int, int] = {}
+
+
+def _rowless_candidates(
+    tab_orders: list[Order],
+    rows: list[OrderRow],
+    matched_ids: set[int],
+    grace_cutoff: datetime | None,
+) -> list[Order]:
+    """Живі клієнтські/поштові роботи вкладки, чийого рядка в цьому
+    (цілком прочитаному) знімку немає.
+
+    Два випадки (22.10.26, #6472): ключа роботи (ім'я + матеріал + к-сть) у
+    вкладці немає взагалі — рядок видалили; або ключ є, але рядок за номером
+    роботи зведено з ІНШОЮ роботою — «дві роботи на рядок». Безіменна робота
+    з ключем, що у вкладці є, — НЕ кандидат: двійник з тим самим матеріалом і
+    к-стю робить відповідь неоднозначною, а «не знаю» ≠ «рядка немає».
+
+    Лабораторних тут немає: їхній зниклий рядок архівує реконсиляція вище.
+    Вписані клієнти (sheet_client) теж зазвичай уже в архіві — до цієї точки
+    доходять лише ті, кого реконсиляція свідомо не чіпала."""
+    present = {key for key in (_row_identity(row) for row in rows) if key is not None}
+    owner: dict[int, Order] = {
+        o.row_number: o for o in tab_orders
+        if o.id is not None and o.id in matched_ids and o.archived_at is None
+        and o.row_number is not None
+    }
+    found = []
+    for order in tab_orders:
+        if order.source not in ("email", "sheet_client") or order.archived_at is not None:
+            continue
+        if order.row_number is None or order.id is None or order.id in matched_ids:
+            continue
+        if (
+            grace_cutoff is not None
+            and order.created_at is not None
+            and order.created_at > grace_cutoff
+        ):
+            continue  # рядок міг лягти вже після знімка
+        key = _order_identity(order)
+        if key is None:
+            continue
+        if key not in present:
+            found.append(order)
+            continue
+        if not key[1]:
+            continue  # безіменна з двійником — не знаємо
+        holder = owner.get(order.row_number)
+        if holder is not None and holder is not order:
+            found.append(order)
+    return found
+
+
+def _note_rowless_works(
+    session: Session,
+    sheet_tab: str,
+    tab_orders: list[Order],
+    rows: list[OrderRow],
+    matched_ids: set[int],
+    grace_cutoff: datetime | None,
+    now_local: datetime,
+) -> None:
+    """Позначка `Order.sheet_row_lost_at` після `ROWLESS_PASSES` проходів поспіль
+    без рядка; знімається, щойно рядок знову знайдено. НІЧОГО не архівує й не
+    видаляє — рішення за людиною (`sheet_row_actions`). Викликається лише для
+    прочитаної без збою вкладки (`had_raw_rows`) і не під запобіжником масової
+    архівації — обірване читання стану «без рядка» не дає."""
+    for order in tab_orders:
+        if order.id is not None and order.id in matched_ids:
+            _rowless_streak.pop(order.id, None)
+            if order.sheet_row_lost_at is not None:
+                order.sheet_row_lost_at = None
+                session.add(SyncLog(
+                    direction="sheet_to_db", sheet_tab=sheet_tab, status="ok",
+                    message=f"order {order.id}: рядок у таблиці знову знайдено — позначку «без рядка» знято",
+                ))
+
+    candidates = _rowless_candidates(tab_orders, rows, matched_ids, grace_cutoff)
+    # Власний запобіжник: якщо «без рядка» раптом половина клієнтських робіт
+    # вкладки — це читання, а не людина, що видаляє рядки по одному.
+    live = [
+        o for o in tab_orders
+        if o.source in ("email", "sheet_client") and o.archived_at is None
+        and o.row_number is not None
+    ]
+    if len(candidates) > 5 and len(candidates) > 0.25 * len(live):
+        logger.warning(
+            "Синк %s: %d клієнтських/поштових робіт «без рядка» за один прохід — "
+            "схоже на погане читання, позначку не ставимо",
+            sheet_tab, len(candidates),
+        )
+        return
+    candidate_ids = {o.id for o in candidates}
+    for order in tab_orders:
+        if order.id is not None and order.id not in candidate_ids:
+            _rowless_streak.pop(order.id, None)
+    for order in candidates:
+        streak = _rowless_streak.get(order.id, 0) + 1
+        _rowless_streak[order.id] = streak
+        if streak < ROWLESS_PASSES or order.sheet_row_lost_at is not None:
+            continue
+        order.sheet_row_lost_at = now_local
+        who = order.client_name or f"#{order.id}"
+        logger.warning(
+            "Синк %s: рядка роботи %s (%s) у таблиці немає %d проходів поспіль — "
+            "повтор запису зупинено, рішення за людиною",
+            sheet_tab, order.id, who, streak,
+        )
+        session.add(SyncLog(
+            direction="sheet_to_db", sheet_tab=sheet_tab, status="warning",
+            message=(
+                f"order {order.id}: рядка «{who}» у таблиці немає "
+                f"(рядок {(order.row_number or 0) + HEADER_ROWS} — інша робота або порожньо) — "
+                "повтор заливки/Sum3D зупинено, у банері «не дійшло» — дії для людини"
+            ),
+        ))

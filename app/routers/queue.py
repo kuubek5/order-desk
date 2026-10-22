@@ -546,7 +546,7 @@ def _merged_counts(db: Session, items: list) -> dict[int, int]:
     CRM» мусить сказати, що прибирається вся зведена робота."""
     from app.services.mail_merge import merged_letter_count
 
-    ids = sorted({item.order_id for item in items if item.reason == "row"})
+    ids = sorted({item.order_id for item in items if item.reason in ("row", "lost")})
     return merged_letter_count(db, ids) if ids else {}
 
 

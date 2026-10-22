@@ -467,6 +467,10 @@ def retry_pending_sum3d(db: Session, *, now: float | None = None) -> int:
             Order.sum3d_pending.is_not(None),
             Order.sum3d_pending == Order.sum3d_id,
             Order.archived_at.is_(None),
+            # Рядка роботи в таблиці немає (синк, `sheet_row_lost_at`) — повтор
+            # не допоможе, вирішує людина. Сам предикат «Sum3D ще не в
+            # таблиці» (5 місць, §14) від цього не змінився.
+            Order.sheet_row_lost_at.is_(None),
         ).order_by(Order.id)
     ).all()
     alive = {order_id for order_id, _ in pending}
@@ -562,6 +566,7 @@ def retry_pending_fills(db: Session, *, now: float | None = None) -> int:
         select(Order.id, Order.fill_pending).where(
             Order.fill_pending.is_not(None),
             Order.archived_at.is_(None),
+            Order.sheet_row_lost_at.is_(None),  # рядка немає — не молотимо
         ).order_by(Order.id)
     ).all()
     alive = {order_id for order_id, _ in pending}
@@ -612,6 +617,7 @@ def retry_failed_writes_now(
                 Order.sum3d_pending.is_not(None),
                 Order.sum3d_pending == Order.sum3d_id,
                 Order.archived_at.is_(None),
+                Order.sheet_row_lost_at.is_(None),
             )
         ).all()
         batch: dict[int, tuple[set[str], set[str]]] = {}
@@ -627,6 +633,7 @@ def retry_failed_writes_now(
                 Order.id.in_(fill_ids),
                 Order.fill_pending.is_not(None),
                 Order.archived_at.is_(None),
+                Order.sheet_row_lost_at.is_(None),
             )
         ).all()
         for order_id, wanted in rows:

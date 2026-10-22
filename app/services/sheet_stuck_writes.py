@@ -66,6 +66,9 @@ REASON_TEXT = {
     "tab": "вкладки немає в таблиці — перевірте назву вкладки",
     "net": "немає зв'язку з Google — повтор іде сам",
     "unknown": "таблиця ще не підтвердила запис — повтор іде сам",
+    # Синк кілька проходів поспіль не бачить рядка роботи (`Order.sheet_row_lost_at`).
+    "lost": "рядка цієї роботи в таблиці немає (видалено або на ньому інша робота) — "
+            "повтор зупинено, вирішіть, що з нею робити",
 }
 
 KIND_TEXT = {"sum3d": "Sum3D", "fill": "синя заливка", "row": "рядок роботи"}
@@ -84,6 +87,10 @@ class FailedWrite:
     # Без цього банер після кнопки виглядав рівно як до неї — «нічого не
     # сталось» (22.10.26, #6472: рядок видалено свідомо, повтор не допоможе).
     tried_at: datetime | None = None
+    # Лише для «рядка немає» (reason="lost"): які записи ще не дійшли —
+    # банер показує роботу ОДИН раз, а «Забути про заливку» — лише коли є що
+    # забувати.
+    pending: tuple[str, ...] = ()
 
     @property
     def reason_text(self) -> str:
@@ -117,6 +124,9 @@ _snapshot: StuckWrites | None = None
 _episode_open = False
 # «Записати зараз» не допоміг: ключ → коли тиснули (місцевий час).
 _manual_tries: dict[tuple[str, int], datetime] = {}
+# Роботи, чийого рядка в таблиці немає (`Order.sheet_row_lost_at`): id → один
+# запис банера. Оновлює `observe` з бази; знімає `note_write_ok`/`forget_order`.
+_lost: dict[int, FailedWrite] = {}
 
 
 def classify(error: str | None) -> str:
@@ -171,6 +181,8 @@ def note_write_ok(kind: str, order_id: int) -> None:
     """Місце запису: таблиця підтвердила."""
     key = (kind, order_id)
     with _lock:
+        if kind == "row":
+            _lost.pop(order_id, None)
         _manual_tries.pop(key, None)
         _failures.pop(key, None)
         _unknown.pop(key, None)
@@ -184,6 +196,14 @@ def forget_order(order_id: int, kinds: tuple[str, ...] = ("sum3d", "fill", "row"
     сторожа: банер оновлюється відповіддю тієї ж кнопки."""
     for kind in kinds:
         note_write_ok(kind, order_id)
+    with _lock:
+        lost = _lost.get(order_id)
+        if lost is not None:
+            # Робота без рядка лишається в банері, але без забутого запису —
+            # інакше кнопка «забути» стояла б до наступного тіку сторожа.
+            _lost[order_id] = replace(
+                lost, pending=tuple(k for k in lost.pending if k not in kinds)
+            )
 
 
 def note_manual_retry(items: list[FailedWrite], *, wall: datetime | None = None) -> None:
@@ -197,12 +217,27 @@ def note_manual_retry(items: list[FailedWrite], *, wall: datetime | None = None)
             _manual_tries[(item.kind, item.order_id)] = stamp
 
 
+def lost_entry(order: Order, pending: tuple[str, ...] = ()) -> FailedWrite:
+    """Один запис банера/паспорта для роботи, чийого рядка в таблиці немає."""
+    return FailedWrite(
+        kind="row", order_id=order.id, who=_who(order), tab=order.sheet_tab,
+        reason="lost", detail="", since=order.sheet_row_lost_at or datetime.now(),
+        pending=tuple(sorted(set(pending))),
+    )
+
+
 def failed_sheet_writes() -> list[FailedWrite]:
     """Список для банера: збої й позначки, що висять без причини. Найстаріші
-    перші — вони найдовше розходяться з таблицею."""
+    перші — вони найдовше розходяться з таблицею. Робота без рядка —
+    ОДИН запис («рядка немає») замість окремих Sum3D/заливки."""
     with _lock:
-        items = [item for item, _ in _failures.values()]
-        items += [item for key, item in _unknown.items() if key not in _failures]
+        lost = dict(_lost)
+        items = [item for item, _ in _failures.values() if item.order_id not in lost]
+        items += [
+            item for key, item in _unknown.items()
+            if key not in _failures and item.order_id not in lost
+        ]
+        items += list(lost.values())
         tries = dict(_manual_tries)
     items = [
         replace(item, tried_at=tries[(item.kind, item.order_id)])
@@ -227,6 +262,7 @@ def reset() -> None:
         _first_seen.clear()
         _first_seen_wall.clear()
         _manual_tries.clear()
+        _lost.clear()
         _snapshot = None
         _episode_open = False
 
@@ -283,6 +319,17 @@ def observe(db: Session, *, now: float | None = None, wall: datetime | None = No
     now = monotonic() if now is None else now
     wall_now = wall or datetime.now()
     pending = _pending(db)
+    lost_now = {
+        order.id: order for order in db.scalars(
+            select(Order).where(
+                Order.sheet_row_lost_at.is_not(None),
+                Order.archived_at.is_(None),
+            )
+        )
+    }
+    pending_kinds: dict[int, list[str]] = {}
+    for kind, order_id in pending:
+        pending_kinds.setdefault(order_id, []).append(kind)
 
     with _lock:
         for key in [k for k, (_, noted) in _failures.items()
@@ -315,6 +362,9 @@ def observe(db: Session, *, now: float | None = None, wall: datetime | None = No
             if stuck else None
         )
         _snapshot = snapshot
+        _lost.clear()
+        for order_id, order in lost_now.items():
+            _lost[order_id] = lost_entry(order, tuple(pending_kinds.get(order_id, ())))
         opened = snapshot is not None and not _episode_open
         closed = snapshot is None and _episode_open
         _episode_open = snapshot is not None

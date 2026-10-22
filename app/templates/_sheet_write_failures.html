@@ -28,14 +28,14 @@
                 <a class="swf-queue-link" href="/?{{ {'ready': 'all', 'source': 'all', 'date': f.tab or '', 'focus': f.order_id} | urlencode }}"
                    title="Показати рядок роботи в черзі (якщо вона там є)">у черзі</a>
                 {% if f.tab %}<span class="mono swf-tab">{{ f.tab }}</span>{% endif %}
-                <span class="swf-kind">{{ f.kind_text }}</span>
+                <span class="swf-kind">{{ f.kind_text }}{% if f.reason == 'lost' and f.pending %} (не дійшло: {% for k in f.pending %}{{ {'sum3d': 'Sum3D', 'fill': 'синя заливка'}.get(k, k) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}</span>
                 <span class="swf-reason"{% if f.detail %} title="{{ f.detail }}"{% endif %}>— {{ f.reason_text }}</span>
                 <span class="mono swf-since">з {{ f.since.strftime('%H:%M') }}</span>
                 {% if f.tried_at %}
                 {# «Записати зараз» не допоміг — видно й після полла, не лише в тості. #}
                 <span class="swf-tried">· «Записати зараз» о <span class="mono">{{ f.tried_at.strftime('%H:%M') }}</span> не допоміг{% if f.reason == 'row' %}: рядка цієї роботи в таблиці немає або на ньому вже інша робота — повтор цього не виправить{% endif %}</span>
                 {% endif %}
-                {% if f.reason == 'row' %}
+                {% if f.reason in ('row', 'lost') %}
                 {# Рядка роботи в таблиці немає — повтор не допоможе, вирішує
                    людина (app/services/sheet_row_actions.py). Без діалогу
                    підтвердження: обидві дії в «Журналі дій», «Крок назад» (←)
@@ -50,13 +50,16 @@
                             hx-disabled-elt="this" data-kload="self"
                             title="Робота піде в «Архів» (історія лишиться), таблицю не чіпаємо.{% if _n > 1 %} Це зведена робота з {{ _n }} листів — прибирається вся.{% endif %} «Крок назад» (←) поверне.">Рядок видалено свідомо — прибрати з CRM</button>
                     {% endif %}
-                    {% if f.kind in ('fill', 'row') %}
+                    {# «Забути» — лише коли є що забувати: заливка (окремим записом
+                       чи в роботі «без рядка») або рядок пошти, що ще чекає. #}
+                    {% set _forget = 'fill' if (f.kind == 'fill' or (f.reason == 'lost' and 'fill' in f.pending)) else ('row' if (f.kind == 'row' and f.reason == 'row') else '') %}
+                    {% if _forget %}
                     <button type="button" class="btn sm swf-act swf-act-forget"
                             hx-post="/sheets/write-failures/{{ f.order_id }}/forget"
-                            hx-vals='{"kind": "{{ f.kind }}"}'
+                            hx-vals='{"kind": "{{ _forget }}"}'
                             hx-target="#sheet-writes-slot" hx-swap="innerHTML"
                             hx-disabled-elt="this" data-kload="self"
-                            title="{% if f.kind == 'fill' %}Робота лишається в CRM; заливку в таблиці виправте самі. Повтор заливки зупиниться.{% else %}Робота лишається в CRM без рядка в таблиці; повтор дописування зупиниться.{% endif %} «Крок назад» (←) поверне.">{% if f.kind == 'fill' %}Забути про заливку{% else %}Не дописувати рядок{% endif %}</button>
+                            title="{% if _forget == 'fill' %}Робота лишається в CRM; заливку в таблиці виправте самі. Повтор заливки зупиниться.{% else %}Робота лишається в CRM без рядка в таблиці; повтор дописування зупиниться.{% endif %} «Крок назад» (←) поверне.">{% if _forget == 'fill' %}Забути про заливку{% else %}Не дописувати рядок{% endif %}</button>
                     {% endif %}
                 </span>
                 {% endif %}
