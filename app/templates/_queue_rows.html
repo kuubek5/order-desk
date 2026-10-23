@@ -15,7 +15,11 @@
    Synology й тримало відкриття черги (заміряно /diag/perf 04.09.26). Сторінка
    малюється миттєво з рядків БД, іконки проступають за мить, а далі той самий
    полл тримає кеш теплим. Готовність рядків від сканів не залежить (job_code —
-   колонка БД), тож перший, «голий» рендер уже правильний. #}
+   колонка БД), тож перший, «голий» рендер уже правильний.
+   `load` — ЛИШЕ там, де іконок немає: повна сторінка й свап фільтрів. Фрагмент
+   полла (`rows_partial`) їх уже несе, а з `load` кожен його свап (outerHTML —
+   новий елемент) одразу смикав ще один такий самий GET: змінений полл,
+   `refresh-queue`, ранній перепит Sum3D — усе коштувало два запити (23.10.26). #}
 {# `[!document.hidden]` — полл спить, поки вкладку згорнули або сховали за
    іншою. Без цього залишений на ніч браузер цілу ніч ходить по мережевій шарі
    й тримає синк теплим ЗАРАДИ НІКОГО. Пропущений тік нічого не втрачає:
@@ -30,7 +34,7 @@
    перемальовував би її під пальцями оператора, що саме друкує груповий ID. #}
 <div id="queue-rows"
      hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
-     hx-trigger="load, every {{ poll_seconds|default(sync_screen_seconds|default(15)) }}s[!document.hidden], refresh-queue from:body, sheet-recheck"
+     hx-trigger="{% if not rows_partial %}load, {% endif %}every {{ poll_seconds|default(sync_screen_seconds|default(15)) }}s[!document.hidden], refresh-queue from:body, sheet-recheck"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">

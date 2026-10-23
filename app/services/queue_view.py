@@ -614,6 +614,10 @@ def build_queue_view(
             "sort": sort,
             "sort_dir": sort_dir,
             "rows_qs": rows_qs,
+            # Фрагмент полла вже несе іконки тек (`attach_*` вище лише для
+            # partial="rows"), тож `load` у #queue-rows йому не потрібен —
+            # див. _queue_rows.html.
+            "rows_partial": partial == "rows",
             "sync_speed": SYNC_SPEED_PRESETS,
             "sync_speed_active": sync_control.get_speed_preset(),
             "sync_screen_seconds": get_sync_speed()["screen"],
