@@ -1257,6 +1257,14 @@ def queue_sheet_fields(
     global _field_batch_scheduled
     if not fields:
         return
+    if "sum3d_id" in fields:
+        # Живий запис — це ПЕРША спроба: повтор (`retry_pending_sum3d`) рахує
+        # свої 2 хв від неї. Без цього тік синку бачив позначку «ще не в
+        # таблиці» вже за пів секунди, поки пачка була в дорозі, і писав той
+        # самий ID удруге — 2 зайві звернення до Google на кожен Sum3D, а
+        # наступний ввід оператора стояв за ними в єдиному потоці запису
+        # (журнал 23.10.26: 6733, 6732, 6698, 6690 — пари записів за 2 с).
+        _pending_sum3d_attempts[order_id] = time.monotonic()
     with _field_batch_lock:
         have_fields, have_erase = _field_batch.get(order_id, (set(), set()))
         _field_batch[order_id] = (have_fields | set(fields), have_erase | set(erase))

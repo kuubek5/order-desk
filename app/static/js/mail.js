@@ -1335,6 +1335,53 @@ document.addEventListener("htmx:afterSwap", (event) => {
   savedMirrorScroll = null;
 });
 
+// ── Док: ранній перепит, поки Sum3D «ще не в таблиці» ───────────────────────
+// Те саме, що в queue.js для #queue-rows (див. PENDING_RECHECK_DELAYS там):
+// Sum3D, вписаний прямо в рядок доку, стоїть у пачці на запис ~3 с, а тіло
+// доку политься раз на 15 с — і весь цей час рядок казав «не записано». Поки
+// в доці є позначка, перепитуємо раніше: через 2, 3.5, 6.5 і 14.5 с. Той самий
+// GET, що й полл (день додає configRequest вище), з тими самими запобіжниками
+// вище: фокус у полі — своп пропускається, незмінна відповідь — теж.
+// Окремий стан від черги: це інший контейнер на іншій сторінці.
+const DOCK_RECHECK_DELAYS = [2000, 1500, 3000, 8000];
+let dockRecheckStep = 0;
+let dockRecheckTimer = null;
+let dockMarkCount = 0;
+function scheduleDockRecheck() {
+  const body = document.getElementById("qmir-body");
+  if (!body) return;
+  const count = body.querySelectorAll(".is-sum3d-pending").length;
+  // Позначок побільшало — новий Sum3D отримує власні ранні перепити, навіть
+  // якщо поруч давно висить «застрягла».
+  if (count > dockMarkCount) dockRecheckStep = 0;
+  dockMarkCount = count;
+  if (dockRecheckTimer) return;
+  if (!count) {
+    dockRecheckStep = 0;
+    return;
+  }
+  if (dockRecheckStep >= DOCK_RECHECK_DELAYS.length) return;
+  const delay = DOCK_RECHECK_DELAYS[dockRecheckStep];
+  dockRecheckStep += 1;
+  dockRecheckTimer = setTimeout(() => {
+    dockRecheckTimer = null;
+    const now = document.getElementById("qmir-body");
+    if (!now || !now.querySelector(".is-sum3d-pending")) {
+      dockRecheckStep = 0;
+      return;
+    }
+    if (document.hidden || !window.htmx) return;
+    window.htmx.ajax("GET", "/mail/queue-mirror", { target: "#qmir-body", swap: "innerHTML" });
+  }, delay);
+}
+// Позначка зʼявляється після свапу (відповідь на Sum3D у рядку доку, полл) і
+// може лишитись після полла БЕЗ свапу (відповідь та сама).
+document.addEventListener("htmx:afterSettle", scheduleDockRecheck);
+document.addEventListener("htmx:afterRequest", (event) => {
+  const target = event.detail && event.detail.target;
+  if (target && target.id === "qmir-body") scheduleDockRecheck();
+});
+
 // ── Дзеркало черги внизу пошти: згортання ────────────────────────────────────
 // Кнопка в шапці перемикає клас .qmir-collapsed на секції, а CSS ховає тіло;
 // стан памʼятається в KMStore. Полл тіла від класу не залежить — він свопає лише

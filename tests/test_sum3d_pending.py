@@ -198,6 +198,32 @@ class TestBackgroundRetry:
             assert wb.retry_pending_sum3d(session, now=1000.0 + 30) == 0
             assert wb.retry_pending_sum3d(session, now=1000.0 + wb.PENDING_SUM3D_RETRY_SECONDS + 1) == 1
 
+    def test_live_write_counts_as_the_first_attempt(self, submitted, monkeypatch):
+        """Щойно введений Sum3D уже летить у таблицю пачкою — повтор не має
+        дублювати його, поки пачка в дорозі (журнал 23.10.26: кожен Sum3D
+        писався двічі за 2 с). Живий запис рахується першою спробою, і повтор
+        бере роботу лише через свій інтервал, якщо позначка досі стоїть."""
+        from time import monotonic
+
+        # Пачка тут не летить (submit підмінено) — її стан ізолюємо, щоб не
+        # перетік у сусідні тести.
+        monkeypatch.setattr(wb, "_field_batch", {})
+        monkeypatch.setattr(wb, "_field_batch_scheduled", False)
+        with make_session() as session:
+            self._seed(session)
+            order_id = session.scalars(
+                select(Order.id).where(Order.sum3d_pending == Order.sum3d_id)
+            ).one()
+            submitted.clear()
+            wb.queue_sheet_fields(order_id, {"sum3d_id", "calculated_raw"})
+            submitted.clear()   # сама пачка — не повтор
+            now = monotonic()
+            assert wb.retry_pending_sum3d(session, now=now + 1) == 0
+            assert submitted == []
+            assert wb.retry_pending_sum3d(
+                session, now=now + wb.PENDING_SUM3D_RETRY_SECONDS + 1
+            ) == 1
+
     def test_paused_sync_retries_nothing(self, submitted, monkeypatch):
         monkeypatch.setattr(wb.sync_control, "is_paused", lambda: True)
         with make_session() as session:

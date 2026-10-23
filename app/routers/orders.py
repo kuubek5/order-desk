@@ -19,7 +19,7 @@ from starlette.requests import Request
 
 from urllib.parse import urlencode
 
-from app import sync_control
+from app import perf, sync_control
 from app.business_day import business_today, utc_now
 from app.models import (
     ActionLog,
@@ -138,8 +138,13 @@ async def set_sum3d_id(
     # мітки «мої зараз», позначка «ще не в таблиці») — у `apply_sum3d`, спільному
     # ядрі з груповим призначенням `/orders/sum3d-batch`. Тут лишився ЛИШЕ HTTP:
     # коміт, запис у таблицю й рендер рядка.
-    applied = apply_sum3d(db, order, value, user)
-    db.commit()
+    #
+    # Фази `perf.span` — для «Slow request»: 1.2–1.5 с на цьому роуті (прод,
+    # 20–22.10.26) лог показував без жодної фази, тобто час ішов десь тут.
+    with perf.span("sum3d:apply"):
+        applied = apply_sum3d(db, order, value, user)
+    with perf.span("db:commit"):
+        db.commit()
 
     # Таблиця — ПІСЛЯ коміту і НЕ на event loop: воркер write-back читає вже
     # збережені значення власною сесією (аудит 05.09.26, синк C-2).
@@ -163,8 +168,9 @@ async def set_sum3d_id(
         queue_sheet_fields(order.id, applied.write_fields, applied.erase_fields)
     db.refresh(order)
 
-    attach_export_folder_uris(db, [order])
-    attach_job_code_folder_uris(db, [order])
+    with perf.span("share:row-uris"):
+        attach_export_folder_uris(db, [order])
+        attach_job_code_folder_uris(db, [order])
 
     # Успіх мусить називати таблицю так само прямо, як її називає помилка.
     # Доти тост казав лише «Sum3D → 12-01-45», і оператор не міг відрізнити
@@ -185,7 +191,8 @@ async def set_sum3d_id(
             toast_note = f"{applied.note} · {'іде в таблицю' if value else 'стирається в таблиці'}"
     else:
         toast_note = applied.note
-    context = _row_context(request, db, order, sync_error)
+    with perf.span("row:context"):
+        context = _row_context(request, db, order, sync_error)
     # Прапорець живе рівно один рендер — саме цієї відповіді. Полл через 15 с
     # перемалює рядок без нього, тож підсвітка не повторюється щотіку.
     #
@@ -745,14 +752,19 @@ def toggle_order_focus(request: Request, order_id: int, db: Session = Depends(ge
     if order is None:
         raise HTTPException(status_code=404, detail="роботу не знайдено")
 
-    toggle_focus(db, order, user)
-    db.commit()
+    # Фази — для «Slow request»: 20.10.26 шпилька відповідала 3.8–4.2 с без
+    # жодної фази в лозі.
+    with perf.span("focus:toggle"):
+        toggle_focus(db, order, user)
+    with perf.span("db:commit"):
+        db.commit()
 
-    attach_export_folder_uris(db, [order])
-    attach_job_code_folder_uris(db, [order])
-    response = templates.TemplateResponse(
-        request, "_order_row.html", _row_context(request, db, order, None)
-    )
+    with perf.span("share:row-uris"):
+        attach_export_folder_uris(db, [order])
+        attach_job_code_folder_uris(db, [order])
+    with perf.span("row:context"):
+        context = _row_context(request, db, order, None)
+    response = templates.TemplateResponse(request, "_order_row.html", context)
     response.headers["HX-Trigger-After-Swap"] = json.dumps({"refresh-queue": True})
     return response
 
