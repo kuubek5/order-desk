@@ -148,6 +148,7 @@
                         {% for pal, title, why, theme, icons, buttons, loader, chips in [
                             ('forge', 'Цех', 'бурштин, максимум контрасту', 'forge', '', '', '', ''),
                             ('teal',  'Бірюзовий пульт', 'канонічний вигляд', 'teal', '', '', '', ''),
+                            ('aurora', 'Аврора', 'темне скло, повільне сяйво', 'aurora', '', '', '', ''),
                             ('forge', 'Тиша', 'тонкі лінії, без заливок і руху', 'forge', 'thin', 'outline', 'ring', '')
                         ] %}
                         <button type="button" class="acc-preset"
@@ -174,7 +175,7 @@
                         <div class="acc-field">
                             <span class="acc-field-label">Тема</span>
                             <div class="acc-theme-row" role="group" aria-label="Тема інтерфейсу">
-                                {% for pal, value, title in [('teal', 'teal', 'Бірюзовий пульт'), ('forge', 'forge', 'Amber Forge')] %}
+                                {% for pal, value, title in [('teal', 'teal', 'Бірюзовий пульт'), ('forge', 'forge', 'Amber Forge'), ('aurora', 'aurora', 'Аврора')] %}
                                 <button type="button" class="acc-swatch acc-theme-btn" data-set-theme="{{ value }}">
                                     <span class="thsw" data-pal="{{ pal }}" aria-hidden="true">
                                         <span class="thsw-rail"><i></i><i></i><i></i></span>
@@ -434,7 +435,7 @@
     // Тема там зветься data-pal, бо data-theme на вкладеному елементі
     // перехопили б глобальні правила теми.
     var GROUPS = [
-      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme',   preset: 'presetTheme',   live: 'data-pal',            liveMap: function(v){ return v === 'forge' ? 'forge' : 'teal'; } },
+      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme',   preset: 'presetTheme',   live: 'data-pal',            liveMap: function(v){ return (v === 'forge' || v === 'aurora') ? v : 'teal'; } },
       { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons',   preset: 'presetIcons',   live: 'data-icons-sample'   },
       { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons', preset: 'presetButtons', live: 'data-buttons-sample' },
       { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader',  preset: 'presetLoader',  live: 'data-loader-sample'  },

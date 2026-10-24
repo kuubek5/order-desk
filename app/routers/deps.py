@@ -558,7 +558,7 @@ UI_SESSION_KEY = "ui"
 
 def ui_prefs(request: Request) -> dict:
     """Візуальні налаштування залогіненого оператора для base.html:
-    {"theme": ""|"forge", "icons": ""|"thin"|"duo"|"bold"|"neon"}.
+    {"theme": "teal"|"forge"|"aurora", "icons": ""|"thin"|"duo"|"bold"|"neon"}.
 
     Jinja-глобал з request-аргументом (base.html завжди має request у
     контексті): тема мусить бути на <html> у САМОМУ HTML, інакше сторінка

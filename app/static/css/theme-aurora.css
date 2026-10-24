@@ -1,0 +1,182 @@
+/* Тема «Аврора» — опційне темне оформлення (24.10.26).
+   Обрана власником з трьох напрямів (полотно «KuubMill — нова тема, 3
+   варіанти», варіант B). Дефолт НЕ змінює: вмикається лише в кабінеті
+   оператора (/account → Тема), зберігається в users.ui_theme = "aurora".
+
+   Механіка та сама, що в theme-forge.css: перевизначення токенів з
+   tokens.css під :root[data-theme="aurora"]. Атрибут на <html>, не на
+   <body> — інакше похідні токени treatment-a.css застигнуть бірюзовими.
+
+   Семантика не перефарбовується: пошта синя, прострочене червоне,
+   брак/переробка — свої. Міняється світ: майже чорне індиго, лавандовий
+   акцент, над шапкою повільне північне сяйво.
+
+   Свідомі обмеження (це робочий екран на 8+ годин, а не вітрина):
+   - Сяйво — лише фон (.app-backdrop), рух тільки transform, 60 с на хід:
+     композитор, без перерисовки й без filter: blur.
+   - «Скло» без backdrop-filter: напівпрозора заливка над м'якими
+     градієнтами виглядає так само, а розмиття поверх рухомого шару
+     перераховувалось би кожен кадр.
+   - Жодних кольорових ореолів на станах і цифрах — світиться лише фон.
+   - prefers-reduced-motion вимикає дрейф повністю. */
+
+/* `.thsw[data-pal="aurora"]` / `.acc-live[data-pal="aurora"]` — плитка й
+   жива міні-сторінка в кабінеті: зразок видно, поки сторінка ще в іншій темі. */
+:root[data-theme="aurora"],
+.thsw[data-pal="aurora"],
+.acc-live[data-pal="aurora"] {
+  /* Background & Surface (legacy --color-*) */
+  --color-bg: #07080e;
+  --color-bg-grid-line: rgba(183, 166, 255, 0.045);
+  --color-card-bg: #11131c;
+  --color-card-border: #23273a;
+  --color-text: #eef0f8;
+  --color-text-muted: #b4b8cc;
+  --color-accent: #b7a6ff;
+  --color-success: #6ee7b7;
+  --color-warning: #ffb86b;
+  /* Пошта лишається синьою, але світлішою: #3b82f6 на майже чорному
+     індиго як текст недотягує до контрасту. */
+  --color-email: #78aeff;
+  --color-email-surface: rgba(120, 174, 255, 0.09);
+  --color-email-border: rgba(120, 174, 255, 0.38);
+
+  /* v2a canon */
+  --bg: #07080e;
+  --bg-rail: #0a0b13;
+  --card: #11131c;
+  --card-2: #161926;
+  --card-3: #1c2030;
+  --line: #23273a;
+  --line-2: #353b55;
+  /* межа інтерактивних контролів: ≥3:1 на --card і --card-2 */
+  --control-edge: #6b7192;
+  --ink: #eef0f8;
+  --ink-2: #b4b8cc;
+  /* ≥4.5:1 навіть на найсвітлішій поверхні --card-3 */
+  --ink-3: #9095ac;
+  --accent: #b7a6ff;
+  --accent-b: #c7b9ff;
+  --accent-c: #ddd3ff;
+  --accent-d: #6b5bc9;
+  --alarm: #ff7d8b;
+  --warn: #ffb86b;
+  --alarm-rgb: 255, 125, 139;
+  --warn-rgb: 255, 184, 107;
+  --bg-rgb: 7, 8, 14;
+  --ok: #6ee7b7;
+  --ok-rgb: 110, 231, 183;
+  --alarm-ink: #ffc9cf;
+  --warn-ink: #ffe0bd;
+
+  --focus-glow: inset 0 0 18px -12px rgba(183, 166, 255, 0.9);
+  --focus-border: rgba(183, 166, 255, 0.5);
+  /* Нейтральна висота замість акцентного ореолу: картки підняті тінню,
+     а не світяться. */
+  --glow: inset 0 1px 0 rgba(255,255,255,.07), 0 24px 48px -28px rgba(0,0,0,.9);
+
+  /* алі-токени поверхонь */
+  --accent-rgb: 199, 185, 255;
+  --accent-base-rgb: 183, 166, 255;
+  --accent-soft-rgb: 221, 211, 255;
+  --field: #0d0f18;
+  --raise: #1a1d2b;
+  --raise-2: #181b28;
+  --raise-3: #161926;
+  --well: #0b0d15;
+  --mid: #121522;
+  --mid-2: #0c0e17;
+  --on-accent: #170f3a;
+  --accent-well: #1a1440;
+  --accent-ink: #cfc6f0;
+  --accent-ink-2: #b3a8dd;
+  --accent-e: #e9e3ff;
+  --stl-model: #c7b9ff;
+
+  /* Сигнал Sum3D — теплий: лаванда тут акцент, і сигнал у ній зник би. */
+  --sig: #f0a24b;
+  --sig-rgb: 240, 162, 75;
+  --sig-ink: #1a1004;
+}
+
+/* Плитка в кабінеті: смужка сяйва вгорі, щоб тему впізнавали з першого
+   погляду, а не лише за відтінком фіолетового. */
+.thsw[data-pal="aurora"] {
+  background-image: radial-gradient(60% 70% at 25% 0%, rgba(110,231,183,.22), transparent 70%),
+    radial-gradient(55% 70% at 75% 0%, rgba(183,166,255,.30), transparent 70%);
+}
+
+/* ---- Фон: сяйво замість креслення ----
+   Радар і сітка з _backdrop.html належать бірюзовому світу; тут їх ховаємо і
+   малюємо сяйво псевдоелементами того самого фіксованого шару. */
+html[data-theme="aurora"] .app-backdrop svg {
+  display: none;
+}
+
+html[data-theme="aurora"] .app-backdrop::before {
+  content: "";
+  position: absolute;
+  left: -15%;
+  right: -15%;
+  top: -18vh;
+  height: 80vh;
+  pointer-events: none;
+  /* Центри — правіше рейки (вона ліворуч і напівпрозора) і над смугою
+     фільтрів: саме там фон видно між картками. */
+  background:
+    radial-gradient(36% 55% at 32% 42%, rgba(110, 231, 183, 0.42), transparent 70%),
+    radial-gradient(34% 52% at 60% 30%, rgba(183, 166, 255, 0.52), transparent 70%),
+    radial-gradient(28% 48% at 88% 46%, rgba(255, 128, 180, 0.32), transparent 70%);
+  -webkit-mask-image: linear-gradient(#000 40%, transparent 95%);
+  mask-image: linear-gradient(#000 40%, transparent 95%);
+  will-change: transform;
+  animation: aurora-drift 60s ease-in-out infinite alternate;
+}
+
+/* Тонка сітка, що тане від шапки донизу, — «креслення» цього світу. */
+html[data-theme="aurora"] .app-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px) 0 0 / 32px 100%;
+  -webkit-mask-image: radial-gradient(80% 60% at 50% 0%, #000, transparent);
+  mask-image: radial-gradient(80% 60% at 50% 0%, #000, transparent);
+}
+
+@keyframes aurora-drift {
+  0%   { transform: translate3d(-4%, 0, 0) scale(1); }
+  50%  { transform: translate3d(3%, -3%, 0) scale(1.08); }
+  100% { transform: translate3d(6%, 2%, 0) scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="aurora"] .app-backdrop::before {
+    animation: none;
+  }
+}
+
+/* Вуаль base.css (body::before) розрахована на бірюзовий фон; тут вона лише
+   ледь притлумлює сяйво, щоб заголовки поза картками тримали контраст. */
+html[data-theme="aurora"] body::before {
+  background: rgba(7, 8, 14, 0.12);
+}
+
+/* ---- «Скло» ----
+   Лише на великих поверхнях, що лежать просто на фоні: бокова навігація,
+   смуга фільтрів черги й секції бічної панелі. Рядки таблиці, липкі заголовки й вкладені
+   картки лишаються непрозорими — крізь них не має просвічувати те, що під
+   ними прокручується. */
+html[data-theme="aurora"] .topbar-user {
+  background-color: rgba(10, 11, 19, 0.78);
+}
+
+html[data-theme="aurora"] .q2 .filters {
+  background-color: rgba(22, 25, 38, 0.66);
+}
+
+html[data-theme="aurora"] .q2 .side-sec {
+  background-color: rgba(17, 19, 28, 0.80);
+}

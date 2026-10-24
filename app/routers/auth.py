@@ -409,8 +409,9 @@ async def get_account(request: Request, db: Session = Depends(get_db)):
 
 
 # "" лишається дозволеним лише для сумісності зі старими БД (до зміни дефолту
-# на forge). Нові збереження шлють "teal" або "forge"; "" резолвиться в forge.
-UI_THEMES = {"", "teal", "forge"}
+# на forge). Нові збереження шлють "teal", "forge" або "aurora" (опційна,
+# 24.10.26); "" резолвиться в forge.
+UI_THEMES = {"", "teal", "forge", "aurora"}
 UI_ICON_STYLES = {"", "thin", "duo", "fill", "bold", "neon"}
 UI_BUTTON_STYLES = {"", "outline", "glass", "dashed", "solid"}
 UI_LOADER_STYLES = {"", "beacon", "sweep", "orbit", "ring"}

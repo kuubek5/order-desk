@@ -773,10 +773,11 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 /* ── Прев'ю теми ──────────────────────────────────────────────────────────
    Плитка — мініатюра черги з рейкою: це екран, де оператор проводить 90%
    часу, і кружечок кольору не показав би головного. Палітру плитці дає
-   .thsw[data-pal] у tokens.css / theme-forge.css. Усередині дозволені лише
+   .thsw[data-pal] у tokens.css / theme-*.css. Усередині дозволені лише
    БАЗОВІ токени — похідні (--pri-bd, --sec-bg з treatment-a.css) обчислені
-   на :root і темі плитки не піддаються. */
-.setv2 .acc-theme-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+   на :root і темі плитки не піддаються. Колонки — auto-fit: тем три
+   (бірюзова, Forge, Аврора), і жорсткі дві колонки лишали третю сиротою. */
+.setv2 .acc-theme-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--space-3)}
 .setv2 .acc-icons-row{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-2)}
 .setv2 .acc-swatch{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2);
   border:1px solid var(--line-2);border-radius:var(--r-card);background:var(--card-2);

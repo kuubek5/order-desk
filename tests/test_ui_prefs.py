@@ -188,3 +188,42 @@ def test_theme_survives_a_dead_database(monkeypatch):
 
     # Анонім із мертвою БД — дефолт (Amber Forge); дзеркала в нього немає.
     assert deps_mod.ui_prefs(_request(None))["theme"] == "forge"
+
+
+def test_aurora_is_opt_in_and_reaches_html(monkeypatch):
+    """«Аврора» (24.10.26) — опційна: новий акаунт лишається на forge, а
+    вибір у кабінеті зберігається й доїжджає до <html> кожної сторінки."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, username="aurora_op")
+        assert user.ui_theme == "forge", "дефолт не мусить змінитись"
+        resp = asyncio.run(auth_router_mod.post_account_appearance(
+            request=_request(user.id), theme="aurora", icons="",
+            buttons="", loader="", chips="",
+            machine_art="", machine_strip="", machine_card="", db=db,
+        ))
+        assert resp.status_code == 204
+        db.refresh(user)
+        assert user.ui_theme == "aurora"
+
+    monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
+    assert deps_mod.ui_prefs(_request(user.id))["theme"] == "aurora"
+
+
+def test_every_theme_value_has_its_stylesheet_and_switch():
+    """Значення теми з білого списку без власного файлу токенів — тихий no-op:
+    кабінет зберігає «aurora», <html> її несе, а сторінка лишається як була.
+    Тому кожне непорожнє значення, крім канону teal (він живе в tokens.css),
+    мусить мати theme-<назва>.css у base.html з селектором під свій атрибут
+    і кнопку вибору в кабінеті."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app"
+    base_html = (root / "templates" / "base.html").read_text(encoding="utf-8")
+    account_html = (root / "templates" / "account.html").read_text(encoding="utf-8")
+    for theme in sorted(auth_router_mod.UI_THEMES - {"", "teal"}):
+        css_name = f"theme-{theme}.css"
+        assert f"/static/css/{css_name}" in base_html, f"{css_name} не підключено в base.html"
+        css = (root / "static" / "css" / css_name).read_text(encoding="utf-8")
+        assert f':root[data-theme="{theme}"]' in css, f"{css_name} не перевизначає токени під {theme}"
+        assert f"('{theme}', '{theme}', " in account_html, f"у кабінеті немає кнопки теми {theme}"

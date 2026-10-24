@@ -37,7 +37,8 @@ class User(Base):
     # operators (enforced in the settings route); NULL until an admin assigns it.
     sheet_initial: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
     # Візуальні налаштування оператора (кабінет /account): тема інтерфейсу
-    # ("forge" = Amber Forge, ДЕФОЛТ; "teal" = бірюзовий канон) і стиль іконок
+    # ("forge" = Amber Forge, ДЕФОЛТ; "teal" = бірюзовий канон; "aurora" =
+    # опційна «Аврора», вмикається лише вручну) і стиль іконок
     # ("" = канон, "thin"/"duo"/"bold"/"neon"). Рендеряться сервер-сайд
     # атрибутами на <html> у base.html — тому підуть за оператором на будь-який
     # браузер цього ПК, а не житимуть у localStorage конкретного профілю.

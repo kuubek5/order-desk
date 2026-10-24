@@ -348,6 +348,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/loader.css",
     "/static/css/treatment-a.css",
     "/static/css/theme-forge.css",
+    "/static/css/theme-aurora.css",
     "/static/css/icon-styles.css",
     "/static/css/element-styles.css",
     "/static/css/lookgear.css",
