@@ -445,6 +445,23 @@
   color: var(--ink-3);
 }
 
+/* Розміри моделі в мм (stl-render-core.js::showDims) — і в панелі, і в
+   галереї пошти; клік і перетягування йдуть крізь підпис на полотно. */
+.stl-dims {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: var(--fs-0);
+  color: var(--ink-3);
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stl-dims[hidden] { display: none; }
+.stl-panel.is-light .stl-dims { color: #4a5561; }
+
 /* Rotation-speed slider under the 3D stage. */
 .stl-panel-speed {
   display: flex;

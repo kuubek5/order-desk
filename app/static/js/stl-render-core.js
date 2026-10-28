@@ -27,6 +27,15 @@
   var BASE_SPIN_Y = 0.012;
   var BASE_SPIN_X = 0.003;
 
+  // Справжній масштаб (власник 28.10.26: «STL здається інших розмірів, ніж є
+  // насправді»). Раніше КОЖНА модель розтягувалась на всю рамку, тож премоляр
+  // і моляр, коронка й міст виглядали однаково великими — а звіряють їх із
+  // коронкою в лотку. Тепер міліметр однаковий для всіх файлів: рамка вміщає
+  // FRAME_MM (моляр ~11 мм займає ~4/5), і лише більше за рамку (міст)
+  // зменшується, щоб влізти, — підпис тоді каже «зменшено». STL з CAD — у мм.
+  var FRAME_MM = 14;
+  var FRAME_UNITS = 2.2;
+
   // Теплий бірюзовий — запасний колір моделі, якщо тема не дала токена.
   var FALLBACK_COLOR = 0x5eead4;
   var colorCache = null;
@@ -162,13 +171,36 @@
       roughness: 0.5,
     });
     var mesh = new THREE.Mesh(geometry, material);
-    mesh.scale.setScalar(2.2 / maxDim);
+    var shrunk = maxDim > FRAME_MM;
+    mesh.scale.setScalar(FRAME_UNITS / Math.max(maxDim, FRAME_MM));
 
     view.scene.add(mesh);
     view.mesh = mesh;
     view.camera.position.set(0, 0.6, 3.4);
     view.camera.lookAt(0, 0, 0);
+    showDims(view, size, shrunk);
     return mesh;
+  }
+
+  // Розміри моделі в мм — у кутку полотна. Живе в батьку полотна (сцена
+  // панелі й галереї — position:relative), ховається разом із полотном
+  // (`applyStatus`).
+  function showDims(view, size, shrunk) {
+    var host = view.canvas && view.canvas.parentElement;
+    if (!host) return;
+    var el = host.querySelector(".stl-dims");
+    if (!el) {
+      el = document.createElement("span");
+      el.className = "stl-dims mono";
+      host.appendChild(el);
+    }
+    el.textContent =
+      [size.x, size.y, size.z].map(function (v) { return v.toFixed(1); }).join(" × ") +
+      " мм" + (shrunk ? " · зменшено" : "");
+    el.title = shrunk
+      ? "Модель більша за рамку — показано зменшеною"
+      : "Масштаб однаковий для всіх файлів";
+    el.hidden = false;
   }
 
   // Один крок авто-обертання. speed 1.0 = базовий крок.
@@ -185,6 +217,8 @@
     statusEl.textContent = text || "";
     statusEl.style.display = text ? "flex" : "none";
     if (canvas) canvas.style.visibility = text ? "hidden" : "visible";
+    var dims = canvas && canvas.parentElement && canvas.parentElement.querySelector(".stl-dims");
+    if (dims) dims.hidden = !!text;
   }
 
   // Токен непрозорий: ядро ніколи не розбирає і не будує з нього шляхів, лише
