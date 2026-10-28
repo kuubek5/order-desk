@@ -123,6 +123,9 @@
   // оператор на видачі відкриває сотні тек: без капу heap ріс безмежно
   // (ревʼю 07.09.26). Map зберігає порядок вставки — найстаріший ключ перший.
   const GEOMETRY_CACHE_MAX = 40;
+  // Розкриття колом триває 0.34 с (screens.css stlGrow); запас — на випадок,
+  // коли animationend не прийде.
+  const GROW_FALLBACK_MS = 450;
   const FILELIST_CACHE_MAX = 200;
   function cacheSet(map, key, value, max) {
     if (map.has(key)) map.delete(key);
@@ -143,6 +146,8 @@
     activeIndex: -1,
     controller: null,
     rafId: null,
+    // Проміс «панель розкрилась» (growFromTrigger): важка робота чекає на нього.
+    grown: null,
     spinSpeed: SAVED_SPEED !== null ? SAVED_SPEED : (REDUCED_MOTION ? 0 : 1), // збережений вибір або дефолт
     dragging: false, // права кнопка затиснута — ручне обертання
     dragLastX: 0,
@@ -527,7 +532,11 @@
     const filename = state.files[index];
     const cached = state.geometryCache.get(geoKey(token, filename));
     if (cached) {
-      showGeometry(cached.clone());
+      // Навіть із кешу — після розкриття: перший кадр вантажить модель у GPU.
+      Promise.resolve(state.grown).then(() => {
+        if (state.token !== token || state.activeIndex !== index) return;
+        showGeometry(cached.clone());
+      });
       return;
     }
 
@@ -538,7 +547,7 @@
     const controller = new AbortController();
     state.controller = controller;
 
-    Core.fetchGeometry(token, filename, controller.signal)
+    Core.fetchGeometry(token, filename, controller.signal, state.grown)
       .then((geometry) => {
         if (controller.signal.aborted) return;
         cacheSet(state.geometryCache, geoKey(token, filename), geometry, GEOMETRY_CACHE_MAX);
@@ -593,16 +602,29 @@
   // кнопки у координатах панелі (і збоку від рядка, і на весь екран). Клас
   // одноразовий: знімається після анімації, щоб clip-path не лишався на
   // перетягуванні й розгортанні. prefers-reduced-motion — без анімації (CSS).
+  //
+  // Повертає проміс «розкрилась». Розбір STL і перший кадр моделі — сотні мс
+  // головного потоку на цеховому ПК — чекають на нього (state.grown): поки
+  // вони йшли ПІД анімацію, коло росло кадрами, «слайд-шоу» (власник
+  // 28.10.26). Запасний таймер — бо animationend не приходить, коли анімації
+  // немає (reduced-motion) або вкладка не малює.
   function growFromTrigger(panel, trigger) {
     const p = panel.getBoundingClientRect();
     const t = trigger && trigger.getBoundingClientRect();
-    if (!p.width || !t || !t.width) return;
+    if (!p.width || !t || !t.width || Core.reducedMotion()) return Promise.resolve();
     panel.style.setProperty("--grow-x", Math.round(t.left + t.width / 2 - p.left) + "px");
     panel.style.setProperty("--grow-y", Math.round(t.top + t.height / 2 - p.top) + "px");
     panel.classList.remove("is-growing");
     void panel.offsetWidth;
     panel.classList.add("is-growing");
-    panel.addEventListener("animationend", () => panel.classList.remove("is-growing"), { once: true });
+    return new Promise((resolve) => {
+      const done = () => {
+        panel.classList.remove("is-growing");
+        resolve();
+      };
+      panel.addEventListener("animationend", done, { once: true });
+      window.setTimeout(done, GROW_FALLBACK_MS);
+    });
   }
 
   function positionPanel(target) {
@@ -829,7 +851,7 @@
     // requestAnimationFrame: rAF is throttled when the tab isn't painting, so
     // the panel could otherwise stay at opacity 0 in a backgrounded tab.)
     void state.panelEl.offsetWidth;
-    growFromTrigger(state.panelEl, triggerEl);
+    state.grown = growFromTrigger(state.panelEl, triggerEl);
     state.panelEl.classList.add("is-open");
     resizeRenderer();
     setStatus("Завантаження прев'ю…");

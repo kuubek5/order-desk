@@ -32,7 +32,8 @@
   // і моляр, коронка й міст виглядали однаково великими — а звіряють їх із
   // коронкою в лотку. Тепер міліметр однаковий для всіх файлів: рамка вміщає
   // FRAME_MM (моляр ~11 мм займає ~4/5), і лише більше за рамку (міст)
-  // зменшується, щоб влізти, — підпис тоді каже «зменшено». STL з CAD — у мм.
+  // зменшується, щоб влізти. STL з CAD — у мм. Підпис розмірів у мм у кутку
+  // полотна власник прибрав того ж дня («прибрати цифри з прев'ю»).
   var FRAME_MM = 14;
   var FRAME_UNITS = 2.2;
 
@@ -152,8 +153,10 @@
     // (слайсери рахують свої) — з MeshStandardMaterial кожен доданок N·L
     // тоді нуль, і модель малюється суцільно чорною, хоч і завантажилась
     // нормально. Тому нормалі рахуємо самі, з обходу трикутників.
-    geometry.deleteAttribute("normal");
-    geometry.computeVertexNormals();
+    // Рахуються РАЗ на файл (prepareGeometry при завантаженні); кешована
+    // копія (clone) несе позначку в userData і другий раз не платить ці
+    // десятки мілісекунд головного потоку.
+    if (!(geometry.userData && geometry.userData.kmNormals)) prepareGeometry(geometry);
 
     geometry.computeBoundingBox();
     var size = new THREE.Vector3();
@@ -171,36 +174,22 @@
       roughness: 0.5,
     });
     var mesh = new THREE.Mesh(geometry, material);
-    var shrunk = maxDim > FRAME_MM;
     mesh.scale.setScalar(FRAME_UNITS / Math.max(maxDim, FRAME_MM));
 
     view.scene.add(mesh);
     view.mesh = mesh;
     view.camera.position.set(0, 0.6, 3.4);
     view.camera.lookAt(0, 0, 0);
-    showDims(view, size, shrunk);
     return mesh;
   }
 
-  // Розміри моделі в мм — у кутку полотна. Живе в батьку полотна (сцена
-  // панелі й галереї — position:relative), ховається разом із полотном
-  // (`applyStatus`).
-  function showDims(view, size, shrunk) {
-    var host = view.canvas && view.canvas.parentElement;
-    if (!host) return;
-    var el = host.querySelector(".stl-dims");
-    if (!el) {
-      el = document.createElement("span");
-      el.className = "stl-dims mono";
-      host.appendChild(el);
-    }
-    el.textContent =
-      [size.x, size.y, size.z].map(function (v) { return v.toFixed(1); }).join(" × ") +
-      " мм" + (shrunk ? " · зменшено" : "");
-    el.title = shrunk
-      ? "Модель більша за рамку — показано зменшеною"
-      : "Масштаб однаковий для всіх файлів";
-    el.hidden = false;
+  // Нормалі — з обходу трикутників, раз на файл. Позначка в userData їде з
+  // geometry.clone() (copy переносить userData), тож кешована копія готова.
+  function prepareGeometry(geometry) {
+    geometry.deleteAttribute("normal");
+    geometry.computeVertexNormals();
+    geometry.userData.kmNormals = true;
+    return geometry;
   }
 
   // Один крок авто-обертання. speed 1.0 = базовий крок.
@@ -211,14 +200,26 @@
   }
 
   // Статус і полотно взаємовиключні: доки є текст, полотно ховаємо, щоб напис
-  // не читався поверх напівнамальованої моделі.
+  // не читався поверх напівнамальованої моделі. Модель ПРОЯВЛЯЄТЬСЯ (opacity),
+  // а не вискакує (власник 28.10.26: «не плавно з'являється, слайд-шоу») —
+  // перехід стоїть у CSS (.stl-panel-canvas, .stl-gallery-canvas). Перерахунок
+  // стилю між 0 і 1 потрібен, щоб перехід стартував із прозорого стану.
   function applyStatus(statusEl, canvas, text) {
     if (!statusEl) return;
     statusEl.textContent = text || "";
     statusEl.style.display = text ? "flex" : "none";
-    if (canvas) canvas.style.visibility = text ? "hidden" : "visible";
-    var dims = canvas && canvas.parentElement && canvas.parentElement.querySelector(".stl-dims");
-    if (dims) dims.hidden = !!text;
+    if (!canvas) return;
+    if (text) {
+      canvas.style.visibility = "hidden";
+      canvas.style.opacity = "0";
+      return;
+    }
+    if (canvas.style.visibility === "hidden") {
+      canvas.style.opacity = "0";
+      canvas.style.visibility = "visible";
+      void canvas.offsetWidth;
+    }
+    canvas.style.opacity = "1";
   }
 
   // Токен непрозорий: ядро ніколи не розбирає і не будує з нього шляхів, лише
@@ -235,7 +236,11 @@
       });
   }
 
-  function fetchGeometry(token, filename, signal) {
+  // `gate` (необовʼязковий проміс) — коли можна розбирати: мережа йде одразу,
+  // а розбір і нормалі (сотні мс на цеховому ПК на великому файлі, головний
+  // потік) чекають, поки панель розкриється, — інакше анімація розкриття
+  // йшла кадрами, «слайд-шоу» (власник 28.10.26).
+  function fetchGeometry(token, filename, signal, gate) {
     return fetch(
       "/stl-preview/" + encodeURIComponent(token) + "/" + encodeURIComponent(filename),
       { signal: signal }
@@ -245,7 +250,10 @@
         return response.arrayBuffer();
       })
       .then(function (buffer) {
-        return new THREE.STLLoader().parse(buffer);
+        return Promise.resolve(gate).then(function () {
+          if (signal && signal.aborted) throw new Error("aborted");
+          return prepareGeometry(new THREE.STLLoader().parse(buffer));
+        });
       });
   }
 
