@@ -98,20 +98,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _client_folder_link(match, export_root, preview_roots, validated_roots):
+def _pinned_client_folder(orders) -> str | None:
+    """Тека клієнта з ЗАКРІПЛЕНИХ тек його робіт — коли всі вони в одній.
+
+    Ім'я може не знайти теку саме: Nikolay Pavlenko лежить у `pavlenko`, і
+    поруч схожий «Nikolay Spicin» — збіг неоднозначний, і зіставлення її не
+    обирає (28.10.26). А прийняття листа вже поклало кожну роботу в
+    `pavlenko/<партія>/<колір>`: саме ця тека й є текою клієнта. Роботи в
+    теках різних клієнтів (лист одного лікаря в теці іншого) — не вгадуємо.
+    """
+    heads = {
+        rel.replace("\\", "/").strip("/").split("/", 1)[0]
+        for rel in (getattr(o, "export_folder_path", None) for o in orders)
+        if rel and rel.strip("/\\ ")
+    }
+    return heads.pop() if len(heads) == 1 else None
+
+
+def _client_folder_link(match, export_root, preview_roots, validated_roots, orders=()):
     """(file://-посилання, токен /open-folder) теки клієнта або (None, None).
 
     Тека клієнта береться з самого ЗІСТАВЛЕННЯ, а не з знайдених партій:
     клієнт із прив'язаною текою, але без свіжих партій, інакше отримував би
-    заклик «Прив'язати папку» (бойовий випадок 28.08.26).
+    заклик «Прив'язати папку» (бойовий випадок 28.08.26). Ім'я теки не
+    знайшло — з закріплених тек робіт (`_pinned_client_folder`).
 
     Токен, а не лише file://-посилання: браузер МОВЧКИ блокує перехід на
     file:// зі сторінки на http, тому кнопка «Відкрити папку» досі не робила
     нічого (бойовий випадок 28.08.26). Провідник відкриває сервер через
     /open-folder, як це вже роблять прев'ю і черга."""
-    if not match.matched_folder_name:
+    folder_name = match.matched_folder_name or _pinned_client_folder(orders)
+    if not folder_name:
         return None, None
-    client_folder = export_root / match.matched_folder_name
+    client_folder = export_root / folder_name
     return (
         folder_to_file_uri(client_folder),
         build_preview_token_lexical(client_folder, preview_roots, validated_roots),
@@ -334,7 +353,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         # works share a material the same folders show under each, and the
         # operator picks by eye (Sum3D ID + STL preview are their anchor).
         client_folder_uri, client_folder_token = _client_folder_link(
-            match, _export_root, _preview_roots, _validated_roots
+            match, _export_root, _preview_roots, _validated_roots, group_orders
         )
         client_claims = night_claims.get(client_name, ())
         # Закріплені теки клієнта — по ВСІХ днях видачі, як і нічні клейми.

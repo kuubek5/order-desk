@@ -281,3 +281,40 @@ def test_diag_names_the_folder_taken_by_another_work(tmp_path, monkeypatch):
 
 
 from tests.test_settings_slabs_render import app_db  # noqa: E402,F401 — фікстура
+
+
+# ── Тека клієнта з закріплених тек робіт (28.10.26) ───────────────────────
+
+def test_client_folder_falls_back_to_the_folder_its_works_are_pinned_to(tmp_path):
+    """Nikolay Pavlenko лежить у `pavlenko`, і ім'я теку не обирає (поруч
+    схожий «Nikolay Spicin»). Обидві роботи дня прийняті в `pavlenko/…` — банер
+    «Папку не прив'язано» для нього брехав: файли видача показувала."""
+    from types import SimpleNamespace
+
+    from app.routers import handout as handout_router_mod
+
+    (tmp_path / "pavlenko").mkdir()
+    unmatched = SimpleNamespace(matched_folder_name=None)
+    works = [
+        SimpleNamespace(export_folder_path="pavlenko/28.10.26/emo b1"),
+        SimpleNamespace(export_folder_path=r"pavlenko\28.10.26\emo a3"),
+        SimpleNamespace(export_folder_path=None),
+    ]
+    uri, _token = handout_router_mod._client_folder_link(
+        unmatched, tmp_path, [], [], works
+    )
+    assert uri is not None and uri.rstrip("/").endswith("pavlenko")
+
+
+def test_client_folder_is_not_guessed_when_works_sit_in_different_clients(tmp_path):
+    from types import SimpleNamespace
+
+    from app.routers import handout as handout_router_mod
+
+    unmatched = SimpleNamespace(matched_folder_name=None)
+    works = [
+        SimpleNamespace(export_folder_path="Неда/28.10.26/mono a3"),
+        SimpleNamespace(export_folder_path="Басараб/28.10.26/mono a1"),
+    ]
+    assert handout_router_mod._client_folder_link(unmatched, tmp_path, [], [], works) == (None, None)
+    assert handout_router_mod._client_folder_link(unmatched, tmp_path, [], []) == (None, None)
