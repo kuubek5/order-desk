@@ -235,3 +235,59 @@ def test_real_remembered_name_still_wins_over_from_name(tmp_path, monkeypatch):
         db.commit()
         ctx = mail_router_mod._mail_panel_context(db, email, user)
     assert ctx["client_name"] == "Люмі-Дент"
+
+
+# ── Прийняття вчить картку клієнта (власник 28.10.26) ─────────────────────
+
+def _aliases(engine) -> dict:
+    with Session(engine) as db:
+        return {
+            a.sheet_name: (a.export_folder_name, a.confirmed)
+            for a in db.scalars(select(ClientNameAlias)).all()
+        }
+
+
+def test_accept_teaches_the_client_card_its_folder(tmp_path, monkeypatch):
+    """Nikolay Pavlenko лежить у `pavlenko`: пошта клала туди з памʼяті
+    відправника, а видача вгадувала теку за ім'ям і не вгадувала. Прийняття —
+    рішення оператора, тож тепер воно лягає і в картку клієнта."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+    (export_root / "pavlenko").mkdir()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(ClientSenderMemory(sender_key="lumi@ukr.net", client_name="Nikolay Pavlenko",
+                                  export_folder="pavlenko", orders_count=3, last_seen_at=datetime(2026, 9, 1)))
+        db.commit()
+        email, _ = _letter(db, mail_root / "u1")
+        _accept(db, user, email, client_name="Nikolay Pavlenko")
+    assert _landed_in(engine) == "pavlenko"
+    assert _aliases(engine) == {"Nikolay Pavlenko": ("pavlenko", True)}
+
+
+def test_accept_never_rewrites_an_existing_card_folder(tmp_path, monkeypatch):
+    """Оператор раз поклав файли не туди (вибрав теку руками) — картка, задана
+    раніше, не «перевчається» на помилку. Регістр імені не важить."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+    (export_root / "Люмі Дент (картка)").mkdir()
+    (export_root / "Чужа тека").mkdir()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        _bind(db, "люмі-дент", "Люмі Дент (картка)", confirmed=False)
+        email, _ = _letter(db, mail_root / "u1")
+        _accept(db, user, email, folder_pick="Чужа тека")
+    assert _landed_in(engine) == "Чужа тека"
+    assert _aliases(engine) == {"люмі-дент": ("Люмі Дент (картка)", False)}
+
+
+def test_learn_client_folder_skips_placeholders_and_blanks():
+    from app.client_folder import learn_client_folder
+
+    engine = _database()
+    with Session(engine) as db:
+        assert not learn_client_folder(db, "ipad.galiy@gmail.com", "ipad")
+        assert not learn_client_folder(db, "", "x")
+        assert not learn_client_folder(db, "Клієнт", None)
+        assert learn_client_folder(db, " Клієнт ", "Клієнт")
+        assert not learn_client_folder(db, "КЛІЄНТ", "Інша")

@@ -17,13 +17,17 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.business_day import utc_now
 from app.client_matcher import match_client_name
 from app.models import Client, ClientNameAlias, EmailMessage
+
+logger = logging.getLogger(__name__)
 
 _EMAIL_LIKE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _ADDRESS_SPLIT = re.compile(r"[\s,;]+")
@@ -46,6 +50,39 @@ def card_folder_for(db: Session, client_name: str | None) -> str | None:
         if (sheet_name or "").strip().casefold() == name and (folder or "").strip():
             return folder.strip()
     return None
+
+
+def learn_client_folder(db: Session, client_name: str | None, folder: str | None) -> bool:
+    """Прийняття листа вчить КАРТКУ клієнта: «ім'я → тека» (власник 28.10.26).
+
+    Прийняття — уже рішення оператора: «клієнт N, файли в теку X». Досі воно
+    лягало лише в памʼять відправника (`remember_sender`), якою користується
+    пошта, а видача шукала теку за схожістю імені — і не вгадувала: Nikolay
+    Pavlenko лежить у `pavlenko`, поруч схожий «Nikolay Spicin», банер «Папку
+    не прив'язано». З 18 клієнтів пошти 28.10.26 підтверджений зв'язок у
+    картці мали лише 6, решта трималась на везінні нечіткого збігу.
+
+    Пише ЛИШЕ коли для цього імені в картці теки ще немає (жодного рядка
+    `ClientNameAlias`, з тим самим ім'ям без огляду на регістр): наявний
+    зв'язок — рішення людини в «Клієнти» або попереднього прийняття — не
+    переписуємо, тож одна помилка оператора з текою картку не «перевчить».
+    Ключ — ім'я рівно як у роботі: видача дивиться в картку точним збігом.
+    True — записано.
+    """
+    name = (client_name or "").strip()
+    folder = (folder or "").strip()
+    if not name or not folder or is_placeholder_name(name):
+        return False
+    key = name.casefold()
+    for existing in db.scalars(select(ClientNameAlias.sheet_name)).all():
+        if (existing or "").strip().casefold() == key:
+            return False
+    db.add(ClientNameAlias(
+        sheet_name=name, export_folder_name=folder,
+        confirmed=True, confirmed_at=utc_now(),
+    ))
+    logger.info("Картка клієнта: %r → тека %r (з прийняття листа)", name, folder)
+    return True
 
 
 def preferred_client_folder(db: Session, client_name: str | None, sender_hint) -> str | None:

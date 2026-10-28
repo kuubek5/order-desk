@@ -47,7 +47,7 @@ from app.models import EmailMessage, Order, StatusEvent, SyncLog
 from app.services.mail_folder_journal import VIA_ACCEPT, log_folder_move
 from app.services.mail_merge import add_contribution, link_primary
 from app.parser import HEADER_ROWS
-from app.client_folder import preferred_client_folder
+from app.client_folder import learn_client_folder, preferred_client_folder
 from app.sender_memory import lookup_sender, remember_sender
 from app.services.opak import format_opak, opak_units
 from app.services.sheet_stuck_writes import note_write_failed, note_write_ok
@@ -914,6 +914,9 @@ def _move_attachments(
         message=f"email {email.id}: {len(attachments)} файл(ів)",
     ))
     remember_sender(db, email, new_order.client_name or "", used_folder)
+    # Те саме рішення — і в картку клієнта, якою користується видача: інакше
+    # пошта кладе файли в теку, яку видача потім вгадує за схожістю імені.
+    learn_client_folder(db, new_order.client_name, used_folder)
     return moved_pairs
 
 
