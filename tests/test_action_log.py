@@ -59,6 +59,13 @@ def _writeback_uses_the_test_db(monkeypatch):
     )
     for name in ("write_sheet_fields", "write_calculated_cell", "write_rework_sum3d_fields"):
         monkeypatch.setattr(writeback_service, name, lambda *a, **k: None)
+    # Пачка Sum3D (`queue_sheet_fields`, 17.09.26) іде в СПІЛЬНИЙ потік пулу й
+    # спрацьовує через 0.35 с — тобто вже посеред НАСТУПНОГО тесту, у його базі
+    # (`_LAST_ENGINE`) і на тому самому з'єднанні StaticPool. CI 28.10.26:
+    # «cannot commit transaction - SQL statements in progress» у
+    # test_undo_last_reverts_most_recent_action. Підміна в роутері — бо він
+    # імпортував функцію за іменем; у пул тут не йде нічого.
+    monkeypatch.setattr(orders_router_mod, "queue_sheet_fields", lambda *a, **k: None)
 
 
 @pytest.fixture(autouse=True)
