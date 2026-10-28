@@ -233,6 +233,7 @@ def _save(request, db, **kwargs):
         "row_pad": None, "list_width": None, "density": "", "mat_style": "", "step": None,
         "view": None, "layout": None, "flow": None,
         "dock": None, "dock_ready": None, "dock_height": None,
+        "hold": None, "dock_hold": None,
     }
     payload.update(kwargs)
     return asyncio.run(auth_router_mod.post_account_look(request=request, db=db, **payload))

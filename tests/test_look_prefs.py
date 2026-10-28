@@ -53,6 +53,7 @@ def _save(request, db, **kwargs):
     payload = {
         "row_pad": 0, "list_width": 0, "density": "", "mat_style": "", "step": 2,
         "view": None, "dock": None, "dock_ready": None, "dock_height": None,
+        "hold": None, "dock_hold": None,
     }
     payload.update(kwargs)
     return asyncio.run(

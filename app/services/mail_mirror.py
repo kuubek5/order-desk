@@ -64,7 +64,7 @@ from app.services.look_prefs import (
 )
 from app.services.focus import ranks as focus_ranks
 from app.services.order_dates import order_date, parse_sheet_tab
-from app.services.queue import RETENTION_DAYS
+from app.services.queue import RETENTION_DAYS, drop_hold_orders
 
 #: Слово «сьогодні» на дроті. Порожнє `day` означає «поля не було» (CLAUDE.md
 #: §14), тож повернення на сьогодні мусить мати ВЛАСНЕ слово.
@@ -200,6 +200,10 @@ class MailDock:
     #: Лічильники чипів готовності — по НЕпоштових рядках обраного джерела
     #: (для канону — по лабі, щоб цифри вже стояли на кнопці «+ Лабораторія»).
     ready_counts: dict[str, int] = field(default_factory=dict)
+    #: Чіп «на погодженні» (HOLD_FILTER_BRIEF.md): скільки НЕпоштових рядків
+    #: обраного джерела на погодженні (до фільтра готовності) і чи сховано.
+    hold_count: int = 0
+    hide_hold: bool = False
     #: Вкладка, яку показує док, і сьогоднішня вкладка (у вихідні — пʼятниця).
     day: date = field(default_factory=business_tab_today)
     today: date = field(default_factory=business_tab_today)
@@ -265,6 +269,7 @@ def mail_dock(
     height: int = 0,
     day: date | None = None,
     focus_rank: Mapping[int, int] | None = None,
+    hide_hold: bool = False,
 ) -> MailDock:
     """Повний стан доку: роботи, роздільник, лічильники. Один запит живих
     робіт; вкладка дня, числа на кнопках дня й стрілки — з нього ж, без
@@ -289,8 +294,16 @@ def mail_dock(
     mail = [o for o in day_rows if o.source == "email"]
     lab = [o for o in day_rows if o.source == "lab"]
     others = [o for o in day_rows if o.source != "email"]
+    # Чіп «на погодженні»: сховані випадають ДО фільтра й лічильників
+    # готовності; пошта не ховається ніколи (drop_hold_orders її пропускає).
+    # N — по тих рядках, які показує обране джерело: лаба, а для «Уся
+    # вкладка» — усі непоштові.
+    lab, lab_held = drop_hold_orders(lab, hide_hold)
+    others, others_held = drop_hold_orders(others, hide_hold)
 
     dock = MailDock(scope=scope, ready=ready, height=DOCK_HEIGHT.clamp_or_zero(height))
+    dock.hide_hold = hide_hold
+    dock.hold_count = others_held if scope == "all" else lab_held
     # Набір «мої зараз» (`focus.ranks`) — лише в блоці лаби пришпилені першими.
     dock.focus_rank = dict(focus_rank or {})
     dock.day, dock.today = shown, today
@@ -345,7 +358,8 @@ def mail_dock_for(db: Session, user: User | None, day: date | None = None) -> Ma
     роут бере `focused_ids` з `dock.focus_rank`, а не другим запитом."""
     scope = (getattr(user, "mail_dock_scope", "") or "") if user is not None else ""
     height = (getattr(user, "mail_dock_height", 0) or 0) if user is not None else 0
+    hide_hold = bool(getattr(user, "mail_dock_hide_hold", False)) if user is not None else False
     return mail_dock(
         db, scope=scope, ready=mail_dock_ready_of(user), height=height, day=day,
-        focus_rank=focus_ranks(db, user),
+        focus_rank=focus_ranks(db, user), hide_hold=hide_hold,
     )

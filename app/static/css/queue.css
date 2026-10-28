@@ -228,6 +228,52 @@
   white-space: nowrap;
   vertical-align: middle;
 }
+/* Чіп «на погодженні» (HOLD_FILTER_BRIEF.md, варіант А) — черга і док пошти.
+   Напис не міняється; стан — крапка: суцільна = видно, кільце + підсвічений
+   фон = сховано. Колір — той самий --hold, що в плашці рядка. */
+.hold-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-2);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--ui-speed) ease, color var(--ui-speed) ease, border-color var(--ui-speed) ease;
+}
+.hold-chip:hover { color: var(--ink); border-color: rgba(var(--hold-rgb), 0.45); }
+.hold-chip .hold-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--hold-rgb));
+  box-shadow: inset 0 0 0 2px rgb(var(--hold-rgb));
+}
+.hold-chip .n {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  text-align: center;
+  color: rgb(var(--hold-rgb));
+  background: rgba(var(--hold-rgb), 0.12);
+}
+.hold-chip[aria-pressed="true"] {
+  color: var(--hold-ink);
+  background: rgba(var(--hold-rgb), 0.16);
+  border-color: rgba(var(--hold-rgb), 0.42);
+}
+.hold-chip[aria-pressed="true"] .hold-dot { background: transparent; }
 .approval-badge svg {
   width: 12px;
   height: 12px;

@@ -63,6 +63,7 @@ from app.services.queue import (
     QUEUE_SORT_FIELDS,
     RETENTION_DAYS,
     date_window,
+    drop_hold_orders,
     handout_pending_client_count,
     queue_handout_summary,
     queue_sort_key,
@@ -315,6 +316,13 @@ def build_queue_view(
     # лишаються точними навіть на першому, «голому» рендері.
     perf.note_rows(len(orders))
 
+    # Чіп «на погодженні» (HOLD_FILTER_BRIEF.md, 28.10.26): N — скільки їх у
+    # поточному виборі ДО фільтра готовності; сховані випадають ДО лічильників
+    # готовності, щоб «Можна брати» їх не рахувало. Прапорець — з акаунта, не
+    # з query: полл рядків (rows_qs) бачить те саме без жодного параметра.
+    hide_hold = bool(getattr(user, "queue_hide_hold", False))
+    orders, hold_count = drop_hold_orders(orders, hide_hold)
+
     # Second, independent filter: readiness (has the technician dropped files yet?)
     ready_counts = count_by_readiness(orders)
     orders = filter_by_readiness(orders, ready)
@@ -526,6 +534,8 @@ def build_queue_view(
             "counts": counts,
             "ready": ready,
             "ready_counts": ready_counts,
+            "hold_count": hold_count,
+            "hide_hold": hide_hold,
             "source": source,
             "source_counts": source_counts,
             "show_overdue": show_overdue,

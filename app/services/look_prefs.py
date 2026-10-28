@@ -70,6 +70,10 @@ MAIL_DOCK_SCOPES = ("", "mail", "lab", "labonly", "all")
 #: queue_filters.READY_FILTERS; канон "" у базі = "can_take" (те, що
 #: CAM-оператор бере між листами), і "can_take" на дроті кладеться як "".
 MAIL_DOCK_READY_DEFAULT = "can_take"
+#: Чіп «на погодженні» (HOLD_FILTER_BRIEF.md, 28.10.26) — черга й док пошти.
+#: Обидва стани мають ВЛАСНЕ слово на дроті: порожнє значення сервер не
+#: відрізнить від «поля не було» (CLAUDE.md §14).
+HOLD_WORDS = {"show": False, "hide": True}
 #: Висота доку (тіла таблиці). Нижня — три рядки з шапкою, верхня — стеля, за
 #: якою список листів над доком перестає вміщати хоч щось.
 DOCK_HEIGHT = Bounds(160, 720)
@@ -95,6 +99,7 @@ def apply_mail_look(
     dock: str | None = None,
     dock_ready: str | None = None,
     dock_height: int | None = None,
+    dock_hold: str | None = None,
 ) -> None:
     """Кожне поле необовʼязкове, і None означає «не чіпати» (як у
     apply_handout_look): шестерня шле відступ, ширину й крок разом, кнопки
@@ -122,10 +127,25 @@ def apply_mail_look(
         user.mail_dock_ready = "" if dock_ready == MAIL_DOCK_READY_DEFAULT else dock_ready
     if dock_height is not None:
         user.mail_dock_height = DOCK_HEIGHT.clamp_or_zero(dock_height)
+    if dock_hold is not None:
+        user.mail_dock_hide_hold = _hold_flag(dock_hold)
     if row_pad is not None:
         user.mail_row_pad = ROW_PAD.clamp_or_zero(row_pad)
     if list_width is not None:
         user.mail_list_width = LIST_WIDTH.clamp_or_zero(list_width)
+
+
+def _hold_flag(word: str) -> bool:
+    if word not in HOLD_WORDS:
+        raise LookError("невідомий стан чіпа «на погодженні»")
+    return HOLD_WORDS[word]
+
+
+def apply_queue_hold(user: User, hold: str) -> None:
+    """Чіп «на погодженні» черги. Окремо від apply_queue_look: шестерня шле
+    всі свої поля разом, а чіп — лише своє, і не має скидати щільність,
+    відступ і крок (CLAUDE.md §14, «кнопка, що шле ЛИШЕ своє поле»)."""
+    user.queue_hide_hold = _hold_flag(hold)
 
 
 def apply_queue_look(

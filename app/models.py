@@ -123,6 +123,11 @@ class User(Base):
     # Фон порожньої черги (шестерня вигляду, 28.10.26): "" = «за темою»,
     # ключ кадру або "none". Набір і правила — app/services/queue_empty_bg.py.
     queue_empty_bg: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Чіп «на погодженні» (28.10.26, HOLD_FILTER_BRIEF.md): сховати роботи, на
+    # які технік чекає погодження лікаря. Два НЕЗАЛЕЖНІ перемикачі — черга і
+    # док пошти; за замовчуванням вимкнено (видно все).
+    queue_hide_hold: Mapped[bool] = mapped_column(default=False, server_default="0")
+    mail_dock_hide_hold: Mapped[bool] = mapped_column(default=False, server_default="0")
     # НЕ ВИКОРИСТОВУЮТЬСЯ (власник 12.10.26 прибрав вікна «Що нового» і ранкового
     # привітання): колонки лишено, щоб не робити міграцію (0087/0088).
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

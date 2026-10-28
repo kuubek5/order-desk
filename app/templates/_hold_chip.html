@@ -1,0 +1,18 @@
+{# Чіп «на погодженні» (HOLD_FILTER_BRIEF.md, варіант А, власник 28.10.26).
+   Напис ОДИН завжди — «на погодженні N»; стан показує крапка: ● — видно,
+   ○ і підсвічений фон — сховано. Клік — перемкнути (без підтверджень).
+
+   Параметри (через {% with %}):
+     hold_target — "queue" | "dock": яку кнопку на акаунті перемикає
+                   (поле `hold` чи `dock_hold` у /account/look);
+     hold_n      — скільки робіт на погодженні в поточному виборі, ДО
+                   фільтра готовності. 0 → чіпа немає;
+     hold_hidden — чи сховано зараз.
+   На дроті — власні слова "hide"/"show", не порожнє (CLAUDE.md §14).
+   Обробники: queue.js (черга) і mail.js (док). #}
+{% if hold_n %}
+<button type="button" class="hold-chip" data-hold-toggle="{{ hold_target }}"
+        data-hold-next="{{ 'show' if hold_hidden else 'hide' }}"
+        aria-pressed="{{ 'true' if hold_hidden else 'false' }}"
+        title="{{ 'Сховано роботи, які технік ще погоджує з лікарем. Клік — показати' if hold_hidden else 'Роботи, які технік ще погоджує з лікарем. Клік — сховати' }}"><span class="hold-dot" aria-hidden="true"></span>на погодженні <span class="n">{{ hold_n }}</span></button>
+{% endif %}

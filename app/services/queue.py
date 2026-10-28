@@ -125,6 +125,30 @@ def is_approval_pending_comment(text: str | None) -> bool:
     return bool(_APPROVAL_PENDING.search(lowered))
 
 
+def is_hold_order(order: Order) -> bool:
+    """Чи ховає її чіп «на погодженні» (черга й док пошти, 28.10.26).
+
+    Ознака — коментар техніка, тобто лабораторного/табличного рядка; поштову
+    роботу чіп не ховає ніколи (HOLD_FILTER_BRIEF.md), навіть якщо слово
+    «погодження» потрапило в коментар оператора."""
+    return order.source != "email" and is_approval_pending_comment(order.cam_comment)
+
+
+def drop_hold_orders(orders, hide: bool) -> tuple[list, int]:
+    """(рядки без тих, що на погодженні, якщо `hide`; скільки їх було).
+
+    Лише фільтр: порядок решти не змінюється (CLAUDE.md §2, правило 1)."""
+    kept = []
+    held = 0
+    for o in orders:
+        if is_hold_order(o):
+            held += 1
+            if hide:
+                continue
+        kept.append(o)
+    return kept, held
+
+
 def queue_sort_key(order: Order) -> tuple:
     """Порядок черги за замовчуванням — той самий, що в Google Таблиці: день
     (вкладка), далі рядок згори вниз.

@@ -1596,3 +1596,41 @@ if (document.readyState === "loading") {
 } else {
   centerActiveDay();
 }
+
+
+/* ── Чіп «на погодженні»: сховати / показати (HOLD_FILTER_BRIEF.md) ─────────
+   Стан живе на АКАУНТІ (/account/look, scope=queue, лише поле `hold` — інакше
+   скидались би щільність і відступ шестерні). Після збереження — той самий
+   легкий свап, що й зміна фільтра (partial=filters): рядки, смуга фільтрів з
+   лічильниками готовності й «N у вигляді». Полл рядків бере прапорець з
+   акаунта, тож query для нього міняти не треба. Чіп лежить у #queue-filters,
+   який свапається OOB — тому слухач делегований на document. */
+document.addEventListener("click", (event) => {
+  const chip = event.target.closest('[data-hold-toggle="queue"]');
+  if (!chip) return;
+  const next = chip.dataset.holdNext === "show" ? "show" : "hide";
+  // Одразу показати новий стан — відповідь свапу потім перемалює чіп.
+  chip.setAttribute("aria-pressed", next === "hide" ? "true" : "false");
+  chip.dataset.holdNext = next === "hide" ? "show" : "hide";
+  const failed = () => {
+    if (window.showToast) window.showToast("Не вдалось зберегти «на погодженні»", "error");
+  };
+  fetch("/account/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ scope: "queue", hold: next }).toString(),
+    credentials: "same-origin",
+  })
+    .then((response) => {
+      if (response.status === 401) { window.location.href = "/login"; return; }
+      if (!response.ok) { failed(); return; }
+      const url = new URL(window.location.href);
+      url.searchParams.set("partial", "filters");
+      if (window.htmx) {
+        window.htmx.ajax("GET", url.pathname + url.search, { target: "#queue-rows", swap: "outerHTML" });
+      } else {
+        window.location.reload();
+      }
+    })
+    .catch(failed);
+});

@@ -38,6 +38,7 @@ from app.services.look_prefs import (
     LookError,
     apply_handout_look,
     apply_mail_look,
+    apply_queue_hold,
     apply_queue_look,
 )
 from app.services.attempt_limit import block_message, login_limiter
@@ -565,6 +566,10 @@ async def post_account_look(
     dock: str | None = Form(None),
     dock_ready: str | None = Form(None),
     dock_height: int | None = Form(None),
+    # Чіп «на погодженні» (HOLD_FILTER_BRIEF.md): "show"/"hide", None — не
+    # чіпати. `hold` — черга, `dock_hold` — док пошти; незалежні.
+    hold: str | None = Form(None),
+    dock_hold: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Зберегти вигляд списку (шестерня) — один роут на обидва екрани.
@@ -583,14 +588,20 @@ async def post_account_look(
             apply_mail_look(
                 user, row_pad=row_pad, list_width=list_width, step=step, view=view,
                 dock=dock, dock_ready=dock_ready, dock_height=dock_height,
+                dock_hold=dock_hold,
             )
         elif scope == "queue":
-            # Шестерня черги шле всі числа завжди; пропущене читаємо як канон,
-            # як і до 07.10.26.
-            apply_queue_look(
-                user, density=density, row_pad=row_pad or 0, mat_style=mat_style,
-                step=step or 0,
-            )
+            if hold is not None:
+                apply_queue_hold(user, hold)
+            # Шестерня черги шле всі свої поля разом і крок — завжди (навіть
+            # "0"); пропущене серед них читаємо як канон, як і до 07.10.26.
+            # Чіп «на погодженні» шле лише `hold` — без кроку й відступу це не
+            # шестерня, і щільність/відступ/крок лишаються як були.
+            if step is not None or row_pad is not None:
+                apply_queue_look(
+                    user, density=density, row_pad=row_pad or 0, mat_style=mat_style,
+                    step=step or 0,
+                )
         elif scope == "handout":
             apply_handout_look(user, layout=layout, flow=flow)
         else:

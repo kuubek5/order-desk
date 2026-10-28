@@ -7,8 +7,9 @@
    оновлює лічильники разом із таблицею — інакше число в шапці відставало б
    від рядків до перезавантаження). Обгортка — в тому, хто включає.
 
-   Кнопки шлють /account/look (scope=mail, dock=… / dock_ready=…) і одразу
-   смикають полл (mail.js, [data-dock-scope] / [data-dock-ready]). Канон на
+   Кнопки шлють /account/look (scope=mail, dock=… / dock_ready=… / dock_hold=…)
+   і одразу смикають полл (mail.js, [data-dock-scope] / [data-dock-ready] /
+   [data-hold-toggle="dock"]). Канон на
    дроті — "mail", не "" (пастка «порожнє поле = поля не було», CLAUDE.md §14).
 
    День доку (власник 18.10.26) — ті самі «Вчора / Сьогодні / Завтра», що в
@@ -57,5 +58,8 @@
     <button type="button" data-dock-ready="all" aria-pressed="{{ 'true' if dock.ready == 'all' else 'false' }}"
             title="Без фільтра готовності">Усі <span class="n">{{ dock.ready_counts.all }}</span></button>
 </div>
+{# Чіп «на погодженні» — окремий від черги перемикач (поле dock_hold). Поза
+   .qmir-seg свідомо: кнопки сегмента мають свій вигляд «натиснуто». #}
+{% with hold_target = "dock", hold_n = dock.hold_count, hold_hidden = dock.hide_hold %}{% include "_hold_chip.html" %}{% endwith %}
 <span class="qmir-note">порядок як у таблиці{% if dock.scope != 'labonly' %} · пошта без фільтра{% endif %}</span>
 {% endif %}

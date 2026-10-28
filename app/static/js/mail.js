@@ -1473,6 +1473,16 @@ document.addEventListener("htmx:afterRequest", (event) => {
       }
       return;
     }
+    // Чіп «на погодженні» доку (HOLD_FILTER_BRIEF.md): своє поле dock_hold,
+    // незалежне від чіпа черги. Новий стан — одразу, полл потім перемалює.
+    const holdChip = event.target.closest('[data-hold-toggle="dock"]');
+    if (holdChip && mirror.contains(holdChip)) {
+      const next = holdChip.dataset.holdNext === "show" ? "show" : "hide";
+      holdChip.setAttribute("aria-pressed", next === "hide" ? "true" : "false");
+      holdChip.dataset.holdNext = next === "hide" ? "show" : "hide";
+      saveDock({ dock_hold: next }, refreshDock);
+      return;
+    }
     const scopeBtn = event.target.closest("[data-dock-scope]");
     const readyBtn = scopeBtn ? null : event.target.closest("[data-dock-ready]");
     const target = scopeBtn || readyBtn;
