@@ -158,22 +158,23 @@
     // десятки мілісекунд головного потоку.
     if (!(geometry.userData && geometry.userData.kmNormals)) prepareGeometry(geometry);
 
-    geometry.computeBoundingBox();
+    // Центруємо ВЕРШИНИ геометрії, а не mesh.position: позиція живе в
+    // немасштабованому просторі батька і викинула б зменшену модель за межі
+    // видимої піраміди. Геометрія з фонового потоку (stl-worker.js) приходить
+    // уже відцентрованою з готовою рамкою — два проходи по сотнях тисяч
+    // вершин головним потоком їй не потрібні.
+    var ready = geometry.userData && geometry.userData.kmCentered && geometry.boundingBox;
+    if (!ready) {
+      geometry.computeBoundingBox();
+      geometry.center();
+      geometry.computeBoundingBox();
+      geometry.userData.kmCentered = true;
+    }
     var size = new THREE.Vector3();
     geometry.boundingBox.getSize(size);
     var maxDim = Math.max(size.x, size.y, size.z) || 1;
 
-    // Центруємо ВЕРШИНИ геометрії, а не mesh.position: позиція живе в
-    // немасштабованому просторі батька і викинула б зменшену модель за межі
-    // видимої піраміди.
-    geometry.center();
-
-    var material = new THREE.MeshStandardMaterial({
-      color: modelColor(),
-      metalness: 0.18,
-      roughness: 0.5,
-    });
-    var mesh = new THREE.Mesh(geometry, material);
+    var mesh = new THREE.Mesh(geometry, makeMaterial());
     mesh.scale.setScalar(FRAME_UNITS / Math.max(maxDim, FRAME_MM));
 
     view.scene.add(mesh);
@@ -181,6 +182,39 @@
     view.camera.position.set(0, 0.6, 3.4);
     view.camera.lookAt(0, 0, 0);
     return mesh;
+  }
+
+  // Матеріал моделі — в одному місці: прогрів (warmUp) компілює шейдер саме
+  // під ці параметри, і three бере готову програму для справжньої моделі.
+  function makeMaterial() {
+    return new THREE.MeshStandardMaterial({
+      color: modelColor(),
+      metalness: 0.18,
+      roughness: 0.5,
+    });
+  }
+
+  // Прогрів наперед (власник 28.10.26: «розгортається ривками»). Замір у
+  // Edge з уповільненим у 4× процесором: створення WebGL-контексту (~70 мс)
+  // і компіляція шейдера на першому кадрі моделі (сотні мс) припадали на
+  // кадри розкриття панелі. Тут контекст уже є, і шейдер компілюється на
+  // невидимій моделі, поки сторінка простоює. Матеріал прогріву НЕ
+  // звільняємо: dispose прибрав би з кешу саме ту програму, заради якої
+  // прогрівали.
+  function warmUp(view) {
+    if (!view.renderer || view.warmed) return;
+    view.warmed = true;
+    var mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), makeMaterial());
+    view.scene.add(mesh);
+    try {
+      view.renderer.compile(view.scene, view.camera);
+      view.renderer.render(view.scene, view.camera);
+    } finally {
+      view.scene.remove(mesh);
+      mesh.geometry.dispose();
+      view.warmMaterial = mesh.material;
+    }
+    renderOnce(view);
   }
 
   // Нормалі — з обходу трикутників, раз на файл. Позначка в userData їде з
@@ -236,25 +270,89 @@
       });
   }
 
-  // `gate` (необовʼязковий проміс) — коли можна розбирати: мережа йде одразу,
-  // а розбір і нормалі (сотні мс на цеховому ПК на великому файлі, головний
-  // потік) чекають, поки панель розкриється, — інакше анімація розкриття
-  // йшла кадрами, «слайд-шоу» (власник 28.10.26).
+  // Фоновий потік (stl-worker.js): прийом файлу, розбір, нормалі й
+  // центрування — поза головним потоком. Замір 28.10.26 (Edge, процесор
+  // уповільнено в 4×, файл 14 МБ): прийом тіла ~170 мс ішов ПІД анімацію
+  // розкриття, розбір ~570 мс — одразу після неї; оператор бачив ривки.
+  // Адреса — з data-worker тегу цього скрипта (_stl_scripts.html, з ?v=).
+  var WORKER_URL = (document.currentScript && document.currentScript.dataset.worker) || null;
+  var worker = null;
+  var workerSeq = 0;
+  var workerJobs = {};
+
+  function getWorker() {
+    if (worker === false || !WORKER_URL || typeof Worker === "undefined") return null;
+    if (worker) return worker;
+    try {
+      worker = new Worker(WORKER_URL);
+    } catch (e) {
+      worker = false;
+      return null;
+    }
+    worker.onmessage = function (event) {
+      var job = workerJobs[event.data.id];
+      if (!job) return;
+      delete workerJobs[event.data.id];
+      job(event.data);
+    };
+    // Воркер не піднявся (мережева адреса, політика браузера) — назавжди на
+    // головний потік; завдання, що вже чекають, ідуть туди ж.
+    worker.onerror = function () {
+      worker = false;
+      var jobs = workerJobs;
+      workerJobs = {};
+      Object.keys(jobs).forEach(function (id) { jobs[id]({ fallback: true }); });
+    };
+    return worker;
+  }
+
+  function geometryFromWorker(data) {
+    var g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(data.normals, 3));
+    var h = new THREE.Vector3(data.size[0] / 2, data.size[1] / 2, data.size[2] / 2);
+    g.boundingBox = new THREE.Box3(h.clone().negate(), h);
+    g.userData.kmNormals = true;
+    g.userData.kmCentered = true;
+    return g;
+  }
+
+  function fetchOnMainThread(url, signal) {
+    return fetch(url, { signal: signal }).then(function (response) {
+      if (!response.ok) throw new Error("file-failed");
+      return response.arrayBuffer();
+    });
+  }
+
+  // `gate` (необовʼязковий проміс) — коли можна віддати геометрію: перший
+  // кадр моделі (завантаження в GPU) не має припадати на анімацію розкриття
+  // панелі. Робота воркера від gate не залежить і йде одразу.
   function fetchGeometry(token, filename, signal, gate) {
-    return fetch(
-      "/stl-preview/" + encodeURIComponent(token) + "/" + encodeURIComponent(filename),
-      { signal: signal }
-    )
-      .then(function (response) {
-        if (!response.ok) throw new Error("file-failed");
-        return response.arrayBuffer();
-      })
-      .then(function (buffer) {
-        return Promise.resolve(gate).then(function () {
-          if (signal && signal.aborted) throw new Error("aborted");
-          return prepareGeometry(new THREE.STLLoader().parse(buffer));
-        });
+    var url = "/stl-preview/" + encodeURIComponent(token) + "/" + encodeURIComponent(filename);
+    var w = getWorker();
+    var loaded;
+    if (w) {
+      loaded = new Promise(function (resolve, reject) {
+        var id = ++workerSeq;
+        workerJobs[id] = function (data) {
+          if (data.error) reject(new Error(data.error));
+          else if (data.fallback) fetchOnMainThread(url, signal).then(resolve, reject);
+          else resolve(data);
+        };
+        w.postMessage({ id: id, url: url });
       });
+    } else {
+      loaded = fetchOnMainThread(url, signal);
+    }
+    return loaded.then(function (data) {
+      return Promise.resolve(gate).then(function () {
+        if (signal && signal.aborted) throw new Error("aborted");
+        if (data && data.positions) return geometryFromWorker(data);
+        // Текстовий STL (воркер повернув як є) або без воркера.
+        var buffer = data && data.raw ? data.raw : data;
+        return prepareGeometry(new THREE.STLLoader().parse(buffer));
+      });
+    });
   }
 
   var FILE_ICON =
@@ -356,6 +454,7 @@
     renderOnce: renderOnce,
     clearMesh: clearMesh,
     showGeometry: showGeometry,
+    warmUp: warmUp,
     spinMesh: spinMesh,
     applyStatus: applyStatus,
     fetchFileList: fetchFileList,

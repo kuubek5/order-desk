@@ -394,6 +394,9 @@
     // Ядро фарбує модель кольором теми; якщо панель у світлому режимі,
     // перефарбовуємо одразу — інакше перший кадр блимає темним.
     applyModelColor(state.panelEl.classList.contains("is-light"));
+    // Перший кадр (завантаження моделі в GPU, найважчий) — ще на невидимому
+    // полотні, і лише тоді проявлення: інакше воно стартувало б із паузи.
+    renderOnce();
     setStatus(null);
     startRenderLoop();
   }
@@ -929,4 +932,26 @@
   window.addEventListener("resize", () => {
     if (state.open) resizeRenderer();
   });
+
+  // Прогрів: WebGL-контекст і шейдер моделі — поки сторінка простоює, а не в
+  // кадрах розкриття панелі (Core.warmUp). Лише на сторінках, де є що
+  // відкрити: контекстів у браузера ~16, без потреби їх не беремо.
+  function warmWhenIdle() {
+    if (state.renderer || !document.querySelector("[data-stl-preview-token]")) return;
+    const run = () => {
+      if (state.open && !state.renderer) return; // панель уже відкривається сама
+      try {
+        ensureRenderer();
+        Core.warmUp(state);
+      } catch (e) {
+        /* без WebGL панель покаже свій статус при відкритті */
+      }
+    };
+    if (window.requestIdleCallback) window.requestIdleCallback(run, { timeout: 3000 });
+    else window.setTimeout(run, 1200);
+  }
+  if (document.readyState === "complete") warmWhenIdle();
+  else window.addEventListener("load", warmWhenIdle, { once: true });
+  // Тригери можуть приїхати пізніше (htmx: картка листа, полл черги).
+  document.body.addEventListener("htmx:afterSettle", warmWhenIdle);
 })();
