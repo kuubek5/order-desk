@@ -84,11 +84,63 @@ async def set_operator_initial(request: Request, user_id: int, db: Session = Dep
     if initial is not None:
         err = validate_initial(db, initial, exclude_user_id=user_id)
         if err:
+            # Поміняти дві літери місцями поодинці неможливо — підказуємо шлях.
+            err += " — щоб поміняти літери місцями, змініть обидві й натисніть «Зберегти літери»"
             return RedirectResponse(f"/settings?error={quote(err)}", status_code=303)
 
     target.sheet_initial = initial
     db.commit()
     return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@router.post("/settings/users/initials", response_class=HTMLResponse)
+async def set_operator_initials(request: Request, db: Session = Depends(get_db)):
+    """Зберегти літери ВСІХ операторів таблиці одним кліком (28.10.26).
+
+    Поодинці поміняти літери місцями неможливо: у одного «Р», у другого «РР»
+    — і будь-який перший крок натрапляє на літеру, яку ще тримає другий
+    (скарга власника: «пише, що буква зайнята»). Тому тут унікальність
+    звіряється з КІНЦЕВИМ станом: поточні літери, поверх них — усе з форми.
+    Помилка — нічого не змінюємо (обмін або цілий, або ніякий).
+
+    Поля форми — `initial_<id>`; оператор без поля у формі лишається як є."""
+    admin = require_admin_or_redirect(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    form = await request.form()
+    users = list(db.scalars(select(User)))
+    wanted: dict[int, str | None] = {}
+    for u in users:
+        key = f"initial_{u.id}"
+        if key in form:
+            wanted[u.id] = normalize_initial(str(form.get(key) or ""))
+
+    for initial in wanted.values():
+        if initial is not None and (not (1 <= len(initial) <= 2) or not initial.isalpha()):
+            return RedirectResponse(
+                f"/settings?error={quote('літера оператора — 1-2 букви')}#operators", status_code=303
+            )
+
+    final = {u.id: wanted.get(u.id, u.sheet_initial) for u in users}
+    holders: dict[str, list[User]] = {}
+    for u in users:
+        letter = final[u.id]
+        if letter:
+            holders.setdefault(letter, []).append(u)
+    for letter, owners in holders.items():
+        if len(owners) > 1:
+            names = " і ".join(o.full_name or o.username for o in owners)
+            return RedirectResponse(
+                f"/settings?error={quote(f'літеру «{letter}» вийшло двоє: {names}')}#operators",
+                status_code=303,
+            )
+
+    for u in users:
+        if u.id in wanted:
+            u.sheet_initial = wanted[u.id]
+    db.commit()
+    return RedirectResponse("/settings?saved=1#operators", status_code=303)
 
 
 @router.post("/settings/users/{user_id}/toggle-active", response_class=HTMLResponse)

@@ -26,12 +26,16 @@
                             <td class="order-id">{{ operator.username }}</td>
                             <td>{{ operator.role }}</td>
                             <td>
-                                <form method="post" action="/settings/users/{{ operator.id }}/initial" class="users-reset-form">
-                                    <input type="text" name="sheet_initial" class="login-input users-initial-input"
-                                           value="{{ operator.sheet_initial or '' }}" maxlength="2"
-                                           placeholder="—" title="1-2 літери, напр. Р, СТ" style="width:3.2rem;text-align:center;text-transform:uppercase;">
-                                    <button type="submit" class="link-button">Зберегти</button>
-                                </form>
+                                {# Поле належить спільній формі «Зберегти літери» під таблицею
+                                   (атрибут form): літери зберігаються РАЗОМ, тож їх можна
+                                   поміняти місцями одним кліком (власник 28.10.26 — поодинці
+                                   обмін «Р» ↔ «РР» упирався в «буква зайнята»). Enter у полі
+                                   теж зберігає всю форму. #}
+                                <input type="text" name="initial_{{ operator.id }}" form="ops-letters"
+                                       class="login-input users-initial-input"
+                                       value="{{ operator.sheet_initial or '' }}" maxlength="2"
+                                       placeholder="—" title="1-2 літери, напр. Р, СТ" aria-label="Літера: {{ operator.full_name or operator.username }}"
+                                       style="width:3.2rem;text-align:center;text-transform:uppercase;">
                             </td>
                             <td>
                                 <span class="status-badge {{ 'user-badge-active' if operator.is_active else 'user-badge-inactive' }}">
@@ -58,6 +62,10 @@
                     </tbody>
                 </table>
                 </div>
+                <form method="post" action="/settings/users/initials" id="ops-letters" class="users-letters-form">
+                    <button type="submit" class="btn sm">Зберегти літери</button>
+                    <span class="settings-help">Літери зберігаються всі разом — так їх можна поміняти місцями.</span>
+                </form>
 
                 <div class="stand-cells">
                 <div class="stand-cell w3">

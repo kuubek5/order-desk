@@ -561,6 +561,9 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .user-badge-active{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .setv2 .user-badge-inactive{background:rgba(var(--alarm-rgb), .1);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .3)}
 .setv2 .users-reset-form{display:flex;gap:6px;align-items:center}
+/* Одна кнопка на всі літери таблиці операторів (обмін літер одним кліком, 28.10.26). */
+.users-letters-form{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:10px 0 4px}
+.users-letters-form .settings-help{margin:0}
 .setv2 .users-reset-input{height:30px;width:130px;font-size:var(--fs-1)}
 .setv2 .users-add-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .setv2 .users-add-form .settings-submit{grid-column:1/-1;justify-self:start}

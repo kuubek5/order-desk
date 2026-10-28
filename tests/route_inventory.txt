@@ -284,3 +284,4 @@ POST /settings/test-imap
 POST /license
 POST /settings/feedback/board/sisma-style
 POST /account/queue-empty-bg
+POST /settings/users/initials
