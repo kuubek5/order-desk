@@ -120,6 +120,9 @@ class User(Base):
     # сховані, а не показані: порожньо = усе видно, тож наявні акаунти й новий
     # віджет, доданий пізніше, нічого не втрачають.
     queue_hidden_widgets: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    # Фон порожньої черги (шестерня вигляду, 28.10.26): "" = «за темою»,
+    # ключ кадру або "none". Набір і правила — app/services/queue_empty_bg.py.
+    queue_empty_bg: Mapped[str] = mapped_column(String(20), default="", server_default="")
     # НЕ ВИКОРИСТОВУЮТЬСЯ (власник 12.10.26 прибрав вікна «Що нового» і ранкового
     # привітання): колонки лишено, щоб не робити міграцію (0087/0088).
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

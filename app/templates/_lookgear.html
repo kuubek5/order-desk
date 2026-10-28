@@ -22,11 +22,13 @@
    reset_event  — подія на document після «Скинути» (черга чистить ще й ширини)
    col_edit     — показати рядок «Ширини стовпців» (лише черга): вмикає режим
                   перетягування межі заголовка
+   empty_bg     — None або `queue_empty_bg(request)`: рядок вибору фону
+                  порожньої черги (лише черга)
 #}
 {% macro lookgear(scope, host, pad, step, width=None, width_target='', pad_probe='', presets=[],
                   density='', mat_styles=[], mat_style='', pad_default=6,
                   reset_event='', col_edit=false, title='Вигляд списку', load_shown=none,
-                  widgets_hidden=none, views=[], view='') %}
+                  widgets_hidden=none, views=[], view='', empty_bg=none) %}
 <div class="lookgear" data-look-gear data-look-scope="{{ scope }}"
      data-look-host="{{ host }}"
      data-pad="{{ pad }}" data-width="{{ width or 0 }}" data-step="{{ step or 2 }}"
@@ -192,6 +194,32 @@
                 <button type="button" class="loadtoggle" data-header-widget="{{ key }}"
                         aria-pressed="{{ 'false' if key in widgets_hidden else 'true' }}">{{ title }}</button>
                 {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {# Фон порожньої черги (28.10.26): «За темою», будь-який кадр або без
+           фону. Клік підставляє кадр одразу (queue.js, data-empty-bg) і
+           зберігає на акаунті (/account/queue-empty-bg). data-src — готова
+           адреса кадру, «за темою» несе кадр поточної теми. #}
+        {% if empty_bg is not none %}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Фон порожньої черги</span>
+            <div class="qebs" role="group" aria-label="Фон порожньої черги">
+                <button type="button" class="qeb qeb-word" data-empty-bg="auto"
+                        data-src="/static/{{ empty_bg.auto_src }}?v={{ static_ver(empty_bg.auto_src) }}"
+                        aria-pressed="{{ 'true' if empty_bg.choice == 'auto' else 'false' }}"
+                        title="Кадр під тему оформлення">За темою</button>
+                {% for bg in empty_bg.options %}
+                <button type="button" class="qeb" data-empty-bg="{{ bg.key }}"
+                        data-src="/static/{{ bg.file }}?v={{ static_ver(bg.file) }}"
+                        aria-pressed="{{ 'true' if empty_bg.choice == bg.key else 'false' }}"
+                        title="{{ bg.label }}" aria-label="{{ bg.label }}">
+                    <img src="/static/{{ bg.thumb }}?v={{ static_ver(bg.thumb) }}" alt="" loading="lazy">
+                </button>
+                {% endfor %}
+                <button type="button" class="qeb qeb-word" data-empty-bg="none" data-src=""
+                        aria-pressed="{{ 'true' if empty_bg.choice == 'none' else 'false' }}"
+                        title="Лише картка, без кадру">Без фону</button>
             </div>
         </div>
         {% endif %}

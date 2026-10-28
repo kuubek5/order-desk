@@ -1370,6 +1370,48 @@ document.addEventListener("click", (event) => {
     });
 });
 
+// Фон порожньої черги в шестерні вигляду (28.10.26). Клік підставляє кадр
+// ОДРАЗУ (data-src кнопки — готова адреса; порожньо = без фону) і зберігає на
+// акаунті. Полл рядків потім малює той самий вибір із сервера. Шле лише своє
+// поле; «За темою» — словом auto, не порожнім (CLAUDE.md §14).
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-empty-bg]");
+  if (!btn) return;
+  btn.parentElement.querySelectorAll("[data-empty-bg]").forEach((b) => {
+    b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+  });
+  const src = btn.dataset.src || "";
+  document.querySelectorAll("[data-empty-bg-host]").forEach((host) => {
+    const img = host.querySelector("img");
+    if (src) {
+      if (img) img.setAttribute("src", src);
+      host.hidden = false;
+    } else {
+      host.hidden = true;
+    }
+  });
+  fetch("/account/queue-empty-bg", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ bg: btn.dataset.emptyBg }).toString(),
+    credentials: "same-origin",
+  })
+    .then((r) => {
+      if (r.status === 401) { window.location.href = "/login"; return; }
+      if (!r.ok) {
+        if (window.showToast) window.showToast("Не вдалось зберегти фон", "error");
+        return;
+      }
+      // Полл, що вилетів ДО збереження, повернув би старий кадр до 15 с —
+      // перепитуємо рядки вже зі збереженим вибором (власна подія черги).
+      const rows = document.getElementById("queue-rows");
+      if (rows && window.htmx) window.htmx.trigger(rows, "sheet-recheck");
+    })
+    .catch(() => {
+      if (window.showToast) window.showToast("Не вдалось зберегти фон", "error");
+    });
+});
+
 // ── Повернення з невдалого додавання роботи (аудит 05.09.26, крок 2.4) ──
 // Окремої сторінки «додати роботу» більше немає: /orders/new редіректить сюди
 // з `?add=1`, а помилка приходить у `add_error`. Розгортаємо ту саму inline-

@@ -77,8 +77,13 @@
            (queue-empty-poster.jpg), а приближення, яке власник лишив, даємо
            CSS-ом — тільки scale, без translateX (див. .empty-video-bg img →
            @keyframes emptyZoom у queue_table.css). Відео — у git-історії. #}
-        <span class="empty-video-bg" aria-hidden="true">
-            <img src="/static/video/queue-empty-poster.jpg?v={{ static_ver('video/queue-empty-poster.jpg') }}" alt="">
+        {# Кадр обирає оператор у шестерні вигляду (28.10.26): за темою, будь-
+           який із набору або без фону — app/services/queue_empty_bg.py.
+           «Без фону» лишає порожній span: шестерня підставляє кадр одразу,
+           без перемальовування рядків (queue.js, data-empty-bg). #}
+        {% set _qeb = queue_empty_bg(request) %}
+        <span class="empty-video-bg" aria-hidden="true" data-empty-bg-host{% if not _qeb.src %} hidden{% endif %}>
+            <img{% if _qeb.src %} src="/static/{{ _qeb.src }}?v={{ static_ver(_qeb.src) }}"{% endif %} alt="">
         </span>
         {% if show_overdue %}
         <h2>Прострочених робіт немає</h2>

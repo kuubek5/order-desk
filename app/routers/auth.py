@@ -32,6 +32,7 @@ from app.services.widget_order import (
     clean_strip_order,
 )
 from app.services.settings_status import build_slab
+from app.services import queue_empty_bg
 from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, is_loopback_request, login_redirect, templates
 from app.services.look_prefs import (
     LookError,
@@ -493,6 +494,23 @@ async def post_account_header_widgets(
     if user is None:
         return Response(status_code=401)
     user.queue_hidden_widgets = clean_hidden_widgets(hidden)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/queue-empty-bg", status_code=204)
+async def post_account_queue_empty_bg(
+    request: Request, bg: str = Form(""), db: Session = Depends(get_db)
+):
+    """Фон порожньої черги (шестерня вигляду, 28.10.26). Шле ЛИШЕ своє поле.
+    «За темою» приходить словом `auto` (порожнє = «поля не було», §14) і
+    лягає в БД порожнім рядком. Чуже — 422: значення йде в src картинки."""
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    if bg not in queue_empty_bg.CHOICES:
+        return Response(status_code=422)
+    user.queue_empty_bg = queue_empty_bg.stored_value(bg)
     db.commit()
     return Response(status_code=204)
 

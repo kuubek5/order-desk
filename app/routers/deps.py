@@ -615,6 +615,8 @@ def ui_prefs(request: Request) -> dict:
         "load_metrics": "crm,pc,ram",
         # Сховані віджети шапки черги (шестерня вигляду): "" = усе видно.
         "hidden_widgets": "",
+        # Фон порожньої черги: "" = за темою (app/services/queue_empty_bg.py).
+        "queue_empty_bg": "",
     }
     mirrored = False
     try:
@@ -649,6 +651,7 @@ def ui_prefs(request: Request) -> dict:
                         "strip_order": user.queue_strip_order or "",
                         "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
                         "hidden_widgets": user.queue_hidden_widgets or "",
+                        "queue_empty_bg": user.queue_empty_bg or "",
                     }
                     mirrored = True
             finally:
@@ -927,8 +930,28 @@ def hidden_widgets(request) -> set:
     return hidden_widgets_set(ui_prefs(request).get("hidden_widgets"))
 
 
+def queue_empty_bg(request) -> dict:
+    """Фон порожньої черги цього оператора для `_queue_rows.html` і шестерні.
+
+    `choice` — що підсвітити в шестерні (слово з дроту, «за темою» = auto),
+    `src` — шлях кадру відносно /static або None (без фону). Читає те саме
+    `ui_prefs`, тож і полл рядків, і перший малюнок бачать один вибір."""
+    from app.services import queue_empty_bg as _qeb
+
+    prefs = ui_prefs(request)
+    stored = prefs.get("queue_empty_bg") or ""
+    bg = _qeb.resolve(stored, prefs.get("theme"))
+    return {
+        "choice": _qeb.choice_of(stored),
+        "src": bg.file if bg is not None else None,
+        "auto_src": _qeb.theme_default(prefs.get("theme")).file,
+        "options": _qeb.BACKGROUNDS,
+    }
+
+
 templates.env.globals["load_metrics"] = load_metrics
 templates.env.globals["hidden_widgets"] = hidden_widgets
+templates.env.globals["queue_empty_bg"] = queue_empty_bg
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["cam_remark_of"] = _cam_remark.remark_of
 templates.env.globals["cam_remark_presets"] = _cam_remark.PRESETS
