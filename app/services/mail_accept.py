@@ -26,7 +26,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from app import perf
+from app import perf, sync_control
 from app.business_day import business_today
 from app.export_scanner import clear_export_cache
 from app.link_attachments import undownloaded_links
@@ -484,7 +484,15 @@ def _accept_files_and_commit(
     # SyncLog, але задля цього ж SyncLog-рядка й `new_order.row_number`
     # потрібен ще один коміт; його невдача лише логується, прийняття листа
     # назад не відкочуємо.
-    if write_row:
+    if write_row and sync_control.is_paused():
+        # Пауза синку зупиняє й цей запис (власник 28.10.26): адмін на паузі
+        # правує таблицю руками, і новий рядок посеред його правки заважав би.
+        # Робота прийнята й чекає рядок (`sheet_row_pending`) — повтор
+        # (`mail_row_retry`, через пул із тим самим гейтом паузи) допише його,
+        # щойно паузу знімуть. Банера «не дійшло» на паузі немає свідомо —
+        # пауза видна власним (`sheet_stuck_writes`).
+        logger.info("Синк на паузі — рядок листа %s допише повтор", email.id)
+    elif write_row:
         with perf.span("accept:sheet-row"):
             _write_placeholder_row(
                 db, email, new_order, None,
@@ -522,6 +530,11 @@ def write_merged_row(db: Session, email: EmailMessage, order: Order) -> None:
     робота отримала при прийнятті першого листа (`order.sheet_tab`). Як і
     звичайний рядок-нотатка, прийняття ніколи не блокує: збій іде в SyncLog.
     """
+    if sync_control.is_paused():
+        # Як і в прийнятті: на паузі рядок не пишемо, `sheet_row_pending`
+        # лишається — повтор допише його з уже зведеною кількістю.
+        logger.info("Синк на паузі — рядок зведеної роботи %s допише повтор", order.id)
+        return
     worksheet = None
     if order.sheet_tab:
         try:

@@ -210,6 +210,39 @@ def test_successful_accept_writes_the_sheet_placeholder_row_once(tmp_path, monke
         assert order.row_number == 65 - HEADER_ROWS
 
 
+def test_accept_on_sync_pause_leaves_the_row_for_the_retry(tmp_path, monkeypatch):
+    """Власник 28.10.26: пауза синку зупиняє й рядок-нотатку прийняття. Лист
+    приймається, файли їдуть, а рядок чекає (`sheet_row_pending`) — його
+    допише повтор, щойно паузу знімуть."""
+    from app import sync_control
+
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        mail_accept_svc, "append_mail_placeholder_row", lambda *a, **kw: calls.append(a) or 65
+    )
+    monkeypatch.setattr(mail_accept_svc, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(
+        mail_accept_svc, "latest_worksheet_on_or_before",
+        lambda *args, **kwargs: SimpleNamespace(title="01.01.26"),
+    )
+    monkeypatch.setattr(sync_control, "is_paused", lambda: True)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+        response = _accept(db, user, email)
+        assert "error=" not in response.headers["location"]
+
+    assert calls == []
+    with Session(engine) as db:
+        order = db.scalar(select(Order))
+        assert order.row_number is None
+        assert order.sheet_row_pending is not None
+        assert db.get(EmailMessage, email.id).status == "прийнято"
+
+
 def _accept_with_sheet(monkeypatch, db, user, email, material_color="моно а3", **fields):
     """Прийняти лист із рядком-нотаткою, що «записався» в рядок 65; повертає
     іменовані аргументи, з якими прийняття кликало запис рядка."""
