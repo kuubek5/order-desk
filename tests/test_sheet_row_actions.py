@@ -300,20 +300,63 @@ def test_passport_shows_the_card_with_actions(app_db):  # noqa: F811
     assert "p2-sheetrow" not in html
 
 
-def test_plain_delete_of_a_mail_work_is_undoable_again(app_db):  # noqa: F811
-    """Звичайне «Видалити з черги» для пошти рядок не стирає, а скасування
-    доти відновлювало рядок, бачило його зайнятим САМОЮ роботою і відмовляло —
-    поштова робота з видалення не поверталась ніколи."""
+def _done(value=None):
+    from concurrent.futures import Future
+
+    future: Future = Future()
+    future.set_result(value)
+    return future
+
+
+def test_plain_delete_of_a_mail_work_blanks_its_row_and_undo_restores_it(app_db):  # noqa: F811
+    """Власник 28.10.26: клієнт відмовився, робота з пошти пішла в кошик, а її
+    рядок-нотатка лишився в таблиці. Тепер видалення стирає його, як рядок
+    вписаного клієнта, а «Крок назад» повертає і роботу, і рядок."""
     app, session_factory = app_db
     with session_factory() as db:
         order = _mail_order(db, fill_pending=None)
 
     client = _client(app)
-    with patch.object(undo_service, "restore_sheet_row", return_value="рядок 80 уже зайнято") as restore:
-        client.post(f"/orders/{order.id}/delete", {"inline": "1"}, headers={"HX-Request": "true"})
+    with patch("app.routers.orders.clear_sheet_row_background", return_value=_done()) as clear, \
+         patch.object(undo_service, "restore_sheet_row", return_value=None) as restore:
+        _, headers, _ = client.post(
+            f"/orders/{order.id}/delete", {"inline": "1"}, headers={"HX-Request": "true"}
+        )
+        assert "рядок у таблиці очищено" in _toast(headers)["message"]
         with session_factory() as db:
             assert db.get(Order, order.id).archived_at is not None
         client.post("/actions/undo-last")
+    clear.assert_called_once_with(order.id)
+    restore.assert_called_once()
     with session_factory() as db:
         assert db.get(Order, order.id).archived_at is None
-    restore.assert_not_called()
+
+
+def test_delete_of_a_mail_work_without_row_touches_only_the_base(app_db):  # noqa: F811
+    app, session_factory = app_db
+    with session_factory() as db:
+        order = _mail_order(db, fill_pending=None, row_number=None)
+
+    client = _client(app)
+    with patch("app.routers.orders.clear_sheet_row_background") as clear:
+        client.post(f"/orders/{order.id}/delete", {"inline": "1"}, headers={"HX-Request": "true"})
+    clear.assert_not_called()
+    with session_factory() as db:
+        assert db.get(Order, order.id).archived_at is not None
+
+
+def test_undo_of_a_mail_delete_from_before_the_fix_finds_its_own_row():
+    """Видалене до 28.10.26 рядок не стирало: при скасуванні рядок зайнятий
+    самою роботою — це не «чужа робота», повертати просто нічого."""
+    from types import SimpleNamespace
+
+    from app import sheet_writer
+
+    order = SimpleNamespace(source="email", row_number=74, client_name="Клієнт-А")
+    worksheet = SimpleNamespace(get_values=lambda rng: [["", "", "2", "mono a2", "Клієнт-А"]])
+    row = 74 + sheet_writer.HEADER_ROWS
+    with patch.object(sheet_writer, "_resolve_row", return_value=row):
+        sheet_writer.restore_order_row(worksheet, order)  # не кидає
+    with patch.object(sheet_writer, "_resolve_row", return_value=None), \
+         pytest.raises(sheet_writer.RowOccupiedError):
+        sheet_writer.restore_order_row(worksheet, order)

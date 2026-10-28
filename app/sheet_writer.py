@@ -828,6 +828,10 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
         raise RuntimeError(f"не вдалося перевірити, чи рядок {row} вільний: {exc}") from exc
     occupied = [c for c in (current[0] if current else []) if isinstance(c, str) and c.strip()]
     if occupied:
+        # Поштову роботу, видалену до 28.10.26, видалення не стирало: рядок
+        # зайнятий нею ж — повертати нічого, і відмова тут не дала б скасувати.
+        if order.source == "email" and _resolve_row(worksheet, order) == row:
+            return
         raise RowOccupiedError(f"рядок {row} уже зайнято")
 
     values = {
@@ -835,8 +839,10 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
         COL_QUANTITY: sheet_quantity(order.quantity),
         COL_MATERIAL_COLOR: order.material_color,
         # Column E carries the work type for a lab row and the CLIENT NAME for a
-        # наряд-less client row — the same split _identity_cell relies on.
-        COL_KIND: order.client_name if order.source == "sheet_client" else order.kind,
+        # наряд-less client or mail row — the same split _identity_cell relies on.
+        COL_KIND: (
+            order.client_name if order.source in ("sheet_client", "email") else order.kind
+        ),
         COL_JOB_CODE: order.job_code,
         COL_TECHNICIAN: order.technician_name,
         COL_CAM_COMMENT: order.cam_comment,

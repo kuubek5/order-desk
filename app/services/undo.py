@@ -210,10 +210,10 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
         # with their data by the next sync (sync_tab matches by row_number). On
         # failure the entry stays not-undone, so ← can simply be pressed again
         # once the sheet is sorted out.
-        # Відновлюємо лише те, що видалення справді стерло: поштова робота й
-        # «рядок видалено свідомо» (`sheet_row_actions.archive_rowless`) рядка
-        # не стирали — для них «назад» = просто повернути роботу в чергу в
-        # тому самому стані, у якому її прибрали.
+        # Відновлюємо лише те, що видалення справді стерло: «рядок видалено
+        # свідомо» (`sheet_row_actions.archive_rowless`) і пошта без рядка
+        # нічого не стирали — для них «назад» = просто повернути роботу в чергу
+        # в тому самому стані, у якому її прибрали.
         if entry.new_value != ROWLESS_ARCHIVE_MARK and delete_clears_sheet_row(order):
             restore_error = restore_sheet_row(order)
             if restore_error:
