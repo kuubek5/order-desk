@@ -15,12 +15,13 @@
 зникли», хоча вони на місці. Компенсація — `mail_export.undo_moves`.
 """
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from threading import Lock
 import logging
+import threading
 import time
 
 from sqlalchemy.orm import Session
@@ -50,6 +51,7 @@ from app.client_folder import preferred_client_folder
 from app.sender_memory import lookup_sender, remember_sender
 from app.services.opak import format_opak, opak_units
 from app.services.sheet_stuck_writes import note_write_failed, note_write_ok
+from app.services.sheet_writeback import sheet_writeback_pool, writeback_session
 from app.settings_store import get_export_folder_path, get_setting
 from app.sheet_writer import append_mail_placeholder_row
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
@@ -272,11 +274,10 @@ def _accept_letter_locked(
         # і опак ідуть до роботи першого листа. Статус роботи не міняється,
         # тож і StatusEvent немає; вкладка таблиці теж не потрібна.
         new_order = merge_into
-        target_worksheet = None
         add_contribution(db, new_order, email, quantity, opak)
         db.flush()
         return _accept_files_and_commit(
-            db, user, email, new_order, target_worksheet,
+            db, user, email, new_order, False,
             attachment_ids=attachment_ids, folder_pick=folder_pick,
             folder_new=folder_new, material_folder=material_folder,
             join_export_folder=join_export_folder, write_row=False,
@@ -285,7 +286,7 @@ def _accept_letter_locked(
     # Фази прийняття — у рядку «Slow request» (07.10.26: на проді 2.3–3.5 с на лист,
     # а розбивки не було). Поза запитом (фонові виклики, тести) — no-op.
     with perf.span("accept:tab"):
-        target_tab, target_worksheet = _resolve_target_tab(db, email)
+        target_tab, tab_found = _resolve_target_tab_warm(db, email)
 
     new_order = Order(
         source="email",
@@ -342,7 +343,7 @@ def _accept_letter_locked(
         link_primary(db, new_order, email, quantity, opak)
 
     return _accept_files_and_commit(
-        db, user, email, new_order, target_worksheet,
+        db, user, email, new_order, tab_found,
         attachment_ids=attachment_ids, folder_pick=folder_pick,
         folder_new=folder_new, material_folder=material_folder,
         join_export_folder=join_export_folder, write_row=True,
@@ -354,7 +355,7 @@ def _accept_files_and_commit(
     user,
     email: EmailMessage,
     new_order: Order,
-    target_worksheet,
+    tab_found: bool,
     *,
     attachment_ids: list[int],
     folder_pick: str,
@@ -485,7 +486,10 @@ def _accept_files_and_commit(
     # назад не відкочуємо.
     if write_row:
         with perf.span("accept:sheet-row"):
-            _write_placeholder_row(db, email, new_order, target_worksheet)
+            _write_placeholder_row(
+                db, email, new_order, None,
+                append=_warm_appender(db, new_order.sheet_tab) if tab_found else None,
+            )
         try:
             db.commit()
         except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
@@ -641,7 +645,105 @@ def reset_tab_cache() -> None:
     _tab_cache = None
 
 
-def _resolve_target_tab(db: Session, email: EmailMessage):
+# Звернення прийняття до таблиці — на ТЕПЛОМУ потоці запису (28.10.26). Кеш
+# `open_spreadsheet`/`get_worksheet_by_name` живе в потоці (`app/sheets.py`),
+# а роут прийняття — звичайний `def` у випадковому потоці пулу starlette, тож
+# щоразу холодне відкриття таблиці й пошук вкладки: на проді accept:tab
+# 1–2.3 с і accept:sheet-row 0.7–2 с. Потік запису тримає таблицю й вкладку
+# дня відкритими (`warm_sheet_writeback`). Прийняття ЧЕКАЄ результат — рядок у
+# фон не виносимо (CLAUDE.md §14), лише міняємо потік, на якому він пишеться.
+# Межа очікування: пул один і серіалізує всі записи, тож прийняття може стати
+# за чужою довгою пачкою.
+WARM_WAIT_SECONDS = 15.0
+
+
+def _run_warm(db: Session, fn, *args):
+    """Виконати `fn(сесія, *args)` на потоці запису й дочекатись результату.
+
+    Потоку дістається власна сесія (`writeback_session`), обʼєкти gspread і
+    ORM між потоками не передаються — лише назви й числа. Не дочекались за
+    `WARM_WAIT_SECONDS` → `FutureTimeout`; задачу, що ще не почалась,
+    скасовуємо, а та, що вже йде, добіжить (рядок, чия відповідь загубилась,
+    знаходить `mail_row_retry` за ключем — не дописує вдруге). Уже на потоці
+    запису (виклик з його задачі) — виконуємо на місці, інакше один робітник
+    чекав би сам на себе.
+    """
+    if threading.current_thread().name.startswith("sheet-writeback"):
+        return fn(db, *args)
+
+    def task():
+        with writeback_session() as wdb:
+            return fn(wdb, *args)
+
+    future = sheet_writeback_pool.submit(task)
+    try:
+        return future.result(timeout=WARM_WAIT_SECONDS)
+    except FutureTimeout:
+        future.cancel()
+        raise
+
+
+@dataclass
+class _EmailRef:
+    """Лише `id` листа — для логів `_resolve_target_tab` на іншому потоці."""
+
+    id: int
+
+
+# Аркуш, знайдений `_resolve_tab_title`, — у памʼяті ТОГО Ж потоку: запис
+# рядка за мить бере його, а не шукає вкладку вдруге.
+_found_tab = threading.local()
+
+
+def _resolve_tab_title(db: Session, email_id: int) -> tuple[str, bool]:
+    title, worksheet = _resolve_target_tab(db, _EmailRef(email_id))
+    _found_tab.worksheet = worksheet
+    return title, worksheet is not None
+
+
+def _resolve_target_tab_warm(db: Session, email: EmailMessage) -> tuple[str, bool]:
+    """`_resolve_target_tab` на теплому потоці: (назва вкладки, чи вона є).
+
+    Потік не відповів вчасно — шукаємо тут, як до 28.10.26: повільно, але
+    робота лягає у правильну вкладку.
+    """
+    try:
+        return _run_warm(db, _resolve_tab_title, email.id)
+    except FutureTimeout:
+        logger.warning(
+            "Потік запису зайнятий понад %.0f с — вкладку для листа %s шукаємо тут",
+            WARM_WAIT_SECONDS, email.id,
+        )
+        title, worksheet = _resolve_target_tab(db, email)
+        return title, worksheet is not None
+
+
+def _warm_appender(db: Session, tab: str | None):
+    """Функція запису рядка-нотатки у вкладку `tab` на теплому потоці.
+
+    Повертає номер рядка або None, якщо вкладки там уже немає.
+    """
+
+    def _append_there(wdb: Session, args, kwargs):
+        worksheet = getattr(_found_tab, "worksheet", None)
+        if worksheet is None or getattr(worksheet, "title", None) != tab:
+            worksheet = get_worksheet_by_name(open_spreadsheet(db=wdb), tab) if tab else None
+        if worksheet is None:
+            return None
+        return append_mail_placeholder_row(worksheet, *args, **kwargs)
+
+    def append(*args, **kwargs):
+        try:
+            return _run_warm(db, _append_there, args, kwargs)
+        except FutureTimeout:
+            raise TimeoutError(
+                f"таблиця не відповіла за {WARM_WAIT_SECONDS:.0f} с — рядок допише повтор"
+            ) from None
+
+    return append
+
+
+def _resolve_target_tab(db: Session, email: "EmailMessage | _EmailRef"):
     """До якої датованої вкладки належить ця робота.
 
     Лабораторія часто працює на день-два позаду, тож вкладки на СЬОГОДНІ може
@@ -852,12 +954,18 @@ def _material_family(db: Session, material_id: int | None) -> str:
     )
 
 
-def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, worksheet) -> None:
+def _write_placeholder_row(
+    db: Session, email, new_order: Order, worksheet, *, append=None
+) -> None:
     """Рядок-нотатка в спільній таблиці — те, що оператори й так пишуть руками
     для телефонних/поштових замовлень (CLAUDE.md §2).
 
     Ніколи не блокує прийняття: відсутня вкладка чи мережевий збій ідуть у
     SyncLog, а не в обличчя операторові 500-ю.
+
+    `append` — замість `worksheet`: запис на іншому потоці (`_warm_appender`),
+    приймає ті самі аргументи, що `append_mail_placeholder_row` без аркуша, і
+    повертає None, коли вкладки там не знайшлось.
     """
     if new_order.row_number is not None:
         # Рядок уже є (синк упізнав його, поки повтор чекав у черзі пулу) —
@@ -866,9 +974,9 @@ def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, w
         return
     if new_order.sheet_row_pending is None:
         new_order.sheet_row_pending = datetime.now()
+    message = "доступної датованої вкладки немає, рядок-нотатку не записано"
     try:
-        if worksheet is None:
-            message = "доступної датованої вкладки немає, рядок-нотатку не записано"
+        if worksheet is None and append is None:
             db.add(SyncLog(
                 direction="mail_to_sheet", sheet_tab=new_order.sheet_tab, status="error",
                 message=f"email {email.id}: {message}",
@@ -876,8 +984,10 @@ def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, w
             # «вкладк… не знайдено» — так `classify` дає причину «вкладки немає».
             note_write_failed("row", new_order, f"вкладку {new_order.sheet_tab} не знайдено: {message}")
             return
-        note_row = append_mail_placeholder_row(
-            worksheet,
+        if append is None:
+            def append(*args, **kwargs):
+                return append_mail_placeholder_row(worksheet, *args, **kwargs)
+        note_row = append(
             new_order.client_name or "",
             new_order.quantity or "",
             new_order.material_color or "",
@@ -886,6 +996,14 @@ def _write_placeholder_row(db: Session, email: EmailMessage, new_order: Order, w
             calculated=new_order.calculated_raw or "",
             material_family=_material_family(db, new_order.material_id),
         )
+        if note_row is None:
+            # Потік запису вкладки не знайшов (прибрали між пошуком і записом).
+            db.add(SyncLog(
+                direction="mail_to_sheet", sheet_tab=new_order.sheet_tab, status="error",
+                message=f"email {email.id}: {message}",
+            ))
+            note_write_failed("row", new_order, f"вкладку {new_order.sheet_tab} не знайдено: {message}")
+            return
         # Привʼязуємо роботу до щойно записаного рядка. Без цього наступний синк
         # імпортує наряд-less рядок як ОКРЕМУ роботу source="sheet_client" — та
         # сама робота зʼявилась би двічі (як «Пошта» і як «Клієнт»).

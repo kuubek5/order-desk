@@ -173,10 +173,14 @@ def _mail_accept_background_inline(monkeypatch):
     на місці: більшість баз тут `StaticPool` без `check_same_thread=False`, і
     задача з іншого потоку впала б на зʼєднанні, а тест перевіряв би стан до
     переносу. Тести самого фону повертають справжній пул. Кеш вкладки — на
-    ПРОЦЕС, тож скидається, як і решта таких лічильників."""
+    ПРОЦЕС, тож скидається, як і решта таких лічильників. Так само на місці
+    йдуть звернення прийняття до таблиці (`_run_warm`)."""
     from app.services import mail_accept
 
     monkeypatch.setattr(mail_accept, "_submit_folder_move", lambda fn, *args: fn(*args))
+    # Вкладка й рядок-нотатка — на потоці запису; у тестах на місці, з сесією тесту.
+    monkeypatch.setattr(mail_accept, "_run_warm", lambda db, fn, *args: fn(db, *args))
+    mail_accept._found_tab.worksheet = None
     mail_accept.reset_tab_cache()
     yield
     mail_accept.reset_tab_cache()

@@ -339,3 +339,47 @@ def test_failed_listing_is_not_cached(monkeypatch):
     monkeypatch.setattr(mail_accept_svc, "latest_worksheet_on_or_before", lambda s, d: None)
     mail_accept_svc._resolve_target_tab(None, _email())
     assert mail_accept_svc._tab_cache is None
+
+
+# ── Таблиця — на теплому потоці запису (28.10.26) ─────────────────────────
+
+_REAL_RUN_WARM = mail_accept_svc._run_warm
+
+
+def test_tab_and_row_go_through_the_warm_writeback_thread(monkeypatch):
+    """Кеш таблиці живе в потоці, тож і вкладку, і рядок прийняття беремо на
+    потоці запису, а не в випадковому потоці роуту. Запис бере аркуш, знайдений
+    пошуком вкладки на тому ж потоці, — вкладку вдруге не шукає."""
+    monkeypatch.setattr(mail_accept_svc, "_run_warm", _REAL_RUN_WARM)
+    calls, _ws = _tab_stubs(monkeypatch)
+    threads = []
+
+    def _append(worksheet, *args, **kwargs):
+        threads.append(threading.current_thread().name)
+        return 42
+
+    monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", _append)
+
+    assert mail_accept_svc._resolve_target_tab_warm(None, _email()) == ("07.10.26", True)
+    row = mail_accept_svc._warm_appender(None, "07.10.26")("Клієнт", "2", "моно а3")
+
+    assert row == 42
+    assert threads and threads[0].startswith("sheet-writeback")
+    assert calls.by_name == []
+
+
+def test_busy_writeback_thread_does_not_hang_accept(monkeypatch):
+    """Пул один і серіалізує записи: стоїть за чужою довгою задачею — вкладку
+    шукаємо на місці, а рядок лишається на повтор (позначка pending)."""
+    monkeypatch.setattr(mail_accept_svc, "_run_warm", _REAL_RUN_WARM)
+    monkeypatch.setattr(mail_accept_svc, "WARM_WAIT_SECONDS", 0.2)
+    _tab_stubs(monkeypatch)
+    release = threading.Event()
+    blocker = mail_accept_svc.sheet_writeback_pool.submit(release.wait, 10)
+    try:
+        assert mail_accept_svc._resolve_target_tab_warm(None, _email()) == ("07.10.26", True)
+        with pytest.raises(TimeoutError, match="повтор"):
+            mail_accept_svc._warm_appender(None, "07.10.26")("Клієнт", "2", "моно а3")
+    finally:
+        release.set()
+        blocker.result(timeout=10)
