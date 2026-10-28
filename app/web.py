@@ -112,6 +112,7 @@ from app.services.machines import (
     prune_machine_link_events as _prune_machine_link_events,
     prune_machine_readings as _prune_machine_readings,
 )
+from app.services.machine_rediscover import tick as _machine_rediscover_tick
 from app.services.cam_blanks import sync_blanks as _sync_cam_blanks
 from app.settings_store import get_setting
 from app.services.journal_prune import prune_journals
@@ -717,6 +718,13 @@ def _machine_worker(stop_event: Event) -> None:
             with SessionLocal() as db:
                 if _machines_configured(db):
                     _poll_machines(db)
+                    # Верстат, що мовчить, міг отримати нову IP від роутера
+                    # (28.10.26, 250i-Sec .58 → .113): шукаємо його агента в
+                    # мережі ОКРЕМИМ потоком, знахідку пише наступний тік.
+                    try:
+                        _machine_rediscover_tick(db)
+                    except Exception:
+                        logger.exception("Пошук верстата за новою адресою впав")
                 # Чистимо навіть коли верстатів зараз немає: історія могла
                 # лишитись від попередньої конфігурації і має старіти так само.
                 if monotonic() >= next_prune:
