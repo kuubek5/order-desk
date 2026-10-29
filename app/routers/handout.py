@@ -28,7 +28,7 @@ from app.business_day import business_today
 from app.client_matcher import match_client_name
 from app.export_scanner import (
     cache_counters as export_cache_counters,
-    entry_for_folder,
+    entry_for_folder_cached,
     list_export_client_names_cached,
     scan_export_client_cached,
     scan_export_client_latest_cached,
@@ -149,9 +149,12 @@ def _direct_export_entry(order, export_root, preview_roots, validated_roots):
     rel = getattr(order, "export_folder_path", None)
     if not rel:
         return None
-    entry = entry_for_folder(export_root, rel)
-    if entry is None:
+    with perf.span("handout:direct"):
+        cached = entry_for_folder_cached(export_root, rel)
+    if cached is None:
         return None
+    # Запис із кешу спільний для всіх запитів — поля дописуємо в копію.
+    entry = _shallow_copy(cached)
     entry.folder_uri = folder_to_file_uri(entry.folder_path)
     entry.preview_token = build_preview_token_lexical(
         entry.folder_path, preview_roots, validated_roots

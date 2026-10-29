@@ -338,3 +338,53 @@ def test_mirror_poll_touches_the_share_once_per_work_and_not_again_soon(db_sessi
     attach_mail_mirror_folder_uris(db_session, orders)  # наступний полл за 15 с
     assert all(o.export_folder_uri for o in orders)
     assert calls == {"entry": 5, "exists": 0}, "наступний полл знову пішов у мережеву теку"
+
+
+# ── Видача: пряма тека роботи з кешу (29.10.26) ───────────────────────────────
+# Бойовий лог: кожна галочка «знайдено» перемальовувала видачу 1–2 с
+# (`handout:build`), бо на КОЖНУ роботу з закріпленою текою — is_dir + scandir +
+# stat на шару. Тепер — спільний кеш сканера, як і в сканованих тек.
+
+
+def test_handout_direct_folder_hits_the_share_once_and_keeps_cache_clean(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from app import export_scanner
+    from app.routers import handout
+    from app.stl_preview import validate_preview_roots
+
+    root = tmp_path / "export"
+    rel = "Клієнт/29.10.26/mono a3"
+    (root / rel).mkdir(parents=True)
+    (root / rel / "crown_16.stl").write_text("x")
+    roots = {"export": str(root)}
+    validated = validate_preview_roots(roots)
+
+    calls = {"n": 0}
+    real = export_scanner.entry_for_folder
+
+    def counting(*a, **kw):
+        calls["n"] += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(export_scanner, "entry_for_folder", counting)
+    order = SimpleNamespace(export_folder_path=rel)
+
+    first = handout._direct_export_entry(order, root, roots, validated)
+    second = handout._direct_export_entry(order, root, roots, validated)
+    assert calls["n"] == 1, "друга видача знову пішла в мережеву теку"
+    assert first.files == second.files == ["crown_16.stl"]
+    assert first.preview_token and first.folder_uri
+    # Поля рендера — у копії; запис у кеші спільний і лишається чистим.
+    cached = export_scanner.entry_for_folder_cached(root, rel)
+    assert cached is not first and cached is not second
+    assert getattr(cached, "preview_token", None) is None
+
+    # Переїзд файлів скидає кеш — наступна видача бачить диск заново.
+    export_scanner.clear_export_cache()
+    handout._direct_export_entry(order, root, roots, validated)
+    assert calls["n"] == 2
+
+    # Теки немає — None (і він теж кешується, а не валить запобіжник).
+    gone = SimpleNamespace(export_folder_path="Нікого/29.10.26/pmma a2")
+    assert handout._direct_export_entry(gone, root, roots, validated) is None

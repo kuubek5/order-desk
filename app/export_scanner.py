@@ -639,6 +639,26 @@ def scan_export_client_latest_cached(
     )
 
 
+def entry_for_folder_cached(root: Path, rel_path: str) -> ExportEntry | None:
+    """`entry_for_folder` через спільний кеш сканера — для ВИДАЧІ.
+
+    Бойовий лог 29.10.26: кожна галочка «знайдено» перемальовувала видачу
+    1–2 с, і майже все — `handout:build`, де на КОЖНУ роботу з закріпленою
+    текою (пошта, `folder_binding`) ішли is_dir + scandir + stat на шару.
+    Скановані теки вже жили в кеші — ці ні. Той самий TTL і та сама «протухле
+    віддаємо одразу, оновлюємо у фоні»; переїзд файлів скидає через
+    `clear_export_cache`.
+
+    Значення спільне для всіх запитів — викликач копіює, перш ніж дописувати
+    поля. У кеші лежить список (0 або 1 запис), а не сам запис: запобіжник
+    «шара відпала» міряє довжину."""
+    found = _cached(
+        ("entry", str(root), rel_path),
+        lambda: [e] if (e := entry_for_folder(root, rel_path)) is not None else [],
+    )
+    return found[0] if found else None
+
+
 def scan_export_folder_cached(root: Path) -> list[ExportEntry]:
     """Повний обхід із кешем. Лишається для екранів, яким справді потрібне
     все дерево; видача натомість ходить ліниво, по клієнту."""
