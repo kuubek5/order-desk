@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from threading import Event, Lock
+from threading import Event, Lock, Thread
 
 import requests
 
@@ -382,6 +382,10 @@ def _update_check_worker(stop_event: Event) -> None:
             reached_github = _update_check_tick()
         except Exception:
             logger.exception("Unexpected background update check failure")
+        # Знайдено новішу — качаємо одразу, у цьому ж фоновому потоці.
+        release = get_known_update()
+        if release is not None:
+            prefetch_installer(release)
         interval = (
             UPDATE_CHECK_INTERVAL_SECONDS if reached_github else UPDATE_CHECK_RETRY_SECONDS
         )
@@ -419,6 +423,21 @@ def _drop_broken_download(path: Path) -> None:
         logger.warning("Недоладний інсталятор %s не видалився: %s", path.name, exc)
 
 
+# Скачування наперед (29.10.26). Інсталятор качається одразу, як реліз
+# знайдено, а не після кліку «Встановити» — тоді клік лише перевіряє вже
+# скачаний файл і ставить. Лок не дає скачуванню наперед і встановленню писати
+# той самий файл одночасно (WinError 32, як при потрійному кліку 18.09.26):
+# встановлення просто чекає, доки скачування наперед допише, і бере готове.
+_download_lock = Lock()
+_prefetch_running = Event()
+
+
+def _expected_checksum(checksum_url: str) -> str:
+    checksum_response = _http_get(checksum_url, timeout=REQUEST_TIMEOUT_SECONDS)
+    checksum_response.raise_for_status()
+    return checksum_response.text.strip().split()[0].lower()
+
+
 def download_and_verify(
     release: ReleaseInfo, dest_dir: Path | None = None, progress=None
 ) -> Path:
@@ -429,10 +448,30 @@ def download_and_verify(
     A missing checksum asset is treated exactly like a mismatched one:
     raises UpdateVerificationError and never returns an unverified file.
     This is a deliberate security requirement, not a convenience default.
+
+    Файл, уже скачаний наперед (`prefetch_installer`), не качається вдруге,
+    але перевіряється так само — проти контрольної суми, взятої з GitHub
+    ЗАРАЗ. Не збігся (обірване скачування, чужий файл) — качаємо заново.
     """
+    with _download_lock:
+        return _download_and_verify_locked(release, dest_dir, progress)
+
+
+def _download_and_verify_locked(
+    release: ReleaseInfo, dest_dir: Path | None, progress
+) -> Path:
     directory = dest_dir if dest_dir is not None else _updates_dir()
     directory.mkdir(parents=True, exist_ok=True)
     installer_path = directory / f"KuubMill-Setup-{release.version}.exe"
+
+    if release.checksum_url and installer_path.is_file():
+        if _sha256_of_file(installer_path) == _expected_checksum(release.checksum_url):
+            size = installer_path.stat().st_size
+            if progress is not None:
+                progress(size, size)
+            _strip_mark_of_the_web(installer_path)
+            logger.info("Інсталятор %s уже скачано й перевірено — качати вдруге не треба", installer_path.name)
+            return installer_path
 
     response = _http_get(release.installer_url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
     response.raise_for_status()
@@ -457,9 +496,7 @@ def download_and_verify(
             "Реліз не має файлу контрольної суми — встановлення скасовано з міркувань безпеки"
         )
 
-    checksum_response = _http_get(release.checksum_url, timeout=REQUEST_TIMEOUT_SECONDS)
-    checksum_response.raise_for_status()
-    expected = checksum_response.text.strip().split()[0].lower()
+    expected = _expected_checksum(release.checksum_url)
     actual = _sha256_of_file(installer_path)
 
     if actual != expected:
@@ -470,6 +507,55 @@ def download_and_verify(
 
     _strip_mark_of_the_web(installer_path)
     return installer_path
+
+
+def prefetch_installer(release: ReleaseInfo) -> Path | None:
+    """Скачати й перевірити інсталятор наперед, поки ніхто не натиснув
+    «Встановити». Лише в зібраній програмі: у dev ставити нічого, і 45 МБ на
+    кожен запуск сервера розробки ні до чого.
+
+    Збій тут не помилка: файл тоді скачається при встановленні, як раніше.
+    Тому лише WARNING, без стану оверлею. Якщо адмін натиснув «Встановити»,
+    поки скачування наперед ще йде, встановлення чекає на лок, а прогрес
+    звідси переходить у його оверлей (`_relay_progress`)."""
+    if not is_frozen():
+        return None
+    try:
+        path = download_and_verify(
+            release, progress=lambda done, total: _relay_progress(release.version, done, total)
+        )
+    except Exception as exc:  # noqa: BLE001 — наперед не вийшло, скачається при встановленні
+        logger.warning(
+            "Оновлення %s наперед не скачано: %s — скачається при встановленні",
+            release.version,
+            human_update_error(exc),
+        )
+        return None
+    logger.info("Оновлення %s скачано наперед: %s", release.version, path.name)
+    return path
+
+
+def _relay_progress(version: str, done: int, total: int) -> None:
+    state = install_state()
+    if state.get("stage") == "downloading" and state.get("version") == version:
+        set_install_state(stage="downloading", version=version, done=done, total=total)
+
+
+def start_prefetch(release: ReleaseInfo | None) -> None:
+    """Запустити `prefetch_installer` окремим потоком — для ручної перевірки
+    з налаштувань, де відповідь кнопці не може чекати 45 МБ. Повторний клік,
+    поки перший потік качає, другого не запускає."""
+    if release is None or not is_frozen() or _prefetch_running.is_set():
+        return
+    _prefetch_running.set()
+
+    def _run() -> None:
+        try:
+            prefetch_installer(release)
+        finally:
+            _prefetch_running.clear()
+
+    Thread(target=_run, name="kuubmill-update-prefetch", daemon=True).start()
 
 
 def _strip_mark_of_the_web(path: Path) -> None:

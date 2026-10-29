@@ -30,6 +30,7 @@ from app.update_check import (
     install_state,
     launch_silent_install,
     set_install_state,
+    start_prefetch,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,8 @@ def check_update(request: Request, db: Session = Depends(get_db)):
     require_admin(request, db)
 
     reached = _update_check_tick()
+    # Знайдено новішу — почати качати вже зараз, поки адмін читає «що нового».
+    start_prefetch(get_known_update())
     return templates.TemplateResponse(
         request,
         "_update_check_result.html",

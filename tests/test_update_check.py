@@ -228,6 +228,80 @@ def test_download_and_verify_raises_and_deletes_file_on_mismatch(tmp_path):
     assert leftover == []
 
 
+def test_download_reuses_prefetched_installer_after_fresh_checksum(tmp_path):
+    """Скачане наперед не качається вдруге (29.10.26), але контрольна сума
+    береться з GitHub заново: другий виклик робить ЛИШЕ запит суми."""
+    content = b"fake installer bytes"
+    digest = hashlib.sha256(content).hexdigest()
+    with patch(
+        "app.update_check._http_get",
+        side_effect=[_installer_response(content), _checksum_response(digest)],
+    ):
+        download_and_verify(_release(), dest_dir=tmp_path)
+
+    seen = []
+    with patch("app.update_check._http_get", side_effect=[_checksum_response(digest)]) as mock_get:
+        path = download_and_verify(_release(), dest_dir=tmp_path, progress=lambda d, t: seen.append((d, t)))
+    assert mock_get.call_count == 1
+    assert path.read_bytes() == content
+    assert seen == [(len(content), len(content))]
+
+
+def test_download_refetches_when_local_file_does_not_match(tmp_path):
+    """Обірване чи чуже скачування поруч — не довіряємо, качаємо заново."""
+    content = b"fake installer bytes"
+    digest = hashlib.sha256(content).hexdigest()
+    (tmp_path / "KuubMill-Setup-9.9.9.exe").write_bytes(b"half")
+    with patch(
+        "app.update_check._http_get",
+        side_effect=[_checksum_response(digest), _installer_response(content), _checksum_response(digest)],
+    ) as mock_get:
+        path = download_and_verify(_release(), dest_dir=tmp_path)
+    assert mock_get.call_count == 3
+    assert path.read_bytes() == content
+
+
+def test_prefetch_is_dev_noop_and_swallows_failures(monkeypatch):
+    # У dev нічого не качаємо.
+    with patch("app.update_check.download_and_verify") as dl:
+        assert update_check.prefetch_installer(_release()) is None
+    dl.assert_not_called()
+    # У зібраній програмі збій скачування наперед не кидає — скачається при встановленні.
+    monkeypatch.setattr(update_check, "is_frozen", lambda: True)
+    with patch("app.update_check.download_and_verify", side_effect=OSError("offline")):
+        assert update_check.prefetch_installer(_release()) is None
+
+
+def test_prefetch_progress_reaches_install_overlay_only_while_installing(monkeypatch):
+    """Адмін натиснув «Встановити», поки скачування наперед ще йде:
+    встановлення чекає на лок, а оверлей бачить прогрес скачування наперед."""
+    monkeypatch.setattr(update_check, "is_frozen", lambda: True)
+
+    def fake_download(release, progress=None, dest_dir=None):
+        progress(5, 10)
+        return Path("x.exe")
+
+    monkeypatch.setattr(update_check, "download_and_verify", fake_download)
+    update_check.set_install_state(stage="idle")
+    update_check.prefetch_installer(_release())
+    assert update_check.install_state() == {"stage": "idle"}
+
+    update_check.set_install_state(stage="downloading", version="9.9.9", done=0, total=0)
+    update_check.prefetch_installer(_release())
+    assert update_check.install_state()["done"] == 5
+    update_check.reset_install_state_for_tests()
+
+
+def test_worker_prefetches_known_update(monkeypatch):
+    stop = _StopAfter(allow_iterations=1)
+    seen = []
+    monkeypatch.setattr(update_check, "prefetch_installer", seen.append)
+    monkeypatch.setattr(update_check, "_latest_known_release", _release())
+    with patch("app.update_check._update_check_tick", return_value=True):
+        _update_check_worker(stop)
+    assert [r.version for r in seen] == ["9.9.9"]
+
+
 def test_download_and_verify_raises_without_checksum_url(tmp_path):
     content = b"fake installer bytes"
     installer_response = _installer_response(content)

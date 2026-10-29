@@ -848,7 +848,12 @@ def _system_load_worker(stop_event: Event) -> None:
         stop_event.wait(SYSTEM_LOAD_INTERVAL_SECONDS)
 
 
-EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
+# Перший прохід — майже одразу після старту (29.10.26; було 20 с, а в теки
+# техніків 8 с). Після оновлення браузер повертається через 2 с після старту,
+# і перші сторінки самі платили за холодну шару: черга 1.3 с і 2.3 с
+# (`share:tech` 2.0 с, бойовий лог 0.21.85). Скан під тим самим локом, що й
+# запит, тож ранній прогрів не дублює звернення, а лише починає раніше.
+EXPORT_WARM_INITIAL_DELAY_SECONDS = 3.0
 EXPORT_WARM_INTERVAL_SECONDS = 120.0
 
 
@@ -857,7 +862,7 @@ EXPORT_WARM_INTERVAL_SECONDS = 120.0
 # (заміряно /diag/perf 04.09.26). Грійник тримає обидва кеші свіжими САМ, раз на
 # ~20с, тож оператор завжди читає готове. Інтервал < TTL кешів (30с/45с) —
 # запас, щоб кеш не встигав протухнути між тіками грійника.
-FOLDER_WARM_INITIAL_DELAY_SECONDS = 8.0
+FOLDER_WARM_INITIAL_DELAY_SECONDS = 0.5
 FOLDER_WARM_INTERVAL_SECONDS = 20.0
 
 
