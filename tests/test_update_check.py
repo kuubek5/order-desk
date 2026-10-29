@@ -297,9 +297,35 @@ def test_worker_prefetches_known_update(monkeypatch):
     seen = []
     monkeypatch.setattr(update_check, "prefetch_installer", seen.append)
     monkeypatch.setattr(update_check, "_latest_known_release", _release())
+    monkeypatch.setattr(update_check, "_prefetched_version", None)
     with patch("app.update_check._update_check_tick", return_value=True):
         _update_check_worker(stop)
     assert [r.version for r in seen] == ["9.9.9"]
+
+    # Уже скачану наперед версію кожні 30 хв не перехешовуємо.
+    monkeypatch.setattr(update_check, "_prefetched_version", "9.9.9")
+    with patch("app.update_check._update_check_tick", return_value=True):
+        _update_check_worker(_StopAfter(allow_iterations=1))
+    assert len(seen) == 1
+
+
+def test_update_is_checked_every_half_hour_not_daily():
+    """Реліз виходить кілька разів на день, а перевірка раз на добу після
+    перезапуску знаходила його лише кнопкою (власник 29.10.26)."""
+    assert UPDATE_CHECK_INTERVAL_SECONDS <= 1800
+    assert UPDATE_CHECK_RETRY_SECONDS <= UPDATE_CHECK_INTERVAL_SECONDS
+
+
+def test_found_update_is_logged_once_per_version(monkeypatch, caplog):
+    monkeypatch.setattr(update_check, "_latest_known_release", None)
+    response = MagicMock()
+    response.json.return_value = _release_payload("v9.9.9")
+    response.raise_for_status.return_value = None
+    caplog.set_level("INFO", logger="app.update_check")
+    with patch("app.update_check._http_get", return_value=response):
+        _update_check_tick()
+        _update_check_tick()
+    assert sum("Знайдено оновлення 9.9.9" in r.getMessage() for r in caplog.records) == 1
 
 
 def test_download_and_verify_raises_without_checksum_url(tmp_path):

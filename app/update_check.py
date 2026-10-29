@@ -77,12 +77,17 @@ DOWNLOAD_TIMEOUT_SECONDS = 30
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 UPDATE_CHECK_INITIAL_DELAY_SECONDS = 30
-UPDATE_CHECK_INTERVAL_SECONDS = 86400  # once a day after a check that reached GitHub
+# Раз на 30 хв (29.10.26; було раз на добу). Кожне встановлення перезапускає
+# програму, перевірка через 30 с після старту нового не знаходить, а наступна
+# була лише через добу — при кількох релізах на день реліз знаходила тільки
+# кнопка «Перевірити» (власник: «лише вручну або при перезапуску»). Анонімний
+# ліміт GitHub — 60 запитів/год на IP; тут 2/год.
+UPDATE_CHECK_INTERVAL_SECONDS = 1800
 # After a tick that could NOT reach GitHub (offline, HTTP error, bad JSON) we
-# retry far sooner instead of going dark for a whole day. Without this, a single
-# transient network blip on the one daily tick hid an available update until the
-# next day — the exact "оновлення не приходить" symptom seen in the field.
-UPDATE_CHECK_RETRY_SECONDS = 3600  # one hour
+# retry sooner. Without this, a single transient network blip on the one daily
+# tick hid an available update until the next day — the exact "оновлення не
+# приходить" symptom seen in the field.
+UPDATE_CHECK_RETRY_SECONDS = 600
 
 
 # ── Стан встановлення — для оверлею (04.09.26) ──────────────────────────
@@ -368,7 +373,13 @@ def _update_check_tick() -> bool:
     payload = _fetch_release_payload()
     if payload is None:
         return False
+    previous = _latest_known_release
     _latest_known_release, _last_check_problem = _release_from_payload(payload)
+    # Успішна перевірка досі не лишала в лозі нічого, і не видно було, коли
+    # реліз знайдено. Один рядок на нову версію, не на кожну перевірку.
+    found = _latest_known_release
+    if found is not None and (previous is None or previous.version != found.version):
+        logger.info("Знайдено оновлення %s (зараз %s)", found.version, VERSION)
     return True
 
 
@@ -382,9 +393,10 @@ def _update_check_worker(stop_event: Event) -> None:
             reached_github = _update_check_tick()
         except Exception:
             logger.exception("Unexpected background update check failure")
-        # Знайдено новішу — качаємо одразу, у цьому ж фоновому потоці.
+        # Знайдено новішу — качаємо одразу, у цьому ж фоновому потоці. Уже
+        # скачану наперед версію не перехешовуємо кожні 30 хв.
         release = get_known_update()
-        if release is not None:
+        if release is not None and release.version != _prefetched_version:
             prefetch_installer(release)
         interval = (
             UPDATE_CHECK_INTERVAL_SECONDS if reached_github else UPDATE_CHECK_RETRY_SECONDS
@@ -430,6 +442,7 @@ def _drop_broken_download(path: Path) -> None:
 # встановлення просто чекає, доки скачування наперед допише, і бере готове.
 _download_lock = Lock()
 _prefetch_running = Event()
+_prefetched_version: str | None = None
 
 
 def _expected_checksum(checksum_url: str) -> str:
@@ -531,6 +544,8 @@ def prefetch_installer(release: ReleaseInfo) -> Path | None:
             human_update_error(exc),
         )
         return None
+    global _prefetched_version
+    _prefetched_version = release.version
     logger.info("Оновлення %s скачано наперед: %s", release.version, path.name)
     return path
 
