@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import socket
 import ssl
 import threading
 import time
@@ -194,8 +195,10 @@ def call_with_retry(
     for attempt in range(attempts):
         try:
             _record_api_call()
-            return fn()
+            result = fn()
         except Exception as exc:  # noqa: BLE001 - re-raised unless transient
+            if _is_network_error(exc):
+                note_google_network_failure()
             if not is_transient_sheet_error(exc) or attempt == attempts - 1:
                 raise
             delay = base_delay * (2 ** attempt)
@@ -213,7 +216,81 @@ def call_with_retry(
                 exc,
             )
             sleep(delay)
+        else:
+            _note_google_ok()
+            return result
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+# ── Зв'язок із Google: чи він зараз є (03.11.26) ───────────────────────────
+# 10:41–10:42 у цеху на хвилину зник інтернет (DNS не знаходив
+# googleapis.com), і прийняття двох листів тривало 29.6 с: 15 с на потік
+# запису, що сам висів на тому ж обриві, і ще ~11 с на власну спробу. Будь-
+# який запит, що впав саме на МЕРЕЖІ (DNS, обрив, TLS-скидання, тайм-аут),
+# тут запам'ятовується на GOOGLE_DOWN_SECONDS, а перший же вдалий — знімає
+# позначку (гаряча смуга синку ходить до Google кожні ~15 с, тож після
+# повернення зв'язку позначка тримається секунди). Хто не мусить чекати
+# Google — прийняття листа, — питає `google_unreachable()` і йде коротшим
+# шляхом. Синк і запис працюють, як і працювали: їм позначка нічого не
+# забороняє.
+GOOGLE_DOWN_SECONDS = 60.0
+_link_lock = threading.Lock()
+_link_failed_at: float | None = None
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    from google.auth.exceptions import TransportError
+
+    return isinstance(
+        exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout, TransportError)
+    )
+
+
+def note_google_network_failure() -> None:
+    global _link_failed_at
+    with _link_lock:
+        _link_failed_at = time.monotonic()
+
+
+def _note_google_ok() -> None:
+    global _link_failed_at
+    with _link_lock:
+        _link_failed_at = None
+
+
+def reset_google_link() -> None:
+    """Забути обрив. Для тестів: стан живе на процес, як і лічильник квоти."""
+    _note_google_ok()
+
+
+def google_unreachable() -> bool:
+    """Чи падав запит до Google на мережі за останні GOOGLE_DOWN_SECONDS (і
+    відтоді жоден не пройшов)."""
+    with _link_lock:
+        failed = _link_failed_at
+    return failed is not None and time.monotonic() - failed < GOOGLE_DOWN_SECONDS
+
+
+def google_dns_answers(timeout: float = 2.0) -> bool:
+    """Чи DNS знає адресу Google — швидка перевірка, коли потік запису мовчить.
+
+    `getaddrinfo` власного тайм-ауту не має і на обриві висить секундами (у
+    цеху ~10 с на спробу), тому питаємо в окремому потоці й чекаємо не довше
+    `timeout`. Не встиг — вважаємо, що зв'язку немає."""
+    answered: list[bool] = []
+
+    def _lookup() -> None:
+        try:
+            socket.getaddrinfo("sheets.googleapis.com", 443)
+        except OSError:
+            answered.append(False)
+        else:
+            answered.append(True)
+
+    worker = threading.Thread(target=_lookup, name="google-dns-probe", daemon=True)
+    worker.start()
+    worker.join(timeout)
+    return bool(answered and answered[0])
 
 
 # Дедлайн на КОЖЕН запит до Google: (зʼєднатись, дочекатись відповіді).

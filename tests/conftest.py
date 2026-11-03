@@ -93,11 +93,16 @@ def _fresh_sheets_quota_counter():
     порядку. Скидаємо перед КОЖНИМ тестом: у бою лічильник так само починає
     з нуля при старті процесу.
     """
-    from app.sheets import reset_api_call_counter
+    from app.sheets import reset_api_call_counter, reset_google_link
 
+    # Позначка «немає зв'язку з Google» — теж на процес: тест, що імітує
+    # обрив, інакше пускав би прийняття листа в наступних тестах шляхом без
+    # таблиці.
     reset_api_call_counter()
+    reset_google_link()
     yield
     reset_api_call_counter()
+    reset_google_link()
 
 
 @pytest.fixture(autouse=True)

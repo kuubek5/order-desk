@@ -24,10 +24,12 @@ import logging
 import threading
 import time
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import perf, sync_control
-from app.business_day import business_today
+from app import sheets as _sheets
+from app.business_day import business_today, canonical_tab_title
 from app.export_scanner import clear_export_cache
 from app.link_attachments import undownloaded_links
 from app.mail_hold import release_hold
@@ -494,10 +496,13 @@ def _accept_files_and_commit(
         logger.info("Синк на паузі — рядок листа %s допише повтор", email.id)
     elif write_row:
         with perf.span("accept:sheet-row"):
-            _write_placeholder_row(
-                db, email, new_order, None,
-                append=_warm_appender(db, new_order.sheet_tab) if tab_found else None,
-            )
+            if not tab_found and _sheets.google_unreachable():
+                _queue_row_offline(db, email, new_order)
+            else:
+                _write_placeholder_row(
+                    db, email, new_order, None,
+                    append=_warm_appender(db, new_order.sheet_tab) if tab_found else None,
+                )
         try:
             db.commit()
         except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
@@ -668,6 +673,12 @@ def reset_tab_cache() -> None:
 # Межа очікування: пул один і серіалізує всі записи, тож прийняття може стати
 # за чужою довгою пачкою.
 WARM_WAIT_SECONDS = 15.0
+# Чекаємо шматками, щоб помітити обрив зв'язку посеред очікування (03.11.26:
+# потік запису висів на тому ж обриві, а прийняття чекало всі 15 с). Після
+# WARM_DNS_CHECK_AFTER_SECONDS тиші — одне коротке питання до DNS: звичайна
+# відповідь потоку — 0.2–0.8 с, тож три секунди тиші вже підозрілі.
+WARM_POLL_SECONDS = 0.25
+WARM_DNS_CHECK_AFTER_SECONDS = 3.0
 
 
 def _run_warm(db: Session, fn, *args):
@@ -689,11 +700,27 @@ def _run_warm(db: Session, fn, *args):
             return fn(wdb, *args)
 
     future = sheet_writeback_pool.submit(task)
-    try:
-        return future.result(timeout=WARM_WAIT_SECONDS)
-    except FutureTimeout:
-        future.cancel()
-        raise
+    started = time.monotonic()
+    dns_checked = False
+    while True:
+        left = WARM_WAIT_SECONDS - (time.monotonic() - started)
+        if left <= 0:
+            break
+        try:
+            return future.result(timeout=min(WARM_POLL_SECONDS, left))
+        except FutureTimeout:
+            pass
+        # Зв'язку з Google немає — потік запису висить на тому ж обриві, і
+        # чекати його марно.
+        if _sheets.google_unreachable():
+            break
+        if not dns_checked and time.monotonic() - started >= WARM_DNS_CHECK_AFTER_SECONDS:
+            dns_checked = True
+            if not _sheets.google_dns_answers():
+                _sheets.note_google_network_failure()
+                break
+    future.cancel()
+    raise FutureTimeout()
 
 
 @dataclass
@@ -718,17 +745,78 @@ def _resolve_target_tab_warm(db: Session, email: EmailMessage) -> tuple[str, boo
     """`_resolve_target_tab` на теплому потоці: (назва вкладки, чи вона є).
 
     Потік не відповів вчасно — шукаємо тут, як до 28.10.26: повільно, але
-    робота лягає у правильну вкладку.
+    робота лягає у правильну вкладку. Крім випадку, коли зв'язку з Google
+    немає (`_offline_tab`): тоді шукати марно, а рядок допише повтор.
     """
+    if _sheets.google_unreachable():
+        return _offline_tab(db, email), False
     try:
         return _run_warm(db, _resolve_tab_title, email.id)
     except FutureTimeout:
+        if _sheets.google_unreachable():
+            return _offline_tab(db, email), False
         logger.warning(
             "Потік запису зайнятий понад %.0f с — вкладку для листа %s шукаємо тут",
             WARM_WAIT_SECONDS, email.id,
         )
         title, worksheet = _resolve_target_tab(db, email)
         return title, worksheet is not None
+
+
+def _offline_tab(db: Session | None, email) -> str:
+    """Вкладка для роботи, коли Google недоступний (03.11.26).
+
+    Робота мусить лягти в ПРАВИЛЬНИЙ день: повтор допише рядок саме в
+    `Order.sheet_tab`. Тому — вкладка, вже знайдена сьогодні (кеш, будь-якого
+    віку в межах робочого дня), інакше найсвіжіша з тих, що синк уже бачив у
+    таблиці (≤ сьогодні: лабораторія буває на день позаду), і лише тоді назва
+    сьогоднішнього дня — як і досі при збої таблиці."""
+    today = business_today()
+    cached = _tab_cache
+    if cached is not None and cached[0] == today:
+        tab = cached[1]
+    else:
+        tab = _latest_known_tab(db, today) or today.strftime("%d.%m.%y")
+    logger.warning(
+        "Немає зв'язку з Google — лист %s приймаємо у вкладку %s, рядок допише повтор",
+        email.id, tab,
+    )
+    return tab
+
+
+def _latest_known_tab(db: Session | None, today: date) -> str | None:
+    if db is None:
+        return None
+    best: tuple[date, str] | None = None
+    for tab in db.scalars(
+        select(Order.sheet_tab).where(
+            Order.row_number.is_not(None),
+            Order.sheet_tab.is_not(None),
+            Order.archived_at.is_(None),
+        ).distinct()
+    ):
+        if not tab:
+            continue
+        try:
+            day = datetime.strptime(canonical_tab_title(tab), "%d.%m.%y").date()
+        except ValueError:
+            continue
+        if day <= today and (best is None or day > best[0]):
+            best = (day, tab)
+    return best[1] if best else None
+
+
+def _queue_row_offline(db: Session, email, new_order: Order) -> None:
+    """Рядок-нотатку не пишемо — зв'язку немає. Позначка `sheet_row_pending`
+    уже стоїть, тож повтор (`mail_row_retry`) допише рядок, а банер «не
+    дійшло в таблицю» покаже роботу одразу — з чесною причиною, а не
+    «вкладки немає»."""
+    message = "немає зв'язку з Google — рядок-нотатку допише повтор"
+    db.add(SyncLog(
+        direction="mail_to_sheet", sheet_tab=new_order.sheet_tab, status="error",
+        message=f"email {email.id}: {message}",
+    ))
+    note_write_failed("row", new_order, message)
 
 
 def _warm_appender(db: Session, tab: str | None):
