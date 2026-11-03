@@ -20,22 +20,35 @@ Monolith 37896 Sum3D множив на 1.25, і бейдж розходився 
   архіву — лише розширення, якщо назва не схожа на службову.
   Назви самих `.blk` (`25-Monolith-A3-x51`) і `.cam` (`2026-11-03_13-12-29`)
   приватного не несуть — їх віддаємо.
-* **Бінарне читаємо лише біля маркерів.** У бінарному файлі може бути сітка
-  STL, а координати вершин у мм лягають і в діапазон коефіцієнтів (1.1–1.4) —
-  суцільний скан дав би тисячі хибних «кандидатів». Тому числа шукаються лише
-  поруч зі словами-маркерами (shrink, scale, factor…).
+* **Бінарне читаємо біля маркерів, а суцільно — лише малий файл і лише
+  «круглі» числа.** У бінарному файлі може бути сітка STL, а координати вершин
+  у мм лягають і в діапазон коефіцієнтів (1.1–1.4) — суцільний скан великого
+  файлу дав би тисячі хибних «кандидатів». Тому числа шукаються поруч зі
+  словами-маркерами (shrink, scale, factor…), а суцільний скан іде лише по
+  файлу чи потоку до `ROUND_SCAN_MAX_BYTES` і бере тільки числа, що мають
+  кілька знаків після коми (`1.25`, `1.2512`): коефіцієнт з етикетки людина
+  вводить руками, координата сітки такою не буває майже ніколи.
+
+Перший прогін на проді (03.11.26, 0.21.91): `.blk` і `.cam` — бінарні, і
+жодного слова-маркера ні в ASCII, ні в UTF-16LE. Тому друга версія ще й
+розпаковує zlib/gzip-потоки всередині файлу, читає UTF-16BE (так пише Qt
+`QDataStream`) і шукає числа в обох порядках байтів.
 """
 
 from __future__ import annotations
 
 import io
+import math
 import os
 import re
 import struct
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
+
+import numpy as np
 
 BLANK_EXT = ".blk"
 PROJECT_EXT = ".cam"
@@ -55,6 +68,28 @@ KEYWORDS = re.compile(
 PLAUSIBLE_LOW = 1.10
 PLAUSIBLE_HIGH = 1.40
 
+# Суцільний пошук «круглих» чисел — лише в такому малому файлі чи потоці
+# (диск `.blk` — десятки КБ; проєкт `.cam` із сітками — ні).
+ROUND_SCAN_MAX_BYTES = 1024 * 1024
+# Той самий коефіцієнт Sum3D може тримати по-різному: як збільшення (1.25),
+# як обернене (0.8 = 1/1.25) або у відсотках (20 % усадки чи 25 % збільшення).
+ROUND_RANGES = (
+    ("коефіцієнт_1_10_до_1_40", PLAUSIBLE_LOW, PLAUSIBLE_HIGH),
+    ("обернений_0_71_до_0_91", 0.71, 0.91),
+    ("відсотки_9_до_30", 9.0, 30.0),
+)
+# Скільки знаків після коми ще вважається «введеним руками».
+ROUND_DECIMALS_DOUBLE = 4
+ROUND_DECIMALS_FLOAT = 3
+ROUND_GROUPS_MAX = 40
+
+# Стиснуті потоки всередині бінарного файлу: zlib (78 01/5E/9C/DA) і gzip.
+_STREAM_HEAD = re.compile(rb"\x78[\x01\x5e\x9c\xda]|\x1f\x8b\x08")
+MAX_STREAMS = 40
+MAX_STREAMS_DESCRIBED = 12
+MAX_STREAM_OUT = 8 * 1024 * 1024
+MAX_STREAMS_TOTAL_OUT = 64 * 1024 * 1024
+
 _NUMBER = re.compile(r"^[+-]?\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?$")
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:\-]{0,47}$")
 # Службова назва вкладеного файлу (project.xml, blank.ini) — без пробілів і
@@ -71,7 +106,10 @@ _KV_LINE = re.compile(
 )
 _ASCII_WORD = re.compile(rb"[A-Za-z_][A-Za-z0-9_]{3,47}")
 _UTF16_WORD = re.compile(rb"(?:[A-Za-z_]\x00)(?:[A-Za-z0-9_]\x00){3,47}")
+_UTF16BE_WORD = re.compile(rb"(?:\x00[A-Za-z_])(?:\x00[A-Za-z0-9_]){3,47}")
+_WORD_PATTERNS = ((_ASCII_WORD, "ascii"), (_UTF16_WORD, "utf-16-le"), (_UTF16BE_WORD, "utf-16-be"))
 _ASCII_NUMBER = re.compile(rb"[+-]?\d+[.,]\d+")
+_HEADER_TEXT = re.compile(rb"[\x20-\x7e]{4,40}")
 
 
 def _as_number(text: str) -> Optional[float]:
@@ -190,6 +228,17 @@ def describe_file(path: str) -> dict[str, Any]:
     if truncated:
         out["обрізано"] = f"прочитано перші {MAX_READ_BYTES // (1024 * 1024)} МБ"
     out.update(describe_bytes(data))
+    # Магічний рядок бінарного файлу (`<SUM3D_BLANK V1.0>`, `TECN 2.0`) — версія
+    # формату. Лише бінарного й лише короткий, оборваний керівним байтом: у
+    # текстовому файлі з початку йшли б уже значення (`<Name>…`).
+    header = _HEADER_TEXT.match(data)
+    if (
+        out.get("формат") == "бінарний"
+        and header
+        and header.end() < len(data)
+        and data[header.end()] < 0x20
+    ):
+        out["заголовок_текст"] = header.group().decode("ascii")
     return out
 
 
@@ -199,7 +248,7 @@ def describe_bytes(data: bytes, *, depth: int = 0) -> dict[str, Any]:
     text = _as_text(data)
     if text is not None:
         return _describe_text(text)
-    return _describe_binary(data)
+    return _describe_binary(data, depth=depth)
 
 
 def _describe_zip(data: bytes) -> dict[str, Any]:
@@ -302,39 +351,186 @@ def _describe_text(text: str) -> dict[str, Any]:
     }
 
 
-def _describe_binary(data: bytes) -> dict[str, Any]:
+def _describe_binary(data: bytes, *, depth: int = 0) -> dict[str, Any]:
     markers: list[dict[str, Any]] = []
-    for pattern, width in ((_ASCII_WORD, 1), (_UTF16_WORD, 2)):
+    words = 0
+    for pattern, encoding in _WORD_PATTERNS:
         for match in pattern.finditer(data):
-            word = match.group().decode("ascii" if width == 1 else "utf-16-le", "replace")
+            words += 1
+            if len(markers) >= 60:
+                continue
+            word = match.group().decode(encoding, "replace")
             if not KEYWORDS.search(word):
                 continue
-            end = match.end()
             markers.append({
                 "маркер": word,
+                "кодування": encoding,
                 "зсув": match.start(),
-                "кандидати": _numbers_after(data, end),
+                "кандидати": _numbers_after(data, match.end(), big_endian=encoding == "utf-16-be"),
             })
-            if len(markers) >= 60:
-                break
-    return {
+    out: dict[str, Any] = {
         "формат": "бінарний",
         "розмір": len(data),
+        # ~8 біт/байт — стиснуте чи зашифроване; нижче — сирі структури.
+        "ентропія_біт_на_байт": _entropy(data),
+        # Лише кількість: самі слова можуть бути назвами STL (див. `common_words`).
+        "слів_латиницею": words,
         "маркери": markers,
+    }
+    if len(data) <= ROUND_SCAN_MAX_BYTES:
+        out["круглі_числа"] = _round_numbers(data)
+    else:
+        out["круглі_числа"] = (
+            f"файл більший за {ROUND_SCAN_MAX_BYTES // 1024} КБ — суцільно не шукаємо "
+            "(сітки STL дали б шум); див. потоки"
+        )
+    if depth == 0:
+        streams = _compressed_streams(data)
+        if streams:
+            out["стиснуті_потоки"] = [
+                {
+                    "зсув": offset,
+                    "стиснуто": packed,
+                    "розпаковано": len(payload),
+                    **({"вміст": describe_bytes(payload, depth=1)} if i < MAX_STREAMS_DESCRIBED else {}),
+                }
+                for i, (offset, packed, payload) in enumerate(streams)
+            ]
+    return out
+
+
+def _entropy(data: bytes) -> float:
+    if not data:
+        return 0.0
+    counts = np.bincount(np.frombuffer(data, dtype=np.uint8), minlength=256)
+    p = counts[counts > 0] / len(data)
+    return round(float(-(p * np.log2(p)).sum()), 2)
+
+
+def _round_numbers(data: bytes) -> dict[str, list[dict[str, Any]]]:
+    """Числа з кількома знаками після коми в діапазонах `ROUND_RANGES` — по
+    всьому буферу, на кожному зсуві, double і float, обидва порядки байтів.
+
+    Групується за (тип, значення): коефіцієнт диска лежить один-два рази, а
+    повтор сотні разів — ознака чогось іншого (крок сітки, висота)."""
+    groups: dict[tuple[str, str, float], dict[str, Any]] = {}
+    for label, dtype, decimals in (
+        ("double LE", "<f8", ROUND_DECIMALS_DOUBLE),
+        ("double BE", ">f8", ROUND_DECIMALS_DOUBLE),
+        ("float LE", "<f4", ROUND_DECIMALS_FLOAT),
+        ("float BE", ">f4", ROUND_DECIMALS_FLOAT),
+    ):
+        width = np.dtype(dtype).itemsize
+        for shift in range(width):
+            count = (len(data) - shift) // width
+            if count <= 0:
+                continue
+            # Сирі байти дають і NaN — це не помилка, лише не число.
+            with np.errstate(invalid="ignore", over="ignore"):
+                values = np.frombuffer(data, dtype=dtype, count=count, offset=shift).astype(np.float64)
+            for range_name, low, high in ROUND_RANGES:
+                hits = np.nonzero((values >= low) & (values <= high))[0]
+                for index in hits:
+                    value = float(values[index])
+                    if not _is_round(value, decimals, single=width == 4):
+                        continue
+                    shown = round(value, decimals)
+                    key = (range_name, label, shown)
+                    group = groups.setdefault(key, {"тип": label, "значення": shown, "разів": 0, "зсуви": []})
+                    group["разів"] += 1
+                    if len(group["зсуви"]) < 3:
+                        group["зсуви"].append(shift + int(index) * width)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for range_name, _low, _high in ROUND_RANGES:
+        found = [g for (name, _t, _v), g in groups.items() if name == range_name]
+        found.sort(key=lambda g: (g["разів"], g["значення"]))
+        for group in found:
+            group["зсуви"].sort()
+        out[range_name] = found[:ROUND_GROUPS_MAX]
+    return out
+
+
+def _is_round(value: float, decimals: int, *, single: bool) -> bool:
+    if not math.isfinite(value):
+        return False
+    rounded = round(value, decimals)
+    if single:
+        # float32 «1.247» не дорівнює double 1.247 — порівнюємо в float32.
+        return struct.unpack("<f", struct.pack("<f", rounded))[0] == value
+    return rounded == value
+
+
+def _compressed_streams(data: bytes) -> list[tuple[int, int, bytes]]:
+    """zlib/gzip-потоки всередині файлу: (зсув, стиснутих байтів, вміст).
+
+    Заголовок `78 9C` трапляється і випадково; справжнім вважається лише
+    потік, що дійшов до кінця (`eof`) або вперся в межу розпаковки."""
+    found: list[tuple[int, int, bytes]] = []
+    view = memoryview(data)
+    skip_until = 0
+    total = 0
+    for match in _STREAM_HEAD.finditer(data):
+        start = match.start()
+        if start < skip_until:
+            continue
+        inflater = zlib.decompressobj(47)  # 32 + 15: zlib або gzip за заголовком
+        try:
+            payload = inflater.decompress(view[start:], MAX_STREAM_OUT)
+        except zlib.error:
+            continue
+        if len(payload) < 16 or not (inflater.eof or len(payload) >= MAX_STREAM_OUT):
+            continue
+        packed = len(data) - start - len(inflater.unused_data) - len(inflater.unconsumed_tail)
+        found.append((start, packed, payload))
+        skip_until = start + max(packed, 1)
+        total += len(payload)
+        if len(found) >= MAX_STREAMS or total >= MAX_STREAMS_TOTAL_OUT:
+            break
+    return found
+
+
+def common_words(paths: Iterable[str]) -> list[str]:
+    """Слова латиницею (≥4 символи), що є в КОЖНОМУ з файлів, — разом зі
+    стиснутими потоками. Назви ключів формату однакові в усіх дисках, а назва
+    STL з іменем пацієнта — своя в кожному; тому віддаємо лише перетин, і
+    кличе це інструмент лише для ≥3 дисків."""
+    common: Optional[set[str]] = None
+    for path in paths:
+        try:
+            with open(path, "rb") as handle:
+                data = handle.read(MAX_READ_BYTES)
+        except OSError:
+            return []
+        words = _words(data)
+        for _offset, _packed, payload in _compressed_streams(data):
+            words |= _words(payload)
+        common = words if common is None else common & words
+    return sorted(common or ())
+
+
+def _words(data: bytes) -> set[str]:
+    return {
+        match.group().decode(encoding, "replace")
+        for pattern, encoding in _WORD_PATTERNS
+        for match in pattern.finditer(data)
     }
 
 
-def _numbers_after(data: bytes, start: int, window: int = 64) -> list[dict[str, Any]]:
+def _numbers_after(
+    data: bytes, start: int, window: int = 64, *, big_endian: bool = False
+) -> list[dict[str, Any]]:
     """Правдоподібні коефіцієнти одразу за маркером: double, float і число
-    текстом. Зсув — від кінця маркера, щоб звірити між кількома файлами."""
+    текстом. Зсув — від кінця маркера, щоб звірити між кількома файлами.
+    Після слова в UTF-16BE (Qt) і числа, найімовірніше, big-endian."""
     chunk = data[start:start + window]
+    order = ">" if big_endian else "<"
     found: list[dict[str, Any]] = []
     for offset in range(0, max(0, len(chunk) - 3)):
         if offset + 8 <= len(chunk):
-            (value,) = struct.unpack_from("<d", chunk, offset)
+            (value,) = struct.unpack_from(f"{order}d", chunk, offset)
             if _plausible(value):
                 found.append({"тип": "double", "зсув": offset, "значення": round(value, 6)})
-        (single,) = struct.unpack_from("<f", chunk, offset)
+        (single,) = struct.unpack_from(f"{order}f", chunk, offset)
         if _plausible(single):
             found.append({"тип": "float", "зсув": offset, "значення": round(single, 5)})
     for match in _ASCII_NUMBER.finditer(chunk):

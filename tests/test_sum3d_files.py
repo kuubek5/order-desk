@@ -13,6 +13,7 @@ import json
 import os
 import struct
 import zipfile
+import zlib
 
 from app.services import sum3d_files
 from app.settings_store import set_setting
@@ -81,6 +82,75 @@ def test_binary_double_after_marker(tmp_path):
     assert marker["маркер"] == "ShrinkFactor"
     assert {"тип": "double", "зсув": 1, "значення": 1.2512} in marker["кандидати"]
     assert PATIENT not in json.dumps(found, ensure_ascii=False)
+
+
+def _round(found: dict, range_name: str = "коефіцієнт_1_10_до_1_40") -> list[tuple[str, float]]:
+    return [(g["тип"], g["значення"]) for g in found["круглі_числа"][range_name]]
+
+
+def test_binary_round_double_without_marker_is_found(tmp_path):
+    """Прод 03.11.26: у `.blk` жодного слова-маркера. Коефіцієнт, введений
+    руками, — кругле число; координата сітки — ні."""
+    path = tmp_path / "zr14_14-Monolith-A3-x96.blk"
+    noise = struct.pack("<3f", 1.2345678, 12.987654, -3.1415927)
+    payload = (
+        b"<SUM3D_BLANK V1.0>\x00\x07" + noise
+        + struct.pack("<d", 1.25) + noise + struct.pack(">d", 0.8)
+    )
+    path.write_bytes(payload)
+    found = sum3d_files.describe_file(str(path))
+    assert found["заголовок_текст"] == "<SUM3D_BLANK V1.0>"
+    assert ("double LE", 1.25) in _round(found)
+    assert ("double BE", 0.8) in _round(found, "обернений_0_71_до_0_91")
+    assert all(value != 1.2345678 for _t, value in _round(found))
+    group = next(g for g in found["круглі_числа"]["коефіцієнт_1_10_до_1_40"] if g["тип"] == "double LE")
+    assert group["разів"] == 1 and group["зсуви"] == [20 + len(noise)]
+
+
+def test_utf16be_marker_reads_big_endian_number(tmp_path):
+    path = tmp_path / "q.blk"
+    word = "ScaleFactor".encode("utf-16-be")
+    path.write_bytes(b"\x00\x01\x02" + word + struct.pack(">d", 1.2512) + b"\x00" * 8)
+    found = sum3d_files.describe_file(str(path))
+    # Той самий рядок, зсунутий на байт, читається й як UTF-16LE («ScaleFacto»):
+    # кодування не вгадуємо, віддаємо обидва прочитання.
+    [marker] = [m for m in found["маркери"] if m["кодування"] == "utf-16-be"]
+    assert marker["маркер"] == "ScaleFactor"
+    assert {"тип": "double", "зсув": 0, "значення": 1.2512} in marker["кандидати"]
+
+
+def test_zlib_stream_inside_binary_is_unpacked(tmp_path):
+    path = tmp_path / "2026-11-03_13-12-29.cam"
+    inner = zlib.compress(
+        b"\x00\x01" + b"ShrinkFactor\x00" + struct.pack("<d", 1.247) + PATIENT.encode() + b"\x00" * 32
+    )
+    path.write_bytes(b"TECN 2.0\x00\x00" + os.urandom(64).replace(b"\x78", b"\x00") + inner + b"\x00" * 8)
+    found = sum3d_files.describe_file(str(path))
+    assert found["заголовок_текст"] == "TECN 2.0"
+    [stream] = found["стиснуті_потоки"]
+    assert stream["зсув"] == 74 and stream["стиснуто"] == len(inner)
+    [marker] = stream["вміст"]["маркери"]
+    assert {"тип": "double", "зсув": 1, "значення": 1.247} in marker["кандидати"]
+    assert PATIENT not in json.dumps(found, ensure_ascii=False)
+
+
+def test_large_binary_is_not_scanned_whole(tmp_path):
+    path = tmp_path / "big.cam"
+    path.write_bytes(struct.pack("<d", 1.25) * (sum3d_files.ROUND_SCAN_MAX_BYTES // 8 + 1))
+    found = sum3d_files.describe_file(str(path))
+    assert isinstance(found["круглі_числа"], str)
+
+
+def test_common_words_drop_per_disc_names(tmp_path):
+    paths = []
+    for i, name in enumerate((PATIENT, "Shevchenko_Olena", "Koval_Ivan")):
+        path = tmp_path / f"{i}.blk"
+        packed = zlib.compress(b"\x00ShrinkScale\x00" + name.encode() + b"\x00")
+        path.write_bytes(b"\x01" + "BlankHeight".encode("utf-16-le") + b"\x00" + packed)
+        paths.append(str(path))
+    words = sum3d_files.common_words(paths)
+    assert "BlankHeight" in words and "ShrinkScale" in words
+    assert not any(n in words for n in (PATIENT, "Shevchenko_Olena", "Koval_Ivan"))
 
 
 def test_find_newest_blanks_and_project_by_id(tmp_path):
