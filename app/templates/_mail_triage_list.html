@@ -116,7 +116,10 @@
                    фрезерувальних (Zr/PMMA/Ti/Wax). Підказка, як `from-guess`:
                    рішення за оператором у майстрі. #}
                 {% set _mb = email.mat_badge %}
-                {% if _mb %}<span class="matmini {{ _mb.cls }}" title="Матеріал (здогад): {{ _mb.title }}{% if _mb.color %} · {{ _mb.color }}{% endif %} — перевір у майстрі"><b>{{ _mb.symbol }}</b>{% if _mb.color %}<span class="mm-c">{{ _mb.color }}</span>{% endif %}</span>{% endif %}
+                {# Вигляд «маркер» (власник 03.11.26, design/mail-list-material-badge-variants.html F):
+                   код відтінку — останнє слово з цифрою («mono b1» → b1, «800») — жирним,
+                   щоб око чіплялось саме за нього. #}
+                {% if _mb %}{% set _mc = (_mb.color or '').rsplit(' ', 1) %}{% set _code = _mc[-1] if (_mc[-1]|list|select('in', '0123456789')|list) else '' %}{% set _line = (_mc[0] if _mc|length == 2 else '') if _code else (_mb.color or '') %}<span class="matmini {{ _mb.cls }}" title="Матеріал (здогад): {{ _mb.title }}{% if _mb.color %} · {{ _mb.color }}{% endif %} — перевір у майстрі"><b>{{ _mb.symbol }}</b>{% if _line %}<span class="mm-c">{{ _line }}</span>{% endif %}{% if _code %}<strong class="mm-code">{{ _code }}</strong>{% endif %}</span>{% endif %}
                 {# «Опак» — замовник просить покрити опаком (email.opak_hint — слово з листа). #}
                 {% if email.opak_hint %}<span class="opakmini" title="Замовник просить опак: «{{ email.opak_hint }}»">опак</span>{% endif %}
             </span>

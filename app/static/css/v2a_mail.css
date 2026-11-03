@@ -206,14 +206,18 @@ main.mailv2{max-width:none;margin:0;padding:18px 20px}
    PMMA бурштин, Ti смарагд, Wax троянда, SLM сталь); решта чіпа нейтральна, бо
    це ПІДКАЗКА, а не статус. `margin-left:auto` тримає його праворуч від імені,
    `flex:0 0 auto` — не дає стиснути (ім'я/клієнт худнуть першими). */
-.mailv2 .mailrow .matmini{flex:0 0 auto;display:inline-flex;align-items:baseline;gap:5px;font-family:var(--font-mono);font-size:var(--fs-0);white-space:nowrap;padding:2px 7px;border-radius:5px;border:1px solid var(--line);background:var(--card-2)}
-.mailv2 .mailrow .matmini b{font-weight:700;letter-spacing:.02em}
-.mailv2 .mailrow .matmini .mm-c{color:var(--ink-2)}
-.mailv2 .mailrow .matmini.mat-zr b{color:var(--mat-zr)}
-.mailv2 .mailrow .matmini.mat-pmma b{color:var(--mat-pmma)}
-.mailv2 .mailrow .matmini.mat-ti b{color:var(--mat-ti)}
-.mailv2 .mailrow .matmini.mat-wax b{color:var(--mat-wax)}
-.mailv2 .mailrow .matmini.mat-slm b{color:var(--mat-slm)}
+/* Бейдж матеріалу — «маркер» (власник 03.11.26): тло й край зліва кольором
+   родини, та сама мова, що край рядка в черзі й чіпи статусу «маркер».
+   Колір родини — одна змінна --mm на класі; невідома родина — тихий --ink-3. */
+.mailv2 .mailrow .matmini{--mm:var(--ink-3);flex:0 0 auto;display:inline-flex;align-items:baseline;gap:6px;align-self:center;font-family:var(--font-mono);font-size:var(--fs-1);line-height:1.35;white-space:nowrap;padding:2px 8px 2px 10px;border-radius:4px;color:var(--ink);background:color-mix(in srgb,var(--mm) 13%,transparent);box-shadow:inset 3px 0 0 var(--mm)}
+.mailv2 .mailrow .matmini b{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--mm)}
+.mailv2 .mailrow .matmini .mm-c{color:var(--ink)}
+.mailv2 .mailrow .matmini .mm-code{font-weight:700;color:var(--ink)}
+.mailv2 .mailrow .matmini.mat-zr{--mm:var(--mat-zr)}
+.mailv2 .mailrow .matmini.mat-pmma{--mm:var(--mat-pmma)}
+.mailv2 .mailrow .matmini.mat-ti{--mm:var(--mat-ti)}
+.mailv2 .mailrow .matmini.mat-wax{--mm:var(--mat-wax)}
+.mailv2 .mailrow .matmini.mat-slm{--mm:var(--mat-slm)}
 /* Бейдж «опак» (власник 29.09.26): замовник просить покрити коронку опаком.
    Опак — біла непрозора рідина, тож і бейдж «молочний» — кольору тексту теми
    (--ink, у світлій темі сам стає темним), помітний поруч із матеріалом, але не тривога (не червоний/помаранчевий). Кружечок-«крапля»

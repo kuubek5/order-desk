@@ -398,10 +398,12 @@ def test_list_row_chip_shows_category_and_latin_canon(app_db):  # noqa: F811
 
     def chip(eid):
         row = page.split(f'id="mailrow-{eid}"', 1)[1].split('class="mailrow', 1)[0]
-        return row.split('class="matmini', 1)[1].split("</span></span>", 1)[0]
+        return row.split('class="matmini', 1)[1].split("</strong></span>", 1)[0]
 
-    assert "<b>Zr</b>" in chip(body_id) and 'mm-c">mono b1' in chip(body_id)
-    assert 'mm-c">emo a2' in chip(subj_id)
+    # Вигляд «маркер» (03.11.26): лінія й код відтінку — окремими елементами.
+    assert "<b>Zr</b>" in chip(body_id)
+    assert 'mm-c">mono</span><strong class="mm-code">b1' in chip(body_id)
+    assert 'mm-c">emo</span><strong class="mm-code">a2' in chip(subj_id)
 
 
 def test_card_warns_about_duplicate_files_and_leaves_copy_unchecked(app_db, tmp_path):  # noqa: F811
