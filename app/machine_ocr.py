@@ -140,6 +140,9 @@ class ProgressBar:
     fill_width: int
     container_width: int
     box: tuple[int, int, int, int]  # left, top, right, bottom заливки — для доказу
+    # Чи заливка стоїть упритул до лівої рамки контейнера (`find_progress_bar`).
+    # Ні — геометрії без підпису не віримо, як і завузькому контейнеру.
+    framed: bool = True
 
 
 def _is_dark(px: tuple[int, int, int]) -> bool:
@@ -292,7 +295,34 @@ def find_progress_bar(image: Image.Image, masks: "_FrameMasks | None" = None) ->
     def already_rejected(x: int, y: int) -> bool:
         return any(x0 <= x <= x1 and y0 <= y <= y1 for x0, x1, y0, y1 in rejected)
 
+    # Заливка справжньої смуги починається впритул до РАМКИ контейнера: зліва
+    # від неї колонка без заливки й без білого треку (ті самі ознаки, що в
+    # `_is_edge_column` / `_is_border_column` для правого краю). Без цієї умови
+    # смугою ставала синя іконка спливаючого вікна, якщо праворуч від неї
+    # біле тло з рамкою: 250-pmma 03.11.26 показував «8%» з логотипа Acronis
+    # («A new version of True Image is available!») — програма в Remote не
+    # була відкрита зовсім, а справжня смуга стояла порожня. Хибне число
+    # гірше за жодне.
+    #
+    # Такого кандидата НЕ викидаємо мовчки: обрамлений має перевагу, а
+    # необрамлений повертається з `framed=False`, і `read_progress_percent`
+    # не вірить його геометрії — так само, як завузькому контейнеру. Інакше
+    # кадр із хибною смугою опинявся б на гілці «смуги немає», а там «0%» з
+    # білого треку приймається, і діалог помилки RemiCORE малювався б
+    # «фрезерує, 0%» (`test_zero_under_a_fake_bar_stays_silent`).
+    def framed_on_left(x: int, rows: list[int]) -> bool:
+        if x <= 0 or len(rows) < 3:
+            return False
+        col = x - 1
+        band_rows = np.array(rows, dtype=np.intp)
+        if not (blue_mask[band_rows, col] | white_mask[band_rows, col]).any():
+            return True
+        outer = np.array([y for y in (rows[0] - 1, *rows, rows[-1] + 1) if 0 <= y < height],
+                         dtype=np.intp)
+        return bool(dark_mask[outer, col].sum() >= len(outer) * BORDER_DARK_SHARE)
+
     tried = 0
+    unframed: Optional[tuple[list[int], int, int]] = None
     for _, y_seed, x0, x1 in sorted(runs, key=lambda r: -r[0]):
         if already_rejected(x0, y_seed):
             continue
@@ -307,10 +337,16 @@ def find_progress_bar(image: Image.Image, masks: "_FrameMasks | None" = None) ->
             cols = blue_mask[candidate[0], x0:x1 + 1] & blue_mask[candidate[-1], x0:x1 + 1]
             solid = int(cols.sum()) >= (x1 - x0 + 1) * 0.9
         if MIN_BAR_HEIGHT <= len(candidate) <= MAX_BAR_HEIGHT and solid:
-            band, left, fill_right = candidate, x0, x1
-            break
+            if framed_on_left(x0, candidate):
+                band, left, fill_right = candidate, x0, x1
+                break
+            if unframed is None:
+                unframed = (candidate, x0, x1)
         rejected.append((x0, x1, candidate[0], candidate[-1]) if candidate
                         else (x0, x1, y_seed, y_seed))
+    framed = bool(band)
+    if not band and unframed is not None:
+        band, left, fill_right = unframed
     if not band:
         return None
 
@@ -384,7 +420,7 @@ def find_progress_bar(image: Image.Image, masks: "_FrameMasks | None" = None) ->
         return None
     return ProgressBar(
         percent=percent, fill_width=fill, container_width=container,
-        box=(left, band[0], last_white + 1, band[-1] + 1),
+        box=(left, band[0], last_white + 1, band[-1] + 1), framed=framed,
     )
 
 
@@ -551,8 +587,9 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
     # після якого оператор іде знімати недофрезеровану роботу.
     #
     # Тепер правило без винятків: вузький контейнер приймаємо лише з
-    # підтвердженням підпису.
-    if bar.container_width < MIN_TRUSTED_CONTAINER:
+    # підтвердженням підпису. Те саме — «смуга», заливка якої не стоїть
+    # упритул до лівої рамки (синя іконка спливаючого вікна, 03.11.26).
+    if bar.container_width < MIN_TRUSTED_CONTAINER or not bar.framed:
         # Хибна «смуга» могла затулити справжню (350i Loader, 02.10.26): при
         # 2–3% заливка справжньої смуги — 3 px, а синій текст координати
         # «X -32.06» внизу ліворуч детектор узяв за смугу на 57 px. Її
@@ -569,8 +606,8 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
         if low_caption:
             return low_caption
         logger.info(
-            "Верстат: контейнер %dpx завузький для %d%% без підпису — мовчимо",
-            bar.container_width, bar.percent,
+            "Верстат: контейнер %dpx%s — %d%% без підпису не беремо, мовчимо",
+            bar.container_width, "" if bar.framed else " без лівої рамки", bar.percent,
         )
         return None
     return bar.percent

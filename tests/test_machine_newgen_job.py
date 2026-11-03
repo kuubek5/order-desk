@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
+from itertools import product
 from pathlib import Path
 
 import numpy as np
@@ -78,6 +79,12 @@ SHOP_FRAMES = {
     "newgen_250i_12-38-27.png": ("2026-10-12", "12-38-27"),
     "newgen_150i_15-43-29.png": ("2026-10-12", "15-43-29"),
     "newgen_150i_21-47-58.png": ("2026-10-13", "21-47-58"),
+    # 03.11.26, 250i-Tolik (і 250i-Sec — той самий розклад). Назва на ТРИ
+    # рядки: «PMMA25_25-» / «…_03-31-40.IS» / «O» — а праворуч від «O», у тому
+    # ж рядку, тривалість «5H 53MIN». Вона доклеювалась у кінець назви, і хвіст
+    # читався з неї: «цифру №1 не впізнано (8=85)» 3920 разів із 13.09.26 —
+    # схоже на брак еталона, хоч еталони були ні до чого.
+    "newgen_250i_03-31-40.png": ("2026-11-03", "03-31-40"),
 }
 READABLE = {
     FRAME_250I.name: ("2026-09-04", "12-57-22"),
@@ -119,6 +126,73 @@ def test_a_shop_frame_reads_with_templates_that_never_saw_it(monkeypatch):
         "newgen_250i_16-14-29.png": "ZR18_18-MONOLITH-A2-X38_2026-09-10_16-14-29.ISO",
     }))
     assert _read(FIX / "newgen_250i_16-38-52.png") == ("2026-09-10", "16-38-52")
+
+
+def test_a_lone_wrapped_letter_is_part_of_the_name():
+    """«O» від «.ISO», перенесене саме на третій рядок (250i, 03.11.26).
+
+    У рядку з одного символу немає чотирьох окремих відрізків, за якими
+    шукається базова лінія, і він відкидався як уламок — хвіст зсувався на
+    символ. Висота та сама, що рядком вище, — значить, це символи."""
+    glyphs = ng._name_glyphs(Image.open(FIX / "newgen_250i_03-31-40.png"))
+    assert glyphs is not None
+    assert [g.line for g in glyphs].count(2) == 1, "третій рядок — рівно «O», без «5H 53MIN»"
+    assert glyphs[-1].line == 2
+
+
+def test_anything_glued_after_the_name_does_not_shift_the_tail(monkeypatch):
+    """Сторож класу, а не випадку. Тривалість доклеювалась до назви тричі,
+    щоразу інакше (збоку, під, в одному рядку), і кожного разу верстати
+    тижнями мовчали. Тут сегментацію навмисно ламають назад — поріг проміжку
+    вимкнено, «5H 53MIN» знову в рядку назви, — і хвіст однаково читається:
+    він шукається за власною формою (`_tail_start`), а не береться з кінця."""
+    monkeypatch.setattr(ng, "BLOCK_GAP", 10**6)
+    glyphs = ng._name_glyphs(Image.open(FIX / "newgen_250i_03-31-40.png"))
+    assert glyphs is not None and len(glyphs) > len(
+        "PMMA25_25-PMMAPROZRACH-391_2026-11-03_03-31-40.ISO".replace("_", "")
+    ), "тривалість мала б знову потрапити в рядок"
+    picks, why = ng._tail_picks_in(glyphs, ng.load_newgen_glyphs())
+    assert why is None
+    program, _bad = ng._program_from_text("".join(p.char for p in picks))
+    assert (program.date, program.sum3d_id) == ("2026-11-03", "03-31-40")
+
+
+def _tail_readings(glyphs) -> "list[tuple[str, str]]":
+    """Усі правдоподібні (дата, час) хвоста — те, з чого обирає черга
+    (`read_newgen_program_variants`), коли шрифт не відрізнив 3 від 8."""
+    picks, why = ng._tail_picks_in(glyphs, ng.load_newgen_glyphs())
+    assert why is None and picks is not None, why
+    texts = ["".join(c) for c in product(*[p.options if p.char is None else (p.char,) for p in picks])]
+    return [(p.date, p.sum3d_id) for p in (ng._program_from_text(t)[0] for t in texts) if p is not None]
+
+
+@pytest.mark.parametrize("name, date, time", [
+    ("250i_09-37-48.png", "2026-09-25", "09-37-48"),
+    ("250i_15-13-05.png", "2026-10-05", "15-13-05"),
+    ("250i_18-13-55.png", "2026-10-09", "18-13-55"),
+    ("150i_15-39-01.png", "2026-11-01", "15-39-01"),
+])
+def test_every_inbox_crop_reads_its_date_and_time(name, date, time):
+    """Кожен виріз, що доїхав зі скриньки невідомих екранів і ліг у фікстури,
+    мусить читатись — упевнено або з вибором для черги: інакше виправлення
+    одного верстата тихо ламає інший. Новий виріз з цеху — новий рядок тут."""
+    readings = _tail_readings(ng.glyphs_from_name_row(Image.open(FIX / "newgen_rows" / name)))
+    assert (date, time) in readings
+
+
+def test_olejka_three_line_name_with_a_thin_dot_still_resolves():
+    """150i-Olejka, виріз зі скриньки (4693 відмови до 01.11.26): «39-01.ISO»
+    на третьому рядку, а крапка 3×3 з п'ятьма пікселями (заповнення 0.56)
+    не проходила поріг 0.65 — і зсув на одному символі валив усю назву.
+
+    Тепер хвіст розбирається; «3» у «39» шрифт сам не відрізняє від «8», але з
+    двох варіантів правдоподібний лише один (хвилин 89 не буває), і рішення
+    все одно за чергою (`read_newgen_program_variants`)."""
+    glyphs = ng.glyphs_from_name_row(Image.open(ROWS / "150i_15-39-01.png"))
+    dot = glyphs[-len(ng.TAIL):][ng.TAIL.index(".")]
+    assert dot.bits.mean() < 0.65, "виріз мав би нести саме тонку крапку"
+    assert ng._shape_class(dot) == "."
+    assert _tail_readings(glyphs) == [("2026-11-01", "15-39-01")]
 
 
 def test_the_round_dot_of_the_150i_is_a_dot():
@@ -345,6 +419,9 @@ def test_unreadable_screen_puts_the_native_crop_into_the_inbox(db, monkeypatch):
     ("newgen_250i_16-29-49.png", len("2_16-MONOLITH-A3-5-X46_2026-09-13_16-29-49.ISO".replace("_", ""))),
     # Тривалість ПІД назвою, а не збоку (02.10.26).
     ("newgen_250i_03-02-10.png", len("PMMA16_16-A2-X184_2026-10-02_03-02-10.ISO".replace("_", ""))),
+    # Тривалість у ТОМУ Ж рядку, що й перенесене «O» від «.ISO» (03.11.26).
+    ("newgen_250i_03-31-40.png",
+     len("PMMA25_25-PMMAPROZRACH-391_2026-11-03_03-31-40.ISO".replace("_", ""))),
 ])
 def test_duration_is_not_glued_to_the_program_name(name, expected_chars):
     """У рядок назви не сміє потрапити тривалість («00H 38MIN»).

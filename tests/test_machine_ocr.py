@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import pytest
 from PIL import Image, ImageDraw
 
 from app.machine_ocr import find_progress_bar, read_progress_percent
@@ -1016,3 +1017,28 @@ def test_zero_under_a_fake_bar_stays_silent():
 
     image = Image.open(Path(__file__).parent / "fixtures" / "remicore_error_dialog.png").convert("RGB")
     assert read_progress_percent(image) is None
+
+
+def test_a_popup_icon_is_not_a_progress_bar():
+    """250-pmma, 03.11.26: Remote без відкритої програми (діалог «Data receive
+    error»), справжня смуга порожня — а табло писало «8%». Це був синій логотип
+    спливаючого вікна Acronis: праворуч біле тло й рамка вікна, тож форма
+    «смуги» сходилась. Справжня заливка стоїть упритул до ЛІВОЇ рамки
+    контейнера, а іконка — посеред білого: геометрії такої смуги без підпису
+    не віримо."""
+    image = _newgen("remicore_acronis_popup.png")
+    bar = find_progress_bar(image)
+    assert bar is not None and not bar.framed, "кадр мав би нести саме хибну смугу"
+    assert read_progress_percent(image) is None
+
+
+@pytest.mark.parametrize("name, percent", [
+    ("remicore_bar_100.png", 100), ("remicore_caption_57.png", 57), ("remicore_caption_72.png", 72),
+    ("remicore_low_18.png", 18), ("remicore_portrait_8.png", 8), ("remicore_titan_14.png", 14),
+])
+def test_real_bars_stand_against_their_left_frame(name, percent):
+    """Вимога лівої рамки не сміє зачепити справжні смуги жодного з макетів."""
+    image = _newgen(name)
+    bar = find_progress_bar(image)
+    assert bar is not None and bar.framed
+    assert read_progress_percent(image) == percent

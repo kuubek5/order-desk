@@ -336,6 +336,20 @@ def _layout_in_zone(zone_image: Image.Image) -> Optional[_Layout]:
             start = np.flatnonzero(line.any(axis=0))
             if start.size and start[0] > 3 * (bottom - top):
                 continue
+        # Тривалість у ТОМУ Ж рядку, що й кінець назви (250i-Tolik і 250i-Sec,
+        # 03.11.26): «PMMA25_25-» / «PMMAPROZRACH-391_2026-11-03_03-31-40.IS» /
+        # «O        5H 53MIN». Правило вище її не ловить — рядок стартує з «O»
+        # біля лівого краю. BLOCK_GAP по колонках УСЬОГО блоку теж: «IS» рядком
+        # вище закінчується впритул до «5H», і проміжку в проєкції немає. Тож
+        # «5H53MIN» лягав у кінець назви, хвіст брався з нього, і «цифру №1
+        # хвоста не впізнано (8=85, 5=96)» у цеху — тисячі разів, хоч еталони
+        # були ні до чого. Тому той самий поріг — ще й усередині КОЖНОГО рядка:
+        # у назві пробілів немає, проміжок ширший — уже не назва.
+        runs = _runs(line.any(axis=0))
+        for (_a, prev_end), (next_start, _b) in zip(runs, runs[1:]):
+            if next_start - prev_end > BLOCK_GAP:
+                line = line[:, :prev_end]
+                break
         # Базова лінія — останній рядок пікселів, де чорнило стоїть багатьма
         # окремими відрізками (низи всіх символів). Нижче лишається лише `_`.
         pieces = [len(_runs(row)) for row in line]
@@ -351,6 +365,14 @@ def _layout_in_zone(zone_image: Image.Image) -> Optional[_Layout]:
             continue
         busiest = max(pieces)
         bases = [i for i, n in enumerate(pieces) if n >= max(4, 0.3 * busiest)]
+        # Перенесений кінець назви буває одним-двома символами («O» від «.ISO»,
+        # 250i 03.11.26): чотирьох окремих відрізків у рядку пікселів там
+        # немає, і рядок відкидався як уламок — хвіст тоді зсувався на символ.
+        # Висота символів та сама, що рядком вище (той самий шрифт), тож смуга
+        # такої висоти — це символи, а її низ — базова лінія. Підкреслення й
+        # уламки рамки тонкі (2–3 px) і сюди не пройдуть.
+        if not bases and glyphs and abs((bottom - top) - glyphs[-1].cap) <= 2:
+            bases = [bottom - top - 1]
         if not bases:
             # Смуга, де ЖОДЕН рядок пікселів не має чотирьох окремих відрізків,
             # рядком назви бути не може (там суцільні цифри й дефіси) — це
@@ -416,7 +438,12 @@ def _shape_class(glyph: _Glyph) -> Optional[str]:
         # спільного з рискою порогу 0.8, і перший же кадр із цеху його
         # переступив). Помилки тут не буде: позицію крапки задає TAIL, а дату
         # й час навколо неї все одно перевіряють цифри.
-        if fill >= 0.65 and w <= 2 * h and glyph.top + h >= cap * 0.85:
+        #
+        # 0.65 теж виявилось впритул: 150i-Olejka малює крапку й 3×3 з п'ятьма
+        # пікселями (0.56, субпіксельний зсув), і на цьому одному символі
+        # назва не читалась 4693 рази (скринька, 13.09–01.11.26). Тому 0.5:
+        # нижче — уже не пляма, а уламок; позицію й надалі тримають TAIL і цифри.
+        if fill >= 0.5 and w <= 2 * h and glyph.top + h >= cap * 0.85:
             return "."
     if h >= cap * 0.9 and w <= cap * 0.25 and fill >= 0.8:
         return "I"
@@ -476,6 +503,28 @@ def _digit_pick(glyph: "_Glyph", templates: "dict[str, list[np.ndarray]]") -> "_
     return _Pick(char, plausible or (char,))
 
 
+def _tail_start(glyphs: "list[_Glyph]") -> int:
+    """Де в рядку починається хвіст `дата_час.ISO` — індекс першого символу.
+
+    Раніше хвіст брався просто з КІНЦЯ рядка, і будь-що, доклеєне після назви,
+    його ламало. Тричі поспіль, щоразу інакше: тривалість збоку (150i,
+    13.09.26), під назвою (250i, 02.10.26), в одному рядку з перенесеним «O»
+    (250i/150i, 03.11.26 — 3920 і 4693 відмови). Кожного разу це виглядало як
+    «цифру не впізнано» і лікувалось окремою латкою сегментації.
+
+    Тому хвіст шукається за ВЛАСНОЮ формою: шість символів, що читаються без
+    еталонів (чотири «-», «.» і «I»), мусять стати рівно на свої місця. Таке
+    місце одне — воно, і що б не стояло після хвоста, прочитання не зсунеться.
+    Жодного чи кілька — як досі, кінець рядка: там або справжній хвіст, або
+    чесна відмова з номером символу.
+    """
+    last = len(glyphs) - len(TAIL)
+    shapes = [_shape_class(g) for g in glyphs]
+    fixed = [(i, c) for i, c in enumerate(TAIL) if c not in "#?"]
+    hits = [s for s in range(last + 1) if all(shapes[s + i] == c for i, c in fixed)]
+    return hits[0] if len(hits) == 1 else last
+
+
 def _tail_picks(
     image: Image.Image, templates: "dict[str, list[np.ndarray]]"
 ) -> "tuple[Optional[list[_Pick]], Optional[str]]":
@@ -492,7 +541,8 @@ def _tail_picks_in(
     if glyphs is None or len(glyphs) < len(TAIL):
         return None, None
     picks: "list[_Pick]" = []
-    for index, (glyph, want) in enumerate(zip(glyphs[-len(TAIL):], TAIL)):
+    start = _tail_start(glyphs)
+    for index, (glyph, want) in enumerate(zip(glyphs[start:start + len(TAIL)], TAIL)):
         if want == "?":
             picks.append(_Pick("?", ("?",)))
             continue
@@ -705,7 +755,7 @@ def _name_prefix(layout: _Layout) -> "tuple[str, Optional[str]]":
       4. між сусідами в рядку немає проміжку, схожого на пробіл.
     """
     glyphs = layout.glyphs
-    date_at = len(glyphs) - len(TAIL)
+    date_at = _tail_start(glyphs)
     if date_at <= 0:
         return "", "перед датою нічого немає"
     templates = load_newgen_name_glyphs()
