@@ -145,6 +145,8 @@ from app.services.sheet_writeback import (
 from app.settings_store import (
     get_day_rollover_time,
     get_export_folder_path,
+    get_imap_login,
+    get_imap_password,
     get_sheet_backup_enabled,
     get_sheet_backup_interval_hours,
     get_sum3d_projects_path,
@@ -159,6 +161,7 @@ from app.sheet_sync_service import (
     sync_hot_tab,
     sync_sheets_background,
 )
+from app.services.mail_probe import MAIL_PROBE_INTERVAL_SECONDS, InboxProbe
 from app.services.system_load import sample as _sample_system_load
 from app.services.vyrobitok import freeze_due_days
 from app.update_check import _update_check_worker
@@ -206,17 +209,54 @@ def _mail_sync_worker(stop_event: Event) -> None:
     if stop_event.wait(MAIL_SYNC_INITIAL_DELAY_SECONDS):
         return
 
-    while not stop_event.is_set():
-        try:
-            with SessionLocal() as db:
-                _mail_sync_tick(db)
-        except Exception:
-            logger.exception("Unexpected background mail sync failure")
-            _record_sync_heartbeat(
-                "mail", status="error", error_message="Неочікувана помилка синхронізації пошти"
-            )
+    probe = InboxProbe()
+    try:
+        while not stop_event.is_set():
+            try:
+                with SessionLocal() as db:
+                    _mail_sync_tick(db)
+            except Exception:
+                logger.exception("Unexpected background mail sync failure")
+                _record_sync_heartbeat(
+                    "mail", status="error", error_message="Неочікувана помилка синхронізації пошти"
+                )
 
-        stop_event.wait(MAIL_SYNC_INTERVAL_SECONDS)
+            _wait_for_next_mail_sync(stop_event, probe)
+    finally:
+        probe.close()
+
+
+def _wait_for_next_mail_sync(stop_event: Event, probe: InboxProbe) -> None:
+    """Чекати наступного повного синку пошти — або нового листа, якщо раніше.
+
+    Повний синк, як і досі, раз на MAIL_SYNC_INTERVAL_SECONDS. Між ними раз на
+    MAIL_PROBE_INTERVAL_SECONDS одна команда до сервера (`mail_probe`): прийшов
+    лист — синк одразу, і він з'являється в CRM за пів хвилини, а не за дві
+    (власник 03.11.26: «в ukr.net видно одразу, у нас — лише що щось прийшло»).
+    """
+    deadline = monotonic() + MAIL_SYNC_INTERVAL_SECONDS
+    while True:
+        left = deadline - monotonic()
+        if left <= 0 or stop_event.wait(min(MAIL_PROBE_INTERVAL_SECONDS, left)):
+            return
+        if monotonic() >= deadline:
+            return
+        if _mail_probe_says_new(probe):
+            logger.info("Пошта: у Вхідних новий лист — синк одразу, не чекаючи розкладу")
+            return
+
+
+def _mail_probe_says_new(probe: InboxProbe) -> bool:
+    try:
+        with SessionLocal() as db:
+            if not _imap_configured(db):
+                probe.close()
+                return False
+            login, password = get_imap_login(db) or "", get_imap_password(db) or ""
+    except Exception:
+        logger.exception("Пошта: швидка перевірка не прочитала налаштування")
+        return False
+    return probe.changed(login, password)
 
 
 def _sheet_sync_tick(db: Session) -> None:

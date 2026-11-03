@@ -22,6 +22,10 @@ document.addEventListener("htmx:beforeSwap", (event) => {
     event.detail.shouldSwap = false;
     return;
   }
+  if (holdMailSwapForReveal(event, incoming)) {
+    event.detail.shouldSwap = false;
+    return;
+  }
   lastMailListResponse = incoming;
   const wrap = target.closest(".listwrap");
   savedMailScroll = wrap ? wrap.scrollTop : null;
@@ -371,8 +375,101 @@ window.KMMailPager = (function () {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
-  return { reveal: reveal, apply: apply };
+  return {
+    reveal: reveal,
+    apply: apply,
+    onFirstPage: function () { return all || page === 0; },
+  };
 })();
+
+// ── Нові листи — самі в список, як у вебпошті (власник 03.11.26) ─────────────
+// Досі полл лише рахував листи, новіші за водяний знак, і показував смужку
+// «+N нових — показати»: список не ріс сам, щоб рядок не з'їхав під курсором
+// посеред кліку (те саме правило, що для видачі, §2.1). Власник хоче як в
+// ukr.net — лист з'являється сам. Смужка лишається запасною, а коли зсув
+// рядків нікому не заважає, список оновлюється без неї:
+//   - список прокручено до верху (глибше — оператор у роботі, а sticky-смужку
+//     він і так бачить);
+//   - відкрита перша сторінка (на інших новий рядок перекинув би лист між
+//     сторінками);
+//   - у списку REVEAL_QUIET_MS не було руху миші, кліку, коліщатка чи клавіші.
+// Відповідь, що прийшла, коли оператор уже взявся за список, не
+// застосовується — чекаємо наступної тиші (див. beforeSwap нижче).
+const REVEAL_QUIET_MS = 3000;
+let lastMailListTouch = 0;
+let mailRevealSentAt = 0;
+let mailRevealTimer = null;
+
+["pointermove", "pointerdown", "wheel", "keydown"].forEach((type) => {
+  document.addEventListener(type, (event) => {
+    if (event.target.closest && event.target.closest(".listwrap")) lastMailListTouch = Date.now();
+  }, { capture: true, passive: true });
+});
+
+function mailListQuiet() {
+  const list = document.getElementById("mail-list-rows");
+  const wrap = list && list.closest(".listwrap");
+  if (!wrap || wrap.scrollTop > 2) return false;
+  if (window.KMMailPager && !window.KMMailPager.onFirstPage()) return false;
+  return Date.now() - lastMailListTouch >= REVEAL_QUIET_MS;
+}
+
+// Той самий фрагмент без `since`: сервер віддає весь список і новий водяний
+// знак, тож наступні полли вже рахують від нього.
+function fetchFullMailList() {
+  const list = document.getElementById("mail-list-rows");
+  const url = list && list.getAttribute("hx-get");
+  if (!url || !window.htmx) return;
+  mailRevealSentAt = Date.now();
+  window.htmx.ajax("GET", url.replace(/&since=\d+/, ""), { target: "#mail-list-rows", swap: "outerHTML" });
+}
+
+function maybeRevealNewMail() {
+  clearTimeout(mailRevealTimer);
+  mailRevealTimer = null;
+  const list = document.getElementById("mail-list-rows");
+  if (!list || !list.querySelector(".newmail-bar")) return;
+  if (mailListQuiet()) fetchFullMailList();
+  else mailRevealTimer = setTimeout(maybeRevealNewMail, 1000);
+}
+
+// Повертає true, коли свап треба пропустити (рішення — для beforeSwap угорі).
+function holdMailSwapForReveal(event, incoming) {
+  const xhr = event.detail.xhr;
+  const url = (xhr && xhr.responseURL) || "";
+  if (url.indexOf("since=") === -1) {
+    // Відповідь на наш запит повного списку: поки вона летіла, оператор
+    // торкнувся списку — не зсуваємо рядки йому під руку.
+    if (mailRevealSentAt && lastMailListTouch > mailRevealSentAt) {
+      mailRevealSentAt = 0;
+      mailRevealTimer = setTimeout(maybeRevealNewMail, 1000);
+      return true;
+    }
+    mailRevealSentAt = 0;
+    return false;
+  }
+  // Полл, відправлений ще зі старим водяним знаком, повернувся вже після
+  // показу нових листів: застосувати його — сховати щойно показані рядки.
+  const sinceOf = (s) => { const m = /[?&]since=(\d+)/.exec(s || ""); return m ? +m[1] : null; };
+  const list = document.getElementById("mail-list-rows");
+  const current = sinceOf(list && list.getAttribute("hx-get"));
+  const answered = sinceOf(url);
+  if (current != null && answered != null && answered < current) return true;
+  // Полл приніс «+N нових», а список у спокої — одразу повний список, без
+  // миготіння смужки.
+  if (incoming && incoming.indexOf('class="newmail-bar"') !== -1 && mailListQuiet()) {
+    fetchFullMailList();
+    return true;
+  }
+  return false;
+}
+
+document.addEventListener("htmx:afterSettle", (event) => {
+  const el = event.detail && event.detail.elt;
+  if (el && el.id === "mail-list-rows" && el.querySelector(".newmail-bar") && !mailRevealTimer) {
+    mailRevealTimer = setTimeout(maybeRevealNewMail, 1000);
+  }
+});
 
 // Mail triage: highlight the row whose letter is open in the right-hand detail
 // panel. The HTMX get itself fills #mail-detail; this only tracks which row is
