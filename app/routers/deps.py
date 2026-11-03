@@ -33,6 +33,7 @@ from app.material_class import (
     strip_material_word,
 )
 from app.models import ActionLog, User
+from app.services.stl_height import chip_for as stl_thickness_chip
 from app.runtime import resource_path
 from app.settings_store import (
     DEFAULT_NOTIFY_POSITION,
@@ -882,6 +883,8 @@ templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
 templates.env.globals["material_family_class"] = material_family_class
 templates.env.globals["material_families"] = material_families
+# Чіп «≈14,4 мм» — товщина з STL, як її покаже Sum3D (ідея №29).
+templates.env.globals["stl_thickness_chip"] = stl_thickness_chip
 # Статус-крапка й перелік статусів — для рядка черги і легенди кольорів
 # (_status_legend.html), з одного джерела app/statuses.py.
 templates.env.globals["status_dot"] = status_dot

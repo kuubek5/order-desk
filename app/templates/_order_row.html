@@ -275,7 +275,12 @@
         </form>
         {% else %}{{ order.quantity or '—' }}{% endif %}
     </td>
-    <td class="material-cell">{% include "_matpair.html" %}</td>
+    {# Товщина з STL, як її покаже Sum3D (ідея №29, власник 03.11.26): висота
+       повернутого STL exocad × усадка родини. Ізометричний диск, заповнений
+       на висоту деталі (шкала до 25 мм), — у рядку з маркуванням, не вищий
+       за нього, і тихіший за матеріал і колір (власник). Лише черга. #}
+    {% set _thick = stl_thickness_chip(order) %}
+    <td class="material-cell">{% include "_matpair.html" %}{% if _thick %}<span class="stl-thick mono" title="{{ _thick.title }}"><svg viewBox="0 0 22 16" aria-hidden="true"><ellipse class="b" cx="11" cy="13.5" rx="10" ry="2.2"/><path class="w" d="M1 2.5v11M21 2.5v11"/><path class="f" d="M1 {{ _thick.fill_y }}v{{ _thick.fill_h }}a10 2.2 0 0 0 20 0v-{{ _thick.fill_h }}"/><ellipse class="l" cx="11" cy="{{ _thick.fill_y }}" rx="10" ry="2.2"/><ellipse class="t" cx="11" cy="2.5" rx="10" ry="2.2"/></svg>{{ _thick.text }}</span>{% endif %}</td>
     <td class="kind-cell">
         {% if order.kind %}
             <a href="/orders/{{ order.id }}" class="kindbtn" data-order-detail="{{ order.id }}" title="{{ order.kind }}">{{ order.kind }}</a>

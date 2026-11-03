@@ -4,6 +4,7 @@ from typing import Optional
 from sqlalchemy import (
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -297,6 +298,14 @@ class Order(Base):
     export_folder_path: Mapped[Optional[str]] = mapped_column(
         String(500), nullable=True
     )
+    # Висота конструкції з STL теки роботи, мм ДО усадки (ідея №29, власник
+    # 03.11.26; app/services/stl_height.py): найвищий повернутий STL exocad.
+    # Чіп черги множить її на усадку родини матеріалу. NULL — не міряли,
+    # немає повернутих STL або тека спільна з роботою іншої родини.
+    # `stl_height_sig` — відбиток файлів, з яких міряли («» — міряли, нічого):
+    # той самий відбиток → повторно не міряємо.
+    stl_height_mm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    stl_height_sig: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # Два моменти для «Статистики» (STATS_BRIEF.md §3, етап 0) — київський
     # місцевий час без пояса, ставиться ЯВНО (без server_default: на SQLite він
     # пише UTC). NULL = «момент невідомий», і це чесніше за хибний час.

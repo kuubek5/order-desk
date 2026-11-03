@@ -1100,6 +1100,34 @@ def _folder_binding_worker(stop_event: Event) -> None:
             return
 
 
+STL_HEIGHT_INITIAL_DELAY_SECONDS = 60.0
+STL_HEIGHT_INTERVAL_SECONDS = 180.0
+
+
+def _stl_height_worker(stop_event: Event) -> None:
+    """Висота конструкції з STL для чіпа черги (ідея №29, власник 03.11.26,
+    `app/services/stl_height.py`). Раз на 3 хв: лише свіжі роботи з цирконію/
+    ПММА до фрезерування і лише ті, чиї файли змінились (відбиток), тож шару
+    між проходами майже не чіпаємо."""
+    from app.services.stl_height import measure_pending
+    from app.settings_store import get_technician_files_path
+
+    if stop_event.wait(STL_HEIGHT_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                export_root = (get_export_folder_path(db) or "").strip()
+                measure_pending(
+                    db, get_technician_files_path(db),
+                    Path(export_root) if export_root else None,
+                )
+        except Exception:  # noqa: BLE001 — фонова мірка не валить застосунок
+            logger.exception("Фонова мірка висоти STL не вдалась")
+        if stop_event.wait(STL_HEIGHT_INTERVAL_SECONDS):
+            return
+
+
 @dataclass
 class _BackgroundWorker:
     """Один фоновий daemon-потік і його вимикач. Раніше кожен воркер
@@ -1226,6 +1254,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),
         _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
+        _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
     ]
     for w in workers:
         w.start()
