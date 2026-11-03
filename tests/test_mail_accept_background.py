@@ -383,3 +383,130 @@ def test_busy_writeback_thread_does_not_hang_accept(monkeypatch):
     finally:
         release.set()
         blocker.result(timeout=10)
+
+
+# ── Немає зв'язку з Google — прийняття не чекає (03.11.26) ─────────────────
+#
+# 10:41–10:42 у цеху на хвилину зник інтернет (DNS не знаходив googleapis.com).
+# Прийняття двох листів тривало 29.6 с: 15 с — на потік запису, що сам висів
+# на тому ж обриві, і ще ~11 с — на власну спробу дістатись Google. Рядок у
+# таблицю й так дописує повтор (`mail_row_retry`), тож чекати нема на що.
+
+
+def _network_down():
+    """Запит до Google щойно впав на мережі — так, як у цеху."""
+    import requests
+
+    from app import sheets
+
+    def _dns_fail():
+        raise requests.exceptions.ConnectionError("Failed to resolve 'sheets.googleapis.com'")
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        sheets.call_with_retry(_dns_fail, attempts=1)
+
+
+def _slow_google(monkeypatch, seconds=5.0):
+    """Будь-яка власна спроба прийняття дістатись Google висить, як на обриві."""
+    def _hang(db=None):
+        time.sleep(seconds)
+        raise ConnectionError("getaddrinfo failed")
+
+    monkeypatch.setattr(mail_accept_svc, "open_spreadsheet", _hang)
+
+
+def test_no_network_accept_does_not_wait_for_google(monkeypatch):
+    monkeypatch.setattr(mail_accept_svc, "_run_warm", _REAL_RUN_WARM)
+    _tab_stubs(monkeypatch)
+    mail_accept_svc._resolve_target_tab(None, _email())  # вкладка дня вже відома
+    _network_down()
+    _slow_google(monkeypatch)
+    release = threading.Event()
+    blocker = mail_accept_svc.sheet_writeback_pool.submit(release.wait, 30)  # потік запису висить
+    try:
+        started = time.monotonic()
+        result = mail_accept_svc._resolve_target_tab_warm(None, _email())
+        elapsed = time.monotonic() - started
+    finally:
+        release.set()
+        blocker.result(timeout=10)
+    assert elapsed < 1.0, f"прийняття чекало Google: {elapsed:.1f} с"
+    assert result == ("07.10.26", False), "робота лягає у відому вкладку, рядок — повтору"
+
+
+def test_silent_writeback_thread_is_checked_against_dns(monkeypatch):
+    """Обрив почався щойно: жоден запит ще не впав, а потік запису вже мовчить.
+    Через кілька секунд тиші — коротке питання до DNS; не відповів — не чекаємо."""
+    from app import sheets
+
+    monkeypatch.setattr(mail_accept_svc, "_run_warm", _REAL_RUN_WARM)
+    monkeypatch.setattr(mail_accept_svc, "WARM_DNS_CHECK_AFTER_SECONDS", 0.2)
+    monkeypatch.setattr(sheets, "google_dns_answers", lambda timeout=2.0: False)
+    _tab_stubs(monkeypatch)
+    _slow_google(monkeypatch)
+    release = threading.Event()
+    blocker = mail_accept_svc.sheet_writeback_pool.submit(release.wait, 30)
+    try:
+        started = time.monotonic()
+        title, found = mail_accept_svc._resolve_target_tab_warm(None, _email())
+        elapsed = time.monotonic() - started
+    finally:
+        release.set()
+        blocker.result(timeout=10)
+    assert elapsed < 1.5, f"прийняття чекало Google: {elapsed:.1f} с"
+    assert found is False
+    assert sheets.google_unreachable(), "наступні прийняття вже знають, що зв'язку немає"
+
+
+def test_network_back_closes_the_breaker():
+    from app import sheets
+
+    _network_down()
+    assert sheets.google_unreachable()
+    sheets.call_with_retry(lambda: "ok", attempts=1)
+    assert not sheets.google_unreachable()
+
+
+def test_breaker_forgets_after_a_minute(monkeypatch):
+    from app import sheets
+
+    clock = [1000.0]
+    monkeypatch.setattr(sheets.time, "monotonic", lambda: clock[0])
+    _network_down()
+    assert sheets.google_unreachable()
+    clock[0] += sheets.GOOGLE_DOWN_SECONDS + 1
+    assert not sheets.google_unreachable()
+
+
+def test_offline_accept_keeps_the_work_and_queues_the_row(shop, monkeypatch):
+    """Повне прийняття без зв'язку: робота у відомій вкладці (найсвіжіша з
+    таблиці, ≤ сьогодні), рядок чекає повтору, у журналі — чесна причина, а не
+    «вкладки немає»."""
+    from datetime import date
+
+    monkeypatch.setattr(mail_accept_svc, "business_today", lambda: date(2026, 11, 3))
+    monkeypatch.setattr(
+        mail_accept_svc, "append_mail_placeholder_row",
+        lambda *a, **k: pytest.fail("без зв'язку рядок не пишемо — це справа повтору"),
+    )
+    _slow_google(monkeypatch)
+    _network_down()
+    with Session(shop.engine, expire_on_commit=False) as db:
+        db.add(Order(source="lab", sheet_tab="02.11.26", row_number=7, status="нове"))
+        db.add(Order(source="lab", sheet_tab="04.11.26", row_number=7, status="нове"))  # майбутня
+        user = _user(db)
+        email, _stl = _letter(db, shop.mail_root / "u1")
+        started = time.monotonic()
+        response = _accept(db, user, email)
+        elapsed = time.monotonic() - started
+        assert "error=" not in response.headers["location"]
+    assert elapsed < 2.0, f"прийняття чекало Google: {elapsed:.1f} с"
+    with Session(shop.engine) as db:
+        order = db.scalars(select(Order).where(Order.source == "email")).one()
+        assert order.sheet_tab == "02.11.26"
+        assert order.sheet_row_pending is not None
+        assert order.row_number is None
+        log = db.scalars(
+            select(SyncLog).where(SyncLog.direction == "mail_to_sheet")
+        ).all()[-1].message
+        assert "зв'язку" in log and "вкладки немає" not in log
