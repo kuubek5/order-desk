@@ -47,7 +47,7 @@ from app.business_day import (
 )
 from app.config import DATA_DIR, DB_PATH
 from app.models import ActionLog, Attachment, Comment, Order, StatusEvent, SyncLog
-from app.services import device_diag
+from app.services import device_diag, sum3d_files
 from app.services.order_dates import parse_sheet_tab
 
 logger = logging.getLogger(__name__)
@@ -690,6 +690,50 @@ def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
     return {"днів": days, "підсумок": stats, "роботи": rows[:200]}
 
 
+def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
+    """Формат файлів дисків `.blk` і проєктів `.cam` Sum3D — щоб знайти, де
+    лежить коефіцієнт усадки (`app/services/sum3d_files.py`). Лише числа й
+    назви ключів: текстових значень і назв STL не віддає."""
+    from app.settings_store import get_setting, get_sum3d_projects_path
+
+    kind = str(args.get("kind") or "both").strip().lower()
+    if kind not in ("both", "blk", "cam"):
+        raise ToolError("`kind` — blk, cam або both (типово both)")
+    limit = _int_arg(args, "limit", default=2, low=1, high=5)
+    blanks_root = (get_setting(db, "cam_blanks_path") or "").strip()
+    projects_root = (get_sum3d_projects_path(db) or "").strip()
+    out: dict[str, Any] = {
+        "тека_дисків": blanks_root or None,
+        "тека_проєктів": projects_root or None,
+    }
+    if kind in ("both", "blk"):
+        if not blanks_root:
+            out["диски"] = "тека дисків CAM не задана («Нові диски» → нижня смуга)"
+        else:
+            found = sum3d_files.newest_blanks(
+                blanks_root, brand=str(args.get("brand") or ""), limit=limit
+            )
+            out["диски"] = [_sum3d_file_entry(f) for f in found] or "файлів .blk не знайдено"
+    if kind in ("both", "cam"):
+        if not projects_root:
+            out["проєкти"] = "тека проєктів Sum3D не задана (Налаштування → Шляхи)"
+        else:
+            found = sum3d_files.newest_projects(
+                projects_root, sum3d_id=str(args.get("sum3d_id") or ""), limit=limit
+            )
+            out["проєкти"] = [_sum3d_file_entry(f) for f in found] or "файлів .cam не знайдено"
+    return out
+
+
+def _sum3d_file_entry(found: sum3d_files.FoundFile) -> dict[str, Any]:
+    return {
+        "файл": found.name,
+        "розмір": found.size,
+        "змінено": datetime.fromtimestamp(found.mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        **sum3d_files.describe_file(found.path),
+    }
+
+
 # ── Реєстр ───────────────────────────────────────────────────────────────────
 
 
@@ -991,6 +1035,30 @@ TOOLS = TOOLS + (
             "additionalProperties": False,
         },
         run=tool_mail_units,
+    ),
+    Tool(
+        name="kmill_sum3d_files",
+        description=(
+            "Що всередині файлів Sum3D: дисків `.blk` (тека «Нові диски») і "
+            "проєктів `.cam` (Cam-work) — формат, назви ключів і ЧИСЛА, окремо ті, "
+            "що біля слів shrink/scale/factor і в межах 1.10–1.40. Для пошуку, де "
+            "Sum3D тримає коефіцієнт усадки диска. Лише читання; текстових "
+            "значень і назв STL (імена пацієнтів) не віддає."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "description": "blk, cam або both (типово both)."},
+                "brand": {"type": "string",
+                          "description": "Підрядок назви диска (monolith, emo) — фільтр .blk."},
+                "sum3d_id": {"type": "string",
+                             "description": "Хвіст Sum3D ID (13-12-29) — конкретний проєкт .cam."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 5,
+                          "description": "Скільки найновіших файлів кожного виду (типово 2)."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_sum3d_files,
     ),
 )
 
