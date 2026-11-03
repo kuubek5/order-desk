@@ -305,16 +305,9 @@ def _accept_letter_locked(
         quantity=quantity.strip() or None,
         status=STATUS_NEW,
     )
-    # Sum3D і опак — так само, як у ручному додаванні (`manual_add`): вписаний
-    # Sum3D і є момент «прораховано», тож літера оператора в «Прорахував» і
-    # статус «прораховано»; опак — текстом «2 opaq» у коментар для CAM, звідки
-    # його й рахують за зміну, плюс число в `opak_units`.
-    new_order.sum3d_id = sum3d_id.strip() or None
-    if new_order.sum3d_id:
-        stamp = (user.sheet_initial or "").strip() or None
-        if stamp:
-            new_order.calculated_raw = stamp
-            new_order.status = STATUS_CALCULATED
+    stamp_accept_sum3d(new_order, user, sum3d_id)
+    # Опак — текстом «2 opaq» у коментар для CAM, звідки його й рахують за
+    # зміну, плюс число в `opak_units` (як у ручному додаванні, `manual_add`).
     new_order.cam_comment = format_opak(opak) or None
     new_order.opak_units = opak_units(new_order.cam_comment)
     ensure_seeded(db)
@@ -350,6 +343,19 @@ def _accept_letter_locked(
         folder_new=folder_new, material_folder=material_folder,
         join_export_folder=join_export_folder, write_row=True,
     )
+
+
+def stamp_accept_sum3d(order: Order, user, sum3d_id: str) -> None:
+    """Sum3D, вписаний при прийнятті, — так само, як у ручному додаванні
+    (`manual_add`): вписаний Sum3D і є момент «прораховано», тож літера
+    оператора в «Прорахував» і статус «прораховано». Спільне для прийняття
+    листа й переробки з листа."""
+    order.sum3d_id = (sum3d_id or "").strip() or None
+    if order.sum3d_id:
+        stamp = (user.sheet_initial or "").strip() or None
+        if stamp:
+            order.calculated_raw = stamp
+            order.status = STATUS_CALCULATED
 
 
 def _accept_files_and_commit(
@@ -481,35 +487,8 @@ def _accept_files_and_commit(
             _record_stranded_files(db, email, moved_pairs, undo_errors)
         return AcceptResult(error="Не вдалося зберегти прийняття: " + detail)
 
-    # Прийняття вже успішне (перший коміт пройшов) — рядок-нотатка лише
-    # зручність. `_write_placeholder_row` сама ковтає мережеві помилки в
-    # SyncLog, але задля цього ж SyncLog-рядка й `new_order.row_number`
-    # потрібен ще один коміт; його невдача лише логується, прийняття листа
-    # назад не відкочуємо.
-    if write_row and sync_control.is_paused():
-        # Пауза синку зупиняє й цей запис (власник 28.10.26): адмін на паузі
-        # правує таблицю руками, і новий рядок посеред його правки заважав би.
-        # Робота прийнята й чекає рядок (`sheet_row_pending`) — повтор
-        # (`mail_row_retry`, через пул із тим самим гейтом паузи) допише його,
-        # щойно паузу знімуть. Банера «не дійшло» на паузі немає свідомо —
-        # пауза видна власним (`sheet_stuck_writes`).
-        logger.info("Синк на паузі — рядок листа %s допише повтор", email.id)
-    elif write_row:
-        with perf.span("accept:sheet-row"):
-            if not tab_found and _sheets.google_unreachable():
-                _queue_row_offline(db, email, new_order)
-            else:
-                _write_placeholder_row(
-                    db, email, new_order, None,
-                    append=_warm_appender(db, new_order.sheet_tab) if tab_found else None,
-                )
-        try:
-            db.commit()
-        except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
-            db.rollback()
-            logger.exception(
-                "Could not persist placeholder-row bookkeeping for email %s", email.id
-            )
+    if write_row:
+        write_letter_row(db, email, new_order, tab_found)
 
     # Робота пішла в роботу → лист переносимо в папку «оброблено» скриньки, щоб
     # CRM і пошта лишались синхронні (рішення власника 24.09.26). Лише при
@@ -525,6 +504,42 @@ def _accept_files_and_commit(
         partial=bool(remaining),
         move_to_folder=not remaining,
     )
+
+
+def write_letter_row(db: Session, email, new_order: Order, tab_found: bool) -> None:
+    """Рядок-нотатка роботи з листа — ПІСЛЯ успішного коміту прийняття (чи
+    переробки з листа, `mail_rework`).
+
+    Прийняття вже успішне (перший коміт пройшов) — рядок-нотатка лише
+    зручність. `_write_placeholder_row` сама ковтає мережеві помилки в
+    SyncLog, але задля цього ж SyncLog-рядка й `new_order.row_number`
+    потрібен ще один коміт; його невдача лише логується, прийняття листа
+    назад не відкочуємо.
+    """
+    if sync_control.is_paused():
+        # Пауза синку зупиняє й цей запис (власник 28.10.26): адмін на паузі
+        # правує таблицю руками, і новий рядок посеред його правки заважав би.
+        # Робота прийнята й чекає рядок (`sheet_row_pending`) — повтор
+        # (`mail_row_retry`, через пул із тим самим гейтом паузи) допише його,
+        # щойно паузу знімуть. Банера «не дійшло» на паузі немає свідомо —
+        # пауза видна власним (`sheet_stuck_writes`).
+        logger.info("Синк на паузі — рядок листа %s допише повтор", email.id)
+        return
+    with perf.span("accept:sheet-row"):
+        if not tab_found and _sheets.google_unreachable():
+            _queue_row_offline(db, email, new_order)
+        else:
+            _write_placeholder_row(
+                db, email, new_order, None,
+                append=_warm_appender(db, new_order.sheet_tab) if tab_found else None,
+            )
+    try:
+        db.commit()
+    except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
+        db.rollback()
+        logger.exception(
+            "Could not persist placeholder-row bookkeeping for email %s", email.id
+        )
 
 
 def write_merged_row(db: Session, email: EmailMessage, order: Order) -> None:

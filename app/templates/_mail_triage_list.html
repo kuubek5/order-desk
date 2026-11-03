@@ -221,7 +221,7 @@
                        коли чогось бракує. Причина лишається в title + для
                        читача екрана. #}
                     {% if _reopened %}
-                    <span class="reco ok" title="Лист уже прийнято в роботу, але в пошті його повернули у Вхідні{% if email.reopened_at %} ({{ email.reopened_at.strftime('%d.%m %H:%M') }}){% endif %}. Робота не змінена — вирішуй: дописати, переробка, чи перенести назад у папку.">↺ повернуто · прийнято</span>
+                    <span class="reco ok" title="Лист уже прийнято в роботу, але в пошті його повернули у Вхідні{% if email.reopened_at %} ({{ email.reopened_at.strftime('%d.%m %H:%M') }}){% endif %}. Робота не змінена — вирішуй: «Прийняти як переробку» в картці листа, дописати чи перенести назад у папку.">↺ повернуто · прийнято</span>
                     {% elif rd.state == 'ready' %}
                     <span class="reco ok reco-ic" title="Уся інформація є — можна приймати в чергу.">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>

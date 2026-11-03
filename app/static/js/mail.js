@@ -135,6 +135,32 @@ document.addEventListener("input", (event) => {
   if (form) form.dataset.dirty = "1";
 });
 
+// «Прийняти як переробку» (03.11.26). Вибір роботи багатокольорового листа
+// підставляє її поля й рядок «Файли → тека» (сервер порахував їх для кожної
+// роботи, mail_rework.rework_form). Правка клієнта чи матеріалу міняє теку,
+// а її точну назву (« (2)», санітизація) вирішує сервер — тоді рядок каже це
+// прямо, а точну теку покаже повідомлення після прийняття.
+document.addEventListener("change", (event) => {
+  const select = event.target.closest && event.target.closest("#mail-rework-form [data-mr-source]");
+  if (!select) return;
+  const option = select.options[select.selectedIndex];
+  const form = select.form;
+  ["client", "material", "qty", "opak"].forEach((key) => {
+    const input = form.querySelector('[data-mr="' + key + '"]');
+    if (input) input.value = option.dataset[key] || "";
+  });
+  const lead = form.querySelector("[data-mr-lead]");
+  const dir = form.querySelector("[data-mr-dir]");
+  if (lead) lead.textContent = option.dataset.lead || "";
+  if (dir) dir.textContent = option.dataset.dir || "";
+});
+document.addEventListener("input", (event) => {
+  const input = event.target.closest && event.target.closest('#mail-rework-form [data-mr="client"], #mail-rework-form [data-mr="material"]');
+  if (!input) return;
+  const dir = input.form.querySelector("[data-mr-dir]");
+  if (dir && dir.textContent) dir.textContent = "тека — за вписаним клієнтом і матеріалом";
+});
+
 document.addEventListener("htmx:afterSettle", (event) => {
   if (savedMailScroll == null) return;
   const el = event.detail && event.detail.elt;

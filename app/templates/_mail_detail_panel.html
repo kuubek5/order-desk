@@ -525,6 +525,85 @@
         </div>
     </div>
 
+    {# «Прийняти як переробку» (власник 03.11.26): лист повернули у Вхідні прямо
+       в пошті на переробку. Нова звичайна робота в черзі дня (у загальну
+       кількість, без винуватця), копія файлів першої роботи в теку сьогодні;
+       перша робота не змінюється. Контекст — mail_rework.rework_form. #}
+    {% if rework %}
+    <form id="mail-rework-form" class="mc-form mc-rework" method="post"
+          action="/mail/{{ email.id }}/accept-rework"
+          hx-post="/mail/{{ email.id }}/accept-rework" hx-target="#mail-detail" hx-swap="innerHTML">
+        <div class="mc-rework-head">
+            <b>↺ Повернуто на переробку</b>{% if email.reopened_at %} · {{ email.reopened_at.strftime('%d.%m %H:%M') }}{% endif %}
+            <span class="mc-rework-note">Нова робота в черзі дня з позначкою «переробка»; файли першої роботи скопіюються в теку сьогодні. Перша робота лишається як є.</span>
+        </div>
+        {% if rework.error %}<div class="wiz-error" role="alert">{{ rework.error }}</div>{% endif %}
+        {# Рядок шляху: точна тека для поточних полів; правка клієнта чи
+           матеріалу (mail.js) показує «тека — за вписаним», бо її назву
+           (« (2)», санітизація) вирішує сервер, і точну покаже тост. #}
+        {% macro path_lead(files) %}{% if files %}Файли · {{ files }} →{% else %}Файлів для копії немає — робота піде без них{% endif %}{% endmacro %}
+        {% macro path_dir(files, target) %}{% if files %}export/{{ target or '…' }}{% endif %}{% endmacro %}
+        {% if rework.choices %}
+        <div class="field mc-rework-src">
+            <label for="mr-source">Яку роботу переробляємо</label>
+            <select id="mr-source" name="source_order_id" class="suminput" data-mr-source>
+                {% for choice in rework.choices %}
+                <option value="{{ choice.order.id }}" data-client="{{ choice.client_name }}" data-material="{{ choice.material_color }}" data-qty="{{ choice.quantity }}" data-opak="{{ choice.opak }}"
+                        data-lead="{{ path_lead(choice.files)|striptags }}" data-dir="{{ path_dir(choice.files, choice.target)|striptags }}"{% if rework.source and choice.order.id == rework.source.id %} selected{% endif %}>{{ choice.material_color or 'без матеріалу' }} · {{ choice.quantity or '—' }} од. · {{ choice.order.status }} · {{ choice.files }} файл(ів)</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% elif rework.source %}
+        <input type="hidden" name="source_order_id" value="{{ rework.source.id }}">
+        {% endif %}
+        <div class="mc-fields">
+            <div class="field mc-f-client">
+                <label for="mr-client">Клієнт<span class="form-required">*</span></label>
+                <div class="ms-field" data-matsuggest data-suggest-url="/suggest/client">
+                    <input type="text" id="mr-client" name="client_name" class="suminput" data-mr="client"
+                           role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input
+                           value="{{ rework.client_name }}" placeholder="ім’я клієнта" required>
+                    <ul class="ms-list" role="listbox" aria-label="Підказки клієнта" hidden data-matsuggest-list></ul>
+                </div>
+            </div>
+            <div class="field mc-f-mat">
+                <label for="mr-material">Матеріал · колір</label>
+                <div class="ms-field" data-matsuggest>
+                    <input type="text" id="mr-material" name="material_color" class="suminput" data-mr="material"
+                           role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input
+                           value="{{ rework.material_color }}" placeholder="напр. емо а3.5, титан">
+                    <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
+                </div>
+            </div>
+            <div class="field mc-f-qty">
+                <label for="mr-qty">К-сть</label>
+                <input type="text" id="mr-qty" name="quantity" class="suminput mono" data-mr="qty" value="{{ rework.quantity }}" placeholder="—" title="Переробляють частину — впишіть, скільки одиниць">
+            </div>
+            <div class="field mc-f-opak">
+                <label for="mr-opak">Опак</label>
+                <input type="text" id="mr-opak" name="opak" class="suminput mono" data-mr="opak" inputmode="numeric" value="{{ rework.opak }}" placeholder="—" autocomplete="off">
+            </div>
+            <div class="field mc-f-sum3d">
+                <label for="mr-sum3d">Sum3D</label>
+                <input type="text" id="mr-sum3d" name="sum3d_id" class="suminput mono" value="{{ rework.sum3d_id }}" placeholder="—" title="Sum3D переробки, якщо вже прорахували" autocomplete="off">
+            </div>
+        </div>
+        {% if rework.missing %}
+        <div class="files-summary warn mc-warn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
+            <span><b>{{ rework.missing }}</b> файл(ів) першої роботи немає на диску — вони не скопіюються.</span>
+        </div>
+        <label class="wiz-anyway mc-anyway">
+            <input type="checkbox" name="accept_anyway" value="1"><span>Так, переробка без цих файлів</span>
+        </label>
+        {% endif %}
+        <div class="mc-rework-foot">
+            <span class="mc-rework-path"><span data-mr-lead>{{ path_lead(rework.files) }}</span> <span class="mono" data-mr-dir>{{ path_dir(rework.files, rework.target) }}</span></span>
+            <button type="submit" class="btn apex">↺ Прийняти як переробку</button>
+        </div>
+    </form>
+    {% endif %}
+
     <div class="archive-state mc-archive {% if email.status == 'прийнято' %}ok{% else %}muted{% endif %}">
         {% if email.status == 'прийнято' %}
         <span>Прийнято в чергу — робота вже створена.</span>

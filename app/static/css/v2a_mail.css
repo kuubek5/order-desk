@@ -1029,6 +1029,16 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 /* Архівний лист */
 .mailv2 .mc-files-archived .mc-attlist{max-height:180px}
 .mailv2 .mc-archive{margin-top:2px}
+/* «Прийняти як переробку» — повернутий у Вхідні лист (03.11.26). Ті самі поля
+   в ряд (.mc-fields), що й прийняття; рамка акценту — це дія, не довідка. */
+.mailv2 .mc-rework{display:flex;flex-direction:column;gap:12px;padding:12px 14px;border-radius:9px;border:1px solid rgba(var(--accent-rgb), .32);background:var(--field)}
+.mailv2 .mc-rework-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:var(--fs-2);color:var(--ink)}
+.mailv2 .mc-rework-note{flex-basis:100%;font-size:var(--fs-1);color:var(--ink-3)}
+.mailv2 .mc-rework-src{margin:0}
+.mailv2 .mc-rework-src label{display:block;font-size:var(--fs-0);color:var(--ink-3);margin-bottom:3px}
+.mailv2 .mc-rework-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;border-top:1px solid var(--line);padding-top:12px}
+.mailv2 .mc-rework-path{font-size:var(--fs-1);color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
+.mailv2 .mc-rework-foot .btn.apex{height:40px;padding:0 20px;font-size:var(--fs-2)}
 /* Вузька панель, STL над списком файлів */
 @media (max-width:900px){
   .mailv2 .mc-files{flex-direction:column}

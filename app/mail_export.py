@@ -336,6 +336,18 @@ def _move_file(source: Path, destination: Path) -> None:
             raise
         return
 
+    _copy_file(source, destination)
+    try:
+        source.unlink()
+    except Exception:
+        _drop_quietly(destination)
+        raise
+
+
+def _copy_file(source: Path, destination: Path) -> None:
+    """Скопіювати файл так, щоб під справжнім іменем ніколи не лежала половина:
+    копія в `<ім'я>.kmill-part`, звірка розміру, перейменування. Джерело не
+    чіпається. Міжтомова половина `_move_file` і копія переробки з листа."""
     if path_state(destination) != ABSENT:
         # Ім'я обирає `_unique_destination`, тож зайняте воно лише через гонку
         # або недоступну шару — в обох випадках не перезаписуємо.
@@ -349,11 +361,6 @@ def _move_file(source: Path, destination: Path) -> None:
         os.replace(part, destination)
     except Exception:
         _drop_quietly(part)
-        raise
-    try:
-        source.unlink()
-    except Exception:
-        _drop_quietly(destination)
         raise
 
 
@@ -451,6 +458,127 @@ def _unique_destination(directory: Path, filename: str, reserved: set[Path]) -> 
     return candidate
 
 
+def _target_material_dir(
+    export_root: Path,
+    client_name: str,
+    material_color: str,
+    *,
+    client_folder_override: str | None = None,
+    material_folder_override: str | None = None,
+    today: date | None = None,
+    preferred_client_folder: str | None = None,
+    join_material_dir: str | None = None,
+) -> Path:
+    """Тека `<клієнт>/<дата>/<матеріал>`, у яку ляжуть файли, — одне правило
+    для переносу листа (`save_attachments_to_export`) і копії переробки
+    (`copy_files_to_export`). Нічого не створює."""
+    base = _batch_base_name(today or business_today())
+
+    # The accept wizard's directory step lets the operator pin an exact client
+    # folder (e.g. reuse "Vision Dental" when the fuzzy match would have made a
+    # new "Vision"). An explicit override skips the fuzzy resolver but still
+    # goes through _contained_child, so a crafted "../" name can't escape the
+    # export root. Empty/whitespace override falls back to the auto resolver.
+    override = (client_folder_override or "").strip()
+    resolved_name = (
+        sanitize_folder_name(override)
+        if override
+        else _resolve_client_folder_name(export_root, client_name, preferred_client_folder)
+    )
+    client_dir = _contained_child(export_root, resolved_name)
+    material_override = (material_folder_override or "").strip()
+    material_name = sanitize_folder_name(
+        material_override or material_color or _NO_MATERIAL_NAME
+    )
+
+    # ОДНА дата-тека клієнта на день; повтор матеріалу нумерує МАТЕРІАЛ-підпапку,
+    # а не плодить нові дата-теки (рішення власника 24.09.26). Див.
+    # _unique_material_folder.
+    batch_dir = _contained_child(client_dir, base)
+    return _joinable_material_dir(export_root, join_material_dir) or _unique_material_folder(
+        batch_dir, material_name
+    )
+
+
+def copy_files_to_export(
+    export_root: Path,
+    client_name: str,
+    material_color: str,
+    sources: list[Path],
+    *,
+    today: date | None = None,
+    preferred_client_folder: str | None = None,
+    copied_out: list[Path] | None = None,
+) -> list[Path]:
+    """КОПІЯ файлів у export/<клієнт>/<дата>/<матеріал>/ — переробка з листа
+    (`app/services/mail_rework.py`). Тека — за тим самим правилом, що перенос
+    листа (одна дата-тека дня, повтор матеріалу → « (2)»), але джерела
+    лишаються на місці: це файли першої роботи, і її видача й історія не мають
+    змінитись.
+
+    `copied_out` — копії, що ЗАРАЗ лежать в export: наповнюється одразу після
+    кожного файлу, щоб викликач міг прибрати їх, коли впаде вже його коміт.
+    Збій посередині копіювання прибирає зроблені копії сам і кидає далі.
+    """
+    if not sources:
+        return []
+    material_dir = _target_material_dir(
+        export_root, client_name, material_color,
+        today=today, preferred_client_folder=preferred_client_folder,
+    )
+    missing = [path for path in sources if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"файл не знайдено: {missing[0]}")
+
+    material_dir.mkdir(parents=True, exist_ok=True)
+    forget_client_folders()
+    reserved: set[Path] = set()
+    plan = [
+        (source, _unique_destination(material_dir, source.name, reserved))
+        for source in sources
+    ]
+    done: list[Path] = []
+    try:
+        for source, destination in plan:
+            _copy_file(source, destination)
+            done.append(destination)
+            if copied_out is not None:
+                copied_out.append(destination)
+    except Exception:
+        errors = remove_copies(done)
+        if copied_out is not None:
+            for path in done:
+                if path in copied_out:
+                    copied_out.remove(path)
+        if errors:
+            raise OSError("помилка копіювання і прибирання копій: " + "; ".join(errors))
+        raise
+    return [destination for _, destination in plan]
+
+
+def remove_copies(paths: list[Path]) -> list[str]:
+    """Прибрати копії переробки після невдачі (джерела лишились на місці) і
+    теку матеріалу, якщо вона спорожніла. Повертає помилки текстом, не кидає:
+    викликач уже розбирає першу помилку й мусить повідомити обидві."""
+    errors: list[str] = []
+    for path in reversed(paths):
+        state = path_state(path)
+        if state == UNREACHABLE:
+            errors.append(f"{path}: шара недоступна, копія могла лишитись")
+            continue
+        if state == PRESENT:
+            try:
+                path.unlink()
+            except OSError as exc:
+                errors.append(f"{path}: {exc}")
+    for folder in {path.parent for path in paths}:
+        try:
+            folder.rmdir()
+        except OSError:
+            pass  # не порожня (чужі файли) або недоступна — лишаємо як є
+    return errors
+
+
 def save_attachments_to_export(
     export_root: Path,
     client_name: str,
@@ -502,31 +630,13 @@ def save_attachments_to_export(
     if not attachment_paths:
         return []
 
-    base = _batch_base_name(today or business_today())
-
-    # The accept wizard's directory step lets the operator pin an exact client
-    # folder (e.g. reuse "Vision Dental" when the fuzzy match would have made a
-    # new "Vision"). An explicit override skips the fuzzy resolver but still
-    # goes through _contained_child, so a crafted "../" name can't escape the
-    # export root. Empty/whitespace override falls back to the auto resolver.
-    override = (client_folder_override or "").strip()
-    resolved_name = (
-        sanitize_folder_name(override)
-        if override
-        else _resolve_client_folder_name(export_root, client_name, preferred_client_folder)
-    )
-    client_dir = _contained_child(export_root, resolved_name)
-    material_override = (material_folder_override or "").strip()
-    material_name = sanitize_folder_name(
-        material_override or material_color or _NO_MATERIAL_NAME
-    )
-
-    # ОДНА дата-тека клієнта на день; повтор матеріалу нумерує МАТЕРІАЛ-підпапку,
-    # а не плодить нові дата-теки (рішення власника 24.09.26). Див.
-    # _unique_material_folder.
-    batch_dir = _contained_child(client_dir, base)
-    material_dir = _joinable_material_dir(export_root, join_material_dir) or _unique_material_folder(
-        batch_dir, material_name
+    material_dir = _target_material_dir(
+        export_root, client_name, material_color,
+        client_folder_override=client_folder_override,
+        material_folder_override=material_folder_override,
+        today=today,
+        preferred_client_folder=preferred_client_folder,
+        join_material_dir=join_material_dir,
     )
     missing = [path for path in attachment_paths if not path.is_file()]
     if missing:

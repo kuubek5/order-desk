@@ -140,6 +140,7 @@ from app.services.mail_accept import (
     write_merged_row,
 )
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
+from app.services.mail_rework import accept_rework, rework_form, rework_order_ids
 from app.services import mail_auto_backfill
 from app.services.stl_units import count_units, is_model_file, letter_quantity, teeth_in_filename
 from app.services.sheet_writeback import write_sheet_fields
@@ -1172,6 +1173,8 @@ def _mail_panel_context(
     sum3d_id: str = "",
     opak: str = "",
     missing: list[str] | None = None,
+    rework_values: dict | None = None,
+    rework_error: str | None = None,
 ) -> dict:
     """Shared render context for the triage detail CARD (блок A, «Стрічка»):
     seeded work fields, material candidates, whitelisted download links and the
@@ -1364,6 +1367,11 @@ def _mail_panel_context(
         "letter_segments": body_segments,
         "letter_preview": customer_text,
         "letter_inline": inline_parts,
+        # Форма «Прийняти як переробку» — лише для листа, повернутого у Вхідні
+        # на переробку (`mail_rework`), інакше None.
+        "rework": rework_form(
+            db, email, on_disk=on_disk, values=rework_values, error=rework_error,
+        ),
         **partial_state,
         **dir_ctx,
     }
@@ -2240,6 +2248,75 @@ def accept_email(
     if request_headers.get("HX-Request") == "true":
         return Response(status_code=204, headers={"HX-Redirect": target})
     return RedirectResponse(target, status_code=303)
+
+
+@router.post("/mail/{email_id}/accept-rework", response_class=HTMLResponse)
+def accept_email_rework(
+    request: Request,
+    email_id: int,
+    source_order_id: str = Form(""),
+    client_name: str = Form(""),
+    material_color: str = Form(""),
+    quantity: str = Form(""),
+    opak: str = Form(""),
+    sum3d_id: str = Form(""),
+    accept_anyway: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """«Прийняти як переробку» — лист, повернутий у Вхідні на переробку
+    (власник 03.11.26). Нова робота в черзі дня, копія файлів першої роботи в
+    теку сьогодні; перша робота не змінюється. Доменна частина —
+    `app.services.mail_rework.accept_rework`; тут лише форма, картка з
+    помилкою, тост і куди вести далі (як `accept_email`)."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    # При прямому виклику функції (тести) пропущене поле — обʼєкт Form, не рядок.
+    fields = {
+        "source_order_id": source_order_id, "client_name": client_name,
+        "material_color": material_color, "quantity": quantity, "opak": opak,
+        "sum3d_id": sum3d_id,
+    }
+    fields = {key: value if isinstance(value, str) else "" for key, value in fields.items()}
+    accept_anyway = accept_anyway if isinstance(accept_anyway, str) else ""
+
+    result = accept_rework(db, user, email, accept_anyway=bool(accept_anyway), **fields)
+    if not result.ok:
+        if not _is_htmx(request):
+            return RedirectResponse(
+                f"/mail/{email.id}?error={quote(result.error or '')}", status_code=303
+            )
+        return templates.TemplateResponse(
+            request, "_mail_detail_panel.html",
+            _mail_panel_context(
+                db, email, user,
+                rework_values=fields, rework_error=result.error,
+            ),
+        )
+
+    label = (result.order.material_color or "").strip() if result.order else ""
+    label = label or "без матеріалу"
+    if result.copied_files:
+        message = (
+            f"Переробку «{label}» прийнято в чергу: скопійовано {result.copied_files} "
+            f"файл(ів) у export/{result.target}. Перша робота не змінена."
+        )
+        toast_kind = "success"
+    else:
+        message = f"Переробку «{label}» прийнято в чергу без файлів. Перша робота не змінена."
+        toast_kind = "warning"
+    if result.skipped_files:
+        message += f" Без {result.skipped_files} файл(ів), яких немає на диску."
+        toast_kind = "warning"
+    request.session["toast_flash"] = {"kind": toast_kind, "message": message}
+
+    if _is_htmx(request):
+        return Response(status_code=204, headers={"HX-Redirect": "/mail"})
+    return RedirectResponse("/mail", status_code=303)
 
 
 @router.post("/mail/batch-summary", response_class=HTMLResponse)
@@ -3481,9 +3558,28 @@ def _unaccept_email(
     ]
     if advanced:
         labels = ", ".join(f"{o.work_order_no or o.client_name or o.id} ({o.status})" for o in advanced)
+        if email.reopened_at is not None:
+            # Повернутий у Вхідні лист (03.11.26): «видаліть з черги» тут
+            # знищило б історію першого фрезерування — переробка робиться
+            # окремою роботою.
+            raise ValueError(
+                "Робота вже далі за прийняття — відкат неможливий: " + labels
+                + ". Лист повернули на переробку — натисніть «↺ Прийняти як "
+                "переробку»: буде нова робота, а перша лишиться як є."
+            )
         raise ValueError(
             "Робота вже далі за прийняття — відкат неможливий: " + labels
             + ". Якщо треба, видаліть її з черги в паспорті роботи."
+        )
+    # Лист із переробкою (`mail_rework`) не відкочується: відкат видалив би й
+    # переробку, а її копії файлів лишились би в export нічиїми.
+    reworks = rework_order_ids(db, [o.id for o in orders])
+    if reworks:
+        raise ValueError(
+            "З цього листа вже створено переробку (робота "
+            + ", ".join(f"#{i}" for i in sorted(reworks))
+            + ") — відкат прийняття неможливий. Якщо переробку створили помилково, "
+            "видаліть саме її в паспорті роботи."
         )
 
     # Лише ті, що справді виїжджали в export (order_id проставляється при
@@ -3673,7 +3769,12 @@ def _restore_email_locked(request: Request, db: Session, user, email_id: int):
             db.rollback()
             undo_errors = undo_moves(moved_pairs)
             clear_export_cache()
-            logger.exception("Un-accept commit failed for email %s", email.id)
+            if isinstance(exc, ValueError) and not moved_pairs:
+                # Відмова за правилом (робота вже далі, є переробка), а не збій:
+                # нічого не рухалось. У лозі це читалось як аварія (03.11.26).
+                logger.info("Відкат прийняття листа %s відхилено: %s", email.id, exc)
+            else:
+                logger.exception("Un-accept commit failed for email %s", email.id)
             detail = str(exc)
             if undo_errors:
                 logger.error("Could not return files to export: %s", "; ".join(undo_errors))

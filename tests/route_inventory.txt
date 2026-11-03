@@ -57,6 +57,7 @@ GET /discs/all
 POST /settings/materials/add
 POST /settings/machines/{machine_id}/delete
 POST /mail/{email_id}/accept
+POST /mail/{email_id}/accept-rework
 POST /mail/{email_id}/auto-download
 POST /mail/accept-batch
 POST /mail/batch-summary
