@@ -32,7 +32,7 @@ from pathlib import Path
 import logging
 import os
 import re
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -140,6 +140,41 @@ def _order_email_files(db: Session, order: Order) -> dict | None:
         "тека": str(Path(existing[0].saved_path).parent) if existing else None,
         "шлях_першого_файлу": own[0].saved_path if own else None,
     }
+
+def _order_stl_height(db: Session, order: Order) -> dict[str, Any]:
+    """Висота STL роботи — для калібрування усадки за парами «наряд →
+    товщина в Sum3D» (власник 04.11.26). Збережену мірку фоновий прохід
+    ставить лише свіжим роботам, тож для давніших теку міряємо тут-таки,
+    тими самими `work_folder`/`measure_folder`. Лише читання: в базу нічого
+    не пишемо, назв файлів (імена пацієнтів) не віддаємо."""
+    from app.services import stl_height
+    from app.settings_store import get_export_folder_path, get_technician_files_path
+
+    family = order.material.name if order.material is not None else None
+    out: dict[str, Any] = {
+        "родина": family,
+        "збережена_мм": order.stl_height_mm,
+        "прогноз_товщини_мм": _round_or_none(stl_height.thickness_mm(order.stl_height_mm, family)),
+        "усадка_в_прогнозі": stl_height.SHRINK.get(family or ""),
+    }
+    export_root = (get_export_folder_path(db) or "").strip()
+    folder = stl_height.work_folder(
+        order, get_technician_files_path(db), Path(export_root) if export_root else None
+    )
+    if folder is None:
+        out["поміряно_зараз"] = "теки роботи не знайдено"
+        return out
+    measured = stl_height.measure_folder(folder)
+    out["поміряно_зараз"] = {
+        "висота_мм": _round_or_none(measured.height_mm, 3),
+        "файлів_cad_stl": measured.files,
+    }
+    return out
+
+
+def _round_or_none(value: Optional[float], digits: int = 2) -> Optional[float]:
+    return round(value, digits) if value is not None else None
+
 
 def _order_brief(order: Order) -> dict[str, Any]:
     return {
@@ -312,6 +347,7 @@ def _order_full(db: Session, order: Order) -> dict[str, Any]:
             "видано_звідки": order.issued_source,
             "видача_закріплена": order.issue_locked,
             "sum3d_не_в_таблиці": order.sum3d_pending,
+            "висота_stl": _order_stl_height(db, order),
             "лист": _order_email_files(db, order),
             "хронологія": [
                 {
@@ -720,6 +756,11 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
                 out["спільні_слова_дисків"] = sum3d_files.common_words(f.path for f in found)[:200]
             elif found:
                 out["спільні_слова_дисків"] = "потрібно ≥3 дисків (limit=3…5)"
+            # ПММА без усадки проти цирконію — де в ПММА 1.0, там коефіцієнт.
+            if len(found) >= 2:
+                out["порівняння_заголовків"] = sum3d_files.compare_headers(
+                    [(f.name, f.path) for f in found]
+                )
     if kind in ("both", "cam"):
         if not projects_root:
             out["проєкти"] = "тека проєктів Sum3D не задана (Налаштування → Шляхи)"
@@ -1051,7 +1092,8 @@ TOOLS = TOOLS + (
             "ентропія, zlib/gzip-потоки всередині (розпаковані), слова в "
             "ASCII/UTF-16LE/BE; у малому файлі — усі «круглі» double/float (обидва "
             "порядки байтів) як коефіцієнт, обернений (0.8) чи відсотки; для ≥3 "
-            "дисків — слова, спільні для всіх. Для пошуку, де Sum3D тримає "
+            "дисків — слова, спільні для всіх; для ≥2 — звірка початку файлів "
+            "число-в-число (де в ПММА 1.0, а в цирконії 1.1–1.4). Для пошуку, де Sum3D тримає "
             "коефіцієнт усадки диска. Лише читання; текстових значень і назв STL "
             "(імена пацієнтів) не віддає."
         ),
@@ -1060,7 +1102,8 @@ TOOLS = TOOLS + (
             "properties": {
                 "kind": {"type": "string", "description": "blk, cam або both (типово both)."},
                 "brand": {"type": "string",
-                          "description": "Підрядок назви диска (monolith, emo) — фільтр .blk."},
+                          "description": "Підрядок назви диска (monolith, emo) — фільтр .blk; "
+                                         "кілька через кому (pmma,monolith) — по limit кожного."},
                 "sum3d_id": {"type": "string",
                              "description": "Хвіст Sum3D ID (13-12-29) — конкретний проєкт .cam."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 5,

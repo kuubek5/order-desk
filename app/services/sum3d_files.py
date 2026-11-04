@@ -140,13 +140,22 @@ class FoundFile:
 def newest_blanks(root: str, *, brand: str = "", limit: int = 2) -> list[FoundFile]:
     """Найновіші `.blk` у `<корінь>/<матеріал>/<висота>/` (як `cam_blanks`).
 
-    `brand` — підрядок назви диска (`monolith`, `emo`), без регістру. Час —
-    `mtime`: тут він лише впорядковує вибірку для огляду, не рахує нічого.
+    `brand` — підрядок назви диска (`monolith`, `emo`), без регістру; кілька
+    через кому (`pmma,monolith`) — по `limit` найновіших КОЖНОГО, щоб звірити
+    ПММА з цирконієм в одному виклику. Час — `mtime`: тут він лише
+    впорядковує вибірку для огляду, не рахує нічого.
     `DirEntry.stat()` на Windows бере дані з самого переліку теки — тисячі
     файлів не дають тисяч мережевих запитів.
     """
+    brands = [b.strip().lower() for b in brand.split(",") if b.strip()]
+    if len(brands) > 1:
+        everything = newest_blanks(root, limit=10**9)
+        picked: list[FoundFile] = []
+        for wanted_brand in brands:
+            picked += [f for f in everything if wanted_brand in f.name.lower() and f not in picked][:limit]
+        return picked
     base = Path(root)
-    wanted = brand.strip().lower()
+    wanted = brands[0] if brands else ""
     found: list[FoundFile] = []
     for material in _subdirs(base):
         for height in _subdirs(Path(material)):
@@ -487,6 +496,59 @@ def _compressed_streams(data: bytes) -> list[tuple[int, int, bytes]]:
         if len(found) >= MAX_STREAMS or total >= MAX_STREAMS_TOTAL_OUT:
             break
     return found
+
+
+# Скільки байтів з початку диска звіряти між файлами. Параметри диска
+# (висота, діаметр, усадка) логічно лежать у заголовку, до розкладки робіт.
+HEADER_COMPARE_BYTES = 4096
+_NUMBER_TYPES = (("float LE", "<f"), ("float BE", ">f"), ("double LE", "<d"), ("double BE", ">d"))
+
+
+def compare_headers(files: list[tuple[str, str]]) -> dict[str, Any]:
+    """Звірити початок кількох `.blk` число-в-число на тих самих зсувах.
+
+    `files` — (назва, шлях). Друга спроба знайти усадку (04.11.26): у ПММА
+    усадки немає, тож там, де Sum3D тримає коефіцієнт, у диску ПММА має
+    стояти рівно 1.0, а в цирконієвому — 1.1–1.4 (будь-яке, не лише кругле:
+    з етикетки партії буває й 1.2365). Друге — місця, де в усіх дисках
+    число 0.5–2.0, але різне: так виглядав би коефіцієнт, якщо ПММА в
+    вибірці немає. Лише числа."""
+    heads: list[tuple[str, bytes]] = []
+    for name, path in files:
+        try:
+            with open(path, "rb") as handle:
+                heads.append((name, handle.read(HEADER_COMPARE_BYTES)))
+        except OSError:
+            continue
+    if len(heads) < 2:
+        return {"примітка": "потрібно ≥2 читабельних дисків"}
+    shortest = min(len(data) for _name, data in heads)
+    one_vs_shrink: list[dict[str, Any]] = []
+    differing: list[dict[str, Any]] = []
+    for label, fmt in _NUMBER_TYPES:
+        width = struct.calcsize(fmt)
+        for offset in range(0, shortest - width + 1):
+            values = [struct.unpack_from(fmt, data, offset)[0] for _name, data in heads]
+            if not all(math.isfinite(v) for v in values):
+                continue
+            row = {
+                "зсув": offset,
+                "тип": label,
+                "значення": {name: round(v, 6) for (name, _data), v in zip(heads, values)},
+            }
+            has_one = any(v == 1.0 for v in values)
+            if has_one and any(
+                PLAUSIBLE_LOW <= v <= PLAUSIBLE_HIGH or 0.71 <= v <= 0.91 for v in values
+            ):
+                one_vs_shrink.append(row)
+            elif all(0.5 <= v <= 2.0 for v in values) and len({round(v, 6) for v in values}) > 1:
+                differing.append(row)
+    return {
+        "байтів_звірено": shortest,
+        "одиниця_проти_усадки": one_vs_shrink[:40],
+        "різні_числа_0_5_до_2": differing[:40],
+        "різних_усього": len(differing),
+    }
 
 
 def common_words(paths: Iterable[str]) -> list[str]:

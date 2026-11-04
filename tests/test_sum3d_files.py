@@ -15,6 +15,8 @@ import struct
 import zipfile
 import zlib
 
+import pytest
+
 from app.services import sum3d_files
 from app.settings_store import set_setting
 from tests.asgi_client import MiniClient
@@ -151,6 +153,40 @@ def test_common_words_drop_per_disc_names(tmp_path):
     words = sum3d_files.common_words(paths)
     assert "BlankHeight" in words and "ShrinkScale" in words
     assert not any(n in words for n in (PATIENT, "Shevchenko_Olena", "Koval_Ivan"))
+
+
+def _blank_head(shrink_le_float: float, filler: bytes) -> bytes:
+    return b"<SUM3D_BLANK V1.2>\x00\x00" + struct.pack("<f", 98.5) + struct.pack("<f", shrink_le_float) + filler
+
+
+def test_compare_headers_finds_pmma_one_against_zirconia_shrink(tmp_path):
+    """У ПММА усадки немає: де в ній рівно 1.0, а в цирконії 1.1–1.4 — там
+    Sum3D і тримає коефіцієнт, хай навіть некруглий (1.2365)."""
+    files = []
+    for name, shrink in (("pmma16_16-a1-x93.blk", 1.0), ("zr25_25-Monolith-A1-x28.blk", 1.2365),
+                         ("zr14_14-Emotions-A1-x264.blk", 1.2412)):
+        path = tmp_path / name
+        path.write_bytes(_blank_head(shrink, os.urandom(32)))
+        files.append((name, str(path)))
+    result = sum3d_files.compare_headers(files)
+    [row] = [r for r in result["одиниця_проти_усадки"] if r["тип"] == "float LE" and r["зсув"] == 24]
+    assert row["значення"]["pmma16_16-a1-x93.blk"] == 1.0
+    assert row["значення"]["zr25_25-Monolith-A1-x28.blk"] == pytest.approx(1.2365, abs=1e-6)
+    # Однаковий діаметр 98.5 у всіх — не кандидат.
+    assert all(r["зсув"] != 20 for r in result["різні_числа_0_5_до_2"])
+
+
+def test_several_brands_take_newest_of_each(tmp_path):
+    folder = tmp_path / "blanks" / "Zr" / "16"
+    folder.mkdir(parents=True)
+    names = ["pmma16_16-a1-x1.blk", "pmma16_16-a1-x2.blk", "pmma16_16-a1-x3.blk",
+             "zr16_16-Monolith-A1-x1.blk"]
+    for i, name in enumerate(names):
+        (folder / name).write_bytes(b"x")
+        os.utime(folder / name, (1_000_000 + i, 1_000_000 + i))
+    found = sum3d_files.newest_blanks(str(tmp_path / "blanks"), brand="pmma, monolith", limit=2)
+    assert [f.name for f in found] == ["pmma16_16-a1-x3.blk", "pmma16_16-a1-x2.blk",
+                                       "zr16_16-Monolith-A1-x1.blk"]
 
 
 def test_find_newest_blanks_and_project_by_id(tmp_path):

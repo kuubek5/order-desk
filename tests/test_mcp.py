@@ -217,6 +217,42 @@ def test_order_passport_by_sum3d_tail(app_db):  # noqa: F811
     assert data["роботи"][0]["клієнт"] == "Лагус"
 
 
+def test_order_passport_measures_stl_height_on_demand(app_db, tmp_path):  # noqa: F811
+    """Калібрування усадки парами «наряд → товщина Sum3D» (04.11.26): фонова
+    мірка є лише у свіжих робіт, тож паспорт міряє теку сам — і в базу не
+    пише."""
+    import struct
+
+    from app.material_catalog import ensure_seeded, material_id_by_name
+    from app.settings_store import set_setting
+
+    app, session_factory = app_db
+    job = tmp_path / "tech" / "2026-11-02_00004-018"
+    job.mkdir(parents=True)
+    facet = struct.pack("<12fH", 0, 0, 1, 0, 0, -5.047, 1, 0, 6.968, 0, 1, 0.0, 0)
+    (job / "Ivanenko-25-26-bridge_cad.stl").write_bytes(b"\0" * 80 + struct.pack("<I", 1) + facet)
+    with session_factory() as db:
+        ensure_seeded(db)
+        set_setting(db, "technician_files_path", str(tmp_path / "tech"))
+        order = Order(
+            source="lab", status="фрезерується", work_order_no="37896",
+            job_code="2026-11-02_00004-018", sum3d_id="2026-11-02_13-12-29",
+            material_id=material_id_by_name(db)["Цирконій"],
+        )
+        db.add(order)
+        db.commit()
+        order_id = order.id
+
+    data = _tool(MiniClient(app), "kmill_order", {"query": "37896"})["result"]["structuredContent"]
+    height = data["роботи"][0]["висота_stl"]
+    assert height["родина"] == "Цирконій"
+    assert height["збережена_мм"] is None and height["прогноз_товщини_мм"] is None
+    assert height["поміряно_зараз"] == {"висота_мм": 12.015, "файлів_cad_stl": 1}
+    assert "Ivanenko" not in str(data)
+    with session_factory() as db:
+        assert db.get(Order, order_id).stl_height_mm is None
+
+
 def test_email_order_passport_says_why_there_is_no_folder(app_db, tmp_path):  # noqa: F811
     """Іконки теки на екрані пошти немає — паспорт мусить сказати, ЧОГО саме
     бракує, інакше причину доводиться з'ясовувати кліками по живому екрану
