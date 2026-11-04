@@ -73,7 +73,8 @@ def test_implausible_height_is_dropped(tmp_path):
 
 
 def test_thickness_uses_the_family_shrink_and_skips_others():
-    assert stl_height.thickness_mm(12.015, "Цирконій") == pytest.approx(14.418, abs=1e-3)
+    # Бойова звірка: наряд 37896, Sum3D показав 15.02 при висоті STL 12.015.
+    assert stl_height.thickness_mm(12.015, "Цирконій") == pytest.approx(15.02, abs=1e-2)
     assert stl_height.thickness_mm(9.884, "ПММА") == pytest.approx(9.884)
     assert stl_height.thickness_mm(12.0, "Титан") is None
     assert stl_height.thickness_mm(None, "Цирконій") is None
@@ -136,8 +137,8 @@ def test_pass_measures_lab_and_mail_works_and_skips_unchanged(tmp_path):
         assert stl_height.measure_pending(db, str(tech), export) == 1
         assert lab.stl_height_mm == pytest.approx(12.015, abs=1e-3)
         chip = stl_height.chip_for(lab)
-        assert chip["text"] == "14,4"
-        assert "× 1.2" in chip["title"]
+        assert chip["text"] == "15,0"
+        assert "× 1.25" in chip["title"]
 
         # Ті самі файли — повторно не міряємо.
         assert stl_height.measure_pending(db, str(tech), export) == 0

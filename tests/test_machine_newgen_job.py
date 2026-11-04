@@ -291,18 +291,39 @@ def _agent():
     return ms.MachineTarget(name="250i", host="10.0.0.81", port=8765, agent_token="t")
 
 
-def test_screen_program_links_only_when_it_is_in_the_queue(db):
+def test_old_screen_program_needs_the_queue_and_fresh_full_name_does_not(db):
+    """Власник 04.11.26: 250i-Tolik годину фрезерував бездоганно прочитану
+    програму, а табло було порожнє, бо ID ще не вписали в таблицю. Повна свіжа
+    назва показується й без черги; давня чи без позначки диска — лише з чергою."""
     frame = Image.open(FRAME_250I)
-    now = datetime(2026, 9, 4, 12, 10)
+    fresh = datetime(2026, 9, 5, 12, 10)  # програма від 04.09 — вчора
+    stale = datetime(2026, 9, 6, 0, 10)   # програма позавчорашня
 
-    state = ms.poll_target(db, _agent(), None, now=now, frame=frame, titles=["CORiTEC 250i PRO+"])
-    assert state.sum3d_id is None, "роботи немає в черзі — прив'язки бути не може"
+    state = ms.poll_target(db, _agent(), None, now=stale, frame=frame, titles=["CORiTEC 250i PRO+"])
+    assert state.sum3d_id is None, "давня програма без роботи в черзі не показується"
+
+    state = ms.poll_target(db, _agent(), None, now=fresh, frame=frame, titles=["CORiTEC 250i PRO+"])
+    assert state.sum3d_id == "12-57-22", "повна свіжа назва — і без черги"
 
     db.add(Order(source="lab", sheet_tab="04.09.26", row_number=3, sum3d_id="12-57-22"))
     db.commit()
-    state = ms.poll_target(db, _agent(), None, now=now, frame=frame, titles=["CORiTEC 250i PRO+"])
+    state = ms.poll_target(db, _agent(), None, now=stale, frame=frame, titles=["CORiTEC 250i PRO+"])
     assert state.sum3d_id == "12-57-22"
     assert "12-57-22" in (state.iso_name or "")
+
+
+@pytest.mark.parametrize("name, today, expected, why", [
+    ("13PMMA18_18-A1-X138_2026-11-04_11-59-01.iso", "2026-11-04", True, "бойовий 250i-Tolik"),
+    ("13PMMA18_18-A1-X138_2026-11-04_11-59-01.iso", "2026-11-05", True, "учорашня"),
+    ("13PMMA18_18-A1-X138_2026-11-04_11-59-01.iso", "2026-11-06", False, "позавчорашня"),
+    ("13PMMA18_18-A1-X138_2026-11-05_11-59-01.iso", "2026-11-04", False, "дата з майбутнього"),
+    ("2026-11-04_11-59-01.iso", "2026-11-04", False, "без позначки диска — лише цифри"),
+])
+def test_full_name_is_fresh(name, today, expected, why):
+    made_on = name[-23:-13]
+    program = ms.MillingProgram(iso_name=name, sum3d_id="11-59-01", date=made_on)
+    now = datetime.fromisoformat(f"{today}T12:00:00")
+    assert ms._full_name_is_fresh(program, now) is expected, why
 
 
 @pytest.mark.parametrize("tab, archived, why", [

@@ -1586,15 +1586,32 @@ def _program_resolved_by_queue(
     return program
 
 
-def _program_from_screen(
-    db: Session, target: MachineTarget, frame: Optional[Image.Image]
-) -> Optional[MillingProgram]:
-    """Програма з екрана JOBS нового покоління — лише якщо вона є в черзі.
+def _full_name_is_fresh(program: MillingProgram, now: datetime) -> bool:
+    """Назву прочитано ЦІЛКОМ, із позначкою диска, і дата — сьогодні чи вчора.
 
-    Друга умова не формальність. Читач екрана і так мовчить при найменшому
-    сумніві, але прочитаний Sum3D ID ще й мусить збігтися з реальною роботою:
-    незалежний другий сигнал, як дві ознаки статусу печі. Роботи, якої немає
-    в черзі, підсвітити все одно нема чого — а хибний збіг тоді неможливий.
+    Позначка читається за принципом «цілком або ніяк» (`machine_newgen_job`),
+    тож разом із датою поруч вона сама є другим сигналом замість черги. Назва
+    без позначки (`дата_час.iso`) цього не дає: там лише цифри."""
+    try:
+        made_on = date.fromisoformat(program.date)
+    except ValueError:
+        return False
+    bare = f"{program.date}_{program.sum3d_id}.iso"
+    has_head = program.iso_name.lower().endswith(bare) and len(program.iso_name) > len(bare)
+    return has_head and timedelta(0) <= now.date() - made_on <= timedelta(days=1)
+
+
+def _program_from_screen(
+    db: Session, target: MachineTarget, frame: Optional[Image.Image], now: Optional[datetime] = None
+) -> Optional[MillingProgram]:
+    """Програма з екрана JOBS нового покоління: є в черзі АБО назва повна й свіжа.
+
+    Читач екрана мовчить при найменшому сумніві, а другий незалежний сигнал —
+    робота в черзі. Але черга відстає від верстата: 250i-Tolik 04.11.26 годину
+    фрезерував `13PMMA18_18-A1-X138_…_11-59-01`, прочитаний бездоганно, а табло
+    було порожнє, бо ID ще не вписали в таблицю (власник: показувати). Тому без
+    черги показуємо назву, лише якщо `_full_name_is_fresh`; робота тоді не
+    підсвічується, бо її немає, так само як у старих верстатів із заголовка вікна.
     Будь-яка несподіванка кадру означає «не прочитано», а не збій опитування."""
     if frame is None:
         return None
@@ -1657,7 +1674,7 @@ def _program_from_screen(
             logger.info("Верстат %s: з екрана прочитано %s від %s, але такої роботи в черзі немає%s",
                         target.name, program.sum3d_id, program.date,
                         f" (ще {skipped} разів відтоді)" if skipped else "")
-        return None
+        return program if _full_name_is_fresh(program, now or datetime.now()) else None
     return program
 
 
@@ -2164,7 +2181,7 @@ def poll_target(
                 state.titles_seen = None
     _note_fault_change(state, target, was_fault, now, from_frame=fault, from_title=title_fault)
     if program is None:
-        from_screen = _program_from_screen(db, target, frame)
+        from_screen = _program_from_screen(db, target, frame, now)
         if from_screen is not None:
             program, known = from_screen, True
         elif not target.is_agent:

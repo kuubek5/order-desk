@@ -137,6 +137,20 @@ def test_other_furnace_address_is_not_a_candidate():
     assert "немає іншої адреси" in verdict
 
 
+@pytest.mark.parametrize("opened, table, expected", [
+    ({OLD}, {OLD: MAC}, "порт 5900 відкритий"),
+    (set(), {OLD: MAC}, f"порт 5900 закритий, пристрій {MAC}"),
+    (set(), {}, "адреса порожня"),
+])
+def test_no_candidates_says_what_is_on_the_address_itself(opened, table, expected):
+    """04.11.26 вписана руками `.16` мовчить: треба відрізнити порожню адресу
+    від живого пристрою без VNC, не їдучи в цех."""
+    _found, _mac, verdict = fr.search(
+        OLD, 5900, None, "pw", set(), is_open=lambda h, p: h in opened, arp=lambda: table,
+    )
+    assert expected in verdict
+
+
 def test_hostname_is_not_searched():
     found, _mac, verdict = fr.search(
         "furnace-pc", 5900, None, "pw", set(), is_open=lambda h, p: True, arp=lambda: {},

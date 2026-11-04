@@ -883,7 +883,7 @@ templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
 templates.env.globals["material_family_class"] = material_family_class
 templates.env.globals["material_families"] = material_families
-# Чіп «≈14,4 мм» — товщина з STL, як її покаже Sum3D (ідея №29).
+# Чіп «≈15,0 мм» — товщина з STL, як її покаже Sum3D (ідея №29).
 templates.env.globals["stl_thickness_chip"] = stl_thickness_chip
 # Статус-крапка й перелік статусів — для рядка черги і легенди кольорів
 # (_status_legend.html), з одного джерела app/statuses.py.

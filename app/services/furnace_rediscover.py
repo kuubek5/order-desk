@@ -175,7 +175,16 @@ def search(
 
     candidates = [h for h in opened if h != host]
     if not candidates:
-        return None, None, f"у мережі {host}/24 немає іншої адреси з відкритим портом {port}"
+        # Стан самої адреси відрізняє «порожня адреса» від «живий пристрій без VNC».
+        seen = arp().get(host)
+        own = (
+            f"порт {port} відкритий" if host in opened
+            else f"порт {port} закритий, пристрій {seen}" if seen
+            else "пристрою немає в ARP (адреса порожня)"
+        )
+        return None, None, (
+            f"у мережі {host}/24 немає іншої адреси з відкритим портом {port}; сама {host}: {own}"
+        )
     with ThreadPoolExecutor(max_workers=VERIFY_WORKERS, thread_name_prefix="furnace-verify") as pool:
         verdicts = list(pool.map(lambda h: is_furnace(h, port, password), candidates))
     matches = [h for h, ok in zip(candidates, verdicts) if ok]
