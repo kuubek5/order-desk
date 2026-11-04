@@ -69,6 +69,21 @@ def test_scan_settings_finds_factor_and_masks_names(tmp_path):
     assert PATIENT not in json.dumps(found, ensure_ascii=False)
 
 
+def test_translations_and_bare_markers_do_not_eat_the_findings_limit(tmp_path):
+    """Прод 0.21.95: 60 знахідок з'їли переклади, і решти файлів не було видно."""
+    root = tmp_path / "sum"
+    root.mkdir()
+    (root / "LAB_Lang_de-DE.Txt").write_text('61692, SHRINKAGE_FACTOR "Scaling Factor"\n', encoding="utf-8")
+    (root / "Camwin_en-US.Txt").write_text("Shrinking factor X\n", encoding="utf-8")
+    (root / "CAMWIN1380.CFG").write_bytes(b"\x00\x01Emotions\x00" + b"\x00" * 80)
+    (root / "GPSETTINGS.INI").write_text("[Teeth]\nSTL_To_Teeth_Scale=1.250000\n", encoding="utf-8")
+    found = sum3d_deep.scan_settings([str(root)])
+    [finding] = found["знахідки"]
+    assert finding["файл"] == "sum/GPSETTINGS.INI"
+    assert finding["рядки"] == ["STL_To_Teeth_Scale = 1.250000"]
+    assert finding["змінено"]
+
+
 def test_settings_roots_go_above_blanks_but_not_to_drive_root(tmp_path, monkeypatch):
     for variable in ("APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)"):
         monkeypatch.delenv(variable, raising=False)
@@ -277,7 +292,10 @@ def test_tool_cam_deep_requires_id_and_numeric_value(app_db, tmp_path):  # noqa:
     app, session_factory = app_db
     _configure(session_factory, tmp_path)
     assert _call(app, {"kind": "cam_deep"})["isError"] is True
-    assert _call(app, {"kind": "cam_deep", "sum3d_id": "13-12-29", "value": "1.25"})["isError"] is True
+    assert _call(app, {"kind": "cam_deep", "sum3d_id": "13-12-29", "value": "багато"})["isError"] is True
+    # Клієнт зі старою схемою шле число рядком (прод 04.11.26).
+    data = _call(app, {"kind": "cam_deep", "sum3d_id": "13-12-29", "value": "1.25"})["structuredContent"]
+    assert data["проєкти"][0]["точне_значення"]["double LE"]["разів"] == 1
 
 
 def test_tool_cam_compare_takes_family_from_the_work(app_db, tmp_path):  # noqa: F811

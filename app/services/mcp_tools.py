@@ -790,8 +790,14 @@ def _sum3d_cam_deep(db: Session, root: str, args: dict, limit: int) -> dict[str,
     tail = str(args.get("sum3d_id") or "").strip()
     if not tail:
         raise ToolError("для `cam_deep` потрібен `sum3d_id` (13-12-29)")
+    # Клієнт зі старою схемою інструмента шле число рядком (прод 04.11.26).
     raw = args.get("value")
-    if raw is not None and not isinstance(raw, (int, float)):
+    if isinstance(raw, str):
+        try:
+            raw = float(raw.strip().replace(",", "."))
+        except ValueError:
+            raise ToolError("`value` — число (1.25)") from None
+    if raw is not None and (isinstance(raw, bool) or not isinstance(raw, (int, float))):
         raise ToolError("`value` — число (1.25)")
     found = sum3d_files.newest_projects(root, sum3d_id=tail, limit=limit)
     if not found:

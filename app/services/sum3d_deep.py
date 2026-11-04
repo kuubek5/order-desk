@@ -27,6 +27,7 @@ import re
 import struct
 import time
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
@@ -53,6 +54,9 @@ SKIP_EXT = frozenset({
     ".lib", ".pdb", ".obj", ".lnk", ".ply", ".dxf", ".step", ".stp", ".igs", ".iges",
 })
 SKIP_DIRS = frozenset({"cam-blanks", "cam-work", "export", "backup", "backups"})
+# Переклади інтерфейсу: там лише підписи («Scaling Factor»), значень немає, а
+# перший прогін на проді (0.21.95) вони з'їли весь ліміт знахідок.
+_SKIP_NAME = re.compile(r"lang|^camwin.*\.(tab|txt)$|\.(js|doc)$", re.IGNORECASE)
 MAX_SETTINGS_FILE = 4 * 1024 * 1024
 MAX_FILES_READ = 4000
 SCAN_DEADLINE_SECONDS = 45.0
@@ -104,13 +108,22 @@ def scan_settings(roots: Iterable[str]) -> dict[str, Any]:
             by_ext[suffix or "(без розширення)"] += 1
             if suffix in SKIP_EXT or size > MAX_SETTINGS_FILE or size == 0:
                 continue
+            if _SKIP_NAME.search(Path(path).name):
+                continue
             if read >= MAX_FILES_READ or time.monotonic() > deadline:
                 cut = True
                 continue
             read += 1
             found = _file_findings(path)
             if found and len(findings) < MAX_FINDINGS:
-                findings.append({"файл": _mask_path(path, root), "розмір": size, **found})
+                findings.append({
+                    "файл": _mask_path(path, root),
+                    "розмір": size,
+                    # Час зміни: чи файл переписується при кожному імпорті —
+                    # звіряється з часом найновішого проєкту.
+                    "змінено": _modified(path),
+                    **found,
+                })
     return {
         "корені": [str(r) for r in roots],
         "файлів": total,
@@ -119,6 +132,13 @@ def scan_settings(roots: Iterable[str]) -> dict[str, Any]:
         "за_розширенням": dict(by_ext.most_common(30)),
         "знахідки": findings,
     }
+
+
+def _modified(path: str) -> Optional[str]:
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M:%S")
+    except OSError:
+        return None
 
 
 def _walk(root: str) -> Iterator[tuple[str, int]]:
@@ -159,7 +179,9 @@ def _file_findings(path: str) -> dict[str, Any]:
     if text is not None:
         lines = marked_lines(text)
         return {"рядки": lines} if lines else {}
-    markers = _binary_markers(data)
+    # Маркер без числа поруч нічого не каже, а 915 конфігів CAMWIN*.CFG з назвою
+    # диска всередині витіснили б решту знахідок.
+    markers = [m for m in _binary_markers(data) if m["кандидати"]]
     return {"маркери": markers} if markers else {}
 
 
