@@ -218,6 +218,18 @@ _states: dict[str, FurnaceState] = {}
 _states_lock = threading.Lock()
 
 
+def states_snapshot() -> dict[str, FurnaceState]:
+    """Копія словника станів — ітерувати без локу, як `machines.states_snapshot`."""
+    with _states_lock:
+        return dict(_states)
+
+
+def forget_state(key: str) -> None:
+    """Прибрати стан за старим ключем: піч переїхала на іншу адресу."""
+    with _states_lock:
+        _states.pop(key, None)
+
+
 def list_furnaces(db: Session, *, only_enabled: bool = False) -> list[Furnace]:
     """Пічки з таблиці, у порядку, який задав оператор.
 

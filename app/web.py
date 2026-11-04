@@ -112,6 +112,7 @@ from app.services.machines import (
     prune_machine_link_events as _prune_machine_link_events,
     prune_machine_readings as _prune_machine_readings,
 )
+from app.services.furnace_rediscover import tick as _furnace_rediscover_tick
 from app.services.machine_rediscover import tick as _machine_rediscover_tick
 from app.services.cam_blanks import sync_blanks as _sync_cam_blanks
 from app.settings_store import get_setting
@@ -716,6 +717,7 @@ def _furnace_tick(db: Session) -> None:
     if not _furnaces_configured(db):
         return
     _poll_furnaces(db)
+    _furnace_rediscover_tick(db)
 
 
 def _furnace_worker(stop_event: Event) -> None:

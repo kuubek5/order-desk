@@ -31,6 +31,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import furnace_ocr
@@ -100,6 +101,17 @@ def _unread_screens() -> list[dict[str, Any]]:
     return out
 
 
+def _furnace_address_facts(db: Session, target: Any) -> dict[str, Any]:
+    """MAC печі й чим закінчився останній пошук її адреси в мережі."""
+    from app.models import Furnace
+    from app.services import furnace_rediscover
+
+    row = db.scalar(select(Furnace).where(Furnace.host == target.host, Furnace.port == target.port))
+    if row is None:
+        return {}
+    return {"mac": row.mac_address, "пошук_адреси": furnace_rediscover.last_verdict(row.id)}
+
+
 def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
     """Усі налаштовані пристрої з віком кадру й тим, що з нього прочиталось."""
     furnaces = []
@@ -117,6 +129,7 @@ def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
                 "попередження": state.warnings if state else [],
                 "опитано": _local(state.attempted_at) if state else None,
                 "кадр": _file_facts(furnace.frame_path(card.key)),
+                **_furnace_address_facts(db, card.target),
             }
         )
 

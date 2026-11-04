@@ -1263,6 +1263,9 @@ class Furnace(Base):
     # відомому йому порядку, і сортування за id чи назвою його ламає.
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    # MAC мережевої карти печі (aa-bb-cc-dd-ee-ff): IP роутер може видати іншу,
+    # MAC — ні. Записує сам `furnace_rediscover`, поки піч читається.
+    mac_address: Mapped[Optional[str]] = mapped_column(String(17), nullable=True)
 
 
 class Machine(Base):
