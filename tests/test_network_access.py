@@ -237,6 +237,49 @@ def test_firewall_rule_is_private_profile_only():
     assert network_access.FIREWALL_RULE_NAME in network_access.firewall_remove_command()
 
 
+@pytest.mark.parametrize("hostname, expected", [
+    ("SHOP-PC", "SHOP-PC"),
+    ("DESKTOP-7QK2M1", "DESKTOP-7QK2M1"),
+    ("Цех-ПК", None),        # кирилиця: NetBIOS/LLMNR не розвʼяже punycode
+    ("localhost", None),
+    ("12345", None),
+    ("shop pc", None),
+])
+def test_lan_name_only_resolvable_names(monkeypatch, hostname, expected):
+    from app.services import furnace_board
+
+    monkeypatch.setattr(furnace_board.socket, "gethostname", lambda: hostname)
+    assert furnace_board.lan_name() == expected
+
+
+def test_links_put_pc_name_first_then_addresses(monkeypatch):
+    """04.11.26: після вимкнення світла ПК отримав іншу IP, другий ПК і табло
+    стукали на стару. Адреса з імʼям ПК від роутера не залежить."""
+    from app.services import furnace_board
+
+    monkeypatch.setattr(furnace_board.socket, "gethostname", lambda: "SHOP-PC")
+    monkeypatch.setattr(furnace_board, "lan_addresses", lambda: ["192.168.1.40"])
+    assert network_access.app_links() == ["http://SHOP-PC:8000/", "http://192.168.1.40:8000/"]
+
+    monkeypatch.setattr(furnace_board.socket, "gethostname", lambda: "Цех")
+    assert network_access.app_links() == ["http://192.168.1.40:8000/"]
+
+
+def test_board_links_carry_pc_name(app_db, monkeypatch):  # noqa: F811
+    from app.services import furnace_board, shop_board
+
+    _app, session_factory = app_db
+    monkeypatch.setattr(furnace_board.socket, "gethostname", lambda: "SHOP-PC")
+    monkeypatch.setattr(furnace_board, "lan_addresses", lambda: ["192.168.1.40"])
+    with session_factory() as db:
+        token = furnace_board.regenerate_token(db)
+        db.commit()
+        assert furnace_board.board_links(db) == [
+            f"http://SHOP-PC:8010/t/{token}", f"http://192.168.1.40:8010/t/{token}",
+        ]
+        assert shop_board.shop_links(db)[0] == f"http://SHOP-PC:8010/t/{token}/shop"
+
+
 def test_relaunch_command_waits_for_this_process_then_starts_exe():
     from app.windows_launcher import relaunch_command
 

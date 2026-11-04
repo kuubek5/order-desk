@@ -434,8 +434,8 @@ def shop_links(db: Session) -> list[str]:
     if not token:
         return []
     return [
-        f"http://{address}:{furnace_board.BOARD_PORT}/t/{token}/shop"
-        for address in furnace_board.lan_addresses()
+        f"http://{host}:{furnace_board.BOARD_PORT}/t/{token}/shop"
+        for host in furnace_board.lan_hosts()
     ]
 
 

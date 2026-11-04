@@ -35,7 +35,7 @@ from typing import Callable, Optional
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app.services.furnace_board import lan_addresses
+from app.services.furnace_board import lan_hosts
 from app.settings_store import get_setting
 
 APP_PORT = 8000
@@ -93,7 +93,7 @@ def network_listening() -> bool:
 
 def app_links() -> list[str]:
     """Адреси, які вводять у браузері інших ПК."""
-    return [f"http://{address}:{APP_PORT}/" for address in lan_addresses()]
+    return [f"http://{host}:{APP_PORT}/" for host in lan_hosts()]
 
 
 def firewall_command() -> str:

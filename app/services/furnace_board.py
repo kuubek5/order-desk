@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import socket
 import threading
@@ -97,11 +98,38 @@ def lan_addresses() -> list[str]:
     return [a for a in found if not a.startswith("127.")]
 
 
+# Імʼя, яке інший ПК з Windows знайде в мережі (NetBIOS/LLMNR): латиниця,
+# цифри, дефіс. Кирилиця в імені ПК дала б в адресі punycode, який ці
+# протоколи не розвʼязують, — таке імʼя не показуємо.
+_LAN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,62}$")
+
+
+def lan_name() -> Optional[str]:
+    """Імʼя цього ПК для посилань, що переживають зміну IP.
+
+    04.11.26 після вимкнення світла ПК отримав від роутера іншу адресу, і
+    другий ПК та табло стукали на стару. Імʼя ПК від роутера не залежить;
+    телевізор його може не знайти, тому цифрові адреси лишаються поруч."""
+    try:
+        name = socket.gethostname().strip()
+    except OSError:
+        return None
+    if not _LAN_NAME.match(name) or name.isdigit() or name.lower() == "localhost":
+        return None
+    return name
+
+
+def lan_hosts() -> list[str]:
+    """Імʼя ПК (першим — воно не змінюється), далі IPv4-адреси."""
+    name = lan_name()
+    return ([name] if name else []) + lan_addresses()
+
+
 def board_links(db: Session) -> list[str]:
     token = board_token(db)
     if not token:
         return []
-    return [f"http://{address}:{BOARD_PORT}/t/{token}" for address in lan_addresses()]
+    return [f"http://{host}:{BOARD_PORT}/t/{token}" for host in lan_hosts()]
 
 
 # ── Що показати ─────────────────────────────────────────────────────────────
