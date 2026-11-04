@@ -47,7 +47,7 @@ from app.business_day import (
 )
 from app.config import DATA_DIR, DB_PATH
 from app.models import ActionLog, Attachment, Comment, Order, StatusEvent, SyncLog
-from app.services import device_diag, sum3d_files
+from app.services import device_diag, sum3d_deep, sum3d_files
 from app.services.order_dates import parse_sheet_tab
 
 logger = logging.getLogger(__name__)
@@ -733,11 +733,23 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
     from app.settings_store import get_setting, get_sum3d_projects_path
 
     kind = str(args.get("kind") or "both").strip().lower()
-    if kind not in ("both", "blk", "cam"):
-        raise ToolError("`kind` — blk, cam або both (типово both)")
+    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare"):
+        raise ToolError("`kind` — blk, cam, both, settings, cam_deep або cam_compare (типово both)")
     limit = _int_arg(args, "limit", default=2, low=1, high=5)
     blanks_root = (get_setting(db, "cam_blanks_path") or "").strip()
     projects_root = (get_sum3d_projects_path(db) or "").strip()
+    if kind == "settings":
+        return {
+            "налаштування": sum3d_deep.scan_settings(sum3d_deep.settings_roots(blanks_root)),
+            "реєстр": sum3d_deep.scan_registry(),
+        }
+    if kind in ("cam_deep", "cam_compare") and not projects_root:
+        raise ToolError("тека проєктів Sum3D не задана (Налаштування → Шляхи)")
+    if kind == "cam_deep":
+        return _sum3d_cam_deep(db, projects_root, args, limit)
+    if kind == "cam_compare":
+        plain, shrunk = _sum3d_cam_groups(db, projects_root, limit)
+        return sum3d_deep.compare_groups(plain, shrunk)
     out: dict[str, Any] = {
         "тека_дисків": blanks_root or None,
         "тека_проєктів": projects_root or None,
@@ -770,6 +782,86 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
             )
             out["проєкти"] = [_sum3d_file_entry(f) for f in found] or "файлів .cam не знайдено"
     return out
+
+
+def _sum3d_cam_deep(db: Session, root: str, args: dict, limit: int) -> dict[str, Any]:
+    """Розвідка одного проєкту: масштаб у матрицях, задане число, вершини STL
+    робіт цього проєкту (`sum3d_deep.probe_cam`)."""
+    tail = str(args.get("sum3d_id") or "").strip()
+    if not tail:
+        raise ToolError("для `cam_deep` потрібен `sum3d_id` (13-12-29)")
+    raw = args.get("value")
+    if raw is not None and not isinstance(raw, (int, float)):
+        raise ToolError("`value` — число (1.25)")
+    found = sum3d_files.newest_projects(root, sum3d_id=tail, limit=limit)
+    if not found:
+        return {"проєкти": "файлів .cam не знайдено"}
+    return {
+        "проєкти": [
+            {
+                "файл": f.name,
+                **sum3d_deep.probe_cam(
+                    f.path,
+                    stl_paths=_sum3d_project_stls(db, f.name, tail),
+                    expected=float(raw) if raw is not None else None,
+                ),
+            }
+            for f in found
+        ]
+    }
+
+
+def _cam_day(name: str) -> Optional[date]:
+    try:
+        return datetime.strptime(name[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _sum3d_project_stls(db: Session, cam_name: str, tail: str) -> list[str]:
+    """STL робіт проєкту. Sum3D ID — лише час доби, тож робота мусить бути
+    з дня проєкту (±1), як і скрізь, де його зіставляють."""
+    from app.services import stl_height
+    from app.settings_store import get_export_folder_path, get_technician_files_path
+
+    day = _cam_day(cam_name)
+    export_root = (get_export_folder_path(db) or "").strip()
+    tech_root = get_technician_files_path(db)
+    paths: list[str] = []
+    orders = db.scalars(select(Order).where(Order.sum3d_id.like(f"%{tail}%"))).all()
+    for order in orders:
+        tab = parse_sheet_tab(order.sheet_tab)
+        if day is not None and (tab is None or abs((tab - day).days) > 1):
+            continue
+        folder = stl_height.work_folder(order, tech_root, Path(export_root) if export_root else None)
+        if folder is not None:
+            paths += [str(p) for p in stl_height.rotated_stls(folder)]
+    return paths[:5]
+
+
+def _sum3d_cam_groups(
+    db: Session, root: str, limit: int
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Проєкти ПММА (без усадки) і цирконію — родина береться з роботи."""
+    by_name = {f.name: f for f in sum3d_files.newest_projects(root, limit=10**6)}
+    plain: dict[str, str] = {}
+    shrunk: dict[str, str] = {}
+    orders = db.scalars(
+        select(Order).where(Order.sum3d_id.isnot(None)).order_by(Order.id.desc()).limit(1000)
+    ).all()
+    for order in orders:
+        family = order.material.name if order.material is not None else None
+        target = {"ПММА": plain, "Цирконій": shrunk}.get(family or "")
+        day = parse_sheet_tab(order.sheet_tab)
+        if target is None or day is None or len(target) >= limit:
+            continue
+        tail = (order.sum3d_id or "").strip()[-8:]
+        for delta in (0, -1, 1):
+            name = f"{day + timedelta(days=delta):%Y-%m-%d}_{tail}.cam"
+            if name in by_name:
+                target.setdefault(name, by_name[name].path)
+                break
+    return sorted(plain.items()), sorted(shrunk.items())
 
 
 def _sum3d_file_entry(found: sum3d_files.FoundFile) -> dict[str, Any]:
@@ -1093,14 +1185,20 @@ TOOLS = TOOLS + (
             "ASCII/UTF-16LE/BE; у малому файлі — усі «круглі» double/float (обидва "
             "порядки байтів) як коефіцієнт, обернений (0.8) чи відсотки; для ≥3 "
             "дисків — слова, спільні для всіх; для ≥2 — звірка початку файлів "
-            "число-в-число (де в ПММА 1.0, а в цирконії 1.1–1.4). Для пошуку, де Sum3D тримає "
+            "число-в-число (де в ПММА 1.0, а в цирконії 1.1–1.4). kind=settings — "
+            "налаштування Sum3D і реєстр; kind=cam_deep (sum3d_id, value) — матриці "
+            "масштабу, задане число, вершини STL у проєкті; kind=cam_compare — "
+            "проєкти ПММА проти цирконію. Для пошуку, де Sum3D тримає "
             "коефіцієнт усадки диска. Лише читання; текстових значень і назв STL "
             "(імена пацієнтів) не віддає."
         ),
         schema={
             "type": "object",
             "properties": {
-                "kind": {"type": "string", "description": "blk, cam або both (типово both)."},
+                "kind": {"type": "string",
+                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare."},
+                "value": {"type": "number",
+                          "description": "Для cam_deep: очікуваний коефіцієнт (1.25) — точний пошук і вершини STL × value."},
                 "brand": {"type": "string",
                           "description": "Підрядок назви диска (monolith, emo) — фільтр .blk; "
                                          "кілька через кому (pmma,monolith) — по limit кожного."},
