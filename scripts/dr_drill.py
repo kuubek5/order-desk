@@ -191,11 +191,27 @@ def table_hashes(db: Path, skip_cols_suffix: str = "_encrypted") -> dict:
     return out
 
 
-def make_source(root: Path) -> Path:
+def make_source(root: Path, key: str) -> Path:
+    """Копія dev-бази, піднята до поточної схеми, як після старту програми.
+
+    Dev-база може відставати від коду (05.11.26 вона була на 0093 при коді 0095),
+    а експорт читає таблиці за поточними моделями: S6 і S13 падали тоді на
+    «no such column», хоч справжня програма мігрує базу раніше за будь-який
+    експорт. Мігрується лише копія; сама dev-база не змінюється."""
     src = root / "source.db"
     if src.exists():
         src.unlink()
+    raw = root / "source-raw.db"
+    if raw.exists():
+        raw.unlink()
     con = sqlite3.connect(REPO / "kuubmill.db")
+    con.execute(f"VACUUM INTO '{raw}'")
+    con.close()
+    box = sandbox(root, "source-migrate", raw)
+    migrated = jrun(LAUNCHER_MIGRATE_JSON, box, key)
+    if migrated.get("m") != "ok":
+        raise RuntimeError(f"джерело не мігрувалось: {migrated}")
+    con = sqlite3.connect(box / "kuubmill.db")
     con.execute(f"VACUUM INTO '{src}'")
     con.close()
     return src
@@ -893,7 +909,7 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     print(f"пісочниця: {root}", flush=True)
     key = dev_key()
-    src = make_source(root)
+    src = make_source(root, key)
     print(f"джерело: {src.name}, {src.stat().st_size/1e6:.1f} МБ, orders={scalar(src, 'select count(*) from orders')}", flush=True)
     chosen = [s for s in (a.only.split(",") if a.only else SCENARIOS) if s in SCENARIOS]
     for s in chosen:
