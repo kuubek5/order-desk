@@ -17,6 +17,28 @@ def test_ready_when_material_present():
     assert rd["missing"] == []
 
 
+def test_letter_with_undownloaded_files_is_not_ready():
+    """Рядок казав «не скачано» і показував зелену галочку (власник 05.11.26)."""
+    rd = triage_readiness(_email(material_color_guess="моно а3", attachments_status="skipped"))
+    assert rd == {"state": "not_downloaded", "missing": ["файли не скачано"]}
+
+
+def test_undownloaded_and_no_material_names_both():
+    rd = triage_readiness(_email(attachments_status="skipped"))
+    assert rd["state"] == "incomplete"
+    assert rd["missing"] == ["файли не скачано", "матеріал"]
+
+
+def test_letter_still_downloading_is_not_ready():
+    rd = triage_readiness(_email(material_color_guess="моно а3", attachments_status="pending"))
+    assert rd == {"state": "incomplete", "missing": ["файли ще качаються"]}
+
+
+def test_downloaded_letter_is_ready():
+    rd = triage_readiness(_email(material_color_guess="моно а3", attachments_status="ready"))
+    assert rd["state"] == "ready"
+
+
 def test_incomplete_when_material_missing():
     rd = triage_readiness(_email(material_color_guess=None))
     assert rd["state"] == "incomplete"

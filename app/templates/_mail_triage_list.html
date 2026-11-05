@@ -107,7 +107,8 @@
                    але другим написом-підказкою й лише коли він є І відрізняється
                    від показного імені — інакше дублювали б те саме двічі. Без
                    показного імені падаємо на здогад/адресу, як було. #}
-                <span class="from">{{ email.from_name or email.client_name_guess or email.from_address or 'Відправник не визначений' }}</span>
+                {% set _from = email.from_name or email.client_name_guess or email.from_address or 'Відправник не визначений' %}
+                <span class="from" title="{{ _from }}">{{ _from }}</span>
                 {% set _guess = email.client_name_guess %}
                 {% if email.from_name and _guess and _guess|lower != email.from_name|lower %}<span class="from-guess" title="Розпізнаний клієнт">{{ _guess }}</span>{% endif %}
                 {% if is_unread %}<span class="sr-only">непрочитано</span>{% endif %}
@@ -120,6 +121,9 @@
                    код відтінку — останнє слово з цифрою («mono b1» → b1, «800») — жирним,
                    щоб око чіплялось саме за нього. #}
                 {% if _mb %}{% set _mc = (_mb.color or '').rsplit(' ', 1) %}{% set _code = _mc[-1] if (_mc[-1]|list|select('in', '0123456789')|list) else '' %}{% set _line = (_mc[0] if _mc|length == 2 else '') if _code else (_mb.color or '') %}<span class="matmini {{ _mb.cls }}" title="Матеріал (здогад): {{ _mb.title }}{% if _mb.color %} · {{ _mb.color }}{% endif %} — перевір у майстрі"><b>{{ _mb.symbol }}</b>{% if _line %}<span class="mm-c">{{ _line }}</span>{% endif %}{% if _code %}<strong class="mm-code">{{ _code }}</strong>{% endif %}</span>{% endif %}
+                {# Кілька матеріалів в одному листі (власник 05.11.26): чіп показує один,
+                   тут — решта. Лише попередження: готовність не змінює. #}
+                {% if email.material_mix %}<span class="matmix" title="У листі названо кілька матеріалів: {{ email.material_mix.all|join(' + ') }}. Можливо, це кілька робіт — перевір у картці.">+{{ email.material_mix.extra|join(' +') }}</span>{% endif %}
                 {# «Опак» — замовник просить покрити опаком (email.opak_hint — слово з листа). #}
                 {% if email.opak_hint %}<span class="opakmini" title="Замовник просить опак: «{{ email.opak_hint }}»">опак</span>{% endif %}
             </span>
@@ -230,11 +234,16 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                         <span class="sr-only">готово</span>
                     </span>
+                    {% elif rd.state == 'not_downloaded' %}
+                    <span class="reco reco-ic warn" title="Файли листа ще не скачано — відкрий лист і натисни «Скачати».">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+                        <span class="sr-only">файли не скачано</span>
+                    </span>
                     {% else %}
                     <span class="reco reco-ic {{ 'danger' if rd.state in ('no_files', '3d') else 'warn' }}"
-                          title="{% if rd.state == 'no_files' %}Вкладення є в базі, але файлів немає на диску — відкрий лист і скачай наново.{% elif rd.state == '3d' %}Схоже на 3D-друк — лабораторія цього не робить. Можна навчити фільтр (у листі) прибирати такі автоматично.{% elif rd.state == 'dups' %}Клієнт надіслав ту саму роботу двічі — відкрий лист і перевір, які файли брати.{% else %}Не розпізнано: {{ rd.missing|join(', ') }} — відкрий лист і заповни перед прийняттям.{% endif %}">
+                          title="{% if rd.state == 'no_files' %}Вкладення є в базі, але файлів немає на диску — відкрий лист і скачай наново.{% elif rd.state == '3d' %}Схоже на 3D-друк — лабораторія цього не робить. Можна навчити фільтр (у листі) прибирати такі автоматично.{% elif rd.state == 'dups' %}Клієнт надіслав ту саму роботу двічі — відкрий лист і перевір, які файли брати.{% else %}Не готово: {{ rd.missing|join(', ') }} — відкрий лист і заповни перед прийняттям.{% endif %}">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v8"/><circle cx="12" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>
-                        <span class="sr-only">{% if rd.state == 'no_files' %}немає файлів{% elif rd.state == '3d' %}3D-друк?{% elif rd.state == 'dups' %}дублі файлів{% else %}не розпізнано: {{ rd.missing|join(', ') }}{% endif %}</span>
+                        <span class="sr-only">{% if rd.state == 'no_files' %}немає файлів{% elif rd.state == '3d' %}3D-друк?{% elif rd.state == 'dups' %}дублі файлів{% else %}не готово: {{ rd.missing|join(', ') }}{% endif %}</span>
                     </span>
                     {% endif %}
                     {# Швидкий перенос у папку «оброблено» просто з рядка (робота

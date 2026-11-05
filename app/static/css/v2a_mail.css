@@ -224,6 +224,10 @@ main.mailv2{max-width:none;margin:0;padding:18px 20px}
    перед словом — щоб впізнавався боковим зором. */
 .mailv2 .opakmini{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:var(--fs-0);font-weight:700;letter-spacing:.02em;white-space:nowrap;padding:2px 7px;border-radius:5px;color:var(--ink);background:color-mix(in srgb,var(--ink) 9%,transparent);border:1px solid color-mix(in srgb,var(--ink) 30%,transparent)}
 .mailv2 .opakmini::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink);box-shadow:0 0 5px color-mix(in srgb,var(--ink) 55%,transparent)}
+/* Кілька матеріалів в одному листі (власник 05.11.26): стан «перевір», тому колір
+   попередження, а не матеріалу. Лише сигнал, готовність листа не змінює. */
+.mailv2 .matmix{flex:0 0 auto;display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:var(--fs-0);font-weight:700;line-height:1.35;white-space:nowrap;padding:2px 7px;border-radius:5px;color:var(--warn);background:rgba(var(--warn-rgb), .13);border:1px solid rgba(var(--warn-rgb), .3)}
+.mailv2 .mailcard .matmix{white-space:normal}
 /* Ярлики родини матеріалу над списком (власник 25.09.26). Колір символу —
    той самий, що в чіпі рядка; вибраний ярлик — заливка й рамка його кольору. */
 .mailv2 .famchips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}

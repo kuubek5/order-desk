@@ -70,6 +70,7 @@ from app.services.material_suggest import (
     best_material,
     canonical_material,
     canonical_suggestions,
+    letter_materials,
     row_label,
 )
 from app.material_catalog import load_alias_rows
@@ -384,6 +385,17 @@ def _row_badge(label: dict, old: dict | None) -> dict:
     }
 
 
+def _material_mix(found: list[str], badge: dict | None) -> dict | None:
+    """Для чіпа «+PMMA»: `all` — усі матеріали листа, `extra` — ті, яких не видно
+    в чіпі матеріалу цього ж рядка. Менше двох матеріалів — None."""
+    if not found:
+        return None
+    shown = {(badge or {}).get("symbol", "").lower()} | set(
+        ((badge or {}).get("color") or "").lower().split()
+    )
+    return {"all": found, "extra": [m for m in found if m.lower() not in shown] or found}
+
+
 _MAIL_VIEWS = ("pending", "filtered", "archive", "auto", "processed", "milled", "gone", "hold")
 # Вкладки папок скриньки: «оброблено» і «Відфрезеровано» (власник 25.09.26) —
 # однакові правила (сьогодні / усі в папці), різний фільтр за папкою.
@@ -620,6 +632,13 @@ def get_mail(
             # упізнано однозначно — поле картки заповниться саме.
             _email.material_known = bool(
                 best_material(db, _email.material_color_guess, _context)
+            )
+        # Кілька матеріалів в одному листі (власник 05.11.26): чіп показує один,
+        # поруч — решта. Лише «Вхідні»: там лист і чекає рішення.
+        if view == "pending":
+            _email.material_mix = _material_mix(
+                letter_materials(db, _email.material_color_guess, _context, alias_rows=_mat_aliases),
+                _email.mat_badge,
             )
     _mark_mail_days(emails)
     # How many pending letters are being held back from the frozen list.
@@ -1307,6 +1326,7 @@ def _mail_panel_context(
         "can_auto": can_edit(user, "mail-filters") and sender_key_for(email) is not None,
         "material_color": material_color,
         "opak_hint": letter_opak_hint(material_ctx),
+        "material_mix": letter_materials(db, email.material_color_guess, material_ctx),
         "kind": kind,
         "quantity": quantity,
         # Одиниці з назв STL: число, звідки воно (по квадрантах), чи поле зараз

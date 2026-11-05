@@ -41,7 +41,7 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
-from app.material_classifier import match_key, match_keys
+from app.material_classifier import classify_material, match_key, match_keys
 from app.material_match import _CYRILLIC_SHADE, _SHADE_RE, _concepts, _forms, _stem
 from app.material_match import _tokens as _mm_tokens
 from app.models import Material, Order
@@ -501,6 +501,62 @@ def row_label(session: Session, guess: str | None, context: str | None = None) -
     return {"badge": badge, "text": text}
 
 
+# Титанова основа під цирконієву коронку — не другий матеріал листа, а звичайна
+# гвинтова робота: її не фрезерують із диска.
+_TI_BASE_RE = re.compile(
+    r"ti[\s-]*base|ти[\s-]*база|\bна\s+тит\w*"
+    r"|тит\w*[\s-]*(?:основ|баз)\w*|(?:основ|баз)\w*\s+(?:з\s+)?тит\w*",
+    re.IGNORECASE,
+)
+# Прізвища й слова, що лише починаються як матеріал: «Воскобойник», «Цирконенко»,
+# «мономер». У чіпі першого слова вони не трапляються, а тут читаємо весь текст.
+_NOT_MATERIAL_WORD_RE = re.compile(
+    r"(?:енко|ейник|ойник|чук|щук|ський|ська|цький|цька|ович|евич|івна|овна)$|^мономер",
+    re.IGNORECASE,
+)
+
+
+def letter_materials(
+    session: Session, guess: str | None, context: str | None = None, *, alias_rows=None
+) -> list[str]:
+    """Різні матеріали, названі в одному листі: `["Zr", "PMMA"]` чи, всередині
+    родини, `["mono", "emo"]`. Менше двох — порожньо.
+
+    Чіп і поле картки беруть ОДИН матеріал — перший знайдений, тож лист «коронки
+    цирконій, тимчасові ПММА» читався як лише ПММА (власник 05.11.26: клієнти так
+    надсилають). Родину дає бібліотека матеріалів за кожним словом, бо `циркон` у
+    каноні цеху немає (там `mono`, `emo`), а лінію — канон. Лише попередження:
+    готовність листа не змінює, рішення за оператором."""
+    if alias_rows is None:
+        ensure_seeded(session)
+        alias_rows = load_alias_rows(session)
+    weight = _word_weights(session)
+    badge_of_word = {_word_of(e): e.badge for e in _latin_entries(session) if e.badge}
+    families: dict[str, None] = {}
+    lines: dict[str, None] = {}
+    text = _TI_BASE_RE.sub(" ", f"{guess or ''}\n{context or ''}")
+    for token in _mm_tokens(text):
+        if token.isdigit() or _SHADE_RE.match(token) or not any(ch.isalpha() for ch in token):
+            continue
+        if _NOT_MATERIAL_WORD_RE.search(token):
+            continue
+        name = classify_material(token, alias_rows)
+        family = _BADGE_BY_NAME.get(name or "")
+        key = match_key(token)
+        word = _match_word(key, weight, allow_short=False, fuzzy=True)
+        if word and len(word) <= _MIN_PREFIX_WORD and key != word and family is None:
+            word = None  # «тітка» — не `tit`: коротке слово канону підтверджує бібліотека
+        if word and badge_of_word.get(word):
+            family = family or badge_of_word[word]
+            if family == "Zr":
+                lines.setdefault(word)
+        if family:
+            families.setdefault(family)
+    if len(families) > 1:
+        return list(families)
+    return list(lines) if len(lines) > 1 else []
+
+
 def canonical_suggestions(
     session: Session,
     guess: str | None,
@@ -731,5 +787,6 @@ def explain_material(session: Session, guess: str | None, context: str | None = 
         "відтінки": wanted,
         "підказки": [s.text for s in canonical_suggestions(session, guess, context=context)],
         "поле_картки": best_material(session, guess, context),
+        "кілька_матеріалів": letter_materials(session, guess, context),
         "канон_слова": sorted(weight),
     }

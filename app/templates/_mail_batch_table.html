@@ -80,7 +80,7 @@
                            hx-include="closest .mb-row" hx-target="#bt-path-{{ e.id }}" hx-swap="innerHTML"
                            hx-trigger="change">
                 </label>
-                <label class="mb-f mb-f-wide"><span>Матеріал · колір</span>
+                <label class="mb-f mb-f-wide"><span>Матеріал · колір{% if r.material_mix %} <span class="matmix" title="Можливо, це кілька робіт — перевір текст листа й файли.">у листі: {{ r.material_mix|join(' + ') }}</span>{% endif %}</span>
                     <input type="text" name="material_color" class="suminput" value="{{ r.material_color }}"
                            placeholder="напр. емо а3.5"
                            hx-post="/mail/{{ e.id }}/wizard" hx-vals='{"step":"1","frag":"path"}'

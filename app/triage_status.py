@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from app.link_attachments import undownloaded_links
 
+_NOT_DOWNLOADED = "файли не скачано"
+
 
 def triage_readiness(email) -> dict:
     """Return {"state": ..., "missing": [labels]} for one triage letter.
@@ -22,6 +24,7 @@ def triage_readiness(email) -> dict:
                      Highest precedence.
       "incomplete" — a required field wasn't recognised; `missing` names it so
                      the badge can say «перевірити: матеріал».
+      "not_downloaded" — усе є, крім файлів: лист чекає на «Скачати».
       "ready"      — everything needed to accept in one click is present.
 
     Required field = material only. The client is effectively always known (the
@@ -41,6 +44,15 @@ def triage_readiness(email) -> dict:
         return {"state": "no_files", "missing": ["файли"]}
 
     missing: list[str] = []
+    # Файли листа ще не на диску, а рядків вкладень немає, тож перевірки нижче
+    # їх не бачать. Рядок показував «не скачано» і зелену галочку «можна приймати»
+    # одночасно (власник 05.11.26). Конвеєр такий лист і так не бере (`_conveyor_blocked`).
+    status = getattr(email, "attachments_status", None)
+    if status == "pending":
+        missing.append("файли ще качаються")
+    elif status == "skipped":
+        missing.append(_NOT_DOWNLOADED)
+
     # `material_known` ставить роутер списку, коли канон (`best_material`)
     # однозначно знайшов матеріал у темі чи тексті замовника — те саме, що
     # підставиться в поле картки. Без цього лист зі здогадом, записаним ДО
@@ -77,6 +89,8 @@ def triage_readiness(email) -> dict:
             return {"state": "dups", "missing": ["дублі файлів"]}
         missing.append("дублі файлів")
 
+    if missing == [_NOT_DOWNLOADED]:
+        return {"state": "not_downloaded", "missing": missing}
     return {"state": "ready" if not missing else "incomplete", "missing": missing}
 
 
