@@ -1386,9 +1386,65 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 
 /* Ярлики родин: щільніше, щоб чотири родини влазили в один ряд списку
    на 380px (1366 — «без матеріалу» перескакував у другий ряд). */
-.mailv2 .famchips{gap:5px;padding:8px 10px}
-.mailv2 .famchip{padding:3px 8px;gap:5px}
-.mailv2 .famchip-x{padding:0 6px}
+/* Фільтр матеріалу — смуга на всю ширину (власник 06.11.26, варіант E: ярлики
+   28 px і хрестик 19 px були замалі, а промах по хрестику давав протилежне —
+   «усі, крім Zr» замість «лише Zr»). Матеріали ділять ширину порівну. Не
+   вміщається — гортається вбік, а не стискає ціль. */
+.mailv2 .famchips{display:flex;flex-wrap:nowrap;gap:0;padding:0;overflow-x:auto;scrollbar-width:none;background:var(--bg-rail);border-bottom:1px solid var(--line-2)}
+.mailv2 .famchips::-webkit-scrollbar{display:none}
+.mailv2 .famchip-pair{flex:1 1 0;min-width:max-content;display:flex;align-items:stretch;border-left:1px solid var(--line-2)}
+.mailv2 .famchips .famchip,.mailv2 .famchips .famchip-x{height:44px;border:0;border-radius:0;background:none;align-items:center}
+.mailv2 .famchips>.famchip{--fam:var(--accent-b);flex:0 0 76px;justify-content:center;padding:0;font-size:var(--fs-3);font-weight:600}
+.mailv2 .famchip-pair .famchip{--fam:var(--ink-3);flex:1 1 auto;justify-content:center;gap:8px;padding:0 12px;font-size:var(--fs-3);font-weight:600;color:var(--ink)}
+.mailv2 .famchip-pair .famchip.mat-zr{--fam:var(--mat-zr)}
+.mailv2 .famchip-pair .famchip.mat-pmma{--fam:var(--mat-pmma)}
+.mailv2 .famchip-pair .famchip.mat-ti{--fam:var(--mat-ti)}
+.mailv2 .famchip-pair .famchip.mat-wax{--fam:var(--mat-wax)}
+.mailv2 .famchip-pair .famchip.mat-slm{--fam:var(--mat-slm)}
+.mailv2 .famchip-dot{flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:var(--fam)}
+.mailv2 .famchips .famchip b{font-size:var(--fs-3)}
+.mailv2 .famchips .famchip .famchip-n{font-size:var(--fs-1)}
+/* Повна назва з'являється на широкому списку й тоді замінює символ. */
+.mailv2 .famchip-name{display:none}
+.mailv2 .famchip.is-off .famchip-name{text-decoration:line-through}
+.mailv2 .famchips .famchip-x{flex:0 0 38px;justify-content:center;padding:0;color:var(--ink-3)}
+.mailv2 .famchip-x svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .famchips .famchip:hover,.mailv2 .famchips .famchip:focus-visible,.mailv2 .famchips .famchip-x:hover,.mailv2 .famchips .famchip-x:focus-visible{color:var(--ink);opacity:1}
+.mailv2 .famchips .famchip.is-on{background:color-mix(in srgb,var(--fam) 20%,transparent)}
+.mailv2 .famchip-pair.is-off .famchip-x{color:var(--ink)}
+/* Рух (власник 06.11.26): лише разовий і лише у відповідь на дію, петель у тріажі
+   не буває (CLAUDE.md §14). Наведення: заливка піднімається знизу кольором
+   матеріалу, крапка більшає, риска на оці домальовується. Вибрано: лінія
+   розходиться від центру, і відразу після кліку (.is-going), поки сервер відповідає. */
+.mailv2 .famchips .famchip,.mailv2 .famchips .famchip-x{position:relative;isolation:isolate;--fam-hover:var(--fam,var(--ink-3))}
+.mailv2 .famchips .famchip::before,.mailv2 .famchips .famchip-x::before{content:"";position:absolute;inset:0;z-index:-1;background:color-mix(in srgb,var(--fam-hover) 14%,transparent);transform:scaleY(0);transform-origin:50% 100%;transition:transform .16s cubic-bezier(.2,.8,.2,1)}
+.mailv2 .famchips .famchip:hover::before,.mailv2 .famchips .famchip:focus-visible::before,.mailv2 .famchips .famchip-x:hover::before,.mailv2 .famchips .famchip-x:focus-visible::before{transform:scaleY(1)}
+.mailv2 .famchips .famchip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--fam);transform:scaleX(0);transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.mailv2 .famchips .famchip.is-on::after,.mailv2 .famchips .famchip.is-going::after{transform:scaleX(1)}
+.mailv2 .famchips .famchip.is-on::after{animation:famchip-line .28s cubic-bezier(.2,.8,.2,1)}
+.mailv2 .famchip-dot{transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+.mailv2 .famchip:hover .famchip-dot,.mailv2 .famchip.is-going .famchip-dot{transform:scale(1.3)}
+.mailv2 .famchip:active .famchip-dot{transform:scale(.8)}
+.mailv2 .famchip.is-on .famchip-dot{animation:famchip-pop .32s cubic-bezier(.34,1.56,.64,1)}
+.mailv2 .famchip-x:hover .famchip-slash,.mailv2 .famchip-x:focus-visible .famchip-slash{stroke-dasharray:1;animation:famchip-slash .24s ease-out}
+.mailv2 .famchip-pair:has(.famchip-x.is-going) .famchip{opacity:.55;transition:opacity var(--ui-speed) ease}
+@keyframes famchip-line{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes famchip-pop{from{transform:scale(.4)}to{transform:scale(1)}}
+@keyframes famchip-slash{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){
+  .mailv2 .famchips .famchip::before,.mailv2 .famchips .famchip-x::before,.mailv2 .famchips .famchip::after,.mailv2 .famchip-dot{transition:none}
+  .mailv2 .famchips .famchip.is-on::after,.mailv2 .famchip.is-on .famchip-dot,.mailv2 .famchip-x:hover .famchip-slash,.mailv2 .famchip-x:focus-visible .famchip-slash{animation:none}
+  .mailv2 .famchip:hover .famchip-dot,.mailv2 .famchip.is-going .famchip-dot,.mailv2 .famchip:active .famchip-dot{transform:none}
+}
+@container maillist (min-width: 600px){
+  .mailv2 .famchip-name{display:inline}
+  .mailv2 .famchip-name + b{display:none}
+}
+@container maillist (max-width: 599px){
+  .mailv2 .famchips>.famchip{flex-basis:56px}
+  .mailv2 .famchip-pair .famchip{padding:0 8px}
+  .mailv2 .famchips .famchip-x{flex-basis:32px}
+}
 
 /* ── Панель списку (власник 29.09.26, варіант A) ─────────────────────────────
    Вибір | фільтр матеріалу | «N листів» — одна смуга на власному тлі з лінією
@@ -1399,22 +1455,11 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    список є flex-колонкою фіксованої висоти й інакше стискав смугу до 48px,
    і другий рядок (фільтр на вузькому списку) налазив на листи. */
 .mailv2 .mail-batchbar{flex:0 0 auto;flex-wrap:wrap;row-gap:8px;column-gap:12px;min-height:48px;padding:7px 14px;background:var(--card-2);border-bottom:1px solid var(--line-2)}
-.mailv2 .mb-sep{flex:0 0 1px;align-self:center;height:18px;background:var(--line-2)}
-.mailv2 .mail-batchbar .famchips{flex:0 1 auto;min-width:0;display:inline-flex;flex-wrap:nowrap;gap:0;padding:0;border:1px solid var(--line-2);border-radius:8px;background:var(--bg-rail);overflow-x:auto;scrollbar-width:none}
-.mailv2 .mail-batchbar .famchips::-webkit-scrollbar{display:none}
-.mailv2 .mail-batchbar .famchips>.famchip,.mailv2 .mail-batchbar .famchip-pair{flex:0 0 auto;border-right:1px solid var(--line-2)}
-.mailv2 .mail-batchbar .famchips>:last-child{border-right:0}
-.mailv2 .mail-batchbar .famchip,.mailv2 .mail-batchbar .famchip-x{height:28px;border:0;border-radius:0;background:none;align-items:center}
-.mailv2 .mail-batchbar .famchip{padding:0 10px}
-.mailv2 .mail-batchbar .famchip-x{padding:0 8px 0 2px}
-.mailv2 .mail-batchbar .famchip:hover,.mailv2 .mail-batchbar .famchip-x:hover{background:color-mix(in srgb,var(--ink) 5%,transparent)}
-.mailv2 .mail-batchbar .famchip.is-on{background:color-mix(in srgb,var(--accent-b) 16%,transparent)}
-.mailv2 .mail-batchbar .famchip.is-on.mat-zr{background:color-mix(in srgb,var(--mat-zr) 16%,transparent)}
-.mailv2 .mail-batchbar .famchip.is-on.mat-pmma{background:color-mix(in srgb,var(--mat-pmma) 16%,transparent)}
-.mailv2 .mail-batchbar .famchip.is-on.mat-ti{background:color-mix(in srgb,var(--mat-ti) 16%,transparent)}
-.mailv2 .mail-batchbar .famchip.is-on.mat-wax{background:color-mix(in srgb,var(--mat-wax) 16%,transparent)}
-.mailv2 .mail-batchbar .famchip.is-on.mat-slm{background:color-mix(in srgb,var(--mat-slm) 16%,transparent)}
-.mailv2 .mail-batchbar .famchip-pair:has(.famchip.is-on) .famchip-x{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+/* Фільтр — другим рядком смуги, край у край: 28px = бічні відступи смуги. */
+.mailv2 .mail-batchbar.has-fam{row-gap:3px;padding-top:3px;padding-bottom:0}
+/* 34px = висота кнопок дій: без цього вибір листа смикав смугу й список на 2px. */
+.mailv2 .mail-batchbar.has-fam .mb-selall{min-height:34px}
+.mailv2 .mail-batchbar .famchips{order:10;flex:0 0 calc(100% + 28px);margin:0 -14px;border-top:1px solid var(--line-2);border-bottom:0}
 .mailv2 .mb-total{margin-left:auto;flex:0 0 auto;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap}
 .mailv2 .mail-batchbar.has-sel .mb-total{display:none}
 /* Лічильник вибору стискається (трикрапка), а не виштовхує кнопки дій у
@@ -1425,12 +1470,6 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
    «Перемістити / Відхилити» при виборі листа робила його вищим, і список під
    смугою смикався на 13px. */
 .mailv2 .mail-batchbar .mb-selall{min-height:32px}
-/* Вузький список (пів екрана, двопанельна пошта): фільтр — другим рядком тієї ж
-   смуги на всю ширину; не вміщається й там — гортається вбік, без переносу. */
-@container maillist (max-width: 599px){
-  .mailv2 .mb-sep{display:none}
-  .mailv2 .mail-batchbar .famchips{order:10;flex:1 1 100%}
-}
 
 /* ── Роздільник дня й край матеріалу в списку (власник 29.09.26) ───────────── */
 .mailv2 .mail-day{display:flex;align-items:center;gap:8px;padding:12px 16px 5px;font-size:var(--fs-0);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}

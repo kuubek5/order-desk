@@ -546,6 +546,19 @@ syncMailCardOpen();
 document.addEventListener("htmx:afterSwap", syncMailCardOpen);
 
 let mailRowOpenedAt = 0;
+// Фільтр матеріалу веде на нову сторінку, а сервер відповідає не миттєво: кнопка
+// відгукується одразу. Перехід «Назад» повертає сторінку з кешу разом із цим класом,
+// тому pageshow його знімає.
+document.addEventListener("click", (event) => {
+  const link = event.target.closest(".famchips a");
+  if (!link || event.defaultPrevented || event.button !== 0) return;
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  link.classList.add("is-going");
+});
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  document.querySelectorAll(".famchips a.is-going").forEach((link) => link.classList.remove("is-going"));
+});
 document.addEventListener("click", (event) => {
   if (event.target.closest(".mailrow") && !event.target.closest(".mailcb-wrap")) {
     mailRowOpenedAt = Date.now();

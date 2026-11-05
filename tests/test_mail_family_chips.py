@@ -159,3 +159,28 @@ def test_return_url_keeps_family():
     assert _mail_back_url(several) == "/mail?fam=zr,pmma"
     except_ = SimpleNamespace(headers={"HX-Current-URL": "http://x/mail?fam=-pmma"})
     assert _mail_back_url(except_) == "/mail?fam=-pmma"
+
+
+def test_filter_band_markup(app_db):  # noqa: F811
+    """Смуга фільтра: повна назва поруч із символом, дія «сховати» — око, не хрестик."""
+    app, factory = app_db
+    _seed(factory)
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+
+    _, _, page = client.get("/mail")
+    bar = page.split('id="mail-batchbar"', 1)[0].rsplit("<div", 1)[1]
+    assert "has-fam" in bar, "смуга знає про другий рядок: без цього відступи не ті"
+    assert '<span class="famchip-name">Цирконій</span><b>Zr</b>' in page
+    assert '<span class="famchip-name">ПММА</span><b>PMMA</b>' in page
+    nav = page.split('class="famchips"', 1)[1].split("</nav>", 1)[0]
+    assert "✕" not in nav and "↺" not in nav
+    assert 'aria-label="Сховати PMMA"' in nav
+    assert 'class="famchip-slash"' in nav, "рискою рухається hover: без класу ефект мовчки зникне"
+
+    # Прихований матеріал пропонує повернення іншим значком.
+    _, _, page = client.get("/mail?fam=-pmma")
+    nav = page.split('class="famchips"', 1)[1].split("</nav>", 1)[0]
+    assert 'aria-label="Повернути PMMA"' in nav
+    assert '<circle cx="12" cy="12" r="3"/>' in nav
+

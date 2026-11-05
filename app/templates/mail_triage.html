@@ -200,11 +200,11 @@
                     <a href="{{ _fam_base }}{% if chip.toggle %}&amp;fam={{ chip.toggle }}{% endif %}"
                        class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}{% if chip.off %} is-off{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
                        title="{% if chip.on %}Прибрати {{ chip.label }} з вибраних{% elif fam and not chip.off and family_chips|selectattr('on')|list %}Додати {{ chip.label }} до вибраних{% else %}Лише {{ chip.label }}{% endif %}">
-                        <b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
+                        <i class="famchip-dot" aria-hidden="true"></i>{% if chip.name %}<span class="famchip-name">{{ chip.name }}</span>{% endif %}<b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
                     </a>
                     <a href="{{ _fam_base }}{% if chip.drop %}&amp;fam={{ chip.drop }}{% endif %}"
                        class="famchip-x" aria-label="{% if chip.off %}Повернути{% else %}Сховати{% endif %} {{ chip.label }}"
-                       title="{% if chip.off %}Повернути {{ chip.label }} у список{% else %}Усі, крім {{ chip.label }}{% endif %}">{% if chip.off %}↺{% else %}✕{% endif %}</a>
+                       title="{% if chip.off %}Повернути {{ chip.label }} у список{% else %}Усі, крім {{ chip.label }}{% endif %}">{% if chip.off %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="3"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path class="famchip-slash" pathLength="1" d="M3 3l18 18"/><path d="M10.6 5.2A9.9 9.9 0 0 1 12 5c6 0 9.5 7 9.5 7a15 15 0 0 1-3 3.8M6.5 7.2C3.9 9 2.5 12 2.5 12S6 19 12 19a9.6 9.6 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>{% endif %}</a>
                 </span>
                 {% endfor %}
             </nav>
@@ -222,17 +222,15 @@
                Кнопки — одна форма `/mail/bulk`; id обраних підставляє mail.js на
                submit. Конвеєр (`data-conveyor`) — лише «Вхідні». #}
             {% if view != 'auto' %}
-            <div class="mail-batchbar" id="mail-batchbar"{% if view == 'pending' %} data-conveyor="1"{% endif %}>
+            <div class="mail-batchbar{% if family_chips %} has-fam{% endif %}" id="mail-batchbar"{% if view == 'pending' %} data-conveyor="1"{% endif %}>
                 <label class="mb-selall">
                     <input type="checkbox" id="mail-select-all" aria-label="Обрати всі">
                     <span>Обрати всі</span>
                 </label>
-                {# Панель списку (власник 29.09.26, варіант A): вибір | фільтр
-                   матеріалу | «N листів» — одна смуга, відділена від листів. На
-                   вузькому списку фільтр іде другим рядком тієї ж смуги
-                   (@container maillist у v2a_mail.css). #}
+                {# Панель списку: вибір і «N листів» першим рядком, фільтр матеріалу
+                   другим, на всю ширину (власник 06.11.26: ярлики були замалі, важко
+                   влучити). Порядок задає CSS, тому розмітка лишилась на місці. #}
                 {% if family_chips %}
-                <span class="mb-sep" aria-hidden="true"></span>
                 {{ famchips_nav() }}
                 {% endif %}
                 <span class="mb-selcount" id="mail-sel-count" hidden></span>
