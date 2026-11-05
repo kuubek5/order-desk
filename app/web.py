@@ -1103,14 +1103,16 @@ def _folder_binding_worker(stop_event: Event) -> None:
 
 
 STL_HEIGHT_INITIAL_DELAY_SECONDS = 60.0
-STL_HEIGHT_INTERVAL_SECONDS = 180.0
+# Прохід займає ~0,6 с у власному потоці (лог цеху 05.11.26), а до бейджа технік
+# чекав до 3 хв: майже вся затримка була саме в цій паузі.
+STL_HEIGHT_INTERVAL_SECONDS = 30.0
 
 
 def _stl_height_worker(stop_event: Event) -> None:
     """Висота конструкції з STL для чіпа черги (ідея №29, власник 03.11.26,
-    `app/services/stl_height.py`). Раз на 3 хв: лише свіжі роботи з цирконію/
-    ПММА до фрезерування і лише ті, чиї файли змінились (відбиток), тож шару
-    між проходами майже не чіпаємо."""
+    `app/services/stl_height.py`). Раз на 30 с: лише свіжі роботи з цирконію/
+    ПММА до фрезерування і лише ті, чиї файли змінились (відбиток), тож самі
+    STL читаємо рідко, а за кожен прохід лише переглядаємо теки."""
     from app.services.stl_height import measure_pending
     from app.settings_store import get_technician_files_path
 

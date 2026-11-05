@@ -24,12 +24,21 @@ tooth thickness: 15.02» = 12.015 мм × 1.25. exocad експортує STL у
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import struct
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path, PurePath
 
+from app import log_throttle
+
 logger = logging.getLogger(__name__)
+
+# Файл молодший за це ще можуть копіювати. STL по мережі цеху копіюється за
+# секунди, а прохід іде раз на 30 с: пропуск додає затримку лише на один прохід.
+SETTLE_SECONDS = 10.0
+_SIGNATURE_MAX = 480  # колонка 500, ще «mixed:» попереду
 
 # Коефіцієнт спікання за родиною матеріалу (`Material.name`). Родини поза
 # переліком підказки не мають: титан фрезерують із заготовки, СЛМ друкують.
@@ -87,14 +96,38 @@ class FolderHeight:
 
 
 def folder_signature(stls: list[Path]) -> str:
-    """Відбиток набору файлів (імена й розміри): змінився — міряти заново."""
+    """Відбиток набору файлів (імена, розміри, час зміни): змінився — міряти заново.
+
+    Час — бо Windows може виділити файлу кінцевий розмір ще на початку копіювання:
+    за самим розміром недокопійований і докопійований файл однакові, і неправильна
+    висота лишалась би назавжди. Довгий відбиток не обрізається наосліп: без хешу
+    зміна файлу за межею 500 символів лишалась би непоміченою."""
     parts = []
     for path in sorted(stls, key=lambda p: p.name.lower()):
         try:
-            parts.append(f"{path.name.lower()}:{path.stat().st_size}")
+            stat = path.stat()
+            parts.append(f"{path.name.lower()}:{stat.st_size}:{int(stat.st_mtime)}")
         except OSError:
             parts.append(f"{path.name.lower()}:?")
-    return "|".join(parts)[:500]
+    text = "|".join(parts)
+    if len(text) <= _SIGNATURE_MAX:
+        return text
+    return f"{text[:_SIGNATURE_MAX - 41]}#{hashlib.sha1(text.encode('utf-8')).hexdigest()}"
+
+
+def still_settling(stls: list[Path], now: datetime) -> bool:
+    """Чи є файл, створений чи змінений менше ніж `SETTLE_SECONDS` тому: його ще
+    можуть копіювати, тож міряє наступний прохід. Час із майбутнього (годинник
+    шари спішить) затримкою не вважаємо, інакше мірка стояла б, доки не наздожене."""
+    moment = now.timestamp()
+    for path in stls:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if 0 <= moment - max(stat.st_mtime, stat.st_ctime) < SETTLE_SECONDS:
+            return True
+    return False
 
 
 def rotated_stls(folder: Path) -> list[Path]:
@@ -111,7 +144,12 @@ def rotated_stls(folder: Path) -> list[Path]:
                     if sub.is_file() and is_rotated_export(sub.name)
                 )
     except OSError as exc:
-        logger.info("Висота STL: тека %s недоступна: %s", folder, exc)
+        # Через глушник: прохід раз на 30 с по всіх свіжих роботах, і недоступна
+        # шара інакше писала б рядок на кожну теку щотіку.
+        skipped = log_throttle.due("stl_height.folder_unavailable")
+        if skipped is not None:
+            logger.info("Висота STL: тека %s недоступна: %s (ще %d подібних відтоді)",
+                        folder, exc, skipped)
     return found
 
 
@@ -155,13 +193,12 @@ def measure_pending(db, tech_root: str | None, export_root: Path | None, *, now=
     Тека, спільна для робіт РІЗНИХ родин (технік поклав у один «Номер роботи»
     титановий абатмент і цирконієві коронки), не дає підказки нікому з них:
     найвищий STL там може бути чужий."""
-    from datetime import datetime, timedelta
-
     from sqlalchemy import select
 
     from app.models import Material, Order
 
-    since = (now or datetime.now()) - timedelta(days=RECENT_DAYS)
+    moment = now or datetime.now()
+    since = moment - timedelta(days=RECENT_DAYS)
     # Усі родини, не лише ті, що міряємо: інакше титан у спільній теці
     # відсіявся б запитом, і цирконій отримав би висоту його абатмента.
     rows = db.execute(
@@ -186,6 +223,8 @@ def measure_pending(db, tech_root: str | None, export_root: Path | None, *, now=
         if not works:
             continue
         stls = rotated_stls(folder)
+        if still_settling(stls, moment):
+            continue
         signature = folder_signature(stls)
         families = {family for _order, family in everyone}
         if len(families) > 1:

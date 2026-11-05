@@ -5,7 +5,9 @@
 будови, щоб тест не залежав від файлів цеху.
 """
 
+import os
 import struct
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,11 @@ def _binary_stl(path: Path, zs: list[float]) -> Path:
         facets.append(struct.pack("<12fH", 0, 0, 1, 0, 0, a, 1, 0, b, 0, 1, c, 0))
     path.write_bytes(b"\0" * 80 + struct.pack("<I", len(facets)) + b"".join(facets))
     return path
+
+
+def _fresh_pass_time() -> datetime:
+    """Момент проходу, коли щойно створені файли тесту вже «відстоялись»."""
+    return datetime.now() + timedelta(seconds=stl_height.SETTLE_SECONDS + 5)
 
 
 def _ascii_stl(path: Path, zs: list[float]) -> Path:
@@ -90,8 +97,6 @@ def test_signature_changes_when_files_change(tmp_path):
 
 # ── Прохід по роботах ────────────────────────────────────────────────────────
 
-from datetime import datetime  # noqa: E402
-
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.material_catalog import ensure_seeded, material_id_by_name  # noqa: E402
@@ -127,21 +132,89 @@ def test_pass_measures_lab_and_mail_works_and_skips_unchanged(tmp_path):
         db.commit()
 
         # Титан у тій самій теці — мірку не дає нікому (найвищий STL може бути чужий).
-        assert stl_height.measure_pending(db, str(tech), export) == 2  # лаба (без висоти) + пошта
+        later = _fresh_pass_time()
+        assert stl_height.measure_pending(db, str(tech), export, now=later) == 2  # лаба (без висоти) + пошта
         assert lab.stl_height_mm is None and titan.stl_height_sig is None
         assert mail.stl_height_mm == pytest.approx(9.884, abs=1e-3)
         assert stl_height.chip_for(mail)["text"] == "9,9"
 
         db.delete(titan)
         db.commit()
-        assert stl_height.measure_pending(db, str(tech), export) == 1
+        assert stl_height.measure_pending(db, str(tech), export, now=later) == 1
         assert lab.stl_height_mm == pytest.approx(12.015, abs=1e-3)
         chip = stl_height.chip_for(lab)
         assert chip["text"] == "15,0"
         assert "× 1.25" in chip["title"]
 
         # Ті самі файли — повторно не міряємо.
-        assert stl_height.measure_pending(db, str(tech), export) == 0
+        assert stl_height.measure_pending(db, str(tech), export, now=later) == 0
+
+
+def _job(tmp_path, zs):
+    folder = tmp_path / "tech" / "J1"
+    folder.mkdir(parents=True, exist_ok=True)
+    return _binary_stl(folder / "J1-11-crown_cad.stl", zs)
+
+
+def test_file_still_being_copied_waits_for_the_next_pass(tmp_path):
+    stl = _job(tmp_path, [0.0, 8.0, 1.0])
+    engine = make_memory_engine()
+    with Session(engine, expire_on_commit=False) as db:
+        ensure_seeded(db)
+        order = _order(db, material_id_by_name(db), "Цирконій", job_code="J1")
+        db.commit()
+        tech = str(tmp_path / "tech")
+
+        # Щойно лягло: не міряємо і відбиток не пишемо, інакше наступний прохід
+        # вирішив би, що міряти вже нічого.
+        just_after = datetime.fromtimestamp(stl.stat().st_mtime) + timedelta(seconds=1)
+        assert stl_height.measure_pending(db, tech, None, now=just_after) == 0
+        assert order.stl_height_mm is None and order.stl_height_sig is None
+
+        assert stl_height.measure_pending(db, tech, None, now=_fresh_pass_time()) == 1
+        assert order.stl_height_mm == pytest.approx(8.0)
+
+
+def test_same_size_rewritten_file_is_measured_again(tmp_path):
+    """Windows може виділити кінцевий розмір ще на початку копіювання: розмір той
+    самий, а вміст інший. Лише за розміром неправильна висота лишалась назавжди."""
+    stl = _job(tmp_path, [0.0, 3.0, 1.0])
+    engine = make_memory_engine()
+    with Session(engine, expire_on_commit=False) as db:
+        ensure_seeded(db)
+        order = _order(db, material_id_by_name(db), "Цирконій", job_code="J1")
+        db.commit()
+        tech = str(tmp_path / "tech")
+        size = stl.stat().st_size
+
+        assert stl_height.measure_pending(db, tech, None, now=_fresh_pass_time()) == 1
+        assert order.stl_height_mm == pytest.approx(3.0)
+
+        _binary_stl(stl, [0.0, 9.5, 1.0])
+        assert stl.stat().st_size == size
+        stamp = stl.stat().st_mtime + 120
+        os.utime(stl, (stamp, stamp))
+        later = datetime.fromtimestamp(stamp) + timedelta(seconds=30)
+        assert stl_height.measure_pending(db, tech, None, now=later) == 1
+        assert order.stl_height_mm == pytest.approx(9.5)
+
+
+def test_share_clock_ahead_does_not_hold_measuring(tmp_path):
+    """Годинник шари спішить: «час з майбутнього» не означає, що файл копіюють."""
+    stl = _job(tmp_path, [0.0, 8.0, 1.0])
+    ahead = stl.stat().st_mtime + 3600
+    os.utime(stl, (ahead, ahead))
+    now = datetime.fromtimestamp(stl.stat().st_ctime) + timedelta(seconds=30)
+    assert stl_height.still_settling([stl], now) is False
+
+
+def test_long_signature_still_sees_a_change_past_the_limit(tmp_path):
+    stls = [_binary_stl(tmp_path / (f"{i:02d}-" + "x" * 60 + "_cad.stl"), [0.0, 1.0, 2.0]) for i in range(12)]
+    first = stl_height.folder_signature(stls)
+    assert len(first) <= 480
+    stamp = stls[-1].stat().st_mtime + 120
+    os.utime(stls[-1], (stamp, stamp))
+    assert stl_height.folder_signature(stls) != first
 
 
 def test_pass_skips_issued_and_other_families(tmp_path):
