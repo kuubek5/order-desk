@@ -8,12 +8,14 @@ Sum3D ID. На папері це маркер; тут — персональна
 так само, як `log_action` (app/services/undo.py).
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Order, OrderFocus, User
+from app.business_day import utc_now
+from app.models import Order, OrderFocus, StatusEvent, User
+from app.statuses import STATUS_ACCEPTED, STATUS_CALCULATED
 
 
 def toggle(db: Session, order: Order, user: User, *, now: datetime | None = None) -> bool:
@@ -33,6 +35,36 @@ def toggle(db: Session, order: Order, user: User, *, now: datetime | None = None
 
     db.add(OrderFocus(order_id=order.id, user_id=user.id, created_at=now or datetime.now()))
     return True
+
+
+#: Скільки тримати підсвітку щойно взятої роботи (власник 05.11.26: «хвилину чи дві»).
+TAKEN_HIGHLIGHT_SECONDS = 120
+#: Скільки останніх подій дивитись. Нові події мають більші id, тож запит читає базу
+#: з кінця й зупиняється, а не проходить усю історію на кожне оновлення екрана.
+_TAKEN_SCAN_LIMIT = 200
+
+
+def recently_taken_ids(db: Session, now: datetime | None = None) -> set[int]:
+    """Роботи, які оператор щойно взяв: прийняв лист або вписав Sum3D ID.
+
+    Щоб очима швидко знайти останню прораховану роботу. Не персональна: двоє
+    операторів шукають те саме. Лише дії людини: синк, що побачив рядок із готовим
+    Sum3D, міг би підсвітити одразу цілу вкладку. Подія з поясненням (`note`) — це
+    скасування чи відкат, а не взяття в роботу.
+    """
+    rows = db.execute(
+        select(StatusEvent.order_id, StatusEvent.occurred_at)
+        .where(
+            StatusEvent.status.in_((STATUS_ACCEPTED, STATUS_CALCULATED)),
+            StatusEvent.note.is_(None),
+            StatusEvent.operator_id.is_not(None),
+        )
+        .order_by(StatusEvent.id.desc())
+        .limit(_TAKEN_SCAN_LIMIT)
+    ).all()
+    # occurred_at у базі в UTC (server_default): порівнювати лише з utc_now().
+    since = (now or utc_now()) - timedelta(seconds=TAKEN_HIGHLIGHT_SECONDS)
+    return {order_id for order_id, occurred_at in rows if occurred_at >= since}
 
 
 def focused_ids(db: Session, user: User | None) -> set[int]:

@@ -332,12 +332,60 @@ def test_js_dock_height_limits_match_the_server():
 def test_dock_markup_only_offers_values_the_server_accepts():
     html = Path("app/templates/_mail_dock_controls.html").read_text(encoding="utf-8")
     scopes = set(re.findall(r'data-dock-scope="([a-z]+)"', html))
-    assert scopes == {"mail", "lab", "labonly", "all"}
+    # «+ Лабораторія» і «Не готово» прибрано (власник 05.11.26: забагато фільтрів).
+    assert scopes == {"mail", "labonly", "all"}
     assert scopes <= set(look_prefs.MAIL_DOCK_SCOPES)
     readies = set(re.findall(r'data-dock-ready="([a-z_]+)"', html))
-    assert readies == set(READY_FILTERS), "усі чотири фільтри готовності, і жодного зайвого"
+    assert readies == {"can_take", "in_work", "all"}
+    assert readies <= set(READY_FILTERS)
     # Канон має ВЛАСНЕ слово на дроті — порожнього значення в розмітці нема.
     assert 'data-dock-scope=""' not in html
+
+
+def test_migration_moves_retired_choices_to_what_hides_nothing():
+    """Без неї вибір лишався б без підсвіченої кнопки, і вийти з нього було б важко."""
+    import importlib.util
+
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    path = Path("migrations/versions/0096_mail_dock_retired_filters.py")
+    spec = importlib.util.spec_from_file_location("m0096", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    engine = sa.create_engine("sqlite://", poolclass=sa.pool.StaticPool)
+    with engine.begin() as conn:
+        conn.execute(sa.text("create table users (id integer primary key, mail_dock_scope text, mail_dock_ready text)"))
+        conn.execute(sa.text(
+            "insert into users values (1,'lab','not_ready'),(2,'labonly','in_work'),(3,'','')"
+        ))
+        with Operations.context(MigrationContext.configure(conn)):
+            module.upgrade()
+            module.upgrade()  # повторний запуск нічого не псує
+        rows = conn.execute(sa.text("select mail_dock_scope, mail_dock_ready from users order by id")).all()
+    assert [tuple(r) for r in rows] == [("all", "all"), ("labonly", "in_work"), ("", "")]
+
+
+def test_rendered_dock_has_no_retired_filters(app_db):
+    app, session_factory = app_db
+    with session_factory() as db:
+        _seed_day(db)
+        user = db.query(User).filter_by(username=OPERATOR[0]).one()
+        user.mail_dock_scope = "labonly"
+        db.commit()
+    client = _login(app)
+    _, _, html = client.get("/mail/queue-mirror")
+    assert "+ Лабораторія" not in html and "Не готово" not in html
+    assert 'data-dock-scope="labonly"' in html and 'data-dock-ready="in_work"' in html
+    # Неготові рядки не зникли: вони у «Усі».
+    with session_factory() as db:
+        user = db.query(User).filter_by(username=OPERATOR[0]).one()
+        user.mail_dock_ready = "all"
+        db.commit()
+    _, _, html = client.get("/mail/queue-mirror")
+    assert "L-не-готово" in html
 
 
 # ── 7. Рендер через справжній застосунок ────────────────────────────────────

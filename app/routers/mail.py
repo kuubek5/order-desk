@@ -143,6 +143,8 @@ from app.services.mail_accept import (
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
 from app.services.mail_rework import accept_rework, rework_form, rework_order_ids
 from app.services import mail_auto_backfill
+from app.services.focus import recently_taken_ids
+from app.services.stl_height import letter_chip
 from app.services.stl_units import count_units, is_model_file, letter_quantity, teeth_in_filename
 from app.services.sheet_writeback import write_sheet_fields
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary
@@ -640,6 +642,13 @@ def get_mail(
                 letter_materials(db, _email.material_color_guess, _context, alias_rows=_mat_aliases),
                 _email.mat_badge,
             )
+            # Лише скачані файли: недокачаний STL дав би хибну цифру.
+            if _email.attachments_status == "ready":
+                _email.stl_chip = letter_chip(
+                    _email.attachments,
+                    (_email.mat_badge or {}).get("symbol"),
+                    mixed=_email.material_mix is not None,
+                )
     _mark_mail_days(emails)
     # How many pending letters are being held back from the frozen list.
     held_back_count = 0
@@ -895,6 +904,7 @@ def get_mail(
             # пришпилені лаби нагору (`dock.focus_rank`): підсвітка й порядок
             # рахуються з одного словника, як у черзі (queue_view).
             "focused_ids": set(dock.focus_rank),
+            "taken_ids": recently_taken_ids(db),
         },
     )
 
@@ -975,6 +985,7 @@ def get_mail_queue_mirror(
             "statuses": STATUSES,
             # Той самий словник, за яким док підняв пришпилені лаби (див. get_mail).
             "focused_ids": set(dock.focus_rank),
+            "taken_ids": recently_taken_ids(db),
         },
     )
     if pick == "1":

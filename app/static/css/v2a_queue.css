@@ -1180,6 +1180,18 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 table.qtable tbody tr.queue-row-focus:not(.queue-row-changed):not(.queue-row-changed-taken):not(.queue-row-overdue):not(.queue-row-rework):not(.queue-row-email):not(.queue-row-client):hover > td{
   background:linear-gradient(rgba(var(--accent-base-rgb), .14), rgba(var(--accent-base-rgb), .14));
 }
+/* Щойно взята робота (власник 05.11.26): дві хвилини окремим кольором, щоб очима
+   знайти останню прораховану. Шар поверх рядка, як у «моїх зараз», а не заливка
+   комірок: фон лишається станом, край матеріалом, і сигнал не став сьомою заливкою.
+   Стоїть нижче за контур «моїх зараз»: на рядку з обома важливіший короткий сигнал.
+   Без руху: це довідка на дві хвилини, а не тривога. */
+.q2 table.qtable tbody tr.queue-row-taken{position:relative}
+.q2 table.qtable tbody tr.queue-row-taken::after{
+  content:"";position:absolute;left:0;right:0;top:0;bottom:-1px;
+  pointer-events:none;z-index:var(--z-base);
+  border:2px solid rgb(var(--row-taken-rgb));
+  background:rgba(var(--row-taken-rgb), .16);
+}
 /* «Зняти всі» живе в тому ж сегменті, що й фільтр, але це дія, а не вигляд —
    тому тиха, з попередженням у підтвердженні. */
 .q2 .seg .seg-drop{
@@ -1444,12 +1456,12 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
    приглушений — головним у комірці лишаються матеріал і колір. Без акценту й
    без руху: це довідка для вибору диска, а не стан роботи (стани — фон рядка). */
 .q2 .material-cell .stl-thick{display:inline-flex;align-items:center;gap:3px;margin-left:6px;vertical-align:middle;font-size:var(--fs-0);line-height:16px;color:var(--ink-3);white-space:nowrap}
-.q2 .material-cell .stl-thick svg{width:20px;height:16px;flex:0 0 auto;overflow:visible}
-.q2 .material-cell .stl-thick .b{fill:var(--card-2);stroke:var(--line-2)}
-.q2 .material-cell .stl-thick .w{stroke:var(--line-2);fill:none}
-.q2 .material-cell .stl-thick .f{fill:color-mix(in srgb,var(--ink-3) 30%,transparent)}
-.q2 .material-cell .stl-thick .l{fill:color-mix(in srgb,var(--ink-3) 45%,transparent);stroke:var(--ink-3);stroke-width:.8}
-.q2 .material-cell .stl-thick .t{fill:none;stroke:var(--ink-3);stroke-width:.7;stroke-dasharray:1.6 1.6;opacity:.7}
+.stl-thick svg{width:20px;height:16px;flex:0 0 auto;overflow:visible}
+.stl-thick .b{fill:var(--card-2);stroke:var(--line-2)}
+.stl-thick .w{stroke:var(--line-2);fill:none}
+.stl-thick .f{fill:color-mix(in srgb,var(--ink-3) 30%,transparent)}
+.stl-thick .l{fill:color-mix(in srgb,var(--ink-3) 45%,transparent);stroke:var(--ink-3);stroke-width:.8}
+.stl-thick .t{fill:none;stroke:var(--ink-3);stroke-width:.7;stroke-dasharray:1.6 1.6;opacity:.7}
 /* Вузький екран (≤1400px, колонка матеріалу 120px): бейдж ховається — рядок не
    вищає (власник 03.11.26). Переносити не можна: td тут nowrap, і вміст поза td
    малювався б поверх «Виду роботи» (та сама пастка, що з .oid, CLAUDE.md §14). */

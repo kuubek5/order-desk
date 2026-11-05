@@ -138,6 +138,9 @@
                    щоб ділити з темою ту саму колонку й трикрапку. #}
                 {% set _snip = letter_snippet(email.body_text, subj) %}
                 <span class="subj">{% if subj|lower in ('fwd:', 're:', 'fw:', 'fwd', 're', '') %}Без теми{% else %}{{ subj }}{% endif %}{% if _snip %}<span class="subj-snip"> — {{ _snip }}</span>{% endif %}</span>
+                {# Товщина з файлів листа (власник 05.11.26). Комірка є й порожня: без
+                   неї стовпчик цифр зсувався б від рядка до рядка. #}
+                {% if view == 'pending' %}<span class="mail-thick-slot">{% if email.stl_chip %}{% set _thick = email.stl_chip %}{% include "_stl_thick.html" %}{% endif %}</span>{% endif %}
                 {# Рахуємо файли НА ДИСКУ, а не рядки в базі: це той самий обман,
                    від якого вже полагодили панель. «3 з 5» аварійним кольором
                    каже правду там, де оператор веде очима. #}

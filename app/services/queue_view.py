@@ -50,7 +50,7 @@ from app.queue_filters import (
 from app.services.config_state import (
     sheets_configured,
 )
-from app.services.focus import count as focus_count, ranks as focus_ranks
+from app.services.focus import count as focus_count, ranks as focus_ranks, recently_taken_ids
 from app.services.furnace import (
     all_idle as furnaces_all_idle,
     configured_targets as furnace_targets,
@@ -595,6 +595,8 @@ def build_queue_view(
             # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
             # словник: якби полл рахував інакше, мітки зникали б кожні 15с.
             "focused_ids": my_focus,
+            # Щойно взяті роботи: та сама вимога, інакше підсвітка зникала б на полі.
+            "taken_ids": recently_taken_ids(db),
             # Що ЗАРАЗ фрезерується (Sum3D ID → верстат+відсоток). Мусить бути
             # в ОБОХ гілках — сторінці й partial=rows, — інакше підсвітка
             # зникала б на першому тіку полла (той самий урок, що focused_ids).

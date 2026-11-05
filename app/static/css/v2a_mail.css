@@ -708,6 +708,20 @@ body.is-look-splitting{cursor:col-resize;user-select:none}
   .mailv2 .mailrow .subj-snip{display:inline}
 }
 
+/* Товщина з файлів листа (власник 05.11.26, варіант B): окрема колонка перед
+   «N файл.», тож цифри стоять одним стовпчиком і не обрізають ім'я клієнта. Комірка
+   є в кожному рядку «Вхідних», навіть порожня, інакше стовпчик стрибав би. Вужче за
+   600px тема важливіша: комірка зникає, і сітка лишається триколонковою. */
+.mailv2 .mailrow .mail-thick-slot{display:none}
+@container maillist (min-width: 600px){
+  .mailv2 .mailrow.row-slim .r2{grid-template-columns:minmax(0,1fr) 62px minmax(0, var(--mail-att-col, 92px)) auto}
+  .mailv2 .mailrow .mail-thick-slot{display:flex;justify-content:flex-end;align-self:center;min-width:0}
+  .mailv2 .mail-thick-slot .stl-thick{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-1);line-height:16px;color:var(--ink);white-space:nowrap}
+}
+@container maillist (min-width: 860px){
+  .mailv2 .mailrow.row-slim .r2{grid-template-columns:minmax(0,1fr) 62px minmax(0, var(--mail-att-col, 120px)) auto}
+}
+
 /* ── Поки лист не обрано: список на всю ширину ────────────────────────────
    Двопанельна розкладка має сенс, коли є ЩО показувати праворуч. Доки лист
    не відкрито, права половина — порожнеча, і чим ширший монітор, тим вона

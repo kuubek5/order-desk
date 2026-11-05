@@ -37,7 +37,7 @@ from app.services.config_state import sheets_configured
 from app.services.order_dates import parse_sheet_tab
 from app.services.sum3d_capture import scan_projects as scan_sum3d_projects
 from app.settings_store import get_sum3d_projects_path
-from app.services.focus import focused_ids
+from app.services.focus import focused_ids, recently_taken_ids
 from app.services.queue import queue_sync_summary
 # Уся доменна збірка екрана черги переїхала в сервіс (CLAUDE.md §14).
 # `live_sync_status` лишається доступним і як атрибут ЦЬОГО модуля: його
@@ -281,6 +281,7 @@ def get_search(
             "query": query_term,
             "results": results,
             "focused_ids": focused_ids(db, user),
+            "taken_ids": recently_taken_ids(db),
             "found_total": found_total,
             "more_count": max(0, found_total - len(results)),
             "next_limit": shown_limit + SEARCH_ROWS_PAGE,

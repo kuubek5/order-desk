@@ -26,7 +26,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import struct
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path, PurePath
@@ -39,6 +42,11 @@ logger = logging.getLogger(__name__)
 # секунди, а прохід іде раз на 30 с: пропуск додає затримку лише на один прохід.
 SETTLE_SECONDS = 10.0
 _SIGNATURE_MAX = 480  # колонка 500, ще «mixed:» попереду
+# Символ чіпа матеріалу рядка пошти → родина, для якої відомий коефіцієнт.
+_FAMILY_BY_BADGE = {"Zr": "Цирконій", "PMMA": "ПММА"}
+_EXTENT_CACHE_MAX = 4000
+_extent_cache: OrderedDict[str, tuple[tuple[int, int], float | None]] = OrderedDict()
+_extent_lock = threading.Lock()
 
 # Коефіцієнт спікання за родиною матеріалу (`Material.name`). Родини поза
 # переліком підказки не мають: титан фрезерують із заготовки, СЛМ друкують.
@@ -246,10 +254,65 @@ def measure_pending(db, tech_root: str | None, export_root: Path | None, *, now=
     return changed
 
 
+def _cached_z_extent(path: str) -> float | None:
+    """Розмах STL із запам'ятовуванням за розміром і часом зміни: список пошти
+    перемальовується раз на 15 с, а читати файл треба лише раз, поки він той самий.
+    Запам'ятовує й «не прочиталось», щоб битий файл не читався щотіку."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    stamp = (stat.st_size, int(stat.st_mtime))
+    with _extent_lock:
+        hit = _extent_cache.get(path)
+        if hit is not None and hit[0] == stamp:
+            _extent_cache.move_to_end(path)
+            return hit[1]
+    extent = stl_z_extent(Path(path))
+    with _extent_lock:
+        _extent_cache[path] = (stamp, extent)
+        _extent_cache.move_to_end(path)
+        while len(_extent_cache) > _EXTENT_CACHE_MAX:
+            _extent_cache.popitem(last=False)
+    return extent
+
+
+def letter_height_mm(attachments) -> float | None:
+    """Найвищий повернутий STL серед файлів листа: те саме правило, що для теки
+    роботи (`measure_folder`), але файли беруться з вкладень, бо роботи ще немає."""
+    heights = []
+    for attachment in attachments or []:
+        name = getattr(attachment, "filename", None) or ""
+        path = getattr(attachment, "saved_path", None) or ""
+        if path and (is_rotated_export(name) or is_rotated_export(path)):
+            extent = _cached_z_extent(path)
+            if extent is not None and 0 < extent <= MAX_PLAUSIBLE_MM:
+                heights.append(extent)
+    return max(heights) if heights else None
+
+
+def letter_chip(attachments, badge_symbol: str | None, *, mixed: bool = False) -> dict | None:
+    """Бейдж рядка пошти (власник 05.11.26): товщина за матеріалом із чіпа рядка.
+    Викликати лише для листа зі скачаними файлами: недокачаний файл дав би хибну
+    цифру. У листі з кількома матеріалами цифра вірна лише для одного, і підказка
+    це каже."""
+    family = _FAMILY_BY_BADGE.get(badge_symbol or "")
+    if family is None:
+        return None
+    chip = chip_from(letter_height_mm(attachments), family)
+    if chip and mixed:
+        chip["title"] += " У листі кілька матеріалів: для іншого цифра буде інша."
+    return chip
+
+
 def chip_for(order) -> dict | None:
     """Чіп черги для роботи (`text`, `title`) або None."""
     family = getattr(getattr(order, "material", None), "name", None)
-    height = getattr(order, "stl_height_mm", None)
+    return chip_from(getattr(order, "stl_height_mm", None), family)
+
+
+def chip_from(height: float | None, family: str | None) -> dict | None:
+    """Дані бейджа за висотою STL і родиною матеріалу, або None."""
     thickness = thickness_mm(height, family)
     if thickness is None or family is None or height is None:
         return None

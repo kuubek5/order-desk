@@ -17,7 +17,10 @@
    ‹ › по сусідніх днях з роботами, як смуга «Дні». Кнопки [data-dock-day]
    НЕ пишуть в акаунт: mail.js ставить день на секцію доку й смикає полл з
    pick=1 (сервер кладе день у куку до кінця робочого дня). «Сьогодні» має
-   ВЛАСНЕ слово "today" — порожнє значення сервер читає як «поля не було». #}
+   ВЛАСНЕ слово "today" — порожнє значення сервер читає як «поля не було».
+
+   «+ Лабораторія» і «Не готово» прибрано (власник 05.11.26: забагато фільтрів),
+   збережені вибори перевела міграція 0096. Рядки «Не готово» видно в «Усі». #}
 {%- macro day_btn(d, label) -%}
 <button type="button" data-dock-day="{{ 'today' if d == dock.today else d.strftime('%d.%m.%y') }}"
         aria-pressed="{{ 'true' if d == dock.day else 'false' }}"
@@ -40,8 +43,6 @@
 <div class="qmir-seg" role="group" aria-label="Що показує док">
     <button type="button" data-dock-scope="mail" aria-pressed="{{ 'true' if dock.scope == '' else 'false' }}"
             title="Лише роботи, прийняті з пошти, цієї вкладки">Прийняте з пошти <span class="n">{{ dock.mail_count }}</span></button>
-    <button type="button" data-dock-scope="lab" aria-pressed="{{ 'true' if dock.scope == 'lab' else 'false' }}"
-            title="Плюс лабораторні роботи вкладки дня, у порядку таблиці">+ Лабораторія <span class="n">{{ dock.lab_count }}</span></button>
     <button type="button" data-dock-scope="labonly" aria-pressed="{{ 'true' if dock.scope == 'labonly' else 'false' }}"
             title="Лише лабораторні роботи вкладки дня, у порядку таблиці, без пошти">Лише лаба <span class="n">{{ dock.lab_count }}</span></button>
     <button type="button" data-dock-scope="all" aria-pressed="{{ 'true' if dock.scope == 'all' else 'false' }}"
@@ -53,8 +54,6 @@
             title="Технік заповнив шлях, Sum3D ID ще немає — можна брати">Можна брати <span class="n">{{ dock.ready_counts.can_take }}</span></button>
     <button type="button" data-dock-ready="in_work" aria-pressed="{{ 'true' if dock.ready == 'in_work' else 'false' }}"
             title="Шлях заповнено і стоїть Sum3D ID — уже взято в роботу">В роботі <span class="n">{{ dock.ready_counts.in_work }}</span></button>
-    <button type="button" data-dock-ready="not_ready" aria-pressed="{{ 'true' if dock.ready == 'not_ready' else 'false' }}"
-            title="Техніки ще не здали (шлях роботи порожній)">Не готово <span class="n">{{ dock.ready_counts.not_ready }}</span></button>
     <button type="button" data-dock-ready="all" aria-pressed="{{ 'true' if dock.ready == 'all' else 'false' }}"
             title="Без фільтра готовності">Усі <span class="n">{{ dock.ready_counts.all }}</span></button>
 </div>

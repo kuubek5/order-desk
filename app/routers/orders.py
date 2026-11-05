@@ -69,7 +69,13 @@ from app.services.sheet_writeback import (
     write_remark_warm,
 )
 from app.services import cam_remark
-from app.services.focus import clear_all as clear_focus, count as focus_count, focused_ids, toggle as toggle_focus
+from app.services.focus import (
+    clear_all as clear_focus,
+    count as focus_count,
+    focused_ids,
+    recently_taken_ids,
+    toggle as toggle_focus,
+)
 from app.services.undo import (
     UNDOABLE_ACTION_TYPES,
     UNDO_WINDOW_SECONDS,
@@ -105,6 +111,7 @@ def _row_context(request: Request, db: Session, order, sync_error) -> dict:
         "statuses": STATUSES,
         "sync_error": sync_error,
         "focused_ids": focused_ids(db, user),
+        "taken_ids": recently_taken_ids(db),
     }
 
 
