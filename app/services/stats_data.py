@@ -14,6 +14,12 @@
 порожньо) не підсумовується, а рахується окремо як «без кількості»
 (рішення власника 12.10.26).
 
+Виконана робота — `done_clause` (власник 06.11.26): у Sum3D стоїть час, рядок не є
+переробкою, кількість не більша за `MAX_UNITS`. Рядок без Sum3D — це робота, що
+ще не зроблена й завтра з'явиться знову (пн→вт→ср), і рахувати його означало б
+лічити ту саму коронку кілька разів. Архівні лишаються: серед виконаних це 22 %,
+бо лаба чистить старі вкладки. СЛМ сюди не входить, бо робіт із нього немає.
+
 Кеш — 60 с за параметрами: екран відкривають кілька разів поспіль (період,
 фільтри, назад), а дані змінюються синком раз на хвилини.
 """
@@ -25,6 +31,7 @@ import time as _clock
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+import re
 from typing import Any, Callable, Iterable
 
 from sqlalchemy import Integer, and_, case, cast, false, func, not_, or_, select
@@ -48,6 +55,15 @@ MATERIAL_GROUP_LABELS = {"zr": "Цирконій", "pmma": "ПММА", "ti": "Т
 _MATERIAL_GROUP_BY_NAME = {"Цирконій": "zr", "ПММА": "pmma", "Титан": "ti"}
 
 BLAME_ORDER = ("обладнання", "технік", "адміністратор", "клієнт")
+
+# Більше одиниць в одному рядку не буває: справжній максимум за всю історію 112, а
+# рядок зі зсунутими колонками несе тут номер наряду, від 32 864 (аудит 06.11.26).
+MAX_UNITS = 200
+# Час у клітинці Sum3D. Там буває кілька ID через перенос рядка, позначка диска
+# перед часом або текст оператора («немає папки», «робота за 30.10»): лише останній
+# не є взяттям у роботу. Два записи одного правила: для SQL і для Python.
+_SUM3D_TIME_GLOB = "*[0-9]-[0-9][0-9]-[0-9][0-9]*"
+_SUM3D_TIME_RE = re.compile(r"[0-9]-[0-9][0-9]-[0-9][0-9]")
 
 
 def clear_cache() -> None:
@@ -82,6 +98,32 @@ def units_expr(column):
 
 
 KIND = case((Order.source == "lab", "lab"), else_="client")
+
+
+def quantity_is_sane():
+    """Кількість не є чимось іншим, що потрапило в цю колонку."""
+    return func.coalesce(units_expr(Order.quantity), 0) <= MAX_UNITS
+
+
+def _is_not_rework():
+    """Не друге й далі фрезерування: те саме, що `vyrobitok._is_rework`."""
+    text = func.trim(Order.mill_count)
+    repeat = and_(text != "", not_(text.op("GLOB")("*[^0-9]*")), cast(text, Integer) >= 2)
+    return case((repeat, 1), else_=0) == 0
+
+
+def done_clause():
+    """Робота виконана: одне правило для всіх цифр статистики."""
+    return and_(
+        func.trim(Order.sum3d_id).op("GLOB")(_SUM3D_TIME_GLOB),
+        _is_not_rework(),
+        quantity_is_sane(),
+    )
+
+
+def sum3d_has_time(text: str | None) -> bool:
+    """Python-двійник умови на Sum3D із `done_clause` (для звірки `stats_audit`)."""
+    return bool(_SUM3D_TIME_RE.search(text or ""))
 
 
 def _sum3d_parts():
@@ -134,7 +176,7 @@ def tech_groups(db: Session) -> dict[str, dict]:
     def build():
         rows = db.execute(
             select(Order.technician_name, func.count())
-            .where(Order.source == "lab", Order.technician_name.is_not(None))
+            .where(Order.source == "lab", Order.technician_name.is_not(None), quantity_is_sane())
             .group_by(Order.technician_name)
         ).all()
         return st.group_spellings(((r[0], r[1]) for r in rows), st.tech_key)
@@ -291,7 +333,7 @@ def facts(db: Session, days: Iterable[date], f: Filters) -> list[Fact]:
                 func.coalesce(func.sum(units), 0),
                 func.sum(case((units.is_(None), 1), else_=0)),
             )
-            .where(scope.where, *_filter_clauses(db, f))
+            .where(scope.where, done_clause(), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, KIND, Order.material_id)
         ).all()
         merged: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
@@ -361,7 +403,7 @@ def client_units(db: Session, days: list[date], f: Filters) -> dict[str, dict]:
         units = units_expr(Order.quantity)
         rows = db.execute(
             select(Order.sheet_tab, scope.created, Order.client_name, func.count(), func.coalesce(func.sum(units), 0))
-            .where(scope.where, Order.source != "lab", *_filter_clauses(db, f))
+            .where(scope.where, Order.source != "lab", done_clause(), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, Order.client_name)
         ).all()
         groups: dict[str, dict] = {}
@@ -392,7 +434,7 @@ def color_units(db: Session, days: list[date], f: Filters) -> list[dict]:
         group_of = _material_group_map(db)
         rows = db.execute(
             select(Order.sheet_tab, scope.created, Order.material_color, Order.material_id, func.coalesce(func.sum(units), 0))
-            .where(scope.where, *_filter_clauses(db, f))
+            .where(scope.where, done_clause(), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, Order.material_color, Order.material_id)
         ).all()
         acc: dict[str, list] = {}
@@ -469,7 +511,7 @@ def sum3d_heat(db: Session, days: list[date], f: Filters) -> dict:
         seen = func.date(Order.row_seen_at, _rollover_offset())
         rows = db.execute(
             select(Order.sheet_tab, scope.created, KIND, hour, minute, seen, func.count(), func.coalesce(func.sum(units), 0))
-            .where(scope.where, hour.is_not(None), *_filter_clauses(db, f))
+            .where(scope.where, hour.is_not(None), done_clause(), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, KIND, hour, minute, seen)
         ).all()
         return bucket_sum3d_rows(rows, idx, scope, get_rollover())
@@ -505,7 +547,7 @@ def row_seen_heat(db: Session, days: list[date], f: Filters) -> dict:
         hour = cast(func.strftime("%H", Order.row_seen_at), Integer)
         rows = db.execute(
             select(KIND, dow, hour, func.count(), func.coalesce(func.sum(units), 0))
-            .where(scope.where, Order.row_seen_at.is_not(None), *_filter_clauses(db, f))
+            .where(scope.where, Order.row_seen_at.is_not(None), quantity_is_sane(), *_filter_clauses(db, f))
             .group_by(KIND, dow, hour)
         ).all()
         grids = {"lab": st.empty_grid(), "client": st.empty_grid()}
@@ -591,7 +633,12 @@ def works_list(
     if noqty:
         clauses.append(units.is_(None))
     if rework:
+        # Брак — це саме переробки, тому список не йде через правило «виконано».
         clauses.append(Order.id.in_(select(ReworkRecord.order_id)))
+    elif cell is not None and heat_mode == "row":
+        clauses.append(quantity_is_sane())
+    else:
+        clauses.append(done_clause())
     if cell is not None and heat_mode == "row":
         clauses.append(Order.row_seen_at.is_not(None))
     elif cell is not None:

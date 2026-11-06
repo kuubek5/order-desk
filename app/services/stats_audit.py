@@ -5,8 +5,9 @@
 не видно (власник 06.11.26). Тут той самий період і ті самі робочі дні, що на
 екрані (`stats_data.scope_for`), але з рядками.
 
-`рядки_тут` мусить збігатися з `екран`: це перевірка самої звірки. Розійшлись —
-далі цьому зрізу вірити не можна, і поле `збіг_з_екраном` про це скаже.
+`виконані_тут` мусить збігатися з `екран`: це перевірка самої звірки, бо правило
+«виконано» тут записане ще раз, у Python. Розійшлись — далі цьому зрізу вірити не
+можна, і поле `збіг_з_екраном` про це скаже.
 
 Правила підрахунку тут не змінюються: зріз лише показує, що дало б кожне з них.
 """
@@ -27,10 +28,10 @@ from app.services import stats_data as data
 from app.services.mail_rework import rework_order_ids
 from app.stats import parse_int_safe
 
-# Той самий час доби, що в `stats_data._sum3d_parts`, плюс повна форма з датою.
-_SUM3D = re.compile(r"(?:\d{4}-\d{2}-\d{2}_)?\d{1,2}-\d{2}-\d{2}.*")
 _WHOLE_NUMBER = re.compile(r"[0-9]+")
 _DATE_IN_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}")
+# Матеріал цифрами, що справді буває: коди Doceram (`material_classifier`).
+_MATERIAL_CODES = ("500", "800", "1000", "1333", "2000")
 
 
 @dataclass(frozen=True)
@@ -62,12 +63,17 @@ class AuditRow:
 
     @property
     def sum3d_valid(self) -> bool:
-        return bool(_SUM3D.fullmatch(self.sum3d))
+        return data.sum3d_has_time(self.sum3d)
 
     @property
     def is_mill_rework(self) -> bool:
         count = parse_int_safe(self.mill_count)
         return count is not None and count >= 2
+
+    @property
+    def is_done(self) -> bool:
+        """Python-двійник `stats_data.done_clause`."""
+        return self.sum3d_valid and not self.is_mill_rework and (self.units or 0) <= data.MAX_UNITS
 
 
 def load_rows(db: Session, days: Iterable[date]) -> list[AuditRow]:
@@ -163,11 +169,8 @@ def odd_reasons(row: AuditRow) -> list[str]:
     reasons: list[str] = []
     if row.sum3d and not row.sum3d_valid:
         reasons.append("sum3d не схожий на час")
-    if _WHOLE_NUMBER.fullmatch((row.material or "").strip()) and (row.material or "").strip() not in (
-        "500",
-        "800",
-        "1000",
-    ):
+    material = (row.material or "").strip()
+    if _WHOLE_NUMBER.fullmatch(material) and material not in _MATERIAL_CODES:
         reasons.append("матеріал лише з цифр")
     if _DATE_IN_TEXT.search(row.technician or ""):
         reasons.append("у техніку дата або номер роботи")
@@ -186,12 +189,12 @@ def _rework_ids(db: Session, rows: list[AuditRow]) -> tuple[set[int], set[int]]:
 def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) -> dict[str, Any]:
     rows = load_rows(db, days)
     screen = data.summarize(data.facts(db, days, data.Filters()), days, data._material_group_map(db))
-    here = _tally(rows)
+    done = [r for r in rows if r.is_done]
+    here = _tally(done)
     records, mail_reworks = _rework_ids(db, rows)
     live = [r for r in rows if r.archived_at is None]
     archived = [r for r in rows if r.archived_at is not None]
     with_sum3d = [r for r in rows if r.sum3d_valid]
-    done = [r for r in with_sum3d if not r.is_mill_rework and r.id not in mail_reworks]
 
     per_day: dict[date, list[AuditRow]] = {}
     for row in rows:
@@ -205,7 +208,8 @@ def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) ->
     odd = [(r, why) for r, why in odd if why]
     return {
         "екран": {"роботи": screen["works"], "одиниць": screen["units"], "без_кількості": screen["noqty"]},
-        "рядки_тут": here,
+        "виконані_тут": here,
+        "усі_рядки": _tally(rows),
         "збіг_з_екраном": here["роботи"] == screen["works"] and here["одиниць"] == screen["units"],
         "за_правилом": {
             "живі": _tally(live),
@@ -216,7 +220,6 @@ def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) ->
             "переробка_який_раз_2_і_більше": _tally(r for r in rows if r.is_mill_rework),
             "переробка_з_листа": _tally(r for r in rows if r.id in mail_reworks),
             "є_запис_браку": _tally(r for r in rows if r.id in records),
-            "із_sum3d_без_переробок": _tally(done),
         },
         "по_днях": [
             {
@@ -225,11 +228,7 @@ def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) ->
                 "лаба": _tally(r for r in of_day if r.group == "lab")["одиниць"],
                 "клієнти": _tally(r for r in of_day if r.group == "client")["одиниць"],
                 "архівні": _tally(r for r in of_day if r.archived_at is not None),
-                "із_sum3d_без_переробок": _tally(
-                    r
-                    for r in of_day
-                    if r.sum3d_valid and not r.is_mill_rework and r.id not in mail_reworks
-                ),
+                "виконані": _tally(r for r in of_day if r.is_done),
                 "найбільша_кількість": max((r.units or 0 for r in of_day), default=0),
             }
             for day, of_day in sorted(per_day.items())

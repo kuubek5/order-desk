@@ -75,6 +75,8 @@ def _materials(session):
 def _order(session, tab, source, qty, mat=None, **kw):
     from app.models import Order
 
+    # Статистика рахує виконані роботи, тож робота тут за замовчуванням уже взята.
+    kw.setdefault("sum3d_id", "10-00-00")
     o = Order(source=source, sheet_tab=tab, quantity=qty, material_id=mat, **kw)
     session.add(o)
     session.flush()
@@ -266,7 +268,8 @@ class TestAggregates:
         assert cli[1][8] == 1  # одноцифрова година
         assert cli[5][11] == 10  # суботній рядок (стара вкладка 22.08)
         assert cli[5][14] == 2  # п'ятнична вкладка, рядок зʼявився в суботу
-        assert heat["n"]["client"] == 5
+        # Пошта 17.08 теж виконана (`_order` дає їй Sum3D), тому в карті шоста робота.
+        assert heat["n"]["client"] == 6
 
     def test_row_seen_switch_needs_seven_days(self, db):
         assert data.row_seen_days(db) == 1

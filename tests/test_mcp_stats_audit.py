@@ -91,8 +91,10 @@ def test_overview_matches_screen_and_finds_the_ghost(app_db):  # noqa: F811
     data = _call(app, **PERIOD)
 
     assert data["збіг_з_екраном"] is True
-    assert data["рядки_тут"] == {"роботи": 8, "одиниць": 37905}
-    assert data["екран"]["без_кількості"] == 1
+    assert data["усі_рядки"] == {"роботи": 8, "одиниць": 37905}
+    # Виконані: real 14 + moved_wed 4 + mail 5 + mail_rework 1.
+    assert data["виконані_тут"] == {"роботи": 4, "одиниць": 24}
+    assert data["екран"] == {"роботи": 4, "одиниць": 24, "без_кількості": 0}
 
     rules = data["за_правилом"]
     assert rules["архівні"] == {"роботи": 2, "одиниць": 37879}
@@ -100,8 +102,6 @@ def test_overview_matches_screen_and_finds_the_ghost(app_db):  # noqa: F811
     assert rules["sum3d_порожній"] == {"роботи": 2, "одиниць": 4}
     assert rules["переробка_який_раз_2_і_більше"] == {"роботи": 1, "одиниць": 2}
     assert rules["переробка_з_листа"] == {"роботи": 1, "одиниць": 1}
-    # Привид не проходить за Sum3D: текст замість часу не рахується часом.
-    assert rules["із_sum3d_без_переробок"] == {"роботи": 3, "одиниць": 23}
 
     assert [row["id"] for row in data["великі_кількості"]] == [ids["ghost"]]
     odd = {row["id"]: row["чому"] for row in data["дивні_рядки"]}
@@ -112,6 +112,7 @@ def test_overview_matches_screen_and_finds_the_ghost(app_db):  # noqa: F811
     assert tuesday["день"] == "2026-11-03"
     assert tuesday["лаба"] == 37893 and tuesday["найбільша_кількість"] == 37875
     assert tuesday["архівні"]["одиниць"] == 37879
+    assert tuesday["виконані"] == {"роботи": 1, "одиниць": 14}
 
 
 def test_threshold_is_an_argument(app_db):  # noqa: F811
@@ -160,3 +161,21 @@ def test_day_view_needs_a_day(app_db):  # noqa: F811
     result = json.loads(body)["result"]
     assert result["isError"] is True
     assert "day" in result["content"][0]["text"]
+
+
+def test_several_discs_and_material_codes_are_not_odd(app_db):  # noqa: F811
+    """Бойові хибні спрацювання першої версії: Sum3D у кілька рядків і код 2000."""
+    app, factory = app_db
+    stats_data.clear_cache()
+    with factory() as db:
+        db.add_all([
+            Order(source="lab", sheet_tab=TUE, row_number=2, work_order_no="34739", quantity="4",
+                  material_color="титан", sum3d_id="12-37-51\n12-41-48"),
+            Order(source="sheet_client", sheet_tab=TUE, row_number=50, client_name="Клієнт", quantity="1",
+                  material_color="2000", sum3d_id="17-28-23"),
+        ])
+        db.commit()
+    data = _call(app, **PERIOD)
+    assert data["дивні_рядки_усього"] == 0
+    assert data["збіг_з_екраном"] is True
+    assert data["екран"]["одиниць"] == 5
