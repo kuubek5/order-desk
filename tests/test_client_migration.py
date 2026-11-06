@@ -130,6 +130,8 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "folder_merges",
             # Зведені роботи з пошти (0084, 05.10.26).
             "order_emails",
+            # Прогноз статистики й нетипові дні (0097, 06.11.26).
+            "forecast_snapshots", "stats_anomaly_days",
         }
         assert tables_before - tables_after == set()
     finally:
