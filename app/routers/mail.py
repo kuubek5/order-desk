@@ -214,11 +214,6 @@ _BADGE_CLS = {"Zr": "mat-zr", "PMMA": "mat-pmma", "Ti": "mat-ti", "SLM": "mat-sl
 # символ чіпа рядка в нижньому регістрі; `none` — лист без упізнаного матеріалу.
 _FAMILY_ORDER = ("zr", "pmma", "ti", "wax", "slm")
 _NO_FAMILY = "none"
-# Повна назва на широкому списку; на вузькому фільтр показує символ родини.
-_FAMILY_NAMES = {
-    "zr": "Цирконій", "pmma": "ПММА", "ti": "Титан", "wax": "Віск", "slm": "SLM",
-    _NO_FAMILY: "Без матеріалу",
-}
 
 
 def _family_of(email) -> str:
@@ -289,7 +284,6 @@ def _family_chips(emails, include: list[str], exclude: list[str]) -> list[dict]:
         chips.append({
             "key": key,
             "label": label,
-            "name": _FAMILY_NAMES.get(key),
             "cls": "" if key == _NO_FAMILY else classes.get(key, "mat-other"),
             "count": counts[key],
             "on": on,

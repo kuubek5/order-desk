@@ -162,7 +162,7 @@ def test_return_url_keeps_family():
 
 
 def test_filter_band_markup(app_db):  # noqa: F811
-    """Смуга фільтра: повна назва поруч із символом, дія «сховати» — око, не хрестик."""
+    """Смуга фільтра: значок диска й символ матеріалу, дія «сховати» — око, не хрестик."""
     app, factory = app_db
     _seed(factory)
     client = MiniClient(app)
@@ -171,9 +171,10 @@ def test_filter_band_markup(app_db):  # noqa: F811
     _, _, page = client.get("/mail")
     bar = page.split('id="mail-batchbar"', 1)[0].rsplit("<div", 1)[1]
     assert "has-fam" in bar, "смуга знає про другий рядок: без цього відступи не ті"
-    assert '<span class="famchip-name">Цирконій</span><b>Zr</b>' in page
-    assert '<span class="famchip-name">ПММА</span><b>PMMA</b>' in page
     nav = page.split('class="famchips"', 1)[1].split("</nav>", 1)[0]
+    assert nav.count('class="famchip-disc"') == nav.count("<b>"), "значок у кожного матеріалу"
+    assert "<b>Zr</b>" in nav and "<b>PMMA</b>" in nav
+    assert "Цирконій" not in nav and "ПММА" not in nav, "власник 06.11.26: символи, не повні назви"
     assert "✕" not in nav and "↺" not in nav
     assert 'aria-label="Сховати PMMA"' in nav
     assert 'class="famchip-slash"' in nav, "рискою рухається hover: без класу ефект мовчки зникне"

@@ -1401,12 +1401,11 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .famchip-pair .famchip.mat-ti{--fam:var(--mat-ti)}
 .mailv2 .famchip-pair .famchip.mat-wax{--fam:var(--mat-wax)}
 .mailv2 .famchip-pair .famchip.mat-slm{--fam:var(--mat-slm)}
-.mailv2 .famchip-dot{flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:var(--fam)}
+.mailv2 .famchip-disc{flex:0 0 auto;width:26px;height:20px;overflow:visible}
+.mailv2 .famchip-disc ellipse,.mailv2 .famchip-disc path{fill:none;stroke:var(--fam);stroke-width:1.5}
+.mailv2 .famchip-disc .f{fill:color-mix(in srgb,var(--fam) 32%,transparent);stroke:none}
 .mailv2 .famchips .famchip b{font-size:var(--fs-3)}
 .mailv2 .famchips .famchip .famchip-n{font-size:var(--fs-1)}
-/* Повна назва з'являється на широкому списку й тоді замінює символ. */
-.mailv2 .famchip-name{display:none}
-.mailv2 .famchip.is-off .famchip-name{text-decoration:line-through}
 .mailv2 .famchips .famchip-x{flex:0 0 38px;justify-content:center;padding:0;color:var(--ink-3)}
 .mailv2 .famchip-x svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .famchips .famchip:hover,.mailv2 .famchips .famchip:focus-visible,.mailv2 .famchips .famchip-x:hover,.mailv2 .famchips .famchip-x:focus-visible{color:var(--ink);opacity:1}
@@ -1414,7 +1413,7 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .famchip-pair.is-off .famchip-x{color:var(--ink)}
 /* Рух (власник 06.11.26): лише разовий і лише у відповідь на дію, петель у тріажі
    не буває (CLAUDE.md §14). Наведення: заливка піднімається знизу кольором
-   матеріалу, крапка більшає, риска на оці домальовується. Вибрано: лінія
+   матеріалу, диск більшає, риска на оці домальовується. Вибрано: лінія
    розходиться від центру, і відразу після кліку (.is-going), поки сервер відповідає. */
 .mailv2 .famchips .famchip,.mailv2 .famchips .famchip-x{position:relative;isolation:isolate;--fam-hover:var(--fam,var(--ink-3))}
 .mailv2 .famchips .famchip::before,.mailv2 .famchips .famchip-x::before{content:"";position:absolute;inset:0;z-index:-1;background:color-mix(in srgb,var(--fam-hover) 14%,transparent);transform:scaleY(0);transform-origin:50% 100%;transition:transform .16s cubic-bezier(.2,.8,.2,1)}
@@ -1422,23 +1421,19 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .famchips .famchip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--fam);transform:scaleX(0);transition:transform .22s cubic-bezier(.2,.8,.2,1)}
 .mailv2 .famchips .famchip.is-on::after,.mailv2 .famchips .famchip.is-going::after{transform:scaleX(1)}
 .mailv2 .famchips .famchip.is-on::after{animation:famchip-line .28s cubic-bezier(.2,.8,.2,1)}
-.mailv2 .famchip-dot{transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
-.mailv2 .famchip:hover .famchip-dot,.mailv2 .famchip.is-going .famchip-dot{transform:scale(1.3)}
-.mailv2 .famchip:active .famchip-dot{transform:scale(.8)}
-.mailv2 .famchip.is-on .famchip-dot{animation:famchip-pop .32s cubic-bezier(.34,1.56,.64,1)}
+.mailv2 .famchip-disc{transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+.mailv2 .famchip:hover .famchip-disc,.mailv2 .famchip.is-going .famchip-disc{transform:scale(1.12)}
+.mailv2 .famchip:active .famchip-disc{transform:scale(.92)}
+.mailv2 .famchip.is-on .famchip-disc{animation:famchip-pop .32s cubic-bezier(.34,1.56,.64,1)}
 .mailv2 .famchip-x:hover .famchip-slash,.mailv2 .famchip-x:focus-visible .famchip-slash{stroke-dasharray:1;animation:famchip-slash .24s ease-out}
 .mailv2 .famchip-pair:has(.famchip-x.is-going) .famchip{opacity:.55;transition:opacity var(--ui-speed) ease}
 @keyframes famchip-line{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-@keyframes famchip-pop{from{transform:scale(.4)}to{transform:scale(1)}}
+@keyframes famchip-pop{from{transform:scale(.7)}to{transform:scale(1)}}
 @keyframes famchip-slash{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
 @media (prefers-reduced-motion:reduce){
-  .mailv2 .famchips .famchip::before,.mailv2 .famchips .famchip-x::before,.mailv2 .famchips .famchip::after,.mailv2 .famchip-dot{transition:none}
-  .mailv2 .famchips .famchip.is-on::after,.mailv2 .famchip.is-on .famchip-dot,.mailv2 .famchip-x:hover .famchip-slash,.mailv2 .famchip-x:focus-visible .famchip-slash{animation:none}
-  .mailv2 .famchip:hover .famchip-dot,.mailv2 .famchip.is-going .famchip-dot,.mailv2 .famchip:active .famchip-dot{transform:none}
-}
-@container maillist (min-width: 600px){
-  .mailv2 .famchip-name{display:inline}
-  .mailv2 .famchip-name + b{display:none}
+  .mailv2 .famchips .famchip::before,.mailv2 .famchips .famchip-x::before,.mailv2 .famchips .famchip::after,.mailv2 .famchip-disc{transition:none}
+  .mailv2 .famchips .famchip.is-on::after,.mailv2 .famchip.is-on .famchip-disc,.mailv2 .famchip-x:hover .famchip-slash,.mailv2 .famchip-x:focus-visible .famchip-slash{animation:none}
+  .mailv2 .famchip:hover .famchip-disc,.mailv2 .famchip.is-going .famchip-disc,.mailv2 .famchip:active .famchip-disc{transform:none}
 }
 @container maillist (max-width: 599px){
   .mailv2 .famchips>.famchip{flex-basis:56px}

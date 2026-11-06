@@ -200,7 +200,7 @@
                     <a href="{{ _fam_base }}{% if chip.toggle %}&amp;fam={{ chip.toggle }}{% endif %}"
                        class="famchip {{ chip.cls }}{% if chip.on %} is-on{% endif %}{% if chip.off %} is-off{% endif %}"{% if chip.on %} aria-current="true"{% endif %}
                        title="{% if chip.on %}Прибрати {{ chip.label }} з вибраних{% elif fam and not chip.off and family_chips|selectattr('on')|list %}Додати {{ chip.label }} до вибраних{% else %}Лише {{ chip.label }}{% endif %}">
-                        <i class="famchip-dot" aria-hidden="true"></i>{% if chip.name %}<span class="famchip-name">{{ chip.name }}</span>{% endif %}<b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
+                        <svg class="famchip-disc" viewBox="0 0 26 20" aria-hidden="true"><path class="f" d="M2 8v6a11 3.5 0 0 0 22 0V8a11 3.5 0 0 1-22 0z"/><ellipse cx="13" cy="5.5" rx="11" ry="3.5"/><path d="M2 5.5v8.5a11 3.5 0 0 0 22 0V5.5"/></svg><b>{{ chip.label }}</b><span class="famchip-n mono">{{ chip.count }}</span>
                     </a>
                     <a href="{{ _fam_base }}{% if chip.drop %}&amp;fam={{ chip.drop }}{% endif %}"
                        class="famchip-x" aria-label="{% if chip.off %}Повернути{% else %}Сховати{% endif %} {{ chip.label }}"
