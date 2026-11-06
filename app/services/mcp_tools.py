@@ -47,7 +47,8 @@ from app.business_day import (
 )
 from app.config import DATA_DIR, DB_PATH
 from app.models import ActionLog, Attachment, Comment, Order, StatusEvent, SyncLog
-from app.services import device_diag, sum3d_deep, sum3d_files
+from app import stats as stats_rules
+from app.services import device_diag, stats_audit, sum3d_deep, sum3d_files
 from app.services.order_dates import parse_sheet_tab
 
 logger = logging.getLogger(__name__)
@@ -627,6 +628,28 @@ def _int_arg(args: dict, name: str, *, default: int, low: int, high: int) -> int
     if not low <= value <= high:
         raise ToolError(f"`{name}` поза межами {low}…{high}: {value}")
     return value
+
+
+def tool_stats_audit(db: Session, args: dict) -> dict[str, Any]:
+    """Звірка екрана «Статистика» рядок за рядком (`stats_audit`)."""
+    view = str(args.get("view") or "overview")
+    if view not in ("overview", "carryover", "rows"):
+        raise ToolError(f"`view` буває overview, carryover або rows, а не «{view}»")
+    limit = _int_arg(args, "limit", default=50, low=1, high=500)
+    if view == "rows":
+        if not args.get("day"):
+            raise ToolError("для view=rows потрібен `day`: дата вкладки, напр. 2026-11-03")
+        day = _resolve_day(args.get("day"))
+        return stats_audit.day_rows(db, day, only_archived=bool(args.get("only_archived")), limit=limit)
+    key, period = stats_rules.resolve_period(
+        args.get("period"), args.get("from"), args.get("to"), business_today()
+    )
+    days = period.working_days()
+    head = {"період": {"ключ": key, "від": period.start.isoformat(), "до": period.end.isoformat(), "робочих_днів": len(days)}}
+    if view == "carryover":
+        return {**head, **stats_audit.carryover(db, days, limit=limit)}
+    min_quantity = _int_arg(args, "min_quantity", default=100, low=1, high=1_000_000)
+    return {**head, **stats_audit.overview(db, days, min_quantity=min_quantity, limit=limit)}
 
 
 def tool_handout_match(db: Session, args: dict) -> dict[str, Any]:
@@ -1216,6 +1239,34 @@ TOOLS = TOOLS + (
             "additionalProperties": False,
         },
         run=tool_sum3d_files,
+    ),
+)
+
+TOOLS = TOOLS + (
+    Tool(
+        name="kmill_stats_audit",
+        description=(
+            "Звірка екрана «Статистика» рядок за рядком, разом з архівними роботами, яких "
+            "не показує kmill_queue. overview: підсумок екрана, що дало б кожне правило "
+            "(із Sum3D, без переробок, архівні), дні, великі кількості й дивні рядки. "
+            "carryover: наряди лаби на кількох вкладках. rows: усі рядки одного дня. "
+            "Для питань «чому статистика показує таке число»."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "view": {"type": "string", "enum": ["overview", "carryover", "rows"], "description": "Типово overview."},
+                "period": {"type": "string", "enum": ["7", "30", "90", "custom"], "description": "Як на екрані, типово 30. custom потребує from і to."},
+                "from": {"type": "string", "description": "Початок для custom: 2026-10-01."},
+                "to": {"type": "string", "description": "Кінець для custom: 2026-10-31."},
+                "day": _DAY_PROP,
+                "only_archived": {"type": "boolean", "description": "Для rows: лише архівні."},
+                "min_quantity": {"type": "integer", "minimum": 1, "maximum": 1000000, "description": "Від якої кількості рядок вважати великим, типово 100."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 500, "description": "Скільки рядків віддати в кожному списку, типово 50. Лічильники завжди по всьому."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_stats_audit,
     ),
 )
 
