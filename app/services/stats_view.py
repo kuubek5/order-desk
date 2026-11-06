@@ -15,10 +15,10 @@ from urllib.parse import urlencode
 from sqlalchemy.orm import Session
 
 from app import stats as st
-from app.business_day import tab_day
+from app.business_day import business_tab_today, business_today, tab_day
 from app.services import stats_charts as charts
 from app.services import stats_data as data
-from app.services import stats_forecast
+from app.services import stats_forecast, stats_insights
 from app.services.stats_data import MATERIAL_GROUP_LABELS, MATERIAL_GROUPS, Filters
 
 # (ключ, назва, етап-заглушка або None, лише адмін)
@@ -119,6 +119,27 @@ def _src_toggle(src: str, which: str) -> str:
     return ""
 
 
+def _period_presets(p: Params, today: date) -> list[dict]:
+    """Готові проміжки в календарі: звіт лаби живе тижнями й місяцями, а не «30 днів»."""
+    monday = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    last_month_end = month_start - timedelta(days=1)
+    spans = (
+        ("Цей тиждень", monday, today),
+        ("Минулий тиждень", monday - timedelta(days=7), monday - timedelta(days=1)),
+        ("Цей місяць", month_start, today),
+        ("Минулий місяць", last_month_end.replace(day=1), last_month_end),
+    )
+    return [
+        {
+            "label": label,
+            "qs": p.qs(period_key="custom", period=st.Period(start, end)),
+            "on": p.period_key == "custom" and p.period.start == start and p.period.end == end,
+        }
+        for label, start, end in spans
+    ]
+
+
 # ── Шапка: вкладки, період, фільтри ────────────────────────────────────────
 def chrome(db: Session, p: Params, is_admin: bool) -> dict:
     days = p.period.working_days()
@@ -152,7 +173,9 @@ def chrome(db: Session, p: Params, is_admin: bool) -> dict:
     return {
         "tabs": tabs,
         "periods": periods,
+        "presets": _period_presets(p, business_today()),
         "period_label": period_label(p.period),
+        "prev_label": period_label(p.period.previous()),
         "period_days": p.period.length,
         "custom_on": p.period_key == "custom",
         "cover": [{"day": d, "has": h, "tip": f"{st.DOW[d.weekday()]} {d.day:02d}.{d.month:02d}" + ("" if h else " · немає вкладки")} for d, h in zip(days, cover)],
@@ -171,6 +194,8 @@ def chrome(db: Session, p: Params, is_admin: bool) -> dict:
         "clear_mat_qs": p.qs(filters_over={"mat": ""}),
         "clear_tech_qs": p.qs(filters_over={"tech": ""}),
         "clear_client_qs": p.qs(filters_over={"client": ""}),
+        "any_filter": bool(f.src or f.mat or f.tech or f.client),
+        "clear_all_qs": p.qs(filters_over={"src": "", "mat": "", "tech": "", "client": ""}),
         "show_tech": f.src != "client",
         "show_client": f.src != "lab",
         "cmp_qs_on": p.qs(cmp=True),
@@ -187,7 +212,23 @@ def _arrow(delta: float | None, unit: str = "%", digits: int = 0, *, bad_up: boo
         return None
     up = delta > 0
     text = f"{abs(delta):.{digits}f}".replace(".", ",") if digits else f"{abs(round(delta))}"
-    return {"sym": "↑" if up else ("↓" if delta < 0 else "→"), "text": f"{text} {unit}", "bad": up == bad_up and delta != 0}
+    # Те, що округлилось до нуля, не рух: «↑ 0 %» малювало б зміну, якої не видно в числі.
+    flat = round(delta, digits) == 0
+    return {"sym": "→" if flat else ("↑" if up else "↓"), "text": f"{text} {unit}", "bad": not flat and up == bad_up, "flat": flat}
+
+
+def same_weekday_before(day: date, earlier: list[date]) -> date | None:
+    """Найближчий той самий день тижня серед днів попереднього періоду."""
+    known = set(earlier)
+    if not known:
+        return None
+    lowest = min(known)
+    back = day - timedelta(days=7)
+    while back >= lowest:
+        if back in known:
+            return back
+        back -= timedelta(days=7)
+    return None
 
 
 def overview(db: Session, p: Params) -> dict:
@@ -313,9 +354,38 @@ def overview(db: Session, p: Params) -> dict:
         }
 
     by_day = cur["by_day"]
-    wide = charts.day_chart(days, by_day, cover, cur["per_day"], was["per_day"], width=1300, height=300, compact=False)
+    was_by_day = was["by_day"]
+    was_map: dict[date, tuple[date, int]] = {}
+    for d in days:
+        before = same_weekday_before(d, prev_days)
+        if before is not None:
+            was_map[d] = (before, was_by_day[before]["lab"] + was_by_day[before]["client"])
+    wide = charts.day_chart(days, by_day, cover, cur["per_day"], was["per_day"], width=1100, height=330, compact=False, was=was_map)
     compact = charts.day_chart(days, by_day, cover, cur["per_day"], was["per_day"], width=358, height=210, compact=True)
     selected = next((d for d in reversed(days) if by_day[d]["works"]), None)
+
+    worked = [by_day[d]["lab"] + by_day[d]["client"] for d in days if by_day[d]["works"]]
+    kpis["per_day"]["spark"] = charts.sparkline(worked)
+    kpis["units"]["spark"] = charts.sparkline(
+        charts.running_total([by_day[d]["lab"] + by_day[d]["client"] for d in days]),
+        prev=charts.running_total([was_by_day[d]["lab"] + was_by_day[d]["client"] for d in prev_days]),
+    )
+    prev_label = period_label(prev_period)
+    insights = stats_insights.overview_lines(
+        per_day=cur["per_day"],
+        was_per_day=was["per_day"],
+        by_day=by_day,
+        clients_now=clients_now if not f.client else {},
+        clients_was=clients_was if not f.client else {},
+        client_qs=lambda key: p.qs(filters_over={"client": key}),
+        mat_rows=mat_rows,
+        rework_pct=rw_pct,
+        rework_was_pct=rw_pct_was,
+        # Сьогоднішня вкладка може ще не з'явитись: це не «сума занижена».
+        cover_missing=sum(1 for d, has in zip(days, cover) if not has and d != business_tab_today()),
+        noqty=cur["noqty"],
+        prev_label=prev_label,
+    )
 
     return {
         "cur": cur,
@@ -333,7 +403,8 @@ def overview(db: Session, p: Params) -> dict:
         "forecast": stats_forecast.week_brief(db),
         "forecast_qs": p.qs(tab="forecast"),
         "selected_day": selected,
-        "prev_label": period_label(prev_period),
+        "prev_label": prev_label,
+        "insights": insights,
     }
 
 

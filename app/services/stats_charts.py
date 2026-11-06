@@ -25,7 +25,7 @@ def nice_scale(peak: float, ticks: int = 3) -> tuple[float, float]:
         return float(ticks), 1.0
     raw = peak / ticks
     mag = 10 ** math.floor(math.log10(raw))
-    for mult in (1, 2, 2.5, 3, 4, 5, 6, 8, 10):
+    for mult in (1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
         step = mult * mag
         if step * ticks >= peak:
             return step * ticks, step
@@ -68,11 +68,18 @@ def day_chart(
     width: int,
     height: int,
     compact: bool,
+    was: dict[date, tuple[date, int]] | None = None,
 ) -> dict:
-    left, right, top, bottom = (34, 6, 22, 30) if compact else (46, 10, 30, 46)
+    """`was`: для кожного дня той самий день тижня в попередньому періоді (дата, одиниці).
+
+    Порівнюємо понеділок із понеділком, а не «n-й день із n-м»: п'ятниця несе вихідні й
+    завжди вища, тож зсув на кілька днів показав би хибну різницю.
+    """
+    was = was or {}
+    left, right, top, bottom = (34, 6, 22, 30) if compact else (46, 86, 30, 52)
     pw, ph = width - left - right, height - top - bottom
     totals = [by_day[d]["lab"] + by_day[d]["client"] for d in days]
-    peak = max([*totals, avg or 0, prev_avg or 0, 1])
+    peak = max([*totals, *(v for _, v in was.values()), avg or 0, prev_avg or 0, 1])
     vmax, step = nice_scale(peak)
     base = top + ph
 
@@ -81,8 +88,8 @@ def day_chart(
 
     n = max(len(days), 1)
     slot = pw / n
-    bw = min(slot * (0.66 if compact else 0.62), 46)
-    many = n > 35
+    bw = min(slot * (0.66 if compact else 0.56), 40)
+    many = n > 26
     peak_total = max(totals) if totals else 0
     bars = []
     for i, d in enumerate(days):
@@ -92,12 +99,15 @@ def day_chart(
         total = lab + client
         has = bool(by_day[d]["works"]) or cover[i]
         segs, top_y = _stack(x, bw, base, [("lab", lab / vmax * ph), ("cli", client / vmax * ph)])
-        if compact:
-            label = f"{d.day:02d}.{d.month:02d}" if (d.weekday() == 0 or i == 0) else ""
+        if compact or many:
+            # Перший день підписуємо, лише якщо понеділок не стоїть впритул: «27.0831.08».
+            monday_close = i == 0 and any(later.weekday() == 0 for later in days[1:4])
+            label = f"{d.day:02d}.{d.month:02d}" if (d.weekday() == 0 or (i == 0 and not monday_close)) else ""
             sub = ""
-        elif many:
-            label = f"{d.day:02d}.{d.month:02d}" if (d.weekday() == 0 or i == 0) else ""
-            sub = ""
+        elif n > 12:
+            # Вузький стовпчик: число й день тижня двома ярусами, інакше підписи злипаються.
+            label = f"{d.day:02d}"
+            sub = st.DOW[d.weekday()] + ("+" if d.weekday() == 4 else "")
         else:
             label = f"{st.DOW[d.weekday()]} {d.day:02d}"
             sub = "+сб нд" if d.weekday() == 4 else ""
@@ -112,6 +122,9 @@ def day_chart(
             tip += " · немає вкладки"
         else:
             tip += " · 0 робіт"
+        was_day, was_units = was.get(d, (None, 0))
+        if was_day is not None and was_units:
+            tip += f" · було {st.DOW[was_day.weekday()]} {was_day.day:02d}.{was_day.month:02d}: {st.nf(was_units)} од."
         bars.append(
             {
                 "key": d.isoformat(),
@@ -124,6 +137,12 @@ def day_chart(
                 "top": round(top_y, 1),
                 "base": base,
                 "total": total,
+                "lab": lab,
+                "client": client,
+                "works": by_day[d]["works"],
+                "date": f"{st.DOW[d.weekday()]} {d.day:02d}.{d.month:02d}",
+                "was_units": was_units,
+                "was_y": round(y(was_units), 1) if was_units else None,
                 "has": has,
                 "empty": not by_day[d]["works"],
                 "label": label,
@@ -133,6 +152,9 @@ def day_chart(
             }
         )
     hatch_h = 30 if compact else 46
+    avg_y = None if avg is None else y(avg)
+    prev_y = None if prev_avg is None else y(prev_avg)
+    avg_label_y, prev_label_y = _line_label_ys(avg_y, prev_y)
     return {
         "w": width,
         "h": height,
@@ -141,19 +163,153 @@ def day_chart(
         "top": top,
         "base": base,
         "label_y": base + (16 if compact else 17),
-        "sub_y": base + 32,
+        "sub_y": base + 36,
         "ticks": [{"v": st.nf(step * k), "y": round(y(step * k), 1)} for k in range(4)],
         "bars": bars,
         "hatch_y": base - hatch_h,
         "hatch_h": hatch_h,
-        "avg": None if avg is None else {"y": round(y(avg), 1), "v": st.nf(avg)},
-        "prev": None if prev_avg is None else {"y": round(y(prev_avg), 1), "v": st.nf(prev_avg)},
+        "avg": None if avg is None else {"y": round(y(avg), 1), "v": st.nf(avg), "label_y": avg_label_y},
+        "prev": None if prev_avg is None else {"y": round(y(prev_avg), 1), "v": st.nf(prev_avg), "label_y": prev_label_y},
     }
 
 
-def week_chart(weeks: list[dict], *, width: int = 1080, height: int = 330) -> dict:
+def _line_label_ys(a: float | None, b: float | None) -> tuple[float | None, float | None]:
+    """Підписи ліній «середнє» і «було» справа від графіка: близькі розводимо вгору й униз."""
+    if a is None or b is None:
+        return (None if a is None else round(a + 4, 1)), (None if b is None else round(b + 4, 1))
+    if abs(a - b) >= 22:
+        return round(a + 4, 1), round(b + 4, 1)
+    mid = (a + b) / 2
+    upper, lower = round(mid - 4, 1), round(mid + 15, 1)
+    return (upper, lower) if a <= b else (lower, upper)
+
+
+def sparkline(values: list[float], *, prev: list[float] | None = None, width: int = 112, height: int = 36) -> dict | None:
+    """Форма ряду для картки: лінія, заливка під нею, остання точка; `prev` — лінія «було»."""
+    if len(values) < 2 or max(values) <= 0:
+        return None
+    pad = 3.0
+    top = max([*values, *(prev or []), 1])
+    span = max(len(values), len(prev or [])) - 1
+
+    def points(series: list[float]) -> list[tuple[float, float]]:
+        return [(pad + (width - pad * 2) * i / span, height - pad - (height - pad * 2) * v / top) for i, v in enumerate(series)]
+
+    now = points(values)
+    line = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in now)
+    return {
+        "w": width,
+        "h": height,
+        "d": line,
+        "area": f"{line} L{now[-1][0]:.1f},{height - pad:.1f} L{now[0][0]:.1f},{height - pad:.1f} Z",
+        "last": {"x": round(now[-1][0], 1), "y": round(now[-1][1], 1)},
+        "prev_d": ("M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in points(prev))) if prev and len(prev) > 1 else None,
+    }
+
+
+def running_total(values: list[int]) -> list[int]:
+    out: list[int] = []
+    total = 0
+    for value in values:
+        total += value
+        out.append(total)
+    return out
+
+
+def forecast_chart(past: list[dict], future: list[dict], *, width: int = 1100, height: int = 290) -> dict | None:
+    """Факт проти прогнозу й наступні дні з діапазоном; одна вісь, одна одиниця.
+
+    `past`: day, actual, forecast (може бути None), anomaly, tip.
+    `future`: day, value (може бути None), low, high (можуть бути None), tip.
+    """
+    days = len(past) + len(future)
+    if days < 2:
+        return None
+    left, right, top, bottom = 46, 14, 16, 30
+    pw, ph = width - left - right, height - top - bottom
+    known = [row["actual"] for row in past] + [row["forecast"] for row in past if row["forecast"] is not None]
+    for row in future:
+        known += [v for v in (row["value"], row["high"]) if v is not None]
+    vmax, step = nice_scale(max([*known, 1]))
+    base = top + ph
+    slot = pw / days
+
+    def y(v: float) -> float:
+        return base - v / vmax * ph
+
+    def x(i: int) -> float:
+        return left + slot * i + slot / 2
+
+    def path(points: list[tuple[float, float]]) -> str | None:
+        return ("M" + " L".join(f"{a:.1f},{b:.1f}" for a, b in points)) if len(points) > 1 else None
+
+    slots = []
+    actual_pts, forecast_pts = [], []
+    for i, row in enumerate(past):
+        actual_pts.append((x(i), y(row["actual"])))
+        if row["forecast"] is not None:
+            forecast_pts.append((x(i), y(row["forecast"])))
+        slots.append(
+            {
+                "x": round(left + slot * i, 1),
+                "w": round(slot, 1),
+                "cx": round(x(i), 1),
+                "ya": round(y(row["actual"]), 1),
+                "yf": None if row["forecast"] is None else round(y(row["forecast"]), 1),
+                "anomaly": row["anomaly"],
+                "label": f"{row['day'].day:02d}.{row['day'].month:02d}" if row["day"].weekday() == 0 else "",
+                "tip": row["tip"],
+                "future": False,
+            }
+        )
+    next_pts, high_pts, low_pts = [], [], []
+    if forecast_pts:
+        next_pts.append(forecast_pts[-1])
+    for j, row in enumerate(future):
+        i = len(past) + j
+        if row["value"] is not None:
+            next_pts.append((x(i), y(row["value"])))
+        if row["high"] is not None and row["low"] is not None:
+            high_pts.append((x(i), y(row["high"])))
+            low_pts.append((x(i), y(row["low"])))
+        slots.append(
+            {
+                "x": round(left + slot * i, 1),
+                "w": round(slot, 1),
+                "cx": round(x(i), 1),
+                "ya": None,
+                "yf": None if row["value"] is None else round(y(row["value"]), 1),
+                "anomaly": False,
+                "label": f"{row['day'].day:02d}.{row['day'].month:02d}" if row["day"].weekday() == 0 else "",
+                "tip": row["tip"],
+                "future": True,
+            }
+        )
+    band = None
+    if len(high_pts) > 1:
+        ring = high_pts + low_pts[::-1]
+        band = "M" + " L".join(f"{a:.1f},{b:.1f}" for a, b in ring) + " Z"
+    return {
+        "w": width,
+        "h": height,
+        "left": left,
+        "right": width - right,
+        "top": top,
+        "base": base,
+        "label_y": base + 18,
+        "ticks": [{"v": st.nf(step * k), "y": round(y(step * k), 1)} for k in range(4)],
+        "slots": slots,
+        "actual_d": path(actual_pts),
+        "forecast_d": path(forecast_pts),
+        "next_d": path(next_pts),
+        "band_d": band,
+        "today_x": round(left + slot * len(past), 1) if past and future else None,
+    }
+
+
+def week_chart(weeks: list[dict], *, width: int = 800, height: int = 330) -> dict:
     """Стос по тижнях: цирконій · ПММА · титан · інше (знизу вгору)."""
-    left, right, top, bottom = 46, 10, 22, 40
+    left, right, top, bottom = 46, 10, 22, 52
     pw, ph = width - left - right, height - top - bottom
     peak = max([sum(w["mats"].values()) for w in weeks] + [1])
     vmax, step = nice_scale(peak)
@@ -202,7 +358,7 @@ def week_chart(weeks: list[dict], *, width: int = 1080, height: int = 330) -> di
         "right": width - right,
         "base": base,
         "label_y": base + 17,
-        "sub_y": base + 32,
+        "sub_y": base + 36,
         "ticks": [{"v": st.nf(step * k), "y": round(base - step * k / vmax * ph, 1)} for k in range(4)],
         "bars": bars,
         "hatch_y": base - 40,

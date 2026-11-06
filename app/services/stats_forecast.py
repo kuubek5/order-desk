@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app import stats as st
 from app.business_day import business_tab_today, business_today, next_tab_day, prev_tab_day, tab_day
 from app.models import ForecastSnapshot, StatsAnomalyDay
+from app.services import stats_charts as charts
 from app.services import stats_data as data
 
 MODEL_VERSION = "seasonal-8w-v1"
@@ -264,6 +265,9 @@ def build(db: Session, today: date | None = None) -> dict:
         plan.append(
             {
                 "day": target,
+                "value": value,
+                "low_v": value * band[0] if value is not None and band else None,
+                "high_v": value * band[1] if value is not None and band else None,
                 "label": f"{st.DOW[target.weekday()]} {target.day:02d}.{target.month:02d}",
                 "sub": "пт + сб + нд" if target.weekday() == 4 else "",
                 "cells": cells,
@@ -313,7 +317,28 @@ def build(db: Session, today: date | None = None) -> dict:
             }
         )
 
+    def _past_tip(row: dict, shown: float | None) -> str:
+        tip = f"{st.DOW[row['day'].weekday()]} {row['day'].day:02d}.{row['day'].month:02d} · факт {st.nf(row['actual'])} од."
+        if shown is not None:
+            tip += f" · прогноз {_num(shown)} · похибка {_pct(_error_pct(shown, row['actual']))}"
+        if row["anomaly"]:
+            tip += " · нетиповий день"
+        return tip
+
+    past_points = []
+    for row in journal_rows:
+        shown = row["forecast"] if row["forecast"] is not None else row["calc"]
+        past_points.append({"day": row["day"], "actual": row["actual"], "forecast": shown, "anomaly": row["anomaly"], "tip": _past_tip(row, shown)})
+    future_points = []
+    for item in plan:
+        tip = f"{item['label']}{' (+сб нд)' if item['sub'] else ''} · прогноз {_num(item['value'])} од."
+        if item["low"] is not None:
+            tip += f" · діапазон {item['low']}–{item['high']}"
+        tip += f" · тиждень тому {item['naive']}"
+        future_points.append({"day": item["day"], "value": item["value"], "low": item["low_v"], "high": item["high_v"], "tip": tip})
+
     return {
+        "chart": charts.forecast_chart(past_points, future_points) if enough else None,
         "enough": enough,
         "weeks_known": weeks_known,
         "min_weeks": MIN_WEEKS,
@@ -330,8 +355,10 @@ def build(db: Session, today: date | None = None) -> dict:
         "hindcast": {
             "n": hind_score["n"],
             "mape": _pct_abs(hind_score["mape"]),
+            "mape_v": hind_score["mape"],
             "within": _pct_abs(hind_score["within"]),
             "naive_mape": _pct_abs(hind_naive["mape"]),
+            "naive_v": hind_naive["mape"],
             "beats": beats(hind_score, hind_naive),
         },
         "target_pct": round(TARGET_ERROR_PCT),

@@ -1,8 +1,9 @@
 {# Бічна панель «Статистики»: роботи дня / клітинки / без кількості / браку,
    згруповані за вкладкою. Рядок → паспорт роботи. #}
+{% from "_stats_macros.html" import ic, download %}
 <div class="sx-sh">
     <div class="sx-sh-t"><h3>{{ side.title }}</h3>{% if side.tag %}<span class="sx-tag">{{ side.tag }}</span>{% endif %}
-        <button type="button" class="sx-x sx-close" data-side-close aria-label="Закрити список">✕</button></div>
+        <button type="button" class="sx-x sx-close" data-side-close aria-label="Закрити список">{{ ic('x') }}</button></div>
     {% if side.letters is defined %}
     <div class="sx-sum"><span><b>{{ side.letters_n }}</b> листів</span></div>
     {% elif side.stage_rows is defined %}
@@ -12,6 +13,7 @@
         <span class="sx-lg"><i class="sx-sw-lab"></i><b>{{ side.lab }}</b></span><span class="sx-lg"><i class="sx-sw-cli"></i><b>{{ side.client }}</b></span>
         {% if side.noqty %}<span class="sx-q" title="Кількість не число — у суму не входить">? {{ side.noqty }}</span>{% endif %}</div>
     {% endif %}
+    <input class="sx-side-find" type="search" placeholder="Знайти в списку" aria-label="Знайти в списку" data-side-find hidden>
 </div>
 {% if side.letters is defined %}
 <div class="sx-wl">
@@ -43,7 +45,7 @@
     {% if side.limit_hit %}<div class="sx-foot">Показано найдовші 2000 із {{ side.works_n }}.</div>{% endif %}
 </div>
 <div class="sx-sf">Найдовші зверху · клік по рядку → паспорт<span class="sx-sp"></span>
-    <a class="sx-btn" href="/stats/list/export{{ side.export_qs }}" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3z"/><path d="M6 7.5l4 4.5M10 7.5l-4 4.5"/></svg>Список у Excel</a></div>
+    {{ download('/stats/list/export' ~ side.export_qs, 'Список у Excel') }}</div>
 {% else %}
 {% if side.blames %}
 <div class="sx-blames">
@@ -73,5 +75,5 @@
     {% if side.limit_hit %}<div class="sx-foot">Показано перші 2000 — повний список у файлі.</div>{% endif %}
 </div>
 <div class="sx-sf">Клік по рядку → паспорт роботи<span class="sx-sp"></span>
-    <a class="sx-btn" href="/stats/list/export{{ side.export_qs }}" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3z"/><path d="M6 7.5l4 4.5M10 7.5l-4 4.5"/></svg>Список у Excel</a></div>
+    {{ download('/stats/list/export' ~ side.export_qs, 'Список у Excel') }}</div>
 {% endif %}

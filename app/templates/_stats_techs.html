@@ -1,12 +1,13 @@
 {# Вкладка «Техніки» (лише адмін). Заголовок стовпчика сортує; повторний клік
    змінює напрям. Приглушена медіана: вимірів замало для висновку. #}
+{% from "_stats_macros.html" import ic %}
 <section class="sx-card">
     <div class="sx-ch"><h2>Техніки</h2><span class="sx-meta">{{ tc.techs_n }} техніків · {{ tc.total_units }} од. · {{ tc.total_works }} робіт · лише лаба, виконані</span></div>
     <div class="sx-tblwrap">
         <table class="sx-tbl sx-tbl-techs">
             <thead><tr>
                 {% for h in tc.heads %}
-                <th{% if h.numeric %} class="n"{% endif %}{% if h.sort %} aria-sort="{{ h.sort }}"{% endif %}><a href="/stats{{ h.qs }}" hx-get="/stats{{ h.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">{{ h.label }}{% if h.sort %}<span class="sx-sortm">{{ '↓' if h.sort == 'descending' else '↑' }}</span>{% endif %}</a></th>
+                <th{% if h.numeric %} class="n"{% endif %}{% if h.sort %} aria-sort="{{ h.sort }}"{% endif %}><a href="/stats{{ h.qs }}" hx-get="/stats{{ h.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">{{ h.label }}<span class="sx-sortm">{{ ic('up' if h.sort == 'ascending' else 'down') }}</span></a></th>
                 {% endfor %}
             </tr></thead>
             <tbody>

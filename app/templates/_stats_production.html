@@ -1,16 +1,17 @@
 {# Вкладка «Виробництво»: етапи виконаних робіт і де робота чекає найдовше. #}
+{% from "_stats_macros.html" import ic %}
 {% macro funnel(title, f, kind) %}
 <section class="sx-card sx-mb">
     <div class="sx-ch"><h2><span class="sx-lg sx-lg-h"><i class="sx-sw-{{ kind }}"></i>{{ title }}</span></h2><span class="sx-meta">{{ f.works }} виконаних робіт</span>
         {% if f.longest %}<span class="sx-r"><span class="sx-tag sx-tag-warm">найдовше: {{ f.longest }}</span></span>{% endif %}</div>
     <div class="sx-fn">
         {% for s in f.stages %}
-        {% if s.n %}<a class="sx-fn-r sx-fn-link{% if s.longest %} is-longest{% endif %}" href="#" data-side-open="stage={{ 'lab' if kind == 'lab' else 'client' }}:{{ s.start }}:{{ s.end }}" title="Показати роботи цього етапу, найдовші зверху">{% else %}<div class="sx-fn-r">{% endif %}
+        {% if s.n %}<a class="sx-fn-r sx-fn-link{% if s.longest %} is-longest{% endif %}" href="#" data-side-open="stage={{ 'lab' if kind == 'lab' else 'client' }}:{{ s.start }}:{{ s.end }}" title="Показати роботи цього етапу, найдовші зверху">{% else %}<div class="sx-fn-r is-empty">{% endif %}
             <span class="sx-fn-l">{{ s.label }}</span>
             {% if s.n %}
             <span class="sx-fn-m{% if s.few %} sx-few{% endif %}"{% if s.few %} title="Вимірів менше {{ pr.few_limit }}: це ще не висновок"{% endif %}><b>{{ s.median_text }}</b><small>80 %: {{ s.p80_text }}</small></span>
-            <span class="sx-fn-b" role="img" aria-label="{% for b in s.buckets %}{{ b.label }}: {{ b.n }}{% if not loop.last %}, {% endif %}{% endfor %}">{% for b in s.buckets %}{% if b.n %}<i class="sx-fn-{{ b.level }}" style="width:{{ b.pct }}%" title="{{ b.label }}: {{ b.n }}"></i>{% endif %}{% endfor %}</span>
-            <span class="sx-fn-n">{{ s.n }}</span>
+            <span class="sx-fn-b" role="img" aria-label="{% for b in s.buckets %}{{ b.label }}: {{ b.n }}{% if not loop.last %}, {% endif %}{% endfor %}">{% for b in s.buckets %}{% if b.n %}<i class="sx-fn-{{ b.level }}" style="width:{{ b.pct }}%" data-tip="{{ b.label }} · {{ b.n }} робіт"></i>{% endif %}{% endfor %}</span>
+            <span class="sx-fn-n">{{ s.n }}{{ ic('chev-r') }}</span>
             {% else %}
             <span class="sx-fn-none">немає вимірів</span>
             {% endif %}

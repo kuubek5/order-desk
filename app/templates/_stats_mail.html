@@ -1,24 +1,24 @@
 {# Вкладка «Пошта»: коли приходять листи, що з клієнтами, що вони замовляють.
    Карта — листи (кількість відома лише при прийнятті), решта — виконані роботи. #}
-{% from "_stats_macros.html" import heatmap, ramp %}
+{% from "_stats_macros.html" import heatmap, ramp, delta, hint, ic %}
 <div class="sx-kpis sx-kpis-4">
     <div class="sx-card sx-kpi">
         <div class="sx-l">Листів за {{ p.period.length }} днів</div>
         <div class="sx-v"><span class="sx-num" data-v="{{ ml.letters_n }}" data-was="{{ ml.letters_was_n }}">{{ ml.letters }}</span></div>
-        <div class="sx-d">{% if ml.letters_arrow %}<span class="sx-ar sx-cmp-only{% if ml.letters_arrow.sym == '↓' %} down{% endif %}">{{ ml.letters_arrow.sym }} {{ ml.letters_arrow.text }}</span>{% endif %}<span class="sx-was-t sx-cmp-only">було {{ ml.letters_was }}</span></div>
+        <div class="sx-d"><span class="sx-cmp-only">{{ delta(ml.letters_arrow, True) }}</span><span class="sx-was-t sx-cmp-only">було {{ ml.letters_was }}</span></div>
     </div>
     <div class="sx-card sx-kpi">
-        <div class="sx-l">Поза робочими годинами</div>
+        <div class="sx-l">Поза робочими годинами{{ hint('Частка листів, що прийшли поза рамкою робочих годин. Рамку задає адмін на вкладці «Надходження».') }}</div>
         <div class="sx-v">{% if ml.off_pct is not none %}<span class="sx-num" data-v="{{ ml.off_pct }}">{{ ml.off_pct }}</span><small> %</small>{% else %}—{% endif %}</div>
         <div class="sx-d"><span class="sx-was-t">{{ ml.off_text }} листів · рамка {{ ml.work_frame }}</span></div>
     </div>
     <div class="sx-card sx-kpi">
         <div class="sx-l">Одиниці клієнтів</div>
         <div class="sx-v"><span class="sx-num" data-v="{{ ml.units_n }}" data-was="{{ ml.units_was_n }}">{{ ml.units }}</span></div>
-        <div class="sx-d">{% if ml.units_arrow %}<span class="sx-ar sx-cmp-only{% if ml.units_arrow.sym == '↓' %} down{% endif %}">{{ ml.units_arrow.sym }} {{ ml.units_arrow.text }}</span>{% endif %}<span class="sx-was-t sx-cmp-only">було {{ ml.units_was }}</span></div>
+        <div class="sx-d"><span class="sx-cmp-only">{{ delta(ml.units_arrow) }}</span><span class="sx-was-t sx-cmp-only">було {{ ml.units_was }}</span></div>
     </div>
     <div class="sx-card sx-kpi">
-        <div class="sx-l">Клієнтів з роботами</div>
+        <div class="sx-l">Клієнтів з роботами{{ hint('Клієнти, в яких за період є виконані роботи. Тренд — порівняння з попереднім таким самим періодом.') }}</div>
         <div class="sx-v"><span class="sx-num" data-v="{{ ml.active_n }}">{{ ml.active_n }}</span></div>
         <div class="sx-d"><span class="sx-was-t">нових {{ ml.counts.new }} · зростають {{ ml.counts.up }} · падають {{ ml.counts.down }} · зникли {{ ml.counts.gone }}</span></div>
     </div>
@@ -35,7 +35,7 @@
         <div class="sx-ch"><h2>Клієнти</h2><span class="sx-meta">виконані одиниці за період</span></div>
         <div class="sx-tblwrap">
             <table class="sx-tbl">
-                <thead><tr><th>Клієнт</th><th class="n">Од.</th><th class="n">Було</th><th>Тренд</th><th class="n" title="Звичний інтервал між днями з роботою">Ритм</th></tr></thead>
+                <thead><tr><th>Клієнт</th><th class="n">Од.</th><th class="n">Було</th><th>Тренд</th><th class="n">Ритм{{ hint('Звичний інтервал між днями, коли клієнт має роботу.') }}</th></tr></thead>
                 <tbody>
                 {% for r in ml.clients %}
                 <tr><td><a class="sx-tl" href="/stats{{ r.qs }}" hx-get="/stats{{ r.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">{{ r.label }}</a></td>

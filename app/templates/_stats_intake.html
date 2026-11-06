@@ -1,13 +1,13 @@
 {# Вкладка «Надходження»: коли заходить робота. Карта — за часом Sum3D (взяття
    в роботу), бо справжній час появи рядка збирається лише з 12.10.26;
    перемикач «поява рядка» оживає, коли вимірів набереться ≥ 7 днів. #}
-{% from "_stats_macros.html" import heatmap, week_chart, ramp %}
+{% from "_stats_macros.html" import heatmap, week_chart, ramp, ic %}
 <div class="sx-hmode">
     <span class="sx-flab">Час на карті</span>
-    <div class="sx-srcsw">
-        <a class="sx-opt{% if it.mode == 'sum3d' %} on{% endif %}" href="/stats{{ it.sum3d_qs }}" hx-get="/stats{{ it.sum3d_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">Взяття в роботу · Sum3D</a>
+    <div class="sx-srcsw" data-pills>
+        <a class="sx-opt{% if it.mode == 'sum3d' %} on{% endif %}" {% if it.mode == 'sum3d' %}aria-current="true" {% endif %}href="/stats{{ it.sum3d_qs }}" hx-get="/stats{{ it.sum3d_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">Взяття в роботу · Sum3D</a>
         {% if it.row_ready %}
-        <a class="sx-opt{% if it.mode == 'row' %} on{% endif %}" href="/stats{{ it.row_qs }}" hx-get="/stats{{ it.row_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">Поява рядка</a>
+        <a class="sx-opt{% if it.mode == 'row' %} on{% endif %}" {% if it.mode == 'row' %}aria-current="true" {% endif %}href="/stats{{ it.row_qs }}" hx-get="/stats{{ it.row_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">Поява рядка</a>
         {% else %}
         <span class="sx-opt off" aria-disabled="true" title="Днів з часом появи рядка: {{ it.row_seen_days }} з потрібних 7">Поява рядка · збирається з 12.10.26</span>
         {% endif %}
@@ -17,13 +17,13 @@
 
 {% if can_edit_frame %}
 <details class="sx-frame-edit"{% if frame_error %} open{% endif %}>
-    <summary>Робочі години: {{ it.work_frame }}</summary>
+    <summary>{{ ic('cal') }}Робочі години: {{ it.work_frame }}{{ ic('pencil') }}</summary>
     <form class="sx-frame-form" hx-post="/stats/work-frame{{ chrome.export_qs }}" hx-target="#sx-root" hx-swap="outerHTML" data-kload="self">
         <label>дні <select name="first_day">{% for i, d in it.frame_days %}<option value="{{ i }}"{% if i == it.frame.first_day %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
         <label>– <select name="last_day">{% for i, d in it.frame_days %}<option value="{{ i }}"{% if i == it.frame.last_day %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
         <label>години <select name="start">{% for h in range(0, 24) %}<option value="{{ h }}"{% if h == it.frame.start %} selected{% endif %}>{{ h }}:00</option>{% endfor %}</select></label>
         <label>– <select name="end">{% for h in range(1, 25) %}<option value="{{ h }}"{% if h == it.frame.end %} selected{% endif %}>{{ h }}:00</option>{% endfor %}</select></label>
-        <button type="submit" class="sx-btn sx-btn-sm">Зберегти</button>
+        <button type="submit" class="sx-btn">{{ ic('check') }}Зберегти</button>
         {% if frame_error %}<span class="sx-frame-err" role="alert">{{ frame_error }}</span>{% endif %}
         <span class="sx-note">Лише рамка на картах і частка «поза робочим часом». Самі інтервали рахуються календарно.</span>
     </form>
