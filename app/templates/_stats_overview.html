@@ -12,7 +12,7 @@
             <div class="sx-d sx-cmp-only">{% if k.per_day.arrow %}<span class="sx-ar{% if k.per_day.arrow.sym == '↓' %} down{% endif %}">{{ k.per_day.arrow.sym }} {{ k.per_day.arrow.text }}</span>{% endif %}<span class="sx-was-t">було {{ k.per_day.was_text }} · {{ k.per_day.was_tab_days }} вкл.</span></div>
         </div>
         <div class="sx-card sx-kpi">
-            <div class="sx-l" title="Виконані роботи: у Sum3D стоїть час, без переробок. СЛМ не входить.">Одиниці за {{ p.period.length }} днів</div>
+            <div class="sx-l" title="Виконані роботи: у Sum3D стоїть час, без переробок. SLM не входить, він окремо.">Одиниці за {{ p.period.length }} днів</div>
             <div class="sx-v"><span class="sx-num" data-v="{{ k.units.v }}" data-was="{{ k.units.was }}">{{ k.units.text }}</span></div>
             <div class="sx-d"><span class="sx-was-t">{{ k.units.works }} робіт</span><span class="sx-was-t sx-cmp-only">· було {{ k.units.was_text }}</span>
                 {% if k.units.noqty %}<a class="sx-noqty" href="#" data-side-open="noqty=1" title="Кількість у таблиці не число — у суму не входять">? {{ k.units.noqty }} без кількості</a>{% endif %}</div>
@@ -69,6 +69,20 @@
         </div>
         <div class="sx-foot sx-phone-only">Торкніться стовпчика — список робіт. {{ chrome.cover_have }} з {{ chrome.cover_total }} днів мають вкладку.</div>
     </section>
+
+    {% if ov.slm %}
+    <section class="sx-card" data-slm>
+        <div class="sx-ch">
+            <h2>SLM</h2><span class="sx-meta">окремо від фрезерування, рахунок як у «Виробітку»</span>
+            <span class="sx-r">
+                <span class="sx-lg"><i class="sx-sw-lab"></i>Лаба <b>{{ ov.slm.lab }}</b></span>
+                <span class="sx-lg"><i class="sx-sw-cli"></i>Пошта <b>{{ ov.slm.client }}</b></span>
+                <span class="sx-lg">Разом <b>{{ ov.slm.text }}</b> од.</span>
+                <span class="sx-lg sx-cmp-only">було {{ ov.slm.was }}</span>
+            </span>
+        </div>
+    </section>
+    {% endif %}
 
     <div class="sx-row2">
         <section class="sx-card">

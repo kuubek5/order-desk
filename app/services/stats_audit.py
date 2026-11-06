@@ -211,6 +211,7 @@ def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) ->
         "виконані_тут": here,
         "усі_рядки": _tally(rows),
         "збіг_з_екраном": here["роботи"] == screen["works"] and here["одиниць"] == screen["units"],
+        "слм_окремо": data.slm_summary(db, days, data.Filters()),
         "за_правилом": {
             "живі": _tally(live),
             "архівні": _tally(archived),

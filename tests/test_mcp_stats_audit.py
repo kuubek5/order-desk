@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.models import ActionLog, Order
+from app.models import ActionLog, Order, VyrobitokCell
 from app.services import stats_data
 from app.services.mail_rework import REWORK_FIELD
 from tests.asgi_client import MiniClient
@@ -179,3 +179,19 @@ def test_several_discs_and_material_codes_are_not_odd(app_db):  # noqa: F811
     assert data["дивні_рядки_усього"] == 0
     assert data["збіг_з_екраном"] is True
     assert data["екран"]["одиниць"] == 5
+
+
+def test_slm_stands_apart_and_the_check_still_matches(app_db):  # noqa: F811
+    from datetime import date
+
+    app, factory = app_db
+    _seed(factory)
+    with factory() as db:
+        db.add(VyrobitokCell(day=date(2026, 11, 3), col_key="lab_slm", auto_value=10))
+        db.add(VyrobitokCell(day=date(2026, 11, 3), col_key="mail_slm", auto_value=4))
+        db.commit()
+    stats_data.clear_cache()
+    data = _call(app, **PERIOD)
+    assert data["збіг_з_екраном"] is True
+    assert data["слм_окремо"] == {"lab": 10, "client": 4, "units": 14}
+

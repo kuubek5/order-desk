@@ -286,6 +286,19 @@ def overview(db: Session, p: Params) -> dict:
     )
     nameless = clients_now.get("", {}).get("units", 0)
 
+    slm_now = data.slm_summary(db, days, f)
+    slm_was = data.slm_summary(db, prev_days, f)
+    slm = None
+    if slm_now is not None and slm_was is not None and (slm_now["units"] or slm_was["units"]):
+        slm = {
+            "text": st.nf(slm_now["units"]),
+            "lab": st.nf(slm_now["lab"]),
+            "client": st.nf(slm_now["client"]),
+            "was": st.nf(slm_was["units"]),
+            "units": slm_now["units"],
+            "was_units": slm_was["units"],
+        }
+
     by_day = cur["by_day"]
     wide = charts.day_chart(days, by_day, cover, cur["per_day"], was["per_day"], width=1300, height=300, compact=False)
     compact = charts.day_chart(days, by_day, cover, cur["per_day"], was["per_day"], width=358, height=210, compact=True)
@@ -303,6 +316,7 @@ def overview(db: Session, p: Params) -> dict:
         "client_rows": client_rows,
         "clients_total": len(ranked),
         "nameless_units": nameless,
+        "slm": slm,
         "selected_day": selected,
         "prev_label": period_label(prev_period),
     }

@@ -37,6 +37,7 @@ def overview_book(db: Session, p: view.Params) -> bytes:
         ["Робіт без кількості (не в сумі)", cur["noqty"], was["noqty"]],
         ["Лаба, од.", cur["lab"], was["lab"]],
         ["Клієнти (пошта), од.", cur["client"], was["client"]],
+        ["SLM окремо, не в сумі, од.", *(_slm_row(ov["slm"]))],
         ["Брак, % одиниць", _r(k["rework"]["pct"], 2), _r(k["rework"]["was_pct"], 2)],
         ["Брак, од.", k["rework"]["units"], None],
     ]
@@ -59,6 +60,10 @@ def overview_book(db: Session, p: view.Params) -> bytes:
     for b in data.rework_summary(db, days, p.filters)["blames"]:
         rework.append([b["blame"], b["cases"], b["units"]])
     return workbook([("Огляд", summary), ("Дні", by_day), ("Матеріали", mats), ("Клієнти", clients), ("Брак", rework)])
+
+
+def _slm_row(slm: dict | None) -> list[int]:
+    return [slm["units"], slm["was_units"]] if slm else [0, 0]
 
 
 def intake_book(db: Session, p: view.Params) -> bytes:

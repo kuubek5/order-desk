@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base
-from app.models import Material, Order, ReworkRecord
+from app.models import Material, Order, ReworkRecord, VyrobitokCell
 from app.services import stats_data as data
 
 TUE, WED = date(2026, 11, 3), date(2026, 11, 4)
@@ -154,3 +154,50 @@ def test_rework_list_is_not_filtered_by_the_rule(db):
     db.commit()
     assert data.rework_summary(db, DAYS, data.Filters())["units"] == 1
     assert [w["id"] for w in data.works_list(db, DAYS, data.Filters(), rework=True)] == [order.id]
+
+
+# ── SLM окремо: числа з клітинок «Виробітку» ──────────────────────────────────
+def _slm(db, day=TUE, lab=None, mail=None, lab_override=None) -> None:
+    if lab is not None or lab_override is not None:
+        db.add(VyrobitokCell(day=day, col_key="lab_slm", auto_value=lab, override_value=lab_override))
+    if mail is not None:
+        db.add(VyrobitokCell(day=day, col_key="mail_slm", auto_value=mail))
+    db.flush()
+
+
+def test_slm_stands_apart_from_every_total(db):
+    _lab(db)
+    _slm(db, lab=10, mail=5)
+    db.commit()
+    result = _facts(db)
+    assert result["units"] == 2 and result["lab"] == 2 and result["client"] == 0
+    assert sum(result["materials"].values()) == 2
+    assert data.slm_summary(db, DAYS, data.Filters()) == {"lab": 10, "client": 5, "units": 15}
+
+
+def test_slm_operator_correction_wins_as_in_vyrobitok(db):
+    _slm(db, lab=10, lab_override=3)
+    db.commit()
+    assert data.slm_summary(db, DAYS, data.Filters())["units"] == 3
+
+
+def test_slm_counts_only_days_of_the_period(db):
+    _slm(db, day=date(2026, 11, 2), lab=100)
+    _slm(db, day=TUE, lab=10)
+    db.commit()
+    assert data.slm_summary(db, DAYS, data.Filters())["units"] == 10
+
+
+def test_slm_follows_the_source_filter(db):
+    _slm(db, lab=10, mail=5)
+    db.commit()
+    assert data.slm_summary(db, DAYS, data.Filters(src="lab"))["units"] == 10
+    assert data.slm_summary(db, DAYS, data.Filters(src="client"))["units"] == 5
+
+
+@pytest.mark.parametrize("filters", [{"mat": "1"}, {"mat": "none"}, {"tech": "кіра"}, {"client": "клієнт"}])
+def test_slm_has_no_answer_for_filters_about_works(db, filters):
+    _slm(db, lab=10)
+    db.commit()
+    assert data.slm_summary(db, DAYS, data.Filters(**filters)) is None
+

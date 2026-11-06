@@ -18,7 +18,11 @@
 переробкою, кількість не більша за `MAX_UNITS`. Рядок без Sum3D — це робота, що
 ще не зроблена й завтра з'явиться знову (пн→вт→ср), і рахувати його означало б
 лічити ту саму коронку кілька разів. Архівні лишаються: серед виконаних це 22 %,
-бо лаба чистить старі вкладки. СЛМ сюди не входить, бо робіт із нього немає.
+бо лаба чистить старі вкладки.
+
+СЛМ стоїть окремо й у підсумки не входить (власник 06.11.26): робіт із нього синк не
+створює, Sum3D у нього не буває ніколи. Його число — ті самі клітинки `lab_slm` і
+`mail_slm`, що у «Виробітку», разом із правкою оператора (`slm_summary`).
 
 Кеш — 60 с за параметрами: екран відкривають кілька разів поспіль (період,
 фільтри, назад), а дані змінюються синком раз на хвилини.
@@ -39,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from app import stats as st
 from app.business_day import business_date_of, business_to_utc, get_rollover, tab_day
-from app.models import Material, Order, ReworkRecord
+from app.models import Material, Order, ReworkRecord, VyrobitokCell
 from app.services.order_dates import order_date_of, parse_sheet_tab
 
 CACHE_TTL_SECONDS = 60.0
@@ -55,6 +59,8 @@ MATERIAL_GROUP_LABELS = {"zr": "Цирконій", "pmma": "ПММА", "ti": "Т
 _MATERIAL_GROUP_BY_NAME = {"Цирконій": "zr", "ПММА": "pmma", "Титан": "ti"}
 
 BLAME_ORDER = ("обладнання", "технік", "адміністратор", "клієнт")
+
+_SLM_CELLS = {"lab_slm": "lab", "mail_slm": "client"}
 
 # Більше одиниць в одному рядку не буває: справжній максимум за всю історію 112, а
 # рядок зі зсунутими колонками несе тут номер наряду, від 32 864 (аудит 06.11.26).
@@ -389,6 +395,35 @@ def coverage(db: Session, days: list[date]) -> list[bool]:
     idx = tab_index(db)
     have = {tab_day(d) for d in idx.dated.values()}
     return [d in have for d in days]
+
+
+# ── СЛМ ────────────────────────────────────────────────────────────────────
+def slm_summary(db: Session, days: Iterable[date], f: Filters) -> dict[str, int] | None:
+    """СЛМ за дні: {"lab", "client", "units"}, число як у «Виробітку».
+
+    None — фільтр питає про матеріал, техніка чи клієнта, а в СЛМ робіт немає, тож
+    відповіді на таке питання в нього теж немає.
+    """
+    if f.mat or f.tech or f.client:
+        return None
+    day_set = set(days)
+    out = {"lab": 0, "client": 0}
+    if day_set:
+        rows = db.execute(
+            select(VyrobitokCell.day, VyrobitokCell.col_key, VyrobitokCell.auto_value, VyrobitokCell.override_value).where(
+                VyrobitokCell.col_key.in_(tuple(_SLM_CELLS)),
+                VyrobitokCell.day >= min(day_set),
+                VyrobitokCell.day <= max(day_set),
+            )
+        ).all()
+        for day, col_key, auto, override in rows:
+            if day in day_set:
+                out[_SLM_CELLS[col_key]] += int((override if override is not None else auto) or 0)
+    if f.src == "lab":
+        out["client"] = 0
+    elif f.src == "client":
+        out["lab"] = 0
+    return {**out, "units": out["lab"] + out["client"]}
 
 
 # ── Клієнти, кольори, брак ─────────────────────────────────────────────────
