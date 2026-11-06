@@ -81,12 +81,7 @@ href="/stats{{ qs }}" hx-get="/stats{{ qs }}" hx-target="#sx-root" hx-swap="oute
     {% include "_stats_techs.html" %}
     {% elif p.tab == "production" %}
     {% include "_stats_production.html" %}
-    {% else %}
-    <section class="sx-card sx-stage">
-        <div class="sx-stage-n">етап {{ stage[2] }}</div>
-        <h2>{{ stage[1] }}</h2>
-        <p>{{ stage_text }}</p>
-        <p class="sx-note">Вкладка зʼявиться окремим релізом.</p>
-    </section>
+    {% elif p.tab == "forecast" %}
+    {% include "_stats_forecast.html" %}
     {% endif %}
 </div>

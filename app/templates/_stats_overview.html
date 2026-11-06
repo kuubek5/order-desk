@@ -45,11 +45,12 @@
             <div class="sx-d"><span class="sx-tag">з 12.10.26</span><span class="sx-was-t">{{ 'час появи шляху' if k.lead.collecting else 'за період вимірів немає' }}</span></div>
         </div>
         {% endif %}
-        <div class="sx-card sx-kpi sx-na">
+        <a class="sx-card sx-kpi sx-kpi-link{% if not ov.forecast %} sx-na{% endif %}" href="/stats{{ ov.forecast_qs }}" hx-get="/stats{{ ov.forecast_qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root" title="Докладно у вкладці «Прогноз»">
             <div class="sx-l">Прогноз на тиждень</div>
-            <div class="sx-v">—</div>
-            <div class="sx-d"><span class="sx-tag">етап 5</span><span class="sx-was-t">потрібно ≥ 6 тижнів</span></div>
-        </div>
+            {% if ov.forecast %}<div class="sx-v"><span class="sx-num">{{ ov.forecast.total }}</span><small> од.</small></div>
+            <div class="sx-d"><span class="sx-was-t">уже зроблено {{ ov.forecast.fact }}</span></div>
+            {% else %}<div class="sx-v">—</div><div class="sx-d"><span class="sx-was-t">замало історії</span></div>{% endif %}
+        </a>
     </div>
 
     <section class="sx-card sx-daycard">

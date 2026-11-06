@@ -365,3 +365,12 @@ a.sx-nm:hover{color:var(--accent-c)}
   .sx-fn-n{display:none}
 }
 
+/* ── Прогноз ── */
+.sx-kpis-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sx-pad{padding:18px 16px}
+.sx-tb{font-weight:700}
+.sx-ok{color:var(--ok)}
+.sx-anom td{opacity:.6}
+.sx-btn-sm{height:24px;padding:0 8px;font-size:var(--fs-0)}
+@media (max-width:760px){.sx-kpis-3{grid-template-columns:minmax(0,1fr)}}
+

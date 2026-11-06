@@ -45,7 +45,7 @@ from app.daily_backup import ensure_daily_snapshot
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
 from app import sync_control
-from app.services import outage_journal
+from app.services import outage_journal, stats_forecast
 from app.sync_control import (
     MAIL_SYNC_INITIAL_DELAY_SECONDS,
     MAIL_SYNC_INTERVAL_SECONDS,
@@ -508,6 +508,32 @@ def _vyrobitok_freeze_tick() -> None:
         logger.info(
             "Виробіток заморожено: робіт %d, СЛМ %d", result["orders"], result["slm"]
         )
+
+
+# Прогноз пишеться раз на робочий день. Півгодинний тік лише питає, чи вже записано:
+# ПК міг бути вимкнений о 07:30, і тоді прогноз ляже, щойно програма запрацює.
+STATS_FORECAST_INTERVAL_SECONDS = 30 * 60
+STATS_FORECAST_INITIAL_DELAY_SECONDS = 180
+
+
+def _stats_forecast_tick() -> None:
+    """Одна спроба записати прогноз. Ніколи не кидає: без запису просто не буде журналу."""
+    try:
+        with SessionLocal() as db:
+            written = stats_forecast.write_snapshot(db)
+    except Exception:
+        logger.exception("Stats forecast snapshot failed")
+        return
+    if written:
+        logger.info("Прогноз статистики записано: %d значень", written)
+
+
+def _stats_forecast_worker(stop_event: Event) -> None:
+    if stop_event.wait(STATS_FORECAST_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        _stats_forecast_tick()
+        stop_event.wait(STATS_FORECAST_INTERVAL_SECONDS)
 
 
 def _vyrobitok_freeze_worker(stop_event: Event) -> None:
@@ -1257,6 +1283,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
         _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),
+        _BackgroundWorker("kuubmill-stats-forecast", _stats_forecast_worker),
         _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
         _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
     ]

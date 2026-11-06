@@ -1560,6 +1560,38 @@ class CamBlankOrder(Base):
     )
 
 
+class ForecastSnapshot(Base):
+    """Прогноз, записаний НАПЕРЕД: саме з ним звіряється факт (`stats_forecast`).
+
+    Перерахунок заднім числом знає про минуле більше, ніж знав прогноз того ранку, і
+    завжди виглядає краще. Тому записане не переписується. Час локальний і без
+    серверного дефолту (§14 «Зміна»).
+    """
+
+    __tablename__ = "forecast_snapshots"
+    __table_args__ = (UniqueConstraint("made_on", "target_day", "series", name="uq_forecast_snapshot"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    made_on: Mapped[date] = mapped_column(Date, index=True)
+    target_day: Mapped[date] = mapped_column(Date, index=True)
+    series: Mapped[str] = mapped_column(String(20))
+    value: Mapped[float] = mapped_column(Float)
+    low: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    high: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    model_version: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.now)
+
+
+class StatsAnomalyDay(Base):
+    """День, який адмін позначив нетиповим: прогноз на ньому не вчиться."""
+
+    __tablename__ = "stats_anomaly_days"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    marked_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.now)
+
+
 class VyrobitokMonth(Base):
     """Місячні налаштування табеля «Виробіток»: курс валюти й склад зміни.
 

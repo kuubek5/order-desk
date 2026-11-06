@@ -35,6 +35,8 @@ from sqlalchemy.orm import Session
 from app.business_day import utc_now
 from app.crypto import decrypt_value, encrypt_value
 from app.models import (
+    ForecastSnapshot,
+    StatsAnomalyDay,
     ActionLog,
     AppSetting,
     Attachment,
@@ -193,6 +195,8 @@ _TABLE_MODELS: list[Any] = [
     ShiftNoteImage,
     Feedback,
     FeedbackImage,
+    ForecastSnapshot,
+    StatsAnomalyDay,
 ]
 
 
@@ -235,7 +239,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 6  # order_emails (05.10.26)
+_NEW_SINCE_FLAG = 8  # forecast_snapshots, stats_anomaly_days (06.11.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:

@@ -115,6 +115,7 @@ POST /shift/images/prune
 GET /stats
 GET /stats/list
 GET /stats/export
+POST /stats/anomaly
 GET /stats/list/export
 POST /vyrobitok/pin
 POST /clients/{client_id}

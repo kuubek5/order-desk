@@ -1,0 +1,69 @@
+{# Вкладка «Прогноз»: тиждень наперед, чесна перевірка точності, нетипові дні. #}
+{% macro verdict(b) %}{% if b is none %}<span class="sx-was-t">ще нема з чим порівняти</span>{% elif b %}<span class="sx-trend is-up">краща за «як тиждень тому»</span>{% else %}<span class="sx-trend is-down">поки не краща за «як тиждень тому»</span>{% endif %}{% endmacro %}
+{% if not fc.enough %}
+<section class="sx-card sx-mb"><div class="sx-empty sx-pad">Замало даних для прогнозу: {{ fc.weeks_known }} тижнів історії з потрібних {{ fc.min_weeks }}. Числа тут зʼявляться самі.</div></section>
+{% else %}
+<div class="sx-kpis sx-kpis-3">
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">Журнал: записане наперед</div>
+        {% if fc.journal.n %}
+        <div class="sx-v"><span class="sx-num">{{ fc.journal.mape }}</span></div>
+        <div class="sx-d"><span class="sx-was-t">середня похибка · у межах ±{{ fc.target_pct }} %: {{ fc.journal.within }} днів · {{ fc.journal.n }} дн.</span></div>
+        <div class="sx-d">{{ verdict(fc.journal.beats) }}</div>
+        {% else %}
+        <div class="sx-v">—</div>
+        <div class="sx-d"><span class="sx-was-t">прогноз пишеться щоранку, перший факт зʼявиться наступного робочого дня</span></div>
+        {% endif %}
+    </div>
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">Перевірка на минулому</div>
+        <div class="sx-v"><span class="sx-num">{{ fc.hindcast.mape }}</span></div>
+        <div class="sx-d"><span class="sx-was-t">кожен день порахований лише з того, що було відомо до нього · ±{{ fc.target_pct }} %: {{ fc.hindcast.within }} · {{ fc.hindcast.n }} дн.</span></div>
+        <div class="sx-d">{{ verdict(fc.hindcast.beats) }}</div>
+    </div>
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">«Як тиждень тому»</div>
+        <div class="sx-v"><span class="sx-num">{{ fc.hindcast.naive_mape }}</span></div>
+        <div class="sx-d"><span class="sx-was-t">похибка найпростішого прогнозу на тих самих днях: це планка, яку модель мусить брати</span></div>
+    </div>
+</div>
+
+<section class="sx-card sx-mb">
+    <div class="sx-ch"><h2>Наступні робочі дні</h2><span class="sx-meta">виконані одиниці · п'ятниця несе й вихідні · SLM не входить</span></div>
+    <div class="sx-tblwrap">
+        <table class="sx-tbl">
+            <thead><tr><th>День</th>{% for key, label in fc.columns %}<th class="n">{{ label }}</th>{% endfor %}{% if fc.has_band %}<th class="n" title="10-й і 90-й перцентиль минулих похибок">Діапазон</th>{% endif %}<th class="n">Тиждень тому</th></tr></thead>
+            <tbody>
+            {% for r in fc.plan %}
+            <tr><td>{{ r.label }}{% if r.sub %} <small class="sx-was-t">{{ r.sub }}</small>{% endif %}</td>
+                {% for key, label in fc.columns %}<td class="n{% if key == 'total' %} sx-tb{% endif %}">{{ r.cells[key] }}</td>{% endfor %}
+                {% if fc.has_band %}<td class="n">{{ r.low }}–{{ r.high }}</td>{% endif %}
+                <td class="n">{{ r.naive }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+<section class="sx-card">
+    <div class="sx-ch"><h2>Останні дні</h2><span class="sx-meta">факт проти прогнозу · «розрахунок» — не записаний наперед, а порахований зараз лише з минулого</span></div>
+    <div class="sx-tblwrap">
+        <table class="sx-tbl">
+            <thead><tr><th>День</th><th class="n">Факт</th><th class="n">Прогноз</th><th>Звідки</th><th class="n">Похибка</th><th class="n">«Як тиждень тому»</th>{% if can_mark_days %}<th></th>{% endif %}</tr></thead>
+            <tbody>
+            {% for r in fc.rows %}
+            <tr{% if r.anomaly %} class="sx-anom"{% endif %}><td>{{ r.label }}{% if r.anomaly %} <small class="sx-trend is-down">нетиповий</small>{% endif %}</td>
+                <td class="n">{{ r.actual }}</td><td class="n">{{ r.forecast }}</td>
+                <td><small class="sx-was-t">{{ 'записано' if r.written else 'розрахунок' }}</small></td>
+                <td class="n{% if r.within %} sx-ok{% endif %}">{{ r.error }}</td><td class="n">{{ r.naive_error }}</td>
+                {% if can_mark_days %}<td class="n"><form hx-post="/stats/anomaly{{ chrome.export_qs }}" hx-target="#sx-root" hx-swap="outerHTML" data-kload="self"><input type="hidden" name="day" value="{{ r.iso }}"><button type="submit" class="sx-btn sx-btn-sm" title="Нетиповий день: свято, аврал. Прогноз на ньому не вчиться">{{ 'повернути' if r.anomaly else 'нетиповий' }}</button></form></td>{% endif %}
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="sx-empty">історії ще немає</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sx-foot">Прогноз не залежить від фільтрів і періоду нагорі. Модель: середнє тих самих днів тижня за 8 тижнів без крайніх значень × тренд останніх 2 тижнів до попередніх 6 ({{ fc.model_version }}).</div>
+</section>

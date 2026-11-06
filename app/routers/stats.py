@@ -12,15 +12,17 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, Form
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.business_day import business_today
-from app.routers.deps import get_current_user, get_db, login_redirect, templates
+from app.routers.deps import get_current_user, get_db, login_redirect, require_admin, templates
 from app.routers.section_gate import admin_banner, blocked_response
-from app.services import stats_export, stats_mail, stats_production, stats_techs, stats_view
+from app.services import stats_data, stats_export, stats_forecast, stats_mail, stats_production, stats_techs, stats_view
 from app.services.section_gate import is_admin
 
 router = APIRouter()
@@ -60,9 +62,9 @@ def page_context(db: Session, p: stats_view.Params, admin: bool) -> dict:
         ctx["tc"] = stats_techs.build(db, p)
     elif p.tab == "production":
         ctx["pr"] = stats_production.build(db, p)
-    else:
-        ctx["stage"] = next(t for t in stats_view.TABS if t[0] == p.tab)
-        ctx["stage_text"] = stats_view.STAGE_TEXT.get(p.tab, "")
+    elif p.tab == "forecast":
+        ctx["fc"] = stats_forecast.build(db)
+        ctx["can_mark_days"] = admin
     return ctx
 
 
@@ -84,6 +86,19 @@ def get_stats(request: Request, db: Session = Depends(get_db)):
         }
     )
     return templates.TemplateResponse(request, "stats.html", ctx)
+
+
+@router.post("/stats/anomaly", response_class=HTMLResponse)
+def post_stats_anomaly(request: Request, day: str = Form(...), db: Session = Depends(get_db)):
+    """Адмін позначає день нетиповим: прогноз на ньому більше не вчиться."""
+    user, stop = _gate(request, db)
+    if stop is not None:
+        return stop
+    require_admin(request, db, loopback=False)
+    stats_forecast.toggle_anomaly(db, date.fromisoformat(day), user.username)
+    stats_data.clear_cache()
+    p = _params(request, user)
+    return templates.TemplateResponse(request, "_stats_root.html", page_context(db, p, is_admin(user)))
 
 
 @router.get("/stats/list", response_class=HTMLResponse)

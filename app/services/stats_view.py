@@ -18,6 +18,7 @@ from app import stats as st
 from app.business_day import tab_day
 from app.services import stats_charts as charts
 from app.services import stats_data as data
+from app.services import stats_forecast
 from app.services.stats_data import MATERIAL_GROUP_LABELS, MATERIAL_GROUPS, Filters
 
 # (ключ, назва, етап-заглушка або None, лише адмін)
@@ -27,7 +28,7 @@ TABS = (
     ("techs", "Техніки", None, True),
     ("mail", "Пошта", None, False),
     ("production", "Виробництво", None, False),
-    ("forecast", "Прогноз", 5, False),
+    ("forecast", "Прогноз", None, False),
 )
 TAB_KEYS = {t[0] for t in TABS}
 
@@ -329,6 +330,8 @@ def overview(db: Session, p: Params) -> dict:
         "clients_total": len(ranked),
         "nameless_units": nameless,
         "slm": slm,
+        "forecast": stats_forecast.week_brief(db),
+        "forecast_qs": p.qs(tab="forecast"),
         "selected_day": selected,
         "prev_label": period_label(prev_period),
     }
