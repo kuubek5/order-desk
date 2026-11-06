@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 from urllib.parse import quote
 
 from datetime import date
@@ -24,6 +25,9 @@ from app.routers.deps import get_current_user, get_db, login_redirect, require_a
 from app.routers.section_gate import admin_banner, blocked_response
 from app.services import stats_data, stats_export, stats_forecast, stats_mail, stats_production, stats_techs, stats_view
 from app.services.section_gate import is_admin
+from app.stats import WorkFrame
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -56,6 +60,7 @@ def page_context(db: Session, p: stats_view.Params, admin: bool) -> dict:
             ctx["side_day"] = ctx["ov"]["selected_day"].isoformat()
     elif p.tab == "intake":
         ctx["it"] = stats_view.intake(db, p)
+        ctx["can_edit_frame"] = admin
     elif p.tab == "mail":
         ctx["ml"] = stats_mail.build(db, p)
     elif p.tab == "techs":
@@ -101,6 +106,32 @@ def post_stats_anomaly(request: Request, day: str = Form(...), db: Session = Dep
     return templates.TemplateResponse(request, "_stats_root.html", page_context(db, p, is_admin(user)))
 
 
+@router.post("/stats/work-frame", response_class=HTMLResponse)
+def post_stats_work_frame(
+    request: Request,
+    first_day: int = Form(...),
+    last_day: int = Form(...),
+    start: int = Form(...),
+    end: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Адмін задає робочі дні й години: рамка на картах і частка «поза робочим часом»."""
+    user, stop = _gate(request, db)
+    if stop is not None:
+        return stop
+    require_admin(request, db, loopback=False)
+    frame = WorkFrame(first_day, last_day, start, end)
+    error = None
+    if frame.is_valid():
+        stats_data.save_work_frame(db, frame)
+        logger.info("Робочі години статистики: %s (%s)", frame.text, user.username)
+    else:
+        error = "Кінець мусить бути пізніше за початок, а останній день не раніше за перший. Не збережено."
+    ctx = page_context(db, _params(request, user), is_admin(user))
+    ctx["frame_error"] = error
+    return templates.TemplateResponse(request, "_stats_root.html", ctx)
+
+
 @router.get("/stats/list", response_class=HTMLResponse)
 def get_stats_list(request: Request, db: Session = Depends(get_db)):
     """Бічна панель: роботи дня / клітинки карти / без кількості / браку."""
@@ -111,6 +142,8 @@ def get_stats_list(request: Request, db: Session = Depends(get_db)):
     req = stats_view.ListRequest.parse(request.query_params)
     if req.cell is not None and req.cell[0] == "mail":
         side = stats_mail.side(db, p, req)
+    elif req.stage is not None:
+        side = stats_production.side(db, p, req)
     else:
         side = stats_view.side_list(db, p, req)
     return templates.TemplateResponse(request, "_stats_side.html", {"side": side, "p": p})

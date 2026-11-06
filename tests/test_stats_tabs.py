@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -17,6 +19,7 @@ from app import stats as st
 from app.db import Base
 from app.models import EmailMessage, MachineReading, Order, ReworkRecord, StatusEvent
 from app.services import stats_data as data
+from app.services import stats_charts as charts
 from app.services import stats_export, stats_mail, stats_production, stats_techs, stats_view
 from app.statuses import STATUS_FOUND, STATUS_ISSUED
 from tests.test_stats import ADMIN, OPERATOR, _client, app_db  # noqa: F401 — фікстура
@@ -324,7 +327,13 @@ def test_mail_cell_route_lists_letters(app_db, engine):  # noqa: F811
     assert status == 200 and "Перший" in body and "1</b> листів" in body
 
 
+def _sheet_text(payload: bytes) -> str:
+    with zipfile.ZipFile(io.BytesIO(payload)) as book:
+        return "".join(book.read(name).decode("utf-8") for name in book.namelist() if name.startswith("xl/worksheets/"))
+
+
 def test_workbooks_build_with_data(db):
+    expected = {"mail": "Клієнт", "techs": ">с<", "production": "Модель → Sum3D"}
     _letter(db, datetime(2026, 11, 3, 12, 15))
     _work(db, technician_name="с", source="lab")
     _work(db, source="email", client_name="Клієнт")
@@ -334,4 +343,145 @@ def test_workbooks_build_with_data(db):
         (stats_export.techs_book, "techs"),
         (stats_export.production_book, "production"),
     ):
-        assert book(db, _params(tab))[:2] == b"PK"
+        payload = book(db, _params(tab))
+        assert payload[:2] == b"PK"
+        cells = _sheet_text(payload)
+        assert expected[tab] in cells, f"{tab}: у файлі немає даних, лише оболонка"
+
+
+# ── Виробництво: клік по етапу → список ──────────────────────────────────────
+def _modelled(db, minutes, wo, source="lab", **kw):
+    seen = datetime(2026, 11, 3, 9, 0)
+    return _work(db, source=source, row_seen_at=seen, job_code_at=seen + timedelta(minutes=minutes), work_order_no=wo, **kw)
+
+
+def _stage_request(kind="lab", start="seen", end="model"):
+    return stats_view.ListRequest.parse({"stage": f"{kind}:{start}:{end}"})
+
+
+def test_stage_list_is_the_same_works_longest_first(db):
+    _modelled(db, 30, "короткий")
+    _modelled(db, 300, "довгий")
+    _modelled(db, 60, "середній")
+    seen = datetime(2026, 11, 3, 12, 0)
+    _work(db, work_order_no="заднім числом", row_seen_at=seen, job_code_at=seen - timedelta(hours=1))
+    db.commit()
+    p = _params("production")
+    side = stats_production.side(db, p, _stage_request())
+    stage = {s["label"]: s for s in stats_production.build(db, p)["lab"]["stages"]}["Наряд → модель"]
+    assert [w["wo"] for w in side["stage_rows"]] == ["довгий", "середній", "короткий"]
+    assert side["works_n"] == stage["n"], "список мусить збігатися з числом поруч"
+    assert side["median_text"] == stage["median_text"]
+    assert side["title"] == "Наряд → модель" and side["tag"] == "лаба"
+
+
+def test_stage_list_keeps_lab_and_clients_apart(db):
+    letter = _letter(db, datetime(2026, 11, 3, 8, 0))
+    _work(db, source="email", client_name="Клієнт", sum3d="10-00-00", source_email_id=letter.id)
+    _modelled(db, 30, "лаба")
+    db.commit()
+    side = stats_production.side(db, _params("production"), _stage_request("client", "seen", "taken"))
+    assert [w["client"] for w in side["stage_rows"]] == ["Клієнт"]
+
+
+def test_unknown_stage_gives_an_empty_list(db):
+    _modelled(db, 30, "лаба")
+    db.commit()
+    side = stats_production.side(db, _params("production"), _stage_request("lab", "seen", "нема"))
+    assert side["stage_rows"] == [] and side["works_n"] == 0
+
+
+def test_stage_list_does_not_touch_the_cached_moments(db):
+    _modelled(db, 30, "лаба")
+    db.commit()
+    p = _params("production")
+    stats_production.side(db, p, _stage_request())
+    moments = stats_production._moments(db, p.period.working_days(), p.filters)
+    assert "minutes" not in moments[0] and "group" not in moments[0]
+
+
+def test_stage_request_goes_round_through_the_address():
+    req = _stage_request("client", "taken", "mill_start")
+    assert stats_view.ListRequest.parse(req.query()) == req
+
+
+def test_stage_route_and_excel_show_the_works(app_db, engine):  # noqa: F811
+    with Session(engine) as session:
+        _modelled(session, 90, "24122")
+        session.commit()
+    data.clear_cache()
+    client = _client(ADMIN)
+    query = {**QUERY, "tab": "production"}
+    _, _, page = client.get("/stats?" + urlencode(query))
+    assert 'data-side-open="stage=lab:seen:model"' in page, "етап із вимірами клікається"
+    assert 'id="sx-side-body"' in page, "панелі є куди відкритись"
+    assert 'stage=lab:model:taken"' not in page, "етап без вимірів не клікається"
+    stage = {**query, "stage": "lab:seen:model"}
+    status, _, body = client.get("/stats/list?" + urlencode(stage))
+    assert status == 200 and "24122" in body and "/orders/" in body and "1 год 30 хв" in body
+    status, _, _ = client.get("/stats/list/export?" + urlencode(stage))
+    assert status == 200
+
+
+def test_stage_workbook_has_the_interval(db):
+    _modelled(db, 90, "24122")
+    db.commit()
+    payload = stats_export.list_book(db, _params("production"), _stage_request())
+    with zipfile.ZipFile(io.BytesIO(payload)) as book:
+        text = "".join(book.read(name).decode("utf-8") for name in book.namelist() if name.endswith(".xml"))
+    assert "Хвилин" in text and "24122" in text and "03.11.26 09:00" in text and "03.11.26 10:30" in text
+
+
+# ── Робочі години ────────────────────────────────────────────────────────────
+def test_work_frame_defaults_and_bad_values():
+    assert st.WorkFrame.parse(None) == st.WorkFrame()
+    assert st.WorkFrame.parse("сміття") == st.WorkFrame()
+    assert st.WorkFrame.parse("0-4-18-9") == st.WorkFrame(), "кінець раніше початку не приймається"
+    assert st.WorkFrame().text == "Пн–Пт 9:00–18:00"
+    assert st.WorkFrame(5, 5, 8, 24).text == "Сб 8:00–24:00"
+    assert st.WorkFrame.parse(st.WorkFrame(0, 5, 8, 20).encode()) == st.WorkFrame(0, 5, 8, 20)
+
+
+def test_work_frame_changes_the_share_and_the_rectangle():
+    grid = st.empty_grid()
+    grid[5][10] = 4  # субота
+    grid[0][8] = 1  # понеділок до дев'ятої
+    assert st.off_hours(grid) == (5, 5)
+    assert st.off_hours(grid, st.WorkFrame(0, 5, 8, 20)) == (5, 0)
+    usual = charts.heatmap(grid, "lab")["frame"]
+    tuesday = charts.heatmap(grid, "lab", frame=st.WorkFrame(1, 5, 9, 18))["frame"]
+    assert tuesday["y"] > usual["y"], "рамка починається з другого рядка"
+    assert tuesday["h"] == usual["h"], "теж п'ять днів"
+
+
+def test_admin_saves_work_frame_and_screens_use_it(app_db, engine):  # noqa: F811
+    client = _client(ADMIN)
+    query = urlencode({**QUERY, "tab": "intake"})
+    _, _, before = client.get("/stats?" + query)
+    assert "Робочі години: Пн–Пт 9:00–18:00" in before
+    status, _, body = client.post(
+        "/stats/work-frame?" + query, data={"first_day": "0", "last_day": "5", "start": "8", "end": "20"}
+    )
+    assert status == 200 and "Робочі години: Пн–Сб 8:00–20:00" in body
+    _, _, mail = client.get("/stats?" + urlencode({**QUERY, "tab": "mail"}))
+    assert "рамка Пн–Сб 8:00–20:00" in mail
+
+
+def test_impossible_work_frame_is_refused_out_loud(app_db):  # noqa: F811
+    client = _client(ADMIN)
+    query = urlencode({**QUERY, "tab": "intake"})
+    status, _, body = client.post(
+        "/stats/work-frame?" + query, data={"first_day": "0", "last_day": "4", "start": "18", "end": "9"}
+    )
+    assert status == 200 and "Не збережено" in body and "Робочі години: Пн–Пт 9:00–18:00" in body
+
+
+def test_operator_sees_the_frame_but_cannot_change_it(app_db):  # noqa: F811
+    client = _client(OPERATOR)
+    query = urlencode({**QUERY, "tab": "intake"})
+    _, _, page = client.get("/stats?" + query)
+    assert "/stats/work-frame" not in page
+    status, _, _ = client.post("/stats/work-frame?" + query, data={"first_day": "0", "last_day": "5", "start": "8", "end": "20"})
+    assert status == 403
+    _, _, after = _client(ADMIN).get("/stats?" + query)
+    assert "Пн–Пт 9:00–18:00" in after

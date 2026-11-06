@@ -5,7 +5,7 @@
         {% if f.longest %}<span class="sx-r"><span class="sx-tag sx-tag-warm">найдовше: {{ f.longest }}</span></span>{% endif %}</div>
     <div class="sx-fn">
         {% for s in f.stages %}
-        <div class="sx-fn-r{% if s.longest %} is-longest{% endif %}">
+        {% if s.n %}<a class="sx-fn-r sx-fn-link{% if s.longest %} is-longest{% endif %}" href="#" data-side-open="stage={{ 'lab' if kind == 'lab' else 'client' }}:{{ s.start }}:{{ s.end }}" title="Показати роботи цього етапу, найдовші зверху">{% else %}<div class="sx-fn-r">{% endif %}
             <span class="sx-fn-l">{{ s.label }}</span>
             {% if s.n %}
             <span class="sx-fn-m{% if s.few %} sx-few{% endif %}"{% if s.few %} title="Вимірів менше {{ pr.few_limit }}: це ще не висновок"{% endif %}><b>{{ s.median_text }}</b><small>80 %: {{ s.p80_text }}</small></span>
@@ -14,7 +14,7 @@
             {% else %}
             <span class="sx-fn-none">немає вимірів</span>
             {% endif %}
-        </div>
+        {% if s.n %}</a>{% else %}</div>{% endif %}
         {% endfor %}
     </div>
 </section>
@@ -26,4 +26,7 @@
 </div>
 {% if pr.lab %}{{ funnel("Лаба", pr.lab, "lab") }}{% endif %}
 {% if pr.client %}{{ funnel("Клієнти (пошта)", pr.client, "cli") }}{% endif %}
-<div class="sx-foot">Поява рядка записується з {{ pr.seen_since }}, фрезерування видно лише за останні {{ pr.mill_days }} днів. Лабораторні рядки через видачу в CRM зазвичай не проходять, тому два останні етапи в лаби порожні.</div>
+<aside class="sx-card sx-side sx-side-drawer" id="sx-side" aria-label="Роботи вибраного етапу">
+    <div class="sx-side-body" id="sx-side-body"></div>
+</aside>
+<div class="sx-foot">Клік по етапу покаже його роботи, найдовші зверху. Поява рядка записується з {{ pr.seen_since }}, фрезерування видно лише за останні {{ pr.mill_days }} днів. Лабораторні рядки через видачу в CRM зазвичай не проходять, тому два останні етапи в лаби порожні.</div>

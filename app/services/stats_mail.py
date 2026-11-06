@@ -220,7 +220,8 @@ def build(db: Session, p: view.Params) -> dict:
 
     heat = letter_heat(db, days, f.client)
     heat_was = letter_heat(db, prev_days, f.client)
-    total, off = st.off_hours(heat["grid"])
+    work = data.work_frame(db)
+    total, off = st.off_hours(heat["grid"], work)
 
     clients_now = data.client_units(db, days, f)
     clients_was = data.client_units(db, prev_days, f)
@@ -267,7 +268,7 @@ def build(db: Session, p: view.Params) -> dict:
         "units_arrow": view._arrow(st.delta_pct(cur["units"], was["units"])),
         "active_n": len(active),
         "counts": counts,
-        "chart": charts.heatmap(heat["grid"], "mail", unit="лист."),
+        "chart": charts.heatmap(heat["grid"], "mail", unit="лист.", frame=work),
         "peak": heat["n"] and max(max(row) for row in heat["grid"]),
         "clients": active[:TOP_CLIENTS],
         "clients_more": max(0, len(active) - TOP_CLIENTS),
@@ -280,7 +281,7 @@ def build(db: Session, p: view.Params) -> dict:
         ),
         "colors": colors,
         "grid": heat["grid"],
-        "work_frame": f"{st.DOW[min(st.WORK_WEEKDAYS)]}–{st.DOW[max(st.WORK_WEEKDAYS)]} {st.WORK_HOURS[0]}:00–{st.WORK_HOURS[1]}:00",
+        "work_frame": work.text,
     }
 
 

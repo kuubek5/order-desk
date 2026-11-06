@@ -97,7 +97,35 @@ def _week_part(bar: dict, group: str) -> int:
     return int(bar["mats"].get(group, 0))
 
 
+def _stage_book(db: Session, p: view.Params, req: view.ListRequest) -> bytes:
+    side = stats_production.side(db, p, req)
+    rows: list[list] = [
+        ["Вкладка", "Рядок", "Джерело", "Наряд", "Технік", "Клієнт", "Матеріал", "Колір", "Кількість", "Sum3D", "Від", "До", "Хвилин"]
+    ]
+    for w in side["stage_rows"]:
+        rows.append(
+            [
+                w["tab"],
+                w["row"],
+                "лаба" if w["kind"] == "lab" else "клієнт",
+                w["wo"],
+                w["tech"],
+                w["client"],
+                _GROUP_WORD.get(w["group"], "Інше"),
+                w["color"],
+                w["units"],
+                w["sum3d"],
+                w["from"].strftime("%d.%m.%y %H:%M"),
+                w["to"].strftime("%d.%m.%y %H:%M"),
+                _r(w["minutes"], 0),
+            ]
+        )
+    return workbook([(side["title"], rows)])
+
+
 def list_book(db: Session, p: view.Params, req: view.ListRequest) -> bytes:
+    if req.stage is not None:
+        return _stage_book(db, p, req)
     side = view.side_list(db, p, req)
     rows = [["Вкладка", "Рядок", "Джерело", "Наряд", "Технік", "Клієнт", "Матеріал", "Колір", "Кількість", "Sum3D"]]
     if req.rework:

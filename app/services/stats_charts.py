@@ -216,7 +216,15 @@ def heat_level(value: int, peak: int) -> int:
     return sum(1 for b in _HEAT_BINS if value / peak > b)
 
 
-def heatmap(grid: list[list[int]], kind: str, *, width: int = 860, height: int = 340, unit: str = "од.") -> dict:
+def heatmap(
+    grid: list[list[int]],
+    kind: str,
+    *,
+    width: int = 860,
+    height: int = 340,
+    unit: str = "од.",
+    frame: st.WorkFrame | None = None,
+) -> dict:
     left, top = 34, 26
     cw = (width - left - 4) / 24
     ch = (height - top - 8) / 7
@@ -239,7 +247,7 @@ def heatmap(grid: list[list[int]], kind: str, *, width: int = 860, height: int =
                     "tip": f"{st.DOW[dow]} · {hour:02d}:00–{(hour + 1) % 24:02d}:00 · {st.nf(value)} {unit}",
                 }
             )
-    w0, w1 = st.WORK_HOURS
+    work = frame or st.WorkFrame()
     return {
         "kind": kind,
         "w": width,
@@ -249,10 +257,10 @@ def heatmap(grid: list[list[int]], kind: str, *, width: int = 860, height: int =
         "hours": [{"x": round(left + cw * h + 2, 1), "t": f"{h:02d}"} for h in range(0, 24, 3)],
         "rows": [{"y": round(top + ch * d + ch / 2 + 4, 1), "t": st.DOW[d], "weekend": d >= 5} for d in range(7)],
         "frame": {
-            "x": round(left + cw * w0, 1),
-            "y": top - 1,
-            "w": round(cw * (w1 - w0), 1),
-            "h": round(ch * len(st.WORK_WEEKDAYS) + 2, 1),
+            "x": round(left + cw * work.start, 1),
+            "y": round(top - 1 + ch * work.first_day, 1),
+            "w": round(cw * (work.end - work.start), 1),
+            "h": round(ch * (work.last_day - work.first_day + 1) + 2, 1),
         },
         "left": left,
         "head_y": top - 9,

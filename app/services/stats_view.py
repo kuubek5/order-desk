@@ -345,17 +345,18 @@ def intake(db: Session, p: Params) -> dict:
     row_ready = seen_days >= st.ROW_SEEN_MIN_DAYS
     mode = p.hm if (p.hm == "sum3d" or row_ready) else "sum3d"
     heat = data.row_seen_heat(db, days, f) if mode == "row" else data.sum3d_heat(db, days, f)
+    work = data.work_frame(db)
     maps = []
     for kind, label in (("lab", "Лаба"), ("client", "Клієнти (пошта)")):
         if (kind == "lab" and f.src == "client") or (kind == "client" and f.src == "lab"):
             continue
         grid = heat["grids"][kind]
-        total, off = st.off_hours(grid)
+        total, off = st.off_hours(grid, work)
         maps.append(
             {
                 "kind": kind,
                 "label": label,
-                "chart": charts.heatmap(grid, kind),
+                "chart": charts.heatmap(grid, kind, frame=work),
                 "n": heat["n"][kind],
                 "total": total,
                 "off": off,
@@ -397,7 +398,9 @@ def intake(db: Session, p: Params) -> dict:
         "maps": maps,
         "weeks_chart": charts.week_chart(weeks),
         "color_rows": color_rows,
-        "work_frame": f"{st.DOW[min(st.WORK_WEEKDAYS)]}–{st.DOW[max(st.WORK_WEEKDAYS)]} {st.WORK_HOURS[0]}:00–{st.WORK_HOURS[1]}:00",
+        "work_frame": work.text,
+        "frame": work,
+        "frame_days": list(enumerate(st.DOW)),
     }
 
 
@@ -408,6 +411,7 @@ class ListRequest:
     cell: tuple[str, int, int] | None = None  # (kind, dow, hour)
     noqty: bool = False
     rework: bool = False
+    stage: tuple[str, str, str] | None = None  # (lab/client, момент початку, момент кінця)
 
     @classmethod
     def parse(cls, query: Mapping[str, str]) -> ListRequest:
@@ -422,7 +426,11 @@ class ListRequest:
             dow, hour = int(parts[1]), int(parts[2])
             if 0 <= dow < 7 and 0 <= hour < 24:
                 cell = (parts[0], dow, hour)
-        return cls(day=day, cell=cell, noqty=query.get("noqty") == "1", rework=query.get("rework") == "1")
+        stage = None
+        stage_parts = (query.get("stage") or "").split(":")
+        if len(stage_parts) == 3 and stage_parts[0] in ("lab", "client"):
+            stage = (stage_parts[0], stage_parts[1], stage_parts[2])
+        return cls(day=day, cell=cell, noqty=query.get("noqty") == "1", rework=query.get("rework") == "1", stage=stage)
 
     def query(self) -> dict[str, str]:
         if self.day:
@@ -433,6 +441,8 @@ class ListRequest:
             return {"noqty": "1"}
         if self.rework:
             return {"rework": "1"}
+        if self.stage:
+            return {"stage": ":".join(self.stage)}
         return {}
 
 

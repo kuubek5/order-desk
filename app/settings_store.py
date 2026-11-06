@@ -338,6 +338,7 @@ PREFERENCE_KEYS = {
     # першого старту нової версії, який показує «Стан системи».
     "health_snapshot_before",
     "health_snapshot_report",
+    "stats_work_frame",  # робочі години статистики: перший день-останній-початок-кінець
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

@@ -116,6 +116,7 @@ GET /stats
 GET /stats/list
 GET /stats/export
 POST /stats/anomaly
+POST /stats/work-frame
 GET /stats/list/export
 POST /vyrobitok/pin
 POST /clients/{client_id}

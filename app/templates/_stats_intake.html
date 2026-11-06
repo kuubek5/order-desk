@@ -15,6 +15,21 @@
     <span class="sx-note"><span class="sx-i">i</span>{% if it.mode == 'row' %}Карта за часом появи рядка в таблиці — справжнє «надходження».{% else %}За часом взяття в роботу (Sum3D); час надходження збирається з 12.10.26.{% endif %}</span>
 </div>
 
+{% if can_edit_frame %}
+<details class="sx-frame-edit"{% if frame_error %} open{% endif %}>
+    <summary>Робочі години: {{ it.work_frame }}</summary>
+    <form class="sx-frame-form" hx-post="/stats/work-frame{{ chrome.export_qs }}" hx-target="#sx-root" hx-swap="outerHTML" data-kload="self">
+        <label>дні <select name="first_day">{% for i, d in it.frame_days %}<option value="{{ i }}"{% if i == it.frame.first_day %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
+        <label>– <select name="last_day">{% for i, d in it.frame_days %}<option value="{{ i }}"{% if i == it.frame.last_day %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
+        <label>години <select name="start">{% for h in range(0, 24) %}<option value="{{ h }}"{% if h == it.frame.start %} selected{% endif %}>{{ h }}:00</option>{% endfor %}</select></label>
+        <label>– <select name="end">{% for h in range(1, 25) %}<option value="{{ h }}"{% if h == it.frame.end %} selected{% endif %}>{{ h }}:00</option>{% endfor %}</select></label>
+        <button type="submit" class="sx-btn sx-btn-sm">Зберегти</button>
+        {% if frame_error %}<span class="sx-frame-err" role="alert">{{ frame_error }}</span>{% endif %}
+        <span class="sx-note">Лише рамка на картах і частка «поза робочим часом». Самі інтервали рахуються календарно.</span>
+    </form>
+</details>
+{% endif %}
+
 <div class="sx-g2">
     {% for m in it.maps %}
     <section class="sx-card">
@@ -22,7 +37,7 @@
         <div class="sx-hm">{{ heatmap(m.chart) }}</div>
         <div class="sx-offs">
             {% if m.off_pct is not none %}<span class="sx-big">{{ m.off_pct }}<small>% поза робочими годинами</small></span>
-            <span class="sx-note">{{ m.off_text }} з {{ m.total_text }} од. · рамка — {{ it.work_frame }} (згодом налаштовується адміном)</span>
+            <span class="sx-note">{{ m.off_text }} з {{ m.total_text }} од. · рамка — {{ it.work_frame }}</span>
             {% else %}<span class="sx-note">За період немає робіт з часом {{ 'появи рядка' if it.mode == 'row' else 'Sum3D' }}.</span>{% endif %}
         </div>
     </section>

@@ -306,7 +306,7 @@ a.sx-nm:hover{color:var(--accent-c)}
   .sx-lr3{grid-template-columns:96px 1fr 52px}
   .sx-clients .sx-desk{display:none}
   .sx-clients.show-all .sx-desk{display:grid}
-  .sx-side-drawer,.sx-side-col{top:0;right:0;bottom:0;width:100vw;border-radius:0}
+  .sx-side-drawer,.sx-side-col{top:0;right:0;bottom:0;width:100%;border-radius:0}
   .sx-wr{grid-template-columns:24px minmax(0,1fr) 90px 28px 58px;padding:7px 12px;gap:6px}
   .sx-g3 .sx-r{display:none}
 }
@@ -344,6 +344,17 @@ a.sx-nm:hover{color:var(--accent-c)}
 .sx-fn{padding:4px 16px 14px}
 .sx-fn-r{display:grid;grid-template-columns:minmax(0,250px) 150px minmax(0,1fr) 48px;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:var(--fs-2)}
 .sx-fn-r:last-child{border-bottom:0}
+.sx-fn-link{color:inherit;text-decoration:none;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px;transition:background-color .15s ease}
+.sx-fn-link:hover,.sx-fn-link:focus-visible{background:var(--raise)}
+.sx-wr-stage{grid-template-columns:38px minmax(0,1fr) 86px 24px 96px}
+.sx-wr-stage .sx-s3{white-space:nowrap}
+.sx-frame-edit{margin-bottom:12px;font-size:var(--fs-2);color:var(--ink-2)}
+.sx-frame-edit>summary{cursor:pointer;width:fit-content}
+.sx-frame-edit>summary:hover{color:var(--ink)}
+.sx-frame-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:8px;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--raise)}
+.sx-frame-form select{background:var(--field);border:1px solid var(--line-2);border-radius:7px;color:var(--ink);padding:4px 6px;font:inherit;font-family:var(--font-mono)}
+.sx-frame-form select option{background:var(--raise);color:var(--ink)}
+.sx-frame-err{flex-basis:100%;color:var(--alarm)}
 .sx-fn-r.is-longest .sx-fn-l,.sx-fn-r.is-longest .sx-fn-m b{color:var(--warn)}
 .sx-fn-m b{font-family:var(--font-mono);font-size:var(--fs-3);display:block}
 .sx-fn-m small{color:var(--ink-3);font-size:var(--fs-0);font-family:var(--font-mono)}
@@ -363,6 +374,7 @@ a.sx-nm:hover{color:var(--accent-c)}
   .sx-fn-r{grid-template-columns:minmax(0,1fr) 124px;gap:6px 10px}
   .sx-fn-b{grid-column:1/-1;order:3}
   .sx-fn-n{display:none}
+  .sx-wr-stage{grid-template-columns:34px minmax(0,1fr) 68px 20px 88px;gap:6px}
 }
 
 /* ── Прогноз ── */

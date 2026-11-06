@@ -34,11 +34,6 @@ def parse_int_safe(value: str | None) -> int | None:
 # до цієї дати їх не записували, і заднім числом вони не відновлюються.
 STATS_COLLECT_SINCE = date(2026, 10, 12)
 
-# Рамка «робочі години» для карти й частки «поза робочим часом». Поки
-# константа; STATS_BRIEF §5 — пізніше налаштування адміна (дні й години).
-WORK_WEEKDAYS = frozenset(range(5))  # Пн–Пт
-WORK_HOURS = (9, 18)  # 9:00–18:00, кінець не включно
-
 # Скільки різних днів «появи рядка» треба, щоб карта за ним мала сенс.
 ROW_SEEN_MIN_DAYS = 7
 
@@ -230,22 +225,60 @@ def work_day_for_sum3d(tab_date: date, seen_day: date | None) -> date:
     return tab_date
 
 
-def is_working_hour(weekday: int, hour: int) -> bool:
-    return weekday in WORK_WEEKDAYS and WORK_HOURS[0] <= hour < WORK_HOURS[1]
+@dataclass(frozen=True)
+class WorkFrame:
+    """Рамка «робочі години»: суцільний проміжок днів і годин (кінець не включно).
+
+    Лише для частки «поза робочим часом» і рамки на карті; інтервали етапів рахуються
+    календарно (STATS_BRIEF §5).
+    """
+
+    first_day: int = 0  # Пн
+    last_day: int = 4  # Пт
+    start: int = 9
+    end: int = 18
+
+    def is_valid(self) -> bool:
+        return 0 <= self.first_day <= self.last_day <= 6 and 0 <= self.start < self.end <= 24
+
+    def contains(self, weekday: int, hour: int) -> bool:
+        return self.first_day <= weekday <= self.last_day and self.start <= hour < self.end
+
+    @property
+    def text(self) -> str:
+        days = DOW[self.first_day] if self.first_day == self.last_day else f"{DOW[self.first_day]}–{DOW[self.last_day]}"
+        return f"{days} {self.start}:00–{self.end}:00"
+
+    def encode(self) -> str:
+        return f"{self.first_day}-{self.last_day}-{self.start}-{self.end}"
+
+    @classmethod
+    def parse(cls, raw: str | None) -> WorkFrame:
+        """Зіпсоване чи порожнє значення — типова рамка, а не падіння екрана."""
+        try:
+            first_day, last_day, start, end = (int(part) for part in (raw or "").split("-"))
+        except ValueError:
+            return cls()
+        frame = cls(first_day, last_day, start, end)
+        return frame if frame.is_valid() else cls()
+
+
+def is_working_hour(weekday: int, hour: int, frame: WorkFrame | None = None) -> bool:
+    return (frame or WorkFrame()).contains(weekday, hour)
 
 
 def empty_grid() -> list[list[int]]:
     return [[0] * 24 for _ in range(7)]
 
 
-def off_hours(grid: list[list[int]]) -> tuple[int, int]:
+def off_hours(grid: list[list[int]], frame: WorkFrame | None = None) -> tuple[int, int]:
     """(усього, з них поза робочими годинами)."""
     total = off = 0
     for dow in range(7):
         for hour in range(24):
             value = grid[dow][hour]
             total += value
-            if not is_working_hour(dow, hour):
+            if not is_working_hour(dow, hour, frame):
                 off += value
     return total, off
 

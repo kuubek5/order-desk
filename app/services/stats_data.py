@@ -50,6 +50,7 @@ from app.business_day import business_date_of, business_to_utc, get_rollover, ta
 from app.models import Material, Order, ReworkRecord, VyrobitokCell
 from app.parser import MAX_ROW_UNITS
 from app.services.order_dates import order_date_of, parse_sheet_tab
+from app.settings_store import get_setting, set_setting
 
 CACHE_TTL_SECONDS = 60.0
 _CACHE_MAX = 256
@@ -58,6 +59,7 @@ _cache_lock = threading.Lock()
 
 # Більше рядків бічна панель не показує: це список для очей, а не вивантаження.
 LIST_LIMIT = 2000
+WORK_FRAME_KEY = "stats_work_frame"
 
 MATERIAL_GROUPS = ("zr", "pmma", "ti", "oth")
 MATERIAL_GROUP_LABELS = {"zr": "Цирконій", "pmma": "ПММА", "ti": "Титан", "oth": "Інше"}
@@ -288,6 +290,15 @@ def materials(db: Session) -> list[tuple[int, str, str]]:
         return [(r[0], r[1], _MATERIAL_GROUP_BY_NAME.get(r[1], "oth")) for r in rows]
 
     return _cached(("materials",), build)
+
+
+def work_frame(db: Session) -> st.WorkFrame:
+    return st.WorkFrame.parse(get_setting(db, WORK_FRAME_KEY))
+
+
+def save_work_frame(db: Session, frame: st.WorkFrame) -> None:
+    set_setting(db, WORK_FRAME_KEY, frame.encode())
+    db.commit()
 
 
 def _material_group_map(db: Session) -> dict[int | None, str]:

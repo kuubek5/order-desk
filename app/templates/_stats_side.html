@@ -5,6 +5,8 @@
         <button type="button" class="sx-x sx-close" data-side-close aria-label="Закрити список">✕</button></div>
     {% if side.letters is defined %}
     <div class="sx-sum"><span><b>{{ side.letters_n }}</b> листів</span></div>
+    {% elif side.stage_rows is defined %}
+    <div class="sx-sum"><span><b>{{ side.works_n }}</b> робіт</span><span><b>{{ side.units }}</b> од.</span><span>медіана <b>{{ side.median_text }}</b></span></div>
     {% else %}
     <div class="sx-sum"><span><b>{{ side.works_n }}</b> робіт</span><span><b>{{ side.units }}</b> од.</span>
         <span class="sx-lg"><i class="sx-sw-lab"></i><b>{{ side.lab }}</b></span><span class="sx-lg"><i class="sx-sw-cli"></i><b>{{ side.client }}</b></span>
@@ -25,6 +27,23 @@
     {% endfor %}
     {% if side.limit_hit %}<div class="sx-foot">Показано перші 2000.</div>{% endif %}
 </div>
+{% elif side.stage_rows is defined %}
+<div class="sx-wl">
+    {% for w in side.stage_rows %}
+    <a class="sx-wr sx-wr-stage" href="/orders/{{ w.id }}" title="{{ w.from.strftime('%d.%m %H:%M') }} → {{ w.to.strftime('%d.%m %H:%M') }}">
+        <span class="sx-rn">{{ w.tab_date.strftime('%d.%m') }}</span>
+        <span class="sx-who">{% if w.kind == 'lab' %}<span class="sx-wo">{{ w.wo or '—' }}</span><span class="sx-tn">{{ w.tech or '—' }}</span>{% else %}{{ w.client or 'Без імені' }}{% endif %}</span>
+        <span class="sx-mc"><i class="sx-m-{{ w.group }}"></i>{{ w.color or '—' }}</span>
+        <span class="sx-u">{{ w.units if w.units is not none else '?' }}</span>
+        <span class="sx-s3 has">{{ w.wait }}</span>
+    </a>
+    {% else %}
+    <div class="sx-empty sx-side-empty">Робіт немає.</div>
+    {% endfor %}
+    {% if side.limit_hit %}<div class="sx-foot">Показано найдовші 2000 із {{ side.works_n }}.</div>{% endif %}
+</div>
+<div class="sx-sf">Найдовші зверху · клік по рядку → паспорт<span class="sx-sp"></span>
+    <a class="sx-btn" href="/stats/list/export{{ side.export_qs }}" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3z"/><path d="M6 7.5l4 4.5M10 7.5l-4 4.5"/></svg>Список у Excel</a></div>
 {% else %}
 {% if side.blames %}
 <div class="sx-blames">

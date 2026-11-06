@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -130,6 +131,13 @@ def _moments(db: Session, days: list[date], f: data.Filters) -> list[dict]:
                 Order.row_seen_at,
                 Order.job_code_at,
                 EmailMessage.received_at,
+                Order.row_number,
+                Order.work_order_no,
+                Order.technician_name,
+                Order.client_name,
+                Order.material_id,
+                Order.material_color,
+                data.units_expr(Order.quantity),
             )
             .outerjoin(EmailMessage, EmailMessage.id == Order.source_email_id)
             .where(scope.where, data.done_clause(db), *data._filter_clauses(db, f))
@@ -159,12 +167,12 @@ def _moments(db: Session, days: list[date], f: data.Filters) -> list[dict]:
             work_day = st.work_day_for_sum3d(raw, business_date_of(seen) if seen else None)
             taken = st.sum3d_moment(work_day, clock, rollover)
             moments_taken.append(taken)
-            parsed.append((row, taken))
+            parsed.append((row, taken, raw, clock))
 
         runs: dict[str, list[MillRun]] = {}
         if moments_taken:
             runs = mill_runs(db, min(moments_taken) - MILL_EARLY, max(moments_taken) + MILL_WINDOW)
-        for row, taken in parsed:
+        for row, taken, raw, clock in parsed:
             order_id, kind = row[0], row[3]
             run = None
             for sum3d in st.sum3d_ids(row[4]):
@@ -173,6 +181,17 @@ def _moments(db: Session, days: list[date], f: data.Filters) -> list[dict]:
                     run = found_run
             out.append(
                 {
+                    "id": order_id,
+                    "tab": row[1] or "",
+                    "tab_date": raw,
+                    "row": row[8],
+                    "wo": row[9],
+                    "tech": row[10],
+                    "client": row[11],
+                    "material_id": row[12],
+                    "color": row[13],
+                    "units": row[14],
+                    "sum3d": clock.strftime("%H-%M-%S"),
                     "kind": kind,
                     "seen": row[5] if kind == "lab" else row[7],
                     "model": row[6],
@@ -188,13 +207,16 @@ def _moments(db: Session, days: list[date], f: data.Filters) -> list[dict]:
     return data._cached(key, build)
 
 
+def _interval(row: dict, start: str, end: str) -> float | None:
+    """Хвилини етапу однієї роботи; момент невідомий або записаний заднім числом — None."""
+    a, b = row.get(start), row.get(end)
+    if a is None or b is None or b < a:
+        return None
+    return (b - a).total_seconds() / 60
+
+
 def stage_stats(rows: list[dict], start: str, end: str, label: str) -> dict:
-    values = []
-    for row in rows:
-        a, b = row.get(start), row.get(end)
-        if a is None or b is None or b < a:
-            continue
-        values.append((b - a).total_seconds() / 60)
+    values = [value for value in (_interval(row, start, end) for row in rows) if value is not None]
     counts = [0] * len(BUCKETS)
     for value in values:
         for index, (limit, _) in enumerate(BUCKETS):
@@ -206,6 +228,8 @@ def stage_stats(rows: list[dict], start: str, end: str, label: str) -> dict:
     p80 = st.percentile(values, 80)
     return {
         "label": label,
+        "start": start,
+        "end": end,
         "n": total,
         "few": total < FEW_MEASURES,
         "median": median_v,
@@ -227,6 +251,48 @@ def _funnel(rows: list[dict], stages: tuple) -> dict:
     for item in items:
         item["longest"] = item is longest
     return {"stages": items, "works": len(rows), "longest": longest["label"] if longest else None}
+
+
+def side(db: Session, p: view.Params, req: view.ListRequest) -> dict:
+    """Клік по етапу: ті самі роботи, що дали цю медіану, найдовші зверху.
+
+    Беремо вже пораховані моменти, а не окремий запит: інакше список міг би розійтись
+    із числом поруч. Кешовані рядки не змінюємо, кожен список будує свої.
+    """
+    assert req.stage is not None
+    kind, start, end = req.stage
+    stages = STAGES_LAB if kind == "lab" else STAGES_CLIENT
+    label = next((title for a, b, title in stages if (a, b) == (start, end)), None)
+    works: list[dict] = []
+    if label is not None:
+        group_of = data._material_group_map(db)
+        for row in _moments(db, p.period.working_days(), p.filters):
+            if (row["kind"] == "lab") != (kind == "lab"):
+                continue
+            minutes = _interval(row, start, end)
+            if minutes is None:
+                continue
+            works.append(
+                {
+                    **row,
+                    "group": group_of.get(row["material_id"], "oth"),
+                    "minutes": minutes,
+                    "wait": st.format_minutes(minutes),
+                    "from": row[start],
+                    "to": row[end],
+                }
+            )
+    works.sort(key=lambda w: (-w["minutes"], w["id"]))
+    return {
+        "title": label or "—",
+        "tag": "лаба" if kind == "lab" else "клієнти",
+        "stage_rows": works[: data.LIST_LIMIT],
+        "works_n": len(works),
+        "units": st.nf(sum(w["units"] or 0 for w in works)),
+        "median_text": st.format_minutes(st.median([w["minutes"] for w in works])),
+        "export_qs": "?" + urlencode({**p.query(), **req.query()}),
+        "limit_hit": len(works) > data.LIST_LIMIT,
+    }
 
 
 def build(db: Session, p: view.Params) -> dict:
