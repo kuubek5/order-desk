@@ -1,0 +1,33 @@
+{# Вкладка «Техніки» (лише адмін). Заголовок стовпчика сортує; повторний клік
+   змінює напрям. Приглушена медіана: вимірів замало для висновку. #}
+<section class="sx-card">
+    <div class="sx-ch"><h2>Техніки</h2><span class="sx-meta">{{ tc.techs_n }} техніків · {{ tc.total_units }} од. · {{ tc.total_works }} робіт · лише лаба, виконані</span></div>
+    <div class="sx-tblwrap">
+        <table class="sx-tbl sx-tbl-techs">
+            <thead><tr>
+                {% for h in tc.heads %}
+                <th{% if h.numeric %} class="n"{% endif %}{% if h.sort %} aria-sort="{{ h.sort }}"{% endif %}><a href="/stats{{ h.qs }}" hx-get="/stats{{ h.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">{{ h.label }}{% if h.sort %}<span class="sx-sortm">{{ '↓' if h.sort == 'descending' else '↑' }}</span>{% endif %}</a></th>
+                {% endfor %}
+            </tr></thead>
+            <tbody>
+            {% for r in tc.rows %}
+            <tr>
+                <td>{% if r.qs %}<a class="sx-tl" href="/stats{{ r.qs }}" hx-get="/stats{{ r.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root" title="Огляд лише цього техніка">{{ r.label }}</a>{% else %}<span class="sx-tl-none">{{ r.label }}</span>{% endif %}</td>
+                <td class="n sx-tbar"><span class="sx-tbar-c" style="width:{{ r.bar }}%"></span><span>{{ r.units_text }}</span></td>
+                <td class="n">{{ r.works }}</td>
+                <td class="n">{{ '%.1f'|format(r.per_work)|replace('.', ',') }}</td>
+                <td class="n">{{ r.rush_pct|round|int }} %</td>
+                <td class="n{% if r.few %} sx-few{% endif %}"{% if r.few %} title="Вимірів менше {{ tc.few_limit }}: це ще не висновок"{% endif %}>{{ r.median_text }}</td>
+                <td class="n{% if r.few %} sx-few{% endif %}">{{ r.p80_text }}</td>
+                <td class="n">{{ r.n }}</td>
+                <td class="n">{{ r.rework_units }}</td>
+                <td class="n">{{ '%.1f'|format(r.rework_pct)|replace('.', ',') }} %</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="sx-empty">робіт лаби за період немає</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="sx-foot">«Наряд → модель» — календарний час від появи рядка до появи шляху, виміри лише з 12.10.26 (усього {{ tc.measured_n }}). Брак — записи, де винен технік.</div>
+</section>

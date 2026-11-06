@@ -438,12 +438,12 @@ def test_overview_page_renders(app_db):
     assert ">Техніки<" not in body, "оператор не бачить вкладку «Техніки»"
 
 
-def test_admin_sees_techs_tab_and_stage_placeholder(app_db):
+def test_admin_sees_techs_tab(app_db):
     client = _client(ADMIN)
     _, _, body = client.get("/stats?" + urlencode(CUSTOM))
     assert re.search(r"Техніки<span class=\"sx-lock\">адмін", body)
     status, _, body = client.get("/stats?" + urlencode({**CUSTOM, "tab": "techs"}))
-    assert status == 200 and "етап 3" in body
+    assert status == 200 and "Наряд → модель, медіана" in body
 
 
 def test_operator_cannot_open_techs_by_url(app_db):

@@ -228,6 +228,7 @@ a.sx-nm:hover{color:var(--accent-c)}
 .sx-cell{transition:fill-opacity .4s}
 .sx-heat-lab .sx-cell{fill:var(--sx-lab)}
 .sx-heat-client .sx-cell{fill:var(--sx-cli)}
+.sx-heat-mail .sx-cell{fill:var(--sx-mail)}
 .sx-cell.is-zero{fill:var(--well);fill-opacity:1}
 .sx-cell[role=button]{cursor:pointer}
 .sx-cell[role=button]:hover,.sx-cell.is-sel,.sx-cell:focus-visible{stroke:var(--ink);stroke-width:2;outline:none}
@@ -238,6 +239,7 @@ a.sx-nm:hover{color:var(--accent-c)}
 .sx-ramp-c i{display:inline-block;width:18px;height:10px;border-radius:2px}
 .sx-ramp-lab{background:var(--sx-lab)}
 .sx-ramp-client{background:var(--sx-cli)}
+.sx-ramp-mail{background:var(--sx-mail)}
 .sx-ramp .sx-mono{color:var(--ink-3)}
 
 /* ── Заглушки етапів ── */
@@ -312,3 +314,54 @@ a.sx-nm:hover{color:var(--accent-c)}
 @media (prefers-reduced-motion:reduce){
   .sx *,.sx-side{transition:none!important;animation:none!important}
 }
+
+/* ── Вкладки Пошта, Техніки, Виробництво ── */
+.sx-mb{margin-bottom:16px}
+.sx-kpis-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.sx-tblwrap{overflow-x:auto;padding:0 16px 12px}
+.sx-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-2)}
+.sx-tbl th{font-size:var(--fs-1);font-weight:500;color:var(--ink-3);text-align:left;padding:8px 10px 8px 0;border-bottom:1px solid var(--line-2);white-space:nowrap}
+.sx-tbl th a{color:inherit;text-decoration:none}
+.sx-tbl th a:hover{color:var(--ink);opacity:1}
+.sx-tbl th[aria-sort]{color:var(--ink)}
+.sx-sortm{margin-left:4px}
+.sx-tbl td{padding:7px 10px 7px 0;border-bottom:1px solid var(--line);vertical-align:middle}
+.sx-tbl tr:last-child td{border-bottom:0}
+.sx-tbl .n{text-align:right;font-family:var(--font-mono);white-space:nowrap}
+.sx-tbl .sx-empty{text-align:left;font-family:inherit}
+.sx-tl{color:var(--ink);text-decoration:none;font-weight:500}
+.sx-tl:hover{text-decoration:underline;opacity:1}
+.sx-tl-none{color:var(--ink-3)}
+.sx-few{opacity:.5}
+.sx-trend{display:inline-block;font-size:var(--fs-1);white-space:nowrap;color:var(--ink-3)}
+.sx-trend.is-up,.sx-trend.is-new{color:var(--ok)}
+.sx-trend.is-down{color:var(--warn)}
+.sx-trend.is-gone{color:var(--alarm)}
+.sx-tbar{position:relative;min-width:130px}
+.sx-tbar>span:last-child{position:relative}
+.sx-tbar-c{position:absolute;left:0;top:50%;height:16px;margin-top:-8px;border-radius:3px;background:color-mix(in srgb,var(--sx-lab) 42%,transparent)}
+.sx-tag-warm{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,transparent)}
+.sx-fn{padding:4px 16px 14px}
+.sx-fn-r{display:grid;grid-template-columns:minmax(0,250px) 150px minmax(0,1fr) 48px;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:var(--fs-2)}
+.sx-fn-r:last-child{border-bottom:0}
+.sx-fn-r.is-longest .sx-fn-l,.sx-fn-r.is-longest .sx-fn-m b{color:var(--warn)}
+.sx-fn-m b{font-family:var(--font-mono);font-size:var(--fs-3);display:block}
+.sx-fn-m small{color:var(--ink-3);font-size:var(--fs-0);font-family:var(--font-mono)}
+.sx-fn-b{display:flex;height:14px;border-radius:3px;overflow:hidden;background:var(--line)}
+.sx-fn-n{text-align:right;font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-3)}
+.sx-fn-none{grid-column:2/-1;color:var(--ink-3);font-size:var(--fs-1)}
+.sx-fn-0{background:color-mix(in srgb,var(--sx-mail) 30%,transparent)}
+.sx-fn-1{background:color-mix(in srgb,var(--sx-mail) 58%,transparent)}
+.sx-fn-2{background:color-mix(in srgb,var(--warn) 62%,transparent)}
+.sx-fn-3{background:var(--alarm)}
+.sx-fn-legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:12px}
+.sx-fn-legend i{display:inline-block;width:18px;height:10px;border-radius:2px;margin-right:5px}
+.sx-wr-mail{display:grid;grid-template-columns:88px minmax(0,1fr) minmax(0,110px) 74px;gap:8px;align-items:center;padding:6px 16px;border-bottom:1px solid var(--line);font-size:var(--fs-1)}
+.sx-ls{color:var(--ink-3);text-align:right}
+@media (max-width:760px){
+  .sx-kpis-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sx-fn-r{grid-template-columns:minmax(0,1fr) 124px;gap:6px 10px}
+  .sx-fn-b{grid-column:1/-1;order:3}
+  .sx-fn-n{display:none}
+}
+

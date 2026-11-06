@@ -24,9 +24,9 @@ from app.services.stats_data import MATERIAL_GROUP_LABELS, MATERIAL_GROUPS, Filt
 TABS = (
     ("overview", "Огляд", None, False),
     ("intake", "Надходження", None, False),
-    ("techs", "Техніки", 3, True),
-    ("mail", "Пошта", 2, False),
-    ("production", "Виробництво", 4, False),
+    ("techs", "Техніки", None, True),
+    ("mail", "Пошта", None, False),
+    ("production", "Виробництво", None, False),
     ("forecast", "Прогноз", 5, False),
 )
 TAB_KEYS = {t[0] for t in TABS}
@@ -51,6 +51,7 @@ class Params:
     cmp: bool = True
     hm: str = "sum3d"
     filters: Filters = Filters()
+    ts: str = ""  # порядок таблиці техніків: `units` або `-units`
 
     def query(self, **over) -> dict[str, str]:
         p = replace(self, **{k: v for k, v in over.items() if k in self.__dataclass_fields__})
@@ -72,11 +73,21 @@ class Params:
                 q[name] = value
         if p.hm != "sum3d":
             q["hm"] = p.hm
+        if p.ts:
+            q["ts"] = p.ts
         return q
 
     def qs(self, **over) -> str:
         q = self.query(**over)
         return ("?" + urlencode(q)) if q else ""
+
+
+_TECH_SORTS = frozenset(("label", "units", "works", "per_work", "rush_pct", "median", "p80", "n", "rework_units", "rework_pct"))
+
+
+def _valid_tech_sort(raw: str | None) -> str:
+    text = raw or ""
+    return text if text.lstrip("-") in _TECH_SORTS else ""
 
 
 def parse_params(query: Mapping[str, str], today: date, is_admin: bool) -> Params:
@@ -90,6 +101,7 @@ def parse_params(query: Mapping[str, str], today: date, is_admin: bool) -> Param
         period=period,
         cmp=query.get("cmp") != "0",
         hm="row" if query.get("hm") == "row" else "sum3d",
+        ts=_valid_tech_sort(query.get("ts")),
         filters=Filters.parse(query.get("src"), query.get("mat"), query.get("tech"), query.get("client")),
     )
 
@@ -163,7 +175,7 @@ def chrome(db: Session, p: Params, is_admin: bool) -> dict:
         "cmp_qs_on": p.qs(cmp=True),
         "cmp_qs_off": p.qs(cmp=False),
         "export_qs": p.qs(),
-        "can_export": p.tab in ("overview", "intake"),
+        "can_export": p.tab in ("overview", "intake", "mail", "techs", "production"),
         "hidden": p.query(),
     }
 
@@ -403,7 +415,7 @@ class ListRequest:
             day = None
         cell = None
         parts = (query.get("cell") or "").split(":")
-        if len(parts) == 3 and parts[0] in ("lab", "client") and parts[1].isdigit() and parts[2].isdigit():
+        if len(parts) == 3 and parts[0] in ("lab", "client", "mail") and parts[1].isdigit() and parts[2].isdigit():
             dow, hour = int(parts[1]), int(parts[2])
             if 0 <= dow < 7 and 0 <= hour < 24:
                 cell = (parts[0], dow, hour)

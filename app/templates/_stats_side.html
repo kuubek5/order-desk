@@ -3,10 +3,29 @@
 <div class="sx-sh">
     <div class="sx-sh-t"><h3>{{ side.title }}</h3>{% if side.tag %}<span class="sx-tag">{{ side.tag }}</span>{% endif %}
         <button type="button" class="sx-x sx-close" data-side-close aria-label="Закрити список">✕</button></div>
+    {% if side.letters is defined %}
+    <div class="sx-sum"><span><b>{{ side.letters_n }}</b> листів</span></div>
+    {% else %}
     <div class="sx-sum"><span><b>{{ side.works_n }}</b> робіт</span><span><b>{{ side.units }}</b> од.</span>
         <span class="sx-lg"><i class="sx-sw-lab"></i><b>{{ side.lab }}</b></span><span class="sx-lg"><i class="sx-sw-cli"></i><b>{{ side.client }}</b></span>
         {% if side.noqty %}<span class="sx-q" title="Кількість не число — у суму не входить">? {{ side.noqty }}</span>{% endif %}</div>
+    {% endif %}
 </div>
+{% if side.letters is defined %}
+<div class="sx-wl">
+    {% for l in side.letters %}
+    <div class="sx-wr sx-wr-mail">
+        <span class="sx-s3 has">{{ l.at.strftime('%d.%m %H:%M') }}</span>
+        <span class="sx-who">{{ l.who }}</span>
+        <span class="sx-mc">{{ l.guess or '—' }}</span>
+        <span class="sx-u sx-ls">{{ l.status }}</span>
+    </div>
+    {% else %}
+    <div class="sx-empty sx-side-empty">Листів немає.</div>
+    {% endfor %}
+    {% if side.limit_hit %}<div class="sx-foot">Показано перші 2000.</div>{% endif %}
+</div>
+{% else %}
 {% if side.blames %}
 <div class="sx-blames">
     {% set bmax = (side.blames|map(attribute='units')|max) or 1 %}
@@ -36,3 +55,4 @@
 </div>
 <div class="sx-sf">Клік по рядку → паспорт роботи<span class="sx-sp"></span>
     <a class="sx-btn" href="/stats/list/export{{ side.export_qs }}" download><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 1.8h7l3 3v9.4H3z"/><path d="M6 7.5l4 4.5M10 7.5l-4 4.5"/></svg>Список у Excel</a></div>
+{% endif %}

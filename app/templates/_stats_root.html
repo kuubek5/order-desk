@@ -75,12 +75,18 @@ href="/stats{{ qs }}" hx-get="/stats{{ qs }}" hx-target="#sx-root" hx-swap="oute
     {% include "_stats_overview.html" %}
     {% elif p.tab == "intake" %}
     {% include "_stats_intake.html" %}
+    {% elif p.tab == "mail" %}
+    {% include "_stats_mail.html" %}
+    {% elif p.tab == "techs" %}
+    {% include "_stats_techs.html" %}
+    {% elif p.tab == "production" %}
+    {% include "_stats_production.html" %}
     {% else %}
     <section class="sx-card sx-stage">
         <div class="sx-stage-n">етап {{ stage[2] }}</div>
         <h2>{{ stage[1] }}</h2>
         <p>{{ stage_text }}</p>
-        <p class="sx-note">Вкладка зʼявиться окремим релізом. Огляд і Надходження вже працюють.</p>
+        <p class="sx-note">Вкладка зʼявиться окремим релізом.</p>
     </section>
     {% endif %}
 </div>

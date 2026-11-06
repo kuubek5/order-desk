@@ -1,0 +1,96 @@
+{# Вкладка «Пошта»: коли приходять листи, що з клієнтами, що вони замовляють.
+   Карта — листи (кількість відома лише при прийнятті), решта — виконані роботи. #}
+{% from "_stats_macros.html" import heatmap, ramp %}
+<div class="sx-kpis sx-kpis-4">
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">Листів за {{ p.period.length }} днів</div>
+        <div class="sx-v"><span class="sx-num" data-v="{{ ml.letters_n }}" data-was="{{ ml.letters_was_n }}">{{ ml.letters }}</span></div>
+        <div class="sx-d">{% if ml.letters_arrow %}<span class="sx-ar sx-cmp-only{% if ml.letters_arrow.sym == '↓' %} down{% endif %}">{{ ml.letters_arrow.sym }} {{ ml.letters_arrow.text }}</span>{% endif %}<span class="sx-was-t sx-cmp-only">було {{ ml.letters_was }}</span></div>
+    </div>
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">Поза робочими годинами</div>
+        <div class="sx-v">{% if ml.off_pct is not none %}<span class="sx-num" data-v="{{ ml.off_pct }}">{{ ml.off_pct }}</span><small> %</small>{% else %}—{% endif %}</div>
+        <div class="sx-d"><span class="sx-was-t">{{ ml.off_text }} листів · рамка {{ ml.work_frame }}</span></div>
+    </div>
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">Одиниці клієнтів</div>
+        <div class="sx-v"><span class="sx-num" data-v="{{ ml.units_n }}" data-was="{{ ml.units_was_n }}">{{ ml.units }}</span></div>
+        <div class="sx-d">{% if ml.units_arrow %}<span class="sx-ar sx-cmp-only{% if ml.units_arrow.sym == '↓' %} down{% endif %}">{{ ml.units_arrow.sym }} {{ ml.units_arrow.text }}</span>{% endif %}<span class="sx-was-t sx-cmp-only">було {{ ml.units_was }}</span></div>
+    </div>
+    <div class="sx-card sx-kpi">
+        <div class="sx-l">Клієнтів з роботами</div>
+        <div class="sx-v"><span class="sx-num" data-v="{{ ml.active_n }}">{{ ml.active_n }}</span></div>
+        <div class="sx-d"><span class="sx-was-t">нових {{ ml.counts.new }} · зростають {{ ml.counts.up }} · падають {{ ml.counts.down }} · зникли {{ ml.counts.gone }}</span></div>
+    </div>
+</div>
+
+<section class="sx-card sx-mb">
+    <div class="sx-ch"><h2>Коли приходять листи</h2><span class="sx-meta">день тижня × година · листи без відфільтрованих · час надійний з 25.09.26</span>
+        <span class="sx-r">{{ ramp("mail", ml.peak) }}</span></div>
+    <div class="sx-hm">{{ heatmap(ml.chart) }}</div>
+</section>
+
+<div class="sx-g2">
+    <section class="sx-card">
+        <div class="sx-ch"><h2>Клієнти</h2><span class="sx-meta">виконані одиниці за період</span></div>
+        <div class="sx-tblwrap">
+            <table class="sx-tbl">
+                <thead><tr><th>Клієнт</th><th class="n">Од.</th><th class="n">Було</th><th>Тренд</th><th class="n" title="Звичний інтервал між днями з роботою">Ритм</th></tr></thead>
+                <tbody>
+                {% for r in ml.clients %}
+                <tr><td><a class="sx-tl" href="/stats{{ r.qs }}" hx-get="/stats{{ r.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">{{ r.label }}</a></td>
+                    <td class="n">{{ r.units_text }}</td><td class="n">{{ r.prev }}</td>
+                    <td><span class="sx-trend is-{{ r.trend }}">{{ r.trend_label }}{% if r.delta is not none and r.trend in ('up', 'down') %} {{ '+' if r.delta >= 0 else '−' }}{{ r.delta|abs }} %{% endif %}</span></td>
+                    <td class="n">{{ r.gap or '—' }}</td></tr>
+                {% else %}
+                <tr><td colspan="5" class="sx-empty">клієнтських робіт за період немає</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if ml.clients_more %}<div class="sx-foot">Ще {{ ml.clients_more }} клієнтів — у файлі Excel.</div>{% endif %}
+    </section>
+    <section class="sx-card">
+        <div class="sx-ch"><h2>Зникли</h2><span class="sx-meta">мовчать утричі довше за свій ритм і не менше 14 днів</span></div>
+        <div class="sx-tblwrap">
+            <table class="sx-tbl">
+                <thead><tr><th>Клієнт</th><th class="n">Було</th><th class="n">Ритм</th><th class="n">Без робіт</th></tr></thead>
+                <tbody>
+                {% for r in ml.gone %}
+                <tr><td><a class="sx-tl" href="/stats{{ r.qs }}" hx-get="/stats{{ r.qs }}" hx-target="#sx-root" hx-swap="outerHTML" hx-push-url="true" data-kload="#sx-root">{{ r.label }}</a></td>
+                    <td class="n">{{ r.prev }}</td><td class="n">{{ r.gap or '—' }}</td><td class="n">{{ r.since }} дн.</td></tr>
+                {% else %}
+                <tr><td colspan="4" class="sx-empty">усі клієнти зі стабільним ритмом на місці</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="sx-g2">
+    <section class="sx-card">
+        <div class="sx-ch"><h2>Матеріали клієнтів</h2><span class="sx-meta">частка за період · риска = було</span></div>
+        <div class="sx-lst">
+            {% for m in ml.mat_rows %}
+            <div class="sx-lr sx-lr3"><span class="sx-nm"><i class="sx-m-{{ m.group }}"></i>{{ m.label }}</span>
+                <span class="sx-bt"><span class="sx-c sx-m-{{ m.group }}" style="width:{{ m.pct_w }}%"></span>{% if m.prev_w is not none %}<span class="sx-p sx-was" style="left:{{ m.prev_w }}%"></span>{% endif %}</span>
+                <span class="sx-val">{{ m.units_text }}<small>{{ m.share }} %</small></span></div>
+            {% endfor %}
+        </div>
+    </section>
+    <section class="sx-card">
+        <div class="sx-ch"><h2>Кольори клієнтів</h2><span class="sx-meta">топ {{ ml.color_rows|length }}</span></div>
+        <div class="sx-lst">
+            {% for c in ml.color_rows %}
+            <div class="sx-lr sx-lr3"><span class="sx-nm sx-mono"><i class="sx-m-{{ c.group }}"></i>{{ c.color }}</span>
+                <span class="sx-bt"><span class="sx-c sx-m-{{ c.group }}" style="width:{{ c.pct_w }}%"></span></span><span class="sx-val">{{ c.units_text }}</span></div>
+            {% else %}
+            <div class="sx-empty">немає кольорів за період</div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+<aside class="sx-card sx-side sx-side-drawer" id="sx-side" aria-label="Листи вибраної клітинки">
+    <div class="sx-side-body" id="sx-side-body"></div>
+</aside>

@@ -195,6 +195,11 @@ def has_sum3d_time(text: str | None) -> bool:
     return bool(_SUM3D_TIME.search(text or ""))
 
 
+def sum3d_ids(text: str | None) -> list[str]:
+    """Усі ID клітинки у вигляді `HH-MM-SS`: роботу буває розписано на кілька дисків."""
+    return [f"{int(h):02d}-{m}-{s}" for h, m, s in _SUM3D_TIME.findall(text or "")]
+
+
 def first_sum3d_time(text: str | None) -> time | None:
     for h, m, s in _SUM3D_TIME.findall(text or ""):
         try:
@@ -255,6 +260,15 @@ def delta_pct(now: float | None, was: float | None) -> int | None:
 def median(values: Iterable[float]) -> float | None:
     items = list(values)
     return statistics.median(items) if items else None
+
+
+def percentile(values: Iterable[float], q: int) -> float | None:
+    """Значення, не більше за яке q % вимірів (найближчий ранг: без вигаданих чисел)."""
+    items = sorted(values)
+    if not items:
+        return None
+    rank = max(1, -(-len(items) * q // 100))
+    return items[rank - 1]
 
 
 def format_minutes(minutes: float | None) -> str:

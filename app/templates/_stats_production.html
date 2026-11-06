@@ -1,0 +1,29 @@
+{# Вкладка «Виробництво»: етапи виконаних робіт і де робота чекає найдовше. #}
+{% macro funnel(title, f, kind) %}
+<section class="sx-card sx-mb">
+    <div class="sx-ch"><h2><span class="sx-lg sx-lg-h"><i class="sx-sw-{{ kind }}"></i>{{ title }}</span></h2><span class="sx-meta">{{ f.works }} виконаних робіт</span>
+        {% if f.longest %}<span class="sx-r"><span class="sx-tag sx-tag-warm">найдовше: {{ f.longest }}</span></span>{% endif %}</div>
+    <div class="sx-fn">
+        {% for s in f.stages %}
+        <div class="sx-fn-r{% if s.longest %} is-longest{% endif %}">
+            <span class="sx-fn-l">{{ s.label }}</span>
+            {% if s.n %}
+            <span class="sx-fn-m{% if s.few %} sx-few{% endif %}"{% if s.few %} title="Вимірів менше {{ pr.few_limit }}: це ще не висновок"{% endif %}><b>{{ s.median_text }}</b><small>80 %: {{ s.p80_text }}</small></span>
+            <span class="sx-fn-b" role="img" aria-label="{% for b in s.buckets %}{{ b.label }}: {{ b.n }}{% if not loop.last %}, {% endif %}{% endfor %}">{% for b in s.buckets %}{% if b.n %}<i class="sx-fn-{{ b.level }}" style="width:{{ b.pct }}%" title="{{ b.label }}: {{ b.n }}"></i>{% endif %}{% endfor %}</span>
+            <span class="sx-fn-n">{{ s.n }}</span>
+            {% else %}
+            <span class="sx-fn-none">немає вимірів</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endmacro %}
+<div class="sx-fn-legend">
+    <span class="sx-flab">Розподіл</span>
+    {% for label in pr.buckets %}<span class="sx-lg"><i class="sx-fn-{{ loop.index0 }}"></i>{{ label }}</span>{% endfor %}
+    <span class="sx-note">Жирне — медіана, менше — скільки вкладається 80 % робіт, справа — кількість вимірів.</span>
+</div>
+{% if pr.lab %}{{ funnel("Лаба", pr.lab, "lab") }}{% endif %}
+{% if pr.client %}{{ funnel("Клієнти (пошта)", pr.client, "cli") }}{% endif %}
+<div class="sx-foot">Поява рядка записується з {{ pr.seen_since }}, фрезерування видно лише за останні {{ pr.mill_days }} днів. Лабораторні рядки через видачу в CRM зазвичай не проходять, тому два останні етапи в лаби порожні.</div>

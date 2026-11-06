@@ -313,6 +313,7 @@ body[data-density="spacious"] {
 :root {
   --sx-lab: #b47a24;
   --sx-cli: #3b82f6;
+  --sx-mail: #4aa3c7;
   --sx-zr: var(--disc-zr-fill);
   --sx-pmma: var(--disc-pmma-fill);
   --sx-ti: #3a9a5c;

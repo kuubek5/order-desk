@@ -216,7 +216,7 @@ def heat_level(value: int, peak: int) -> int:
     return sum(1 for b in _HEAT_BINS if value / peak > b)
 
 
-def heatmap(grid: list[list[int]], kind: str, *, width: int = 860, height: int = 340) -> dict:
+def heatmap(grid: list[list[int]], kind: str, *, width: int = 860, height: int = 340, unit: str = "од.") -> dict:
     left, top = 34, 26
     cw = (width - left - 4) / 24
     ch = (height - top - 8) / 7
@@ -236,7 +236,7 @@ def heatmap(grid: list[list[int]], kind: str, *, width: int = 860, height: int =
                     "h": round(ch - 2, 1),
                     "v": value,
                     "op": HEAT_OPACITY[level] if level >= 0 else 0,
-                    "tip": f"{st.DOW[dow]} · {hour:02d}:00–{(hour + 1) % 24:02d}:00 · {st.nf(value)} од.",
+                    "tip": f"{st.DOW[dow]} · {hour:02d}:00–{(hour + 1) % 24:02d}:00 · {st.nf(value)} {unit}",
                 }
             )
     w0, w1 = st.WORK_HOURS

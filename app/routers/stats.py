@@ -20,7 +20,7 @@ from starlette.requests import Request
 from app.business_day import business_today
 from app.routers.deps import get_current_user, get_db, login_redirect, templates
 from app.routers.section_gate import admin_banner, blocked_response
-from app.services import stats_export, stats_view
+from app.services import stats_export, stats_mail, stats_production, stats_techs, stats_view
 from app.services.section_gate import is_admin
 
 router = APIRouter()
@@ -54,6 +54,12 @@ def page_context(db: Session, p: stats_view.Params, admin: bool) -> dict:
             ctx["side_day"] = ctx["ov"]["selected_day"].isoformat()
     elif p.tab == "intake":
         ctx["it"] = stats_view.intake(db, p)
+    elif p.tab == "mail":
+        ctx["ml"] = stats_mail.build(db, p)
+    elif p.tab == "techs":
+        ctx["tc"] = stats_techs.build(db, p)
+    elif p.tab == "production":
+        ctx["pr"] = stats_production.build(db, p)
     else:
         ctx["stage"] = next(t for t in stats_view.TABS if t[0] == p.tab)
         ctx["stage_text"] = stats_view.STAGE_TEXT.get(p.tab, "")
@@ -88,7 +94,10 @@ def get_stats_list(request: Request, db: Session = Depends(get_db)):
         return stop
     p = _params(request, user)
     req = stats_view.ListRequest.parse(request.query_params)
-    side = stats_view.side_list(db, p, req)
+    if req.cell is not None and req.cell[0] == "mail":
+        side = stats_mail.side(db, p, req)
+    else:
+        side = stats_view.side_list(db, p, req)
     return templates.TemplateResponse(request, "_stats_side.html", {"side": side, "p": p})
 
 
@@ -110,6 +119,12 @@ def get_stats_export(request: Request, db: Session = Depends(get_db)):
     stamp = f"{p.period.start:%d.%m}-{p.period.end:%d.%m.%y}"
     if p.tab == "intake":
         return _download(stats_export.intake_book(db, p), f"Статистика · Надходження · {stamp}.xlsx")
+    if p.tab == "mail":
+        return _download(stats_export.mail_book(db, p), f"Статистика · Пошта · {stamp}.xlsx")
+    if p.tab == "techs":
+        return _download(stats_export.techs_book(db, p), f"Статистика · Техніки · {stamp}.xlsx")
+    if p.tab == "production":
+        return _download(stats_export.production_book(db, p), f"Статистика · Виробництво · {stamp}.xlsx")
     return _download(stats_export.overview_book(db, p), f"Статистика · Огляд · {stamp}.xlsx")
 
 

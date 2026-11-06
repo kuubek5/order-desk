@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app import stats as st
 from app.services import stats_data as data
+from app.services import stats_mail, stats_production, stats_techs
 from app.services import stats_view as view
 from app.services.stats_data import MATERIAL_GROUP_LABELS
 from app.services.xlsx_lite import workbook
@@ -119,3 +120,55 @@ def list_book(db: Session, p: view.Params, req: view.ListRequest) -> bytes:
                 line.append(w.get("rework"))
             rows.append(line)
     return workbook([(side["title"], rows)])
+
+
+def mail_book(db: Session, p: view.Params) -> bytes:
+    ml = stats_mail.build(db, p)
+    heat: list[list] = [["Листи"] + [f"{h:02d}" for h in range(24)] + ["Разом"]]
+    for dow in range(7):
+        heat.append([st.DOW[dow], *ml["grid"][dow], sum(ml["grid"][dow])])
+    head = ["Клієнт", "Одиниць", "Робіт", "Було, од.", "Зміна, %", "Тренд", "Звичний інтервал", "Днів без робіт"]
+
+    def row(r: dict) -> list:
+        return [r["label"], r["units"], r["works"], r["prev"], r["delta"], r["trend_label"], r["gap"], r["since"]]
+
+    clients = [head, *[row(r) for r in ml["all_clients"]]]
+    gone = [head, *[row(r) for r in ml["gone_all"]]]
+    mats = [["Матеріал", "Одиниць", "Частка, %", "Було, од."]]
+    for m in ml["mat_rows"]:
+        mats.append([m["label"], m["units"], m["share"], m["prev"]])
+    colors = [["Колір", "Матеріал", "Одиниць"]]
+    for c in ml["colors"]:
+        colors.append([c["color"], _GROUP_WORD.get(c["group"], "Інше"), c["units"]])
+    return workbook([("Карта листів", heat), ("Клієнти", clients), ("Зникли", gone), ("Матеріали", mats), ("Кольори", colors)])
+
+
+def techs_book(db: Session, p: view.Params) -> bytes:
+    tc = stats_techs.build(db, p)
+    rows: list[list] = [
+        ["Технік", "Одиниць", "Робіт", "Од. на роботу", "На швидку, %", "Наряд → модель, медіана, хв", "80-й перцентиль, хв", "Вимірів", "Брак, од.", "Брак, %"]
+    ]
+    for r in tc["rows"]:
+        rows.append(
+            [
+                r["label"], r["units"], r["works"], _r(r["per_work"], 2), _r(r["rush_pct"]),
+                _r(r["median"], 0), _r(r["p80"], 0), r["n"], r["rework_units"], _r(r["rework_pct"]),
+            ]
+        )
+    return workbook([("Техніки", rows)])
+
+
+def production_book(db: Session, p: view.Params) -> bytes:
+    pr = stats_production.build(db, p)
+    sheets = []
+    for name, funnel in (("Лаба", pr["lab"]), ("Клієнти", pr["client"])):
+        if funnel is None:
+            continue
+        rows: list[list] = [["Етап", "Вимірів", "Медіана, хв", "80-й перцентиль, хв", *pr["buckets"]]]
+        for stage in funnel["stages"]:
+            rows.append(
+                [stage["label"], stage["n"], _r(stage["median"], 0), _r(stage["p80"], 0), *[b["n"] for b in stage["buckets"]]]
+            )
+        sheets.append((name, rows))
+    return workbook(sheets)
+
