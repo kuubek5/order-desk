@@ -15,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app import stats as st
 from app.db import Base
 from app.models import Material, Order, ReworkRecord, VyrobitokCell
 from app.services import stats_data as data
@@ -64,7 +65,7 @@ def test_sum3d_must_hold_a_time(db, sum3d, counted):
     _lab(db, sum3d=sum3d)
     db.commit()
     assert _facts(db)["units"] == (2 if counted else 0)
-    assert data.sum3d_has_time(sum3d) is counted, "двійник у Python розійшовся з SQL"
+    assert st.has_sum3d_time(sum3d) is counted, "двійник у Python розійшовся з SQL"
 
 
 @pytest.mark.parametrize(

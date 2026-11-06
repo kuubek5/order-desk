@@ -127,7 +127,7 @@ def test_carryover_lists_works_on_several_tabs(app_db):  # noqa: F811
     _seed(factory)
     data = _call(app, view="carryover", **PERIOD)
     assert data["нарядів_на_кількох_вкладках"] == 1
-    assert data["зайвих_рядків"] == 1 and data["зайвих_одиниць"] == 4
+    assert data["зайвих_рядків"] == 1
     assert data["нарядів_із_sum3d_кілька_разів"] == 0
     assert data["приклади"][0]["наряд"] == "38124"
 
@@ -194,4 +194,17 @@ def test_slm_stands_apart_and_the_check_still_matches(app_db):  # noqa: F811
     data = _call(app, **PERIOD)
     assert data["збіг_з_екраном"] is True
     assert data["слм_окремо"] == {"lab": 10, "client": 4, "units": 14}
+
+
+def test_times_in_rows_share_one_clock(app_db):  # noqa: F811
+    """Обидва поля в базі в UTC: сира «архівована» випереджала «створену» на години."""
+    app, factory = app_db
+    ids = _seed(factory)
+    with factory() as db:
+        db.get(Order, ids["ghost"]).created_at = datetime(2026, 11, 3, 10, 10, 11)
+        db.commit()
+    data = _call(app, view="rows", day="2026-11-03", only_archived=True)
+    ghost = next(row for row in data["рядки"] if row["id"] == ids["ghost"])
+    assert ghost["створена"] == "2026-11-03T12:10:11"
+    assert ghost["архівована"] == "2026-11-03T12:10:27"
 

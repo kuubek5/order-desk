@@ -2590,3 +2590,50 @@ def test_two_real_rows_do_not_breed_a_third_work_when_orders_collide():
     assert len(live) == 2, "обидва рядки справжні — архівувати нічого"
     assert sorted(o.row_number for o in live) == [93, 97]
     assert sorted(o.sum3d_id for o in live) == ["16-18-38", "17-02-11"]
+
+
+def test_shifted_row_leaves_no_work_when_fixed_seconds_later():
+    """Бойовий випадок 03.11.26 (id 7533): рядок жив 16 с і лишав роботу на 37 875 од."""
+    from app.parser import HEADER_ROWS, parse_rows
+
+    def sheet(*cells):
+        row = [""] * 14
+        for index, value in cells:
+            row[index] = value
+        return [[]] * HEADER_ROWS + [row]
+
+    session = make_session()
+    shifted = sheet((1, "30"), (2, "37875"), (3, "14"), (4, "пмма прозора"), (9, "2026-10-31_00001-004"))
+    sync_tab(session, "03.11.26", parse_rows(shifted))
+    assert session.scalars(select(Order)).all() == []
+
+    fixed = sheet((1, "37875"), (2, "14"), (3, "пмма прозора"), (4, "капа"), (9, "с"), (11, "13-39-49"))
+    sync_tab(session, "03.11.26", parse_rows(fixed))
+    orders = session.scalars(select(Order)).all()
+    assert [(o.work_order_no, o.quantity, o.archived_at) for o in orders] == [("37875", "14", None)]
+
+
+def test_quantity_typo_on_a_live_work_recovers_when_fixed():
+    """Перехід: живу роботу тимчасово забрала помилка в кількості, рядок виправили."""
+    session = make_session()
+    neighbour = make_row(row_number=2, work_order_no="24123", sum3d_id="SUM2")
+    sync_tab(session, "03.11.26", [make_row(quantity="2"), neighbour])
+    work_id = session.scalars(select(Order).where(Order.work_order_no == "24122")).one().id
+
+    typo = make_row(quantity="999")
+    assert typo.is_shifted_row and not typo.is_work_row
+    age_orders(session)
+    sync_tab(session, "03.11.26", [neighbour])
+    assert session.get(Order, work_id).archived_at is not None
+
+    # Та сама робота повертається через 10 хв після архівації: межа проти гонки з
+    # фоновим стиранням рядка, тут вона не змінюється.
+    sync_tab(session, "03.11.26", [make_row(quantity="2"), neighbour])
+    assert session.get(Order, work_id).archived_at is not None
+
+    session.get(Order, work_id).archived_at = utc_now() - timedelta(minutes=11)
+    session.commit()
+    sync_tab(session, "03.11.26", [make_row(quantity="2"), neighbour])
+    restored = session.scalars(select(Order).where(Order.work_order_no == "24122")).all()
+    assert [(o.id, o.archived_at, o.quantity) for o in restored] == [(work_id, None, "2")]
+

@@ -190,6 +190,11 @@ def norm_color(text: str | None) -> str | None:
 _SUM3D_TIME = re.compile(r"(\d{1,2})-(\d{2})-(\d{2})")
 
 
+def has_sum3d_time(text: str | None) -> bool:
+    """У клітинці Sum3D стоїть час, а не текст оператора («немає папки»)."""
+    return bool(_SUM3D_TIME.search(text or ""))
+
+
 def first_sum3d_time(text: str | None) -> time | None:
     for h, m, s in _SUM3D_TIME.findall(text or ""):
         try:

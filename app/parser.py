@@ -9,6 +9,10 @@ confirmed by eye against the test sheet's tab '27.07.26' (разовим скр�
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Більше одиниць в одному рядку не буває: справжній максимум за всю історію 112, а
+# рядок зі зсунутими колонками несе тут номер наряду, від 32 864 (аудит 06.11.26).
+MAX_ROW_UNITS = 200
+
 # Sheet rows 1-6 are headers/labels; data starts at sheet row 7 (index 6).
 HEADER_ROWS = 6
 
@@ -154,6 +158,18 @@ class OrderRow:
         return bool(self.technician_name and (self.kind or self.material_color or self.quantity))
 
     @property
+    def is_shifted_row(self) -> bool:
+        """Рядок із нарядом, де кількість неможливо велика: колонки зсунуті.
+
+        Рядок вставляють на одну колонку правіше: № стає нарядом, наряд стає
+        кількістю, кількість стає матеріалом. За 16–33 с його виправляють, але робота
+        вже створена й лишається в архіві (4 рядки за всю історію, усі такі). Звірено
+        на 7 748 рядках: ознака ловить рівно їх, справжній максимум 112.
+        """
+        text = self.quantity.strip()
+        return bool(self.work_order_no and text.isdecimal() and int(text) > MAX_ROW_UNITS)
+
+    @property
     def is_work_row(self) -> bool:
         """Чи цей рядок узагалі стає роботою в CRM.
 
@@ -161,6 +177,8 @@ class OrderRow:
         за ним же `unimported_work_rows` рахує, що втрачено. Розійдуться —
         сторож почне мовчати саме тоді, коли він найпотрібніший.
         """
+        if self.is_shifted_row:
+            return False
         return not self.is_empty or self.is_client_row or self.is_pending_lab_row
 
 
@@ -232,5 +250,5 @@ def unimported_work_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
     return [
         row
         for row in _read_rows(raw_rows)
-        if not row.is_work_row and (row.sum3d_id or row.job_code)
+        if not row.is_work_row and (row.sum3d_id or row.job_code or row.is_shifted_row)
     ]

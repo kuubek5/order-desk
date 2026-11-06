@@ -1,5 +1,7 @@
 """Tests for app/parser.py — OrderRow parsing from raw sheet rows."""
 
+import pytest
+
 from app.parser import parse_rows
 
 # Exact header structure from the live sheet tab '27.07.26'
@@ -428,3 +430,37 @@ def test_the_guard_and_the_importer_share_one_predicate():
     all_rows = {row.row_number for row in _read_rows(raw) if row.is_work_row}
 
     assert taken == all_rows
+
+
+# ── Рядок зі зсунутими колонками (аудит статистики 06.11.26) ──────────────────
+@pytest.mark.parametrize(
+    "naryad, quantity, material, kind",
+    [
+        ("30", "37875", "14", "пмма прозора"),
+        ("3", "36026", "2", "1000"),
+        ("33", "34909", "2", "титан мегаджен ао оригінал"),
+        ("35", "32864", "6", "пмма"),
+    ],
+)
+def test_the_four_real_shifted_rows_do_not_become_work(naryad, quantity, material, kind):
+    assert _parse(_sheet_row(naryad=naryad, quantity=quantity, material=material, kind=kind)) == []
+
+
+@pytest.mark.parametrize("quantity", ["1", "28", "112", "200", "2+1", "", "?"])
+def test_real_quantities_stay_work(quantity):
+    parsed = _parse(_sheet_row(naryad="38000", quantity=quantity, material="моно а3"))
+    assert [row.work_order_no for row in parsed] == ["38000"]
+
+
+def test_big_quantity_without_a_naryad_is_not_called_shifted():
+    """Справжній максимум 112 був саме в клієнта; ознака лише для рядка з нарядом."""
+    parsed = _parse(_sheet_row(quantity="300", material="kappa", kind="Клієнт"))
+    assert len(parsed) == 1 and not parsed[0].is_shifted_row
+
+
+def test_shifted_row_is_reported_even_without_a_sum3d():
+    from app.parser import HEADER_ROWS, unimported_work_rows
+
+    raw = [[]] * HEADER_ROWS + [_sheet_row(naryad="3", quantity="36026", material="2")]
+    assert [row.row_number for row in unimported_work_rows(raw)] == [1]
+

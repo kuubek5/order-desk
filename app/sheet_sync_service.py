@@ -19,7 +19,7 @@ from app import log_throttle
 from app.business_day import business_today, canonical_tab_title, prev_tab_day, next_tab_day, tab_day, utc_now
 from app.db import SessionLocal
 from app.models import Order, SyncLog
-from app.parser import HEADER_ROWS, header_mismatches, parse_rows, unimported_work_rows
+from app.parser import HEADER_ROWS, MAX_ROW_UNITS, header_mismatches, parse_rows, unimported_work_rows
 from app.sheet_colors import fetch_row_fills
 from app.settings_store import (
     get_google_service_account_json,
@@ -565,6 +565,27 @@ def _report_unimported_rows(session: Session, tab: str, raw: list[list[str]]) ->
         return
     numbers = ", ".join(str(row.row_number + HEADER_ROWS) for row in lost[:10])
     if log_throttle.due(f"sync.unimported:{tab}:{numbers}") is None:
+        return
+    shifted = [row for row in lost if row.is_shifted_row]
+    lost = [row for row in lost if not row.is_shifted_row]
+    numbers = ", ".join(str(row.row_number + HEADER_ROWS) for row in lost[:10])
+    if shifted:
+        # Якщо кількість справді така, робота чекатиме на виправлення рядка: про це
+        # мусить бути видно, бо сам рядок лишається в таблиці без жодної ознаки.
+        session.add(
+            SyncLog(
+                direction="sheet_to_db",
+                sheet_tab=tab,
+                status="skipped",
+                message=(
+                    f"{len(shifted)} рядків схожі на зсунуті колонки: кількість понад "
+                    f"{MAX_ROW_UNITS} (рядки таблиці "
+                    + ", ".join(str(row.row_number + HEADER_ROWS) for row in shifted[:10])
+                    + "). Роботи не створено; виправте рядок, і вона зайде"
+                ),
+            )
+        )
+    if not lost:
         return
     logger.warning(
         "Синк %s: %d рядків із Sum3D не стали роботою (рядки таблиці %s)",

@@ -26,7 +26,7 @@ from app.business_day import utc_to_business
 from app.models import Order, ReworkRecord
 from app.services import stats_data as data
 from app.services.mail_rework import rework_order_ids
-from app.stats import parse_int_safe
+from app.stats import has_sum3d_time, parse_int_safe
 
 _WHOLE_NUMBER = re.compile(r"[0-9]+")
 _DATE_IN_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -63,7 +63,7 @@ class AuditRow:
 
     @property
     def sum3d_valid(self) -> bool:
-        return data.sum3d_has_time(self.sum3d)
+        return has_sum3d_time(self.sum3d)
 
     @property
     def is_mill_rework(self) -> bool:
@@ -143,6 +143,7 @@ def _tally(rows: Iterable[AuditRow]) -> dict[str, int]:
 
 def _brief(row: AuditRow) -> dict[str, Any]:
     created = utc_to_business(row.created_at) if row.created_at else None
+    archived = utc_to_business(row.archived_at) if row.archived_at else None
     return {
         "id": row.id,
         "день": row.day.isoformat(),
@@ -159,7 +160,7 @@ def _brief(row: AuditRow) -> dict[str, Any]:
         "номер_роботи": row.job_code,
         "який_раз": row.mill_count,
         "статус": row.status,
-        "архівована": row.archived_at.isoformat(timespec="seconds") if row.archived_at else None,
+        "архівована": archived.isoformat(timespec="seconds") if archived else None,
         "створена": created.isoformat(timespec="seconds") if created else None,
     }
 
@@ -259,10 +260,6 @@ def carryover(db: Session, days: list[date], *, limit: int) -> dict[str, Any]:
         "нарядів_лаби": len(groups),
         "нарядів_на_кількох_вкладках": len(moved),
         "зайвих_рядків": sum(len(rows) - 1 for rows in moved),
-        "зайвих_одиниць": sum(
-            sum(r.units or 0 for r in rows) - max((r.units or 0 for r in rows), default=0)
-            for rows in moved
-        ),
         "нарядів_із_sum3d_кілька_разів": len(twice_done),
         "приклади": [
             {"наряд": rows[0].work_order_no, "рядки": [_brief(r) for r in rows]}

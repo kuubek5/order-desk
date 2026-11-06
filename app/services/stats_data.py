@@ -40,7 +40,6 @@ import time as _clock
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-import re
 from typing import Any, Callable, Iterable
 
 from sqlalchemy import Integer, and_, case, cast, false, func, not_, or_, select
@@ -49,6 +48,7 @@ from sqlalchemy.orm import Session
 from app import stats as st
 from app.business_day import business_date_of, business_to_utc, get_rollover, tab_day
 from app.models import Material, Order, ReworkRecord, VyrobitokCell
+from app.parser import MAX_ROW_UNITS
 from app.services.order_dates import order_date_of, parse_sheet_tab
 
 CACHE_TTL_SECONDS = 60.0
@@ -67,14 +67,13 @@ BLAME_ORDER = ("обладнання", "технік", "адміністрато
 
 _SLM_CELLS = {"lab_slm": "lab", "mail_slm": "client"}
 
-# Більше одиниць в одному рядку не буває: справжній максимум за всю історію 112, а
-# рядок зі зсунутими колонками несе тут номер наряду, від 32 864 (аудит 06.11.26).
-MAX_UNITS = 200
+# Старі рядки-привиди лишились в архіві: синк їх більше не створює, а статистика
+# відсікає за тією самою межею.
+MAX_UNITS = MAX_ROW_UNITS
 # Час у клітинці Sum3D. Там буває кілька ID через перенос рядка, позначка диска
 # перед часом або текст оператора («немає папки», «робота за 30.10»): лише останній
-# не є взяттям у роботу. Два записи одного правила: для SQL і для Python.
+# не є взяттям у роботу. Те саме правило для Python — `st.has_sum3d_time`.
 _SUM3D_TIME_GLOB = "*[0-9]-[0-9][0-9]-[0-9][0-9]*"
-_SUM3D_TIME_RE = re.compile(r"[0-9]-[0-9][0-9]-[0-9][0-9]")
 
 
 def clear_cache() -> None:
@@ -207,9 +206,6 @@ def arrival_clause(db: Session):
     return and_(quantity_is_sane(), Order.id.not_in(repeats(db).later))
 
 
-def sum3d_has_time(text: str | None) -> bool:
-    """Python-двійник умови на Sum3D із `done_clause` (для звірки `stats_audit`)."""
-    return bool(_SUM3D_TIME_RE.search(text or ""))
 
 
 def _sum3d_parts():

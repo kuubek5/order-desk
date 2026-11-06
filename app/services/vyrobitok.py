@@ -49,7 +49,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.business_day import business_now, business_today, next_tab_day
 from app.models import Order, VyrobitokCell, VyrobitokDay, VyrobitokMonth
 from app.services.order_dates import order_date, order_date_of
-from app.stats import parse_int_safe
+from app.stats import has_sum3d_time, parse_int_safe
 
 # Дні, які ЗАРАЗ пересинхронізовує оператор («⟳» у табелі). Фоновий
 # заморожувач (freeze_due_days, кожні 10 хв) їх пропускає: інакше між
@@ -181,7 +181,9 @@ def _lab_row_counts(order) -> bool:
     """
     if order.source != "lab":
         return True
-    return bool((order.sum3d_id or "").strip())
+    # Саме час: «дайте преміли» чи «немає папки» в цій клітинці значать, що роботу
+    # не взяли, а рядок того самого наряду рахувався б ще раз (аудит 06.11.26).
+    return has_sum3d_time(order.sum3d_id)
 
 
 def nf(value: float, decimals: int = 2) -> str:

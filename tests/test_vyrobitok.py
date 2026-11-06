@@ -865,3 +865,16 @@ def test_ordinary_day_closes_next_morning_as_before():
     assert _due_for(thursday, thursday, 20) == (False, False)
     assert _due_for(thursday, friday, 17) == (True, False), "роботи — щойно вкладка змінилась"
     assert _due_for(thursday, friday, 18) == (True, True), "СЛМ — о 18:00"
+
+
+def test_operator_text_instead_of_sum3d_is_not_counted():
+    """Живий рядок 7273: «дайте преміли» значить, що роботу не взяли."""
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=4, sum3d="дайте преміли")
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=4, sum3d="немає папки")
+    assert _totals(db)["lab_zr"] == 0
+
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=4, sum3d="20-57-15\n21-36-49")
+    assert _totals(db)["lab_zr"] == 4
+
