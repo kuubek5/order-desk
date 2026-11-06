@@ -201,3 +201,95 @@ def test_slm_has_no_answer_for_filters_about_works(db, filters):
     db.commit()
     assert data.slm_summary(db, DAYS, data.Filters(**filters)) is None
 
+
+# ── Копії й «Надходження» ─────────────────────────────────────────────────────
+def _client(db, tab="03.11.26", qty="5", sum3d="12-00-00", name="Клієнт", material="mono a3", **kw) -> Order:
+    order = Order(source="email", sheet_tab=tab, quantity=qty, sum3d_id=sum3d, client_name=name,
+                  material_color=material, **kw)
+    db.add(order)
+    db.flush()
+    return order
+
+
+def test_lab_copy_counts_once_on_the_first_day(db):
+    """Наряд 36652 стояв двічі з тим самим Sum3D; блок 02.10 вставляв цілий день."""
+    _lab(db, tab="03.11.26", work_order_no="36652", kind="анатомія")
+    _lab(db, tab="03.11.26", work_order_no="36652", kind="анатомія")
+    _lab(db, tab="04.11.26", work_order_no="36652", kind="анатомія")
+    db.commit()
+    result = _facts(db)
+    assert result["units"] == 2
+    assert result["by_day"][TUE]["works"] == 1 and result["by_day"][WED]["works"] == 0
+
+
+def test_lab_positions_of_one_order_stay_separate(db):
+    """23 наряди з кількома Sum3D — справжні позиції: абатмент і каркас."""
+    _lab(db, work_order_no="36000", kind="абатмент", sum3d="10-00-00")
+    _lab(db, work_order_no="36000", kind="каркас", sum3d="11-00-00")
+    db.commit()
+    assert _facts(db)["units"] == 4
+
+
+def test_lab_row_taken_again_with_another_sum3d_counts_twice(db):
+    """Рішення власника: іншого Sum3D без позначки «який раз» не вгадуємо."""
+    _lab(db, tab="03.11.26", work_order_no="36652", sum3d="10-00-00")
+    _lab(db, tab="04.11.26", work_order_no="36652", sum3d="15-00-00")
+    db.commit()
+    assert _facts(db)["units"] == 4
+
+
+def test_client_copy_on_a_later_tab_counts_once(db):
+    _client(db, tab="03.11.26")
+    _client(db, tab="04.11.26", name=" клієнт ")
+    db.commit()
+    result = _facts(db)
+    assert result["units"] == 5 and result["by_day"][WED]["works"] == 0
+    assert data.client_units(db, DAYS, data.Filters())["клієнт"]["units"] == 5
+
+
+def test_same_client_rows_on_one_tab_are_not_copies(db):
+    """Два листи на одному диску: 5 таких груп за 30 днів на проді."""
+    _client(db)
+    _client(db)
+    db.commit()
+    assert _facts(db)["units"] == 10
+
+
+def test_first_day_outside_the_period_still_makes_a_copy(db):
+    _lab(db, tab="02.11.26", work_order_no="36652")
+    _lab(db, tab="03.11.26", work_order_no="36652")
+    db.commit()
+    assert _facts(db)["units"] == 0
+
+
+def test_arrivals_count_an_order_once_on_first_appearance(db):
+    _lab(db, tab="03.11.26", sum3d=None, work_order_no="38124")
+    _lab(db, tab="04.11.26", sum3d="10-00-00", work_order_no="38124")
+    db.commit()
+    arrived = data.summarize(
+        data.facts(db, DAYS, data.Filters(), arrivals=True), DAYS, data._material_group_map(db)
+    )
+    assert arrived["units"] == 2
+    assert arrived["by_day"][TUE]["works"] == 1 and arrived["by_day"][WED]["works"] == 0
+    # Виконана вона в середу: той самий наряд, інший день і правило.
+    assert _facts(db)["by_day"][WED]["works"] == 1
+
+
+def test_arrivals_keep_positions_and_drop_shifted_rows(db):
+    _lab(db, work_order_no="36000", kind="абатмент", sum3d=None)
+    _lab(db, work_order_no="36000", kind="каркас", sum3d=None)
+    _lab(db, work_order_no="30", qty="37875", sum3d=None)
+    db.commit()
+    arrived = data.summarize(
+        data.facts(db, DAYS, data.Filters(), arrivals=True), DAYS, data._material_group_map(db)
+    )
+    assert arrived["units"] == 4
+
+
+def test_row_map_counts_an_order_once(db):
+    seen = datetime(2026, 11, 3, 9, 0)
+    _lab(db, tab="03.11.26", sum3d=None, work_order_no="38124", row_seen_at=seen)
+    _lab(db, tab="04.11.26", sum3d=None, work_order_no="38124", row_seen_at=datetime(2026, 11, 4, 9, 0))
+    db.commit()
+    assert data.row_seen_heat(db, DAYS, data.Filters())["n"]["lab"] == 1
+

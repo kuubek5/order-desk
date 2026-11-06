@@ -20,6 +20,11 @@
 лічити ту саму коронку кілька разів. Архівні лишаються: серед виконаних це 22 %,
 бо лаба чистить старі вкладки.
 
+Копія рядка рахується один раз, у перший день (`repeats`): техніки вставляють
+цілий попередній день блоком (02.10.26 — 102 рядки за хвилину), і такий рядок разом
+із Sum3D лічився б двічі. «Надходження» рахує інакше (`arrival_clause`): що надійшло,
+тобто кожен наряд один раз, у день першої появи, навіть без Sum3D.
+
 СЛМ стоїть окремо й у підсумки не входить (власник 06.11.26): робіт із нього синк не
 створює, Sum3D у нього не буває ніколи. Його число — ті самі клітинки `lab_slm` і
 `mail_slm`, що у «Виробітку», разом із правкою оператора (`slm_summary`).
@@ -118,13 +123,88 @@ def _is_not_rework():
     return case((repeat, 1), else_=0) == 0
 
 
-def done_clause():
-    """Робота виконана: одне правило для всіх цифр статистики."""
+def _done_row():
     return and_(
         func.trim(Order.sum3d_id).op("GLOB")(_SUM3D_TIME_GLOB),
         _is_not_rework(),
         quantity_is_sane(),
     )
+
+
+def _same_text(value: str | None) -> str:
+    return " ".join((value or "").split()).casefold()
+
+
+@dataclass(frozen=True)
+class Repeats:
+    copies: frozenset[int]  # виконані рядки, уже пораховані раніше
+    later: frozenset[int]  # рядки, що не є новим надходженням
+
+
+def repeats(db: Session) -> Repeats:
+    """Котрі рядки повторюють уже бачену роботу. Вся історія: перший день копії може
+    лежати за межами періоду, і тоді рядок у періоді все одно лишається копією."""
+
+    def build():
+        idx = tab_index(db)
+        rows = db.execute(
+            select(
+                Order.id,
+                Order.sheet_tab,
+                KIND,
+                Order.work_order_no,
+                Order.sum3d_id,
+                Order.material_color,
+                Order.kind,
+                Order.quantity,
+                Order.client_name,
+                case((_done_row(), 1), else_=0),
+            ).where(Order.sheet_tab.in_(tuple(idx.dated)), quantity_is_sane())
+        ).all()
+        ordered = sorted(rows, key=lambda r: (idx.dated[r[1]], r[0]))
+        first_day_of_work: dict[tuple, date] = {}
+        first_day_of_order: dict[str, date] = {}
+        copies: set[int] = set()
+        later: set[int] = set()
+        for row_id, tab, kind, number, sum3d, material, work_kind, quantity, client, done in ordered:
+            day = idx.dated[tab]
+            number_text, sum3d_text = _same_text(number), _same_text(sum3d)
+            shared = (sum3d_text, _same_text(material), _same_text(quantity))
+            if kind == "lab":
+                if not number_text:
+                    continue
+                key: tuple = ("lab", number_text, _same_text(work_kind), *shared)
+                exact = key in first_day_of_work
+                first_day_of_work.setdefault(key, day)
+                if done and exact:
+                    copies.add(row_id)
+                first_seen = first_day_of_order.setdefault(number_text, day)
+                if day != first_seen or (exact and first_day_of_work[key] == day):
+                    later.add(row_id)
+                continue
+            # Клієнт: на одній вкладці однакові рядки лишаємо, це можуть бути два листи
+            # на одному диску. Копією стає лише рядок на пізнішій вкладці.
+            if not sum3d_text:
+                continue
+            key = ("client", _same_text(client), *shared)
+            first_seen = first_day_of_work.setdefault(key, day)
+            if day != first_seen:
+                later.add(row_id)
+                if done:
+                    copies.add(row_id)
+        return Repeats(frozenset(copies), frozenset(later))
+
+    return _cached(("repeats",), build)
+
+
+def done_clause(db: Session):
+    """Робота виконана: одне правило для всіх цифр статистики."""
+    return and_(_done_row(), Order.id.not_in(repeats(db).copies))
+
+
+def arrival_clause(db: Session):
+    """Робота надійшла: для «Надходження», де Sum3D ще й не мусить бути."""
+    return and_(quantity_is_sane(), Order.id.not_in(repeats(db).later))
 
 
 def sum3d_has_time(text: str | None) -> bool:
@@ -321,9 +401,10 @@ class Fact:
     noqty: int
 
 
-def facts(db: Session, days: Iterable[date], f: Filters) -> list[Fact]:
+def facts(db: Session, days: Iterable[date], f: Filters, *, arrivals: bool = False) -> list[Fact]:
+    """Одиниці по днях: виконані, а для «Надходження» (`arrivals`) — що надійшло."""
     day_list = sorted(set(days))
-    key = ("facts", tuple(day_list), f)
+    key = ("facts", tuple(day_list), f, arrivals)
 
     def build():
         scope = scope_for(db, day_list)
@@ -339,7 +420,7 @@ def facts(db: Session, days: Iterable[date], f: Filters) -> list[Fact]:
                 func.coalesce(func.sum(units), 0),
                 func.sum(case((units.is_(None), 1), else_=0)),
             )
-            .where(scope.where, done_clause(), *_filter_clauses(db, f))
+            .where(scope.where, arrival_clause(db) if arrivals else done_clause(db), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, KIND, Order.material_id)
         ).all()
         merged: dict[tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
@@ -438,7 +519,7 @@ def client_units(db: Session, days: list[date], f: Filters) -> dict[str, dict]:
         units = units_expr(Order.quantity)
         rows = db.execute(
             select(Order.sheet_tab, scope.created, Order.client_name, func.count(), func.coalesce(func.sum(units), 0))
-            .where(scope.where, Order.source != "lab", done_clause(), *_filter_clauses(db, f))
+            .where(scope.where, Order.source != "lab", done_clause(db), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, Order.client_name)
         ).all()
         groups: dict[str, dict] = {}
@@ -459,8 +540,8 @@ def client_units(db: Session, days: list[date], f: Filters) -> dict[str, dict]:
     return _cached(key, build)
 
 
-def color_units(db: Session, days: list[date], f: Filters) -> list[dict]:
-    key = ("colors", tuple(days), f)
+def color_units(db: Session, days: list[date], f: Filters, *, arrivals: bool = False) -> list[dict]:
+    key = ("colors", tuple(days), f, arrivals)
 
     def build():
         scope = scope_for(db, days)
@@ -469,7 +550,7 @@ def color_units(db: Session, days: list[date], f: Filters) -> list[dict]:
         group_of = _material_group_map(db)
         rows = db.execute(
             select(Order.sheet_tab, scope.created, Order.material_color, Order.material_id, func.coalesce(func.sum(units), 0))
-            .where(scope.where, done_clause(), *_filter_clauses(db, f))
+            .where(scope.where, arrival_clause(db) if arrivals else done_clause(db), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, Order.material_color, Order.material_id)
         ).all()
         acc: dict[str, list] = {}
@@ -546,7 +627,7 @@ def sum3d_heat(db: Session, days: list[date], f: Filters) -> dict:
         seen = func.date(Order.row_seen_at, _rollover_offset())
         rows = db.execute(
             select(Order.sheet_tab, scope.created, KIND, hour, minute, seen, func.count(), func.coalesce(func.sum(units), 0))
-            .where(scope.where, hour.is_not(None), done_clause(), *_filter_clauses(db, f))
+            .where(scope.where, hour.is_not(None), done_clause(db), *_filter_clauses(db, f))
             .group_by(Order.sheet_tab, scope.created, KIND, hour, minute, seen)
         ).all()
         return bucket_sum3d_rows(rows, idx, scope, get_rollover())
@@ -582,7 +663,7 @@ def row_seen_heat(db: Session, days: list[date], f: Filters) -> dict:
         hour = cast(func.strftime("%H", Order.row_seen_at), Integer)
         rows = db.execute(
             select(KIND, dow, hour, func.count(), func.coalesce(func.sum(units), 0))
-            .where(scope.where, Order.row_seen_at.is_not(None), quantity_is_sane(), *_filter_clauses(db, f))
+            .where(scope.where, Order.row_seen_at.is_not(None), arrival_clause(db), *_filter_clauses(db, f))
             .group_by(KIND, dow, hour)
         ).all()
         grids = {"lab": st.empty_grid(), "client": st.empty_grid()}
@@ -671,9 +752,9 @@ def works_list(
         # Брак — це саме переробки, тому список не йде через правило «виконано».
         clauses.append(Order.id.in_(select(ReworkRecord.order_id)))
     elif cell is not None and heat_mode == "row":
-        clauses.append(quantity_is_sane())
+        clauses.append(arrival_clause(db))
     else:
-        clauses.append(done_clause())
+        clauses.append(done_clause(db))
     if cell is not None and heat_mode == "row":
         clauses.append(Order.row_seen_at.is_not(None))
     elif cell is not None:

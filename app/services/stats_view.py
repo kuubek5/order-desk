@@ -355,7 +355,7 @@ def intake(db: Session, p: Params) -> dict:
     first_monday = last_monday - timedelta(weeks=WEEKS - 1)
     span = st.Period(first_monday, p.period.end).working_days()
     group_of = data._material_group_map(db)
-    week_facts = data.facts(db, span, f)
+    week_facts = data.facts(db, span, f, arrivals=True)
     weeks = []
     have_tabs = {tab_day(d) for d in data.tab_index(db).dated.values()}
     for i in range(WEEKS):
@@ -369,7 +369,7 @@ def intake(db: Session, p: Params) -> dict:
         partial = len(in_range) < 5 or any(d not in have_tabs for d in in_range)
         weeks.append({"monday": monday, "mats": mats, "partial": partial})
 
-    colors = data.color_units(db, days, f)[:8]
+    colors = data.color_units(db, days, f, arrivals=True)[:8]
     color_rows = charts.share_rows(
         [{"color": c["color"], "group": c["group"], "units": c["units"], "units_text": st.nf(c["units"])} for c in colors]
     )

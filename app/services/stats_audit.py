@@ -189,7 +189,8 @@ def _rework_ids(db: Session, rows: list[AuditRow]) -> tuple[set[int], set[int]]:
 def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) -> dict[str, Any]:
     rows = load_rows(db, days)
     screen = data.summarize(data.facts(db, days, data.Filters()), days, data._material_group_map(db))
-    done = [r for r in rows if r.is_done]
+    seen = data.repeats(db)
+    done = [r for r in rows if r.is_done and r.id not in seen.copies]
     here = _tally(done)
     records, mail_reworks = _rework_ids(db, rows)
     live = [r for r in rows if r.archived_at is None]
@@ -210,6 +211,8 @@ def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) ->
         "екран": {"роботи": screen["works"], "одиниць": screen["units"], "без_кількості": screen["noqty"]},
         "виконані_тут": here,
         "усі_рядки": _tally(rows),
+        "копії": _tally(r for r in rows if r.id in seen.copies),
+        "надійшло": _tally(r for r in rows if r.id not in seen.later and (r.units or 0) <= data.MAX_UNITS),
         "збіг_з_екраном": here["роботи"] == screen["works"] and here["одиниць"] == screen["units"],
         "слм_окремо": data.slm_summary(db, days, data.Filters()),
         "за_правилом": {
@@ -229,7 +232,7 @@ def overview(db: Session, days: list[date], *, min_quantity: int, limit: int) ->
                 "лаба": _tally(r for r in of_day if r.group == "lab")["одиниць"],
                 "клієнти": _tally(r for r in of_day if r.group == "client")["одиниць"],
                 "архівні": _tally(r for r in of_day if r.archived_at is not None),
-                "виконані": _tally(r for r in of_day if r.is_done),
+                "виконані": _tally(r for r in of_day if r.is_done and r.id not in seen.copies),
                 "найбільша_кількість": max((r.units or 0 for r in of_day), default=0),
             }
             for day, of_day in sorted(per_day.items())

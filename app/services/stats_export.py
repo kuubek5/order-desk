@@ -85,7 +85,7 @@ def intake_book(db: Session, p: view.Params) -> bytes:
     for bar in it["weeks_chart"]["bars"]:
         weeks.append([bar["label"], bar["sub"], *(_week_part(bar, g) for g in ("zr", "pmma", "ti", "oth")), bar["total"], "так" if bar["partial"] else ""])
     colors = [["Колір", "Матеріал", "Одиниць"]]
-    for c in data.color_units(db, p.period.working_days(), p.filters):
+    for c in data.color_units(db, p.period.working_days(), p.filters, arrivals=True):
         colors.append([c["color"], _GROUP_WORD.get(c["group"], "Інше"), c["units"]])
     sheets.append(("Тижні × матеріали", weeks))
     sheets.append(("Кольори", colors))
