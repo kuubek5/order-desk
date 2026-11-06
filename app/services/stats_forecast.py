@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -256,7 +257,7 @@ def build(db: Session, today: date | None = None) -> dict:
 
     hindcast = backtest(total, first, skip)
     band = error_range(hindcast)
-    plan = []
+    plan: list[dict[str, Any]] = []
     for target in targets_from(first):
         cells = {}
         for name in SERIES:

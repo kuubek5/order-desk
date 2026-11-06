@@ -11,6 +11,7 @@ stats.css (`--st-*`), тема = токени. Розмітку малює `_sta
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from datetime import date
 
 from app import stats as st
@@ -184,7 +185,7 @@ def _line_label_ys(a: float | None, b: float | None) -> tuple[float | None, floa
     return (upper, lower) if a <= b else (lower, upper)
 
 
-def sparkline(values: list[float], *, prev: list[float] | None = None, width: int = 112, height: int = 36) -> dict | None:
+def sparkline(values: Sequence[float], *, prev: Sequence[float] | None = None, width: int = 112, height: int = 36) -> dict | None:
     """Форма ряду для картки: лінія, заливка під нею, остання точка; `prev` — лінія «було»."""
     if len(values) < 2 or max(values) <= 0:
         return None
@@ -192,7 +193,7 @@ def sparkline(values: list[float], *, prev: list[float] | None = None, width: in
     top = max([*values, *(prev or []), 1])
     span = max(len(values), len(prev or [])) - 1
 
-    def points(series: list[float]) -> list[tuple[float, float]]:
+    def points(series: Sequence[float]) -> list[tuple[float, float]]:
         return [(pad + (width - pad * 2) * i / span, height - pad - (height - pad * 2) * v / top) for i, v in enumerate(series)]
 
     now = points(values)
