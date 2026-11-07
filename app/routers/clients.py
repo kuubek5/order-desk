@@ -43,6 +43,7 @@ from app.services.clients import (
     ensure_client_profiles,
     quantity_units,
 )
+from app.services import client_insights
 from app.services.client_merge import record_merge, record_skip
 from app.services import duplicates_cache
 from app.services import folder_merge as folder_merge_svc
@@ -83,6 +84,7 @@ def client_pane_context(db: Session, client: Client, named_orders: Sequence[Orde
         matched = find_matching_orders(client.canonical_name, named_orders)
     summary = summarize_client_orders(matched)
     folder_names, bound_folder, folder_suggestions = client_folder_options(db, client.canonical_name)
+    insight = client_insights.insights(db, client, matched)
 
     # Other spellings this client answers to in the sheet — shown so it is clear
     # why two names collapse into one card.
@@ -100,7 +102,75 @@ def client_pane_context(db: Session, client: Client, named_orders: Sequence[Orde
         "folder_names": folder_names,
         "bound_folder": bound_folder,
         "folder_suggestions": folder_suggestions,
+        **insight,
     }
+
+
+def _client_orders(db: Session, client: Client) -> list[Order]:
+    names = db.scalars(select(Order.client_name).where(Order.client_name.isnot(None)).distinct()).all()
+    wanted = matching_client_names(client.canonical_name, [n for n in names if n])
+    return list(db.scalars(select(Order).where(Order.client_name.in_(wanted))).all()) if wanted else []
+
+
+def _client_or_404(db: Session, client_id: int) -> Client:
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="клієнта не знайдено")
+    return client
+
+
+@router.post("/clients/{client_id}/facts", response_class=HTMLResponse)
+def post_client_fact(
+    request: Request,
+    client_id: int,
+    kind: str = Form(...),
+    key: str = Form(...),
+    action: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Закріпити, прибрати або повернути факт із листів. Свапає лише ліву колонку."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    client = _client_or_404(db, client_id)
+    states = {"pin": client_insights.STATE_PIN, "hide": client_insights.STATE_HIDE, "clear": None}
+    if action not in states or kind not in client_insights.KINDS:
+        raise HTTPException(status_code=400, detail="невідома дія")
+    client_insights.set_decision(db, client, kind, key, states[action], user.username)
+    db.commit()
+    if request.headers.get("HX-Request") != "true":
+        return RedirectResponse(f"/clients/{client_id}", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "_client_facts.html",
+        {"user": user, "client": client, **client_insights.facts_context(db, client, _client_orders(db, client))},
+    )
+
+
+@router.get("/clients/{client_id}/fact-proof", response_class=HTMLResponse)
+def get_client_fact_proof(request: Request, client_id: int, kind: str, key: str, db: Session = Depends(get_db)):
+    """Уривки з листів під фактом. Читаються в момент кліку, у базу не копіюються."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    client = _client_or_404(db, client_id)
+    letters = client_insights.client_letters(db, client, _client_orders(db, client))
+    return templates.TemplateResponse(
+        request, "_client_fact_proof.html", {"proofs": client_insights.proof(letters, kind, key)}
+    )
+
+
+@router.get("/clients/{client_id}/slot", response_class=HTMLResponse)
+def get_client_slot(request: Request, client_id: int, d: int, h: int, db: Session = Depends(get_db)):
+    """Листи однієї клітинки карти «Коли пише»."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    client = _client_or_404(db, client_id)
+    letters = client_insights.client_letters(db, client, _client_orders(db, client))
+    return templates.TemplateResponse(
+        request, "_client_slot.html", {"slot_letters": client_insights.letters_in_slot(letters, d, h)}
+    )
 
 
 @router.get("/clients/{client_id}/pane", response_class=HTMLResponse)

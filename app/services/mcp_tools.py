@@ -1278,6 +1278,32 @@ TOOLS = TOOLS + (
     ),
 )
 
+
+def tool_client_facts(db: Session, args: dict) -> dict[str, Any]:
+    """Наскільки витяг із листів працює на цих даних. Текстів листів тут немає."""
+    from app.services import client_insights
+
+    return client_insights.audit(db, _int_arg(args, "limit", default=30, low=1, high=200))
+
+
+TOOLS = TOOLS + (
+    Tool(
+        name="kmill_client_facts",
+        description=(
+            "Замір витягу для картки клієнта: скільки клієнтів мають листи, у кого знайдено телефон і "
+            "доставку. Телефони замасковані, текстів листів і імен немає. Для питань «чи працює витяг»."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Скільки клієнтів показати, типово 30."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_client_facts,
+    ),
+)
+
 TOOLS_BY_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}
 
 # Анотації однакові для всіх: інструментів, що пишуть, тут немає й не буде

@@ -43,6 +43,7 @@ from app.models import (
     CamBlank,
     CamBlankOrder,
     Client,
+    ClientFactDecision,
     ClientMerge,
     ClientNameAlias,
     ClientSenderMemory,
@@ -118,6 +119,7 @@ _TABLE_MODELS: list[Any] = [
     Client,
     # Рішення власника по дублях клієнтів (злити / не дублі). Дані власника —
     # переїзд без них повернув би вже розібрані пари назад у «можливі дублі».
+    ClientFactDecision,
     ClientMerge,
     # Рішення власника по дублях ТЕК в export (та сама причина).
     FolderMerge,
@@ -239,7 +241,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 8  # forecast_snapshots, stats_anomaly_days (06.11.26)
+_NEW_SINCE_FLAG = 9  # client_fact_decisions (07.11.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:

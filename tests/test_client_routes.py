@@ -245,8 +245,11 @@ def test_client_detail_refuses_an_external_return_address():
 def _render_pane(**context) -> str:
     """Справжній рендер картки — саме в шаблоні живе правило «з видачі
     постимо без HTMX», і зламати його контекстом неможливо помітити."""
+    from datetime import date
+
     from app.client_profile import summarize_client_orders
     from app.routers.deps import templates as jinja
+    from app.services import client_insights
 
     base = {
         "client": SimpleNamespace(id=7, canonical_name="Басараб", phone=None, email=None, notes=None),
@@ -256,6 +259,13 @@ def _render_pane(**context) -> str:
         "folder_names": ["Басараб Лаб"],
         "bound_folder": None,
         "folder_suggestions": ["Басараб Лаб"],
+        "letters_n": 0,
+        "facts": {kind: [] for kind in client_insights.KINDS},
+        "hidden": [],
+        "asks": [],
+        "ship": None,
+        "rhythm": client_insights.rhythm([], date(2026, 11, 7)),
+        "volume": {"weeks": [], "units": 0, "works": 0, "units_all": 0, "works_all": 0, "materials": [], "peak": 0},
     }
     base.update(context)
     return jinja.env.get_template("_client_pane.html").render(**base)

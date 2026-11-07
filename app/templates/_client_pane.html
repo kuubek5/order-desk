@@ -5,26 +5,129 @@
    папки свідомо БЕЗ hx-post: звичайний POST дає серверу редіректнути
    оператора назад у ЙОГО день видачі, а HTMX-фрагмент лишив би його тут. #}
 {% set pane_htmx = not return_to %}
-<div class="cl-pane" id="client-pane">
-    <div class="cp-id">
-        <div class="cp-name">
+<div class="cl-pane cx-pane" id="client-pane">
+    <div class="cx-head">
+        <div class="cx-who">
             <h2>{{ client.canonical_name }}</h2>
             {% if aliases %}
             {# Написання, під якими той самий клієнт зустрічається в таблиці —
                видно, чому дві назви — це одна картка. #}
             <p class="cp-alias">у таблиці також {% for a in aliases[:3] %}«{{ a }}»{% if not loop.last %}, {% endif %}{% endfor %}{% if aliases|length > 3 %} та ще {{ aliases|length - 3 }}{% endif %}</p>
             {% endif %}
+            <div class="cx-pulse">
+                {% if rhythm.enough %}
+                <span class="cx-state{% if rhythm.quiet %} warn{% endif %}">{{ 'мовчить довше звичного' if rhythm.quiet else 'за звичним ритмом' }}</span>
+                {% endif %}
+                {% if rhythm.last %}
+                <span>Останній лист <b>{% if rhythm.since == 0 %}сьогодні{% elif rhythm.since == 1 %}вчора{% else %}{{ rhythm.since }} дн. тому{% endif %}</b>{% if rhythm.enough %}, {% if rhythm.median <= 1 %}зазвичай щодня{% else %}зазвичай кожні {{ rhythm.median }} дн.{% endif %}{% endif %}</span>
+                {% elif summary.last_order_date %}
+                <span>Остання робота <b class="mono">{{ summary.last_order_date.strftime('%d.%m') }}</b></span>
+                {% endif %}
+                <span class="cx-totals"><b class="mono">{{ volume.works_all }}</b> робіт, <b class="mono">{{ volume.units_all }}</b> од. виконано</span>
+            </div>
         </div>
-        {% if bound_folder %}
-        <span class="cp-state ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>папку прив'язано</span>
-        {% else %}
-        <span class="cp-state warn">папку не прив'язано</span>
-        {% endif %}
+        <div class="cx-acts">
+            {% if bound_folder %}
+            <button type="button" class="fp-open cp-openfolder cx-btn" data-open-folder-url="/clients/{{ client.id }}/open-folder"
+                    title="Відкрити export/{{ bound_folder }} у Провіднику">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                Відкрити теку
+            </button>
+            <span class="cp-state ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>папку прив'язано</span>
+            {% else %}
+            <span class="cp-state warn">папку не прив'язано</span>
+            {% endif %}
+        </div>
     </div>
 
-    {# Головне налаштування: без нього ранкова видача не покаже файлів клієнта. #}
-    <section class="cp-sec">
-        <div class="cp-lab">Папка робіт на диску</div>
+    <div class="cx-grid">
+        <div>
+            {% include "_client_facts.html" %}
+            <section class="cx-sec">
+                <h3>Нотатка й контакти вручну</h3>
+                {# Форма — окремий партіал, бо POST /clients/{id} свапає саме її. #}
+                {% include "_client_contacts.html" %}
+            </section>
+        </div>
+        <div class="cx-right">
+            <section class="cx-sec">
+                <h3>Коли пише</h3>
+                <div class="cx-panel" data-cx-client="{{ client.id }}">
+                    {% if rhythm.total %}
+                    <div class="cx-heat" data-cx-heat>
+                        <span></span>
+                        {% for h in range(24) %}<span class="cx-hh mono">{{ h if h % 3 == 0 else '' }}</span>{% endfor %}
+                        {% for row in rhythm.cells %}
+                        <span class="cx-dd">{{ ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'][loop.index0] }}</span>
+                        {% for c in row %}
+                        <button type="button" class="cx-cell" style="--x:{{ c.x }};--y:{{ c.y }};--o:{{ c.o }}" data-cx-cell="{{ c.y }},{{ c.x }}"
+                                data-tip="{{ c.n }}|{{ ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'][c.y] }}, {{ '%02d'|format(c.x) }}:00"
+                                aria-label="{{ ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'][c.y] }} {{ c.x }}:00, листів: {{ c.n }}"
+                                {% if c.n %}hx-get="/clients/{{ client.id }}/slot?d={{ c.y }}&h={{ c.x }}" hx-target="#cx-slot" hx-swap="innerHTML"{% endif %}><i></i></button>
+                        {% endfor %}
+                        {% endfor %}
+                    </div>
+                    <div class="cx-insights">
+                        {% if rhythm.top_days %}<span>Найчастіше: <b>{{ rhythm.top_days|join(', ') }}</b></span>{% endif %}
+                        {% if rhythm.top_hours %}<span>Години: <b class="mono">{{ rhythm.top_hours }}</b></span>{% endif %}
+                        <span>Усього листів: <b class="mono">{{ rhythm.total }}</b></span>
+                    </div>
+                    <div id="cx-slot" class="cx-slot" aria-live="polite"></div>
+                    {% else %}
+                    <p class="cx-note">Листів з часом надходження ще немає.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="cx-sec">
+                <h3>Обсяг по тижнях <span>{{ volume.units }} од. за пів року, лише виконане</span></h3>
+                <div class="cx-panel">
+                    {% if volume.peak %}
+                    <div class="cx-bars">
+                        {% for w in volume.weeks %}<div class="cx-bar" style="--x:{{ w.x }};--h:{{ w.h }}%" data-tip="{{ w.units }} од.|{{ w.from.strftime('%d.%m') }}–{{ w.to.strftime('%d.%m') }}, робіт: {{ w.works }}"><i></i></div>{% endfor %}
+                    </div>
+                    <div class="cx-axis mono"><span>{{ volume.first.strftime('%d.%m') }}</span><span>сьогодні</span></div>
+                    {% else %}
+                    <p class="cx-note">За пів року виконаних робіт немає.</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            {% if volume.materials %}
+            <section class="cx-sec">
+                <h3>Що замовляє</h3>
+                <div class="cx-panel">
+                    {% for m in volume.materials %}
+                    <div class="cx-mat"><span class="mono">{{ m.label }}</span><div class="cx-t"><i class="g-{{ m.group }}" style="--w:{{ m.w }}%"></i></div><b class="mono">{{ m.pct }} %</b></div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if summary.recent_orders %}
+            <section class="cx-sec">
+                <h3>Останні роботи</h3>
+                <div class="cp-orders">
+                    {% for order in summary.recent_orders[:6] %}
+                    <a class="cp-order" href="/orders/{{ order.id }}">
+                        <span class="mono cp-o-day">{{ order.sheet_tab[:5] if order.sheet_tab else '—' }}</span>
+                        {# Номер наряду був лише на старій окремій сторінці клієнта, а це
+                           те, чим оператор шукає роботу — тож переїхав сюди. #}
+                        <span class="cp-o-no mono">{{ order.work_order_no or '—' }}</span>
+                        <span class="cp-o-mat mono">{{ order.material_color or '—' }}</span>
+                        <span class="cp-o-qty mono">{{ order.quantity or '—' }} од.</span>
+                        <span class="cp-o-st">{{ order.status }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <section class="cx-sec">
+                <details class="cx-folder"{% if not bound_folder %} open{% endif %}>
+                    <summary><h3>Папка робіт на диску</h3>{% if bound_folder %}<span class="mono">export/{{ bound_folder }}</span>{% endif %}</summary>
+                    <div class="cp-sec">
+
         <form method="post" action="/clients/{{ client.id }}/folder"
               {% if pane_htmx %}hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML"{% endif %}
               class="cp-folder">
@@ -43,16 +146,6 @@
            назви 1-го рівня, що в datalist (сервер їх уже має); пошук — у
            браузері. Клік по теці розгортає її вміст (свіжі підтеки-дати, один
            scandir), «Обрати» вписує назву й зберігає. Обробник — app.js. #}
-        {# «Відкрити папку з роботами» (власник 25.09.26) — лише для прив'язаної
-           теки. Той самий обробник, що в пошті (`data-open-folder-url`, app.js):
-           на цьому ПК — Провідник, з мережі — шлях у буфер. #}
-        {% if bound_folder %}
-        <button type="button" class="fp-open cp-openfolder" data-open-folder-url="/clients/{{ client.id }}/open-folder"
-                title="Відкрити export/{{ bound_folder }} у Провіднику">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5 12 16l2.5-2.5"/></svg>
-            Відкрити папку з роботами
-        </button>
-        {% endif %}
         {% if folder_names %}
         <details class="fp" data-fp>
             <summary class="fp-open">
@@ -100,49 +193,11 @@
         {% elif not folder_names %}
         <p class="cp-hint">У теці <span class="mono">export</span> папок не знайдено — перевірте шлях у Налаштуваннях.</p>
         {% endif %}
-    </section>
-
-    <div class="cp-kpis">
-        <div class="cp-k"><span class="n mono">{{ summary.total_count }}</span><span class="l">робіт</span></div>
-        <div class="cp-k"><span class="n mono">{{ units_total }}</span><span class="l">одиниць</span></div>
-        <div class="cp-k"><span class="n mono">{{ summary.last_order_date.strftime('%d.%m') if summary.last_order_date else '—' }}</span><span class="l">остання робота</span></div>
+                        </div>
+                </details>
+            </section>
+        </div>
     </div>
-
-    {% if summary.material_breakdown %}
-    <section class="cp-sec">
-        <div class="cp-lab">Що замовляє найчастіше</div>
-        <div class="cp-mats">
-            {% for material, count in summary.material_breakdown[:6] %}
-            <span class="cp-mat"><span class="mono">{{ material }}</span><b class="mono">{{ count }}</b></span>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-
-    <section class="cp-sec">
-        <div class="cp-lab">Контакти й нотатки</div>
-        {# Форма — окремий партіал, бо POST /clients/{id} свапає саме її. #}
-        {% include "_client_contacts.html" %}
-    </section>
-
-    {% if summary.recent_orders %}
-    <section class="cp-sec">
-        <div class="cp-lab">Останні роботи</div>
-        <div class="cp-orders">
-            {% for order in summary.recent_orders[:6] %}
-            <a class="cp-order" href="/orders/{{ order.id }}">
-                <span class="mono cp-o-day">{{ order.sheet_tab[:5] if order.sheet_tab else '—' }}</span>
-                {# Номер наряду був лише на старій окремій сторінці клієнта, а це
-                   те, чим оператор шукає роботу — тож переїхав сюди. #}
-                <span class="cp-o-no mono">{{ order.work_order_no or '—' }}</span>
-                <span class="cp-o-mat mono">{{ order.material_color or '—' }}</span>
-                <span class="cp-o-qty mono">{{ order.quantity or '—' }} од.</span>
-                <span class="cp-o-st">{{ order.status }}</span>
-            </a>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
 </div>
 
 {% if swap_list_item %}

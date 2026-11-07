@@ -552,6 +552,25 @@ class Client(Base):
     )
 
 
+class ClientFactDecision(Base):
+    """Рішення людини про факт із листів клієнта: закріпити або прибрати значення.
+
+    Самі факти не зберігаються, бо щоразу витягуються з листів (`client_insights`). Прибране
+    пам'ятається за значенням, інакше наступний лист повернув би той самий чужий номер.
+    """
+
+    __tablename__ = "client_fact_decisions"
+    __table_args__ = (UniqueConstraint("client_id", "kind", "value_key", name="uq_client_fact_decision"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    value_key: Mapped[str] = mapped_column(String(300))
+    state: Mapped[str] = mapped_column(String(10))
+    decided_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+
+
 class ClientMerge(Base):
     """Рішення власника по парі схожих імен клієнтів: злити (`merge`) чи «не
     дублі» (`skip`). НЕ те саме, що ClientNameAlias (та мапить ім'я → теку в

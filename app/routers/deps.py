@@ -971,6 +971,14 @@ templates.env.filters["kyiv"] = utc_to_business
 # in-memory "last known result" (see app/update_check.py::get_known_update),
 # never touches the network from a request-handling thread.
 templates.env.globals["get_known_update"] = get_known_update
+
+
+def _plural_in(n: int) -> str:
+    """«у 1 листі», «у 3 листах»: місцевий відмінок однини лише для 1, 21, 31."""
+    return f"у {n} {'листі' if n % 10 == 1 and n % 100 != 11 else 'листах'}"
+
+
+templates.env.filters["plural_in"] = _plural_in
 templates.env.globals["failed_update"] = failed_install
 templates.env.globals["license_notice"] = license_notice
 # Product version, available in every template (rail foot, settings "about")

@@ -243,3 +243,110 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .cdup-group{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
   padding:6px 10px;border:1px dashed var(--line);border-radius:8px;margin-bottom:6px}
 .cdup-group-names{color:var(--ink)}
+
+/* ── Картка клієнта, варіант A «Досьє» (07.11.26) ────────────────────────── */
+.clientsv2 .cx-pane{container:cxpane/inline-size;gap:18px;display:block}
+.clientsv2 .cx-head{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px 24px;margin-bottom:18px}
+.clientsv2 .cx-who{flex:1 1 320px;min-width:0}
+.clientsv2 .cx-who h2{margin:0;font-family:var(--font-head);font-size:calc(var(--fs-5) * 1.3);line-height:1.15;font-weight:700;letter-spacing:var(--ls-head);text-wrap:balance}
+.clientsv2 .cx-pulse{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:9px;font-size:var(--fs-2);color:var(--ink-2)}
+.clientsv2 .cx-pulse b{color:var(--ink);font-weight:600}
+.clientsv2 .cx-state{padding:3px 9px;border-radius:7px;font-size:var(--fs-0);font-weight:600;background:rgba(var(--ok-rgb),.12);color:var(--ok)}
+.clientsv2 .cx-state.warn{background:rgba(var(--warn-rgb),.14);color:var(--warn)}
+.clientsv2 .cx-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.clientsv2 .cx-grid{display:grid;grid-template-columns:minmax(290px,370px) minmax(0,1fr);gap:24px}
+@container cxpane (max-width:760px){.clientsv2 .cx-grid{grid-template-columns:minmax(0,1fr)}}
+.clientsv2 .cx-sec{margin:0 0 22px}
+.clientsv2 .cx-sec h3,.clientsv2 .cx-ship h3{margin:0 0 8px;font-size:var(--fs-3);font-weight:600;color:var(--ink);display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px}
+.clientsv2 .cx-sec h3 span{font-weight:400;font-size:var(--fs-1);color:var(--ink-3)}
+.clientsv2 .cx-panel{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-card);padding:13px 15px}
+.clientsv2 .cx-list{padding:3px 13px}
+.clientsv2 .cx-note,.clientsv2 .cx-empty{margin:0;font-size:var(--fs-2);color:var(--ink-3)}
+.clientsv2 .cx-empty{margin-bottom:22px}
+
+.clientsv2 .cx-ship{background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r-card);padding:14px 15px;margin-bottom:22px}
+.clientsv2 .cx-ship dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0 0 12px}
+.clientsv2 .cx-ship dt{font-size:var(--fs-1);color:var(--ink-3);padding-top:1px}
+.clientsv2 .cx-ship dd{margin:0;font-size:var(--fs-3);font-weight:500;overflow-wrap:anywhere}
+.clientsv2 .cx-copy{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:36px;padding:7px 12px;border:0;border-radius:9px;background:var(--accent-b);color:var(--bg);font:500 var(--fs-2) var(--font-body);cursor:pointer;transition:background var(--ui-speed) ease,transform .12s ease}
+.clientsv2 .cx-copy:hover{background:var(--accent-c)}
+.clientsv2 .cx-copy:active{transform:translateY(1px)}
+.clientsv2 .cx-copy svg,.clientsv2 .cx-ib svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.clientsv2 .cx-copy .cx-d{display:none}
+.clientsv2 .cx-copy.copy-success{background:var(--ok)}
+.clientsv2 .cx-copy.copy-success .cx-l{display:none}
+.clientsv2 .cx-copy.copy-success .cx-d{display:inline}
+
+.clientsv2 .cx-fact{border-top:1px solid var(--line)}
+.clientsv2 .cx-fact:first-child{border-top:0}
+.clientsv2 .cx-fact-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;padding:7px 0}
+.clientsv2 .cx-fact-v{min-width:0;display:block;width:100%;background:none;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;border-radius:5px}
+.clientsv2 .cx-fact-v b{display:block;font-weight:500;font-size:var(--fs-3);overflow-wrap:anywhere}
+.clientsv2 .cx-fact-v.mono b{font-size:var(--fs-2)}
+.clientsv2 .cx-fact-v small{display:block;font:400 var(--fs-1) var(--font-body);color:var(--ink-3);margin-top:1px}
+.clientsv2 .cx-fact-v:hover small{color:var(--ink-2)}
+.clientsv2 .cx-pinned{display:inline-block;margin-right:7px;padding:0 6px;border-radius:5px;font-weight:500;font-size:var(--fs-0);color:var(--accent-b);background:rgba(var(--accent-rgb),.13)}
+.clientsv2 .cx-fact-a,.clientsv2 .cx-fact-a form{display:flex;gap:1px;margin:0}
+.clientsv2 .cx-ib{width:32px;height:32px;display:grid;place-items:center;padding:0;background:none;border:0;border-radius:8px;color:var(--ink-3);cursor:pointer;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.clientsv2 .cx-ib:hover{background:var(--raise);color:var(--ink)}
+.clientsv2 .cx-ib[aria-pressed="true"]{color:var(--accent-b)}
+.clientsv2 .cx-ib[aria-pressed="true"] svg{fill:rgba(var(--accent-rgb),.25)}
+.clientsv2 .cx-ib.copy-success{color:var(--ok)}
+/* Висота їде через grid: текст не стрибає, а вміст приходить окремим запитом. */
+.clientsv2 .cx-ev{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s cubic-bezier(.2,.8,.2,1)}
+.clientsv2 .cx-fact.open .cx-ev{grid-template-rows:1fr}
+.clientsv2 .cx-ev>div{overflow:hidden;min-height:0}
+.clientsv2 .cx-ev-q{margin:0 0 6px;padding:6px 10px;background:var(--field);border-radius:8px;font-size:var(--fs-1);line-height:1.45;color:var(--ink-2);overflow-wrap:anywhere}
+.clientsv2 .cx-ev-q a{display:block;font-size:var(--fs-0);color:var(--ink-3);margin-bottom:2px}
+.clientsv2 .cx-ev-q mark{background:rgba(var(--accent-rgb),.22);color:var(--ink);border-radius:3px;padding:0 2px}
+.clientsv2 .cx-ev-wait{margin:0 0 6px;font-size:var(--fs-1);color:var(--ink-3)}
+.clientsv2 .cx-chips{display:flex;flex-wrap:wrap;gap:6px}
+.clientsv2 .cx-chip{display:inline-flex;align-items:center;gap:7px;padding:4px 9px;border:1px solid var(--line-2);border-radius:8px;font-size:var(--fs-2);color:var(--ink)}
+.clientsv2 .cx-chip b{font-size:var(--fs-1);font-weight:500;color:var(--ink-3)}
+.clientsv2 .cx-hidden{margin:-8px 0 22px;font-size:var(--fs-1);color:var(--ink-3)}
+.clientsv2 .cx-hidden summary{cursor:pointer}
+.clientsv2 .cx-hidden-row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:6px 0 0;color:var(--ink-2)}
+.clientsv2 .cx-link{background:none;border:0;padding:0;color:var(--accent-c);font:inherit;cursor:pointer}
+
+/* Одна подія при виборі клієнта: карта проявляється зліва направо, стовпчики ростуть. */
+.clientsv2 .cx-heat{display:grid;grid-template-columns:24px repeat(24,minmax(0,1fr));gap:3px;user-select:none}
+.clientsv2 .cx-hh{font-size:var(--fs-0);color:var(--ink-3);height:14px;white-space:nowrap}
+.clientsv2 .cx-dd{display:flex;align-items:center;font-size:var(--fs-0);color:var(--ink-3)}
+.clientsv2 .cx-cell{height:20px;width:100%;padding:0;border:0;border-radius:3px;background:var(--field);position:relative;cursor:pointer;transition:box-shadow .12s ease}
+.clientsv2 .cx-cell i{position:absolute;inset:0;border-radius:3px;background:var(--accent-b);opacity:var(--o,0);animation:cx-cell .5s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--x) * 18ms + var(--y) * 9ms)}
+@keyframes cx-cell{from{opacity:0;transform:scale(.3)}to{opacity:var(--o,0);transform:scale(1)}}
+.clientsv2 .cx-cell:hover,.clientsv2 .cx-cell.on{box-shadow:0 0 0 1.5px var(--ink)}
+.clientsv2 .cx-cell.lit{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.42)}
+.clientsv2 .cx-insights{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:11px;font-size:var(--fs-2);color:var(--ink-2)}
+.clientsv2 .cx-insights b{color:var(--ink);font-weight:600}
+.clientsv2 .cx-slot:empty{display:none}
+.clientsv2 .cx-slot{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.clientsv2 .cx-slot-row{padding:3px 8px;border-radius:7px;background:var(--field);font-size:var(--fs-1);color:var(--ink-2);text-decoration:none;animation:cx-rise .26s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--x) * 36ms)}
+.clientsv2 .cx-slot-row:hover{color:var(--ink);opacity:1}
+@keyframes cx-rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.clientsv2 .cx-bars{display:flex;align-items:flex-end;gap:3px;height:76px}
+.clientsv2 .cx-bar{flex:1;min-width:2px;height:100%;display:flex;align-items:flex-end}
+.clientsv2 .cx-bar i{display:block;width:100%;height:var(--h);min-height:1px;border-radius:3px 3px 1px 1px;background:var(--accent-b);opacity:.72;transform-origin:bottom;animation:cx-bar .55s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--x) * 14ms);transition:opacity .12s ease}
+.clientsv2 .cx-bar:hover i{opacity:1}
+@keyframes cx-bar{from{transform:scaleY(.04)}to{transform:scaleY(1)}}
+.clientsv2 .cx-axis{display:flex;justify-content:space-between;margin-top:5px;font-size:var(--fs-0);color:var(--ink-3)}
+.clientsv2 .cx-mat{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr) 46px;align-items:center;gap:10px;padding:4px 0;font-size:var(--fs-2)}
+.clientsv2 .cx-mat span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clientsv2 .cx-t{height:7px;border-radius:4px;background:var(--field);overflow:hidden}
+.clientsv2 .cx-t i{display:block;height:100%;width:var(--w);border-radius:4px;background:var(--ink-3);transform-origin:left;animation:cx-mat .6s cubic-bezier(.2,.8,.2,1) both}
+.clientsv2 .cx-t i.g-zr{background:var(--mat-zr)}
+.clientsv2 .cx-t i.g-pmma{background:var(--mat-pmma)}
+.clientsv2 .cx-t i.g-ti{background:var(--mat-ti)}
+@keyframes cx-mat{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.clientsv2 .cx-mat b{font-size:var(--fs-1);font-weight:500;text-align:right;color:var(--ink-2)}
+.clientsv2 .cx-folder summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:var(--fs-2);color:var(--ink-2)}
+.clientsv2 .cx-folder summary h3{margin:0}
+.clientsv2 .cx-folder .cp-sec{margin-top:10px}
+#cx-tip{position:fixed;z-index:var(--z-dropdown);pointer-events:none;max-width:240px;padding:7px 10px;background:var(--card-2);border:1px solid var(--line-2);border-radius:9px;box-shadow:0 10px 24px rgb(0 0 0 / .4);font-size:var(--fs-1);opacity:0;transform:translateY(4px);transition:opacity .1s ease,transform .12s ease}
+#cx-tip.on{opacity:1;transform:none}
+#cx-tip b{display:block;font:600 var(--fs-3) var(--font-mono);color:var(--ink)}
+#cx-tip span{color:var(--ink-2)}
+@media (prefers-reduced-motion:reduce){
+  .clientsv2 .cx-cell i,.clientsv2 .cx-bar i,.clientsv2 .cx-t i,.clientsv2 .cx-slot-row{animation:none}
+  .clientsv2 .cx-ev{transition:none}
+}

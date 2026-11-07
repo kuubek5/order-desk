@@ -1,0 +1,6 @@
+{# Уривки з листів під фактом. Текст автоекранується, позначка лише навколо знайденого. #}
+{% for p in proofs %}
+<p class="cx-ev-q"><a class="mono" href="/mail/{{ p.letter_id }}">{{ p.at.strftime('%d.%m.%y') if p.at else 'лист' }}</a>{{ p.before }}<mark>{{ p.match }}</mark>{{ p.after }}</p>
+{% else %}
+<p class="cx-ev-wait">Уривка не знайшлося: лист могли змінити.</p>
+{% endfor %}

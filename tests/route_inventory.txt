@@ -288,3 +288,6 @@ POST /license
 POST /settings/feedback/board/sisma-style
 POST /account/queue-empty-bg
 POST /settings/users/initials
+GET /clients/{client_id}/fact-proof
+GET /clients/{client_id}/slot
+POST /clients/{client_id}/facts

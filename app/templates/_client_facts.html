@@ -1,0 +1,76 @@
+{# Ліва колонка картки: дані для відправки й знайдене в листах. Окремий партіал, бо рішення
+   «закріпити/прибрати» свапає лише його, і карта з графіками не анімується вдруге. #}
+{% macro fact_row(f, idx, mono=False) %}
+<div class="cx-fact" data-cx-fact>
+    <div class="cx-fact-row">
+        <button type="button" class="cx-fact-v{% if mono %} mono{% endif %}" data-cx-open aria-expanded="false"
+                hx-get="/clients/{{ client.id }}/fact-proof?kind={{ f.kind }}&key={{ f.key|urlencode }}"
+                hx-trigger="click once" hx-target="#cx-ev-{{ f.kind }}-{{ idx }}" hx-swap="innerHTML">
+            <b>{{ f.value }}</b>
+            <small>{% if f.state == 'pin' %}<span class="cx-pinned">закріплено</span>{% endif %}{{ f.count|plural_in }}{% if f.last %}, останній {{ f.last.strftime('%d.%m') }}{% endif %}</small>
+        </button>
+        <div class="cx-fact-a">
+            <button type="button" class="cx-ib" data-copy="{{ f.value }}" title="Скопіювати" aria-label="Скопіювати {{ f.value }}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
+            <form method="post" action="/clients/{{ client.id }}/facts" hx-post="/clients/{{ client.id }}/facts" hx-target="#client-facts" hx-swap="outerHTML">
+                <input type="hidden" name="kind" value="{{ f.kind }}"><input type="hidden" name="key" value="{{ f.key }}">
+                <button type="submit" name="action" value="{{ 'clear' if f.state == 'pin' else 'pin' }}" class="cx-ib" aria-pressed="{{ 'true' if f.state == 'pin' else 'false' }}" title="{{ 'Зняти закріплення' if f.state == 'pin' else 'Закріпити як правильне' }}" aria-label="{{ 'Зняти закріплення' if f.state == 'pin' else 'Закріпити як правильне' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M8 3h8l-1 7 3 3v2H6v-2l3-3z"/></svg></button>
+                <button type="submit" name="action" value="hide" class="cx-ib" title="Прибрати: це не про клієнта" aria-label="Прибрати {{ f.value }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A9.8 9.8 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.5 6.6A17 17 0 0 0 2 12s4 7 10 7a9.6 9.6 0 0 0 4.4-1"/></svg></button>
+            </form>
+        </div>
+    </div>
+    <div class="cx-ev"><div id="cx-ev-{{ f.kind }}-{{ idx }}"><p class="cx-ev-wait">Читаю лист…</p></div></div>
+</div>
+{% endmacro %}
+<div class="cx-left" id="client-facts">
+    {% if ship %}
+    <section class="cx-ship">
+        <h3>Дані для відправки</h3>
+        <dl>
+            <dt>Кому</dt><dd>{{ ship.who }}</dd>
+            {% if ship.phone %}<dt>Телефон</dt><dd class="mono">{{ ship.phone }}</dd>{% endif %}
+            {% if ship.where %}<dt>Куди</dt><dd>{{ ship.where }}</dd>{% endif %}
+        </dl>
+        <button type="button" class="cx-copy" data-copy="{{ ship.text }}" title="Скопіювати для логіста">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+            <span class="cx-l">Скопіювати для логіста</span><span class="cx-d">Скопійовано</span>
+        </button>
+    </section>
+    {% endif %}
+
+    {% set phones = facts.phone|rejectattr('state', 'equalto', 'hide')|list %}
+    {% set ships = facts.ship|rejectattr('state', 'equalto', 'hide')|list %}
+    {% set senders = facts.sender|rejectattr('state', 'equalto', 'hide')|list %}
+    {% set emails = facts.email|rejectattr('state', 'equalto', 'hide')|list %}
+    {% if phones %}
+    <section class="cx-sec"><h3>Телефони <span>знайдено в листах</span></h3>
+        <div class="cx-panel cx-list">{% for f in phones %}{{ fact_row(f, loop.index, True) }}{% endfor %}</div></section>
+    {% endif %}
+    {% if ships %}
+    <section class="cx-sec"><h3>Куди просить відправляти</h3>
+        <div class="cx-panel cx-list">{% for f in ships %}{{ fact_row(f, loop.index) }}{% endfor %}</div></section>
+    {% endif %}
+    {% if senders or emails %}
+    <section class="cx-sec"><h3>Хто пише</h3>
+        <div class="cx-panel cx-list">{% for f in senders %}{{ fact_row(f, loop.index) }}{% endfor %}{% for f in emails %}{{ fact_row(f, loop.index, True) }}{% endfor %}</div></section>
+    {% endif %}
+    {% if asks %}
+    <section class="cx-sec"><h3>Що просить найчастіше</h3>
+        <div class="cx-chips">{% for label, n in asks %}<span class="cx-chip">{{ label }} <b class="mono">{{ n }}</b></span>{% endfor %}</div></section>
+    {% endif %}
+    {% if not letters_n %}
+    <p class="cx-empty">Листів цього клієнта ще немає: роботи прийшли з таблиці. Контакти можна вписати нижче.</p>
+    {% elif not phones and not ships and not senders and not emails %}
+    <p class="cx-empty">У {{ letters_n|plural_in }} нічого не знайдено.</p>
+    {% endif %}
+    {% if hidden %}
+    <details class="cx-hidden">
+        <summary>Прибрано: {{ hidden|length }}</summary>
+        {% for f in hidden %}
+        <form method="post" action="/clients/{{ client.id }}/facts" hx-post="/clients/{{ client.id }}/facts" hx-target="#client-facts" hx-swap="outerHTML" class="cx-hidden-row">
+            <input type="hidden" name="kind" value="{{ f.kind }}"><input type="hidden" name="key" value="{{ f.key }}">
+            <span>{{ f.value }}</span><button type="submit" name="action" value="clear" class="cx-link">Повернути</button>
+        </form>
+        {% endfor %}
+    </details>
+    {% endif %}
+</div>

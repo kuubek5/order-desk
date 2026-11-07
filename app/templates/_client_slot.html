@@ -1,0 +1,6 @@
+{# Листи однієї клітинки карти «Коли пише». #}
+{% for letter in slot_letters %}
+<a class="cx-slot-row mono" href="/mail/{{ letter.id }}" style="--x:{{ loop.index0 }}">{{ letter.received_at.strftime('%d.%m.%y, %H:%M') }}</a>
+{% else %}
+<p class="cx-note">У цю годину листів не було.</p>
+{% endfor %}
