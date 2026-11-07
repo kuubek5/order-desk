@@ -582,11 +582,15 @@ def s6_new_pc_restore(root: Path, src: Path, key: str):
            "PASS" if out.get("health") == 200 else "GAP", json.dumps({k: v for k, v in out.items() if k != "log_tail"}, ensure_ascii=False))
     # S7: погані експорти
     blob = exp.read_bytes()
+    # Байт посередині: це шифрований вміст. Байт 1000 лежить у відкритому переліку таблиць
+    # для екрана перед відновленням, і нова таблиця зсуває його зі службового символа на літеру:
+    # 07.11.26 перевірка «впала», хоч дані відновились цілими.
+    mid = len(blob) // 2
     cases = {
         "неправильний пароль": (blob, "wrong-password-x"),
         "сміття замість файлу": (os.urandom(5000), "drill-password-123"),
         "обрізаний файл": (blob[: len(blob) // 2], "drill-password-123"),
-        "один змінений байт": (blob[:1000] + bytes([blob[1000] ^ 1]) + blob[1001:], "drill-password-123"),
+        "один змінений байт": (blob[:mid] + bytes([blob[mid] ^ 1]) + blob[mid + 1:], "drill-password-123"),
     }
     for name, (data, pw) in cases.items():
         sb = sandbox(root, "s7", src)
