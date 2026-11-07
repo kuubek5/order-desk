@@ -765,7 +765,7 @@ def find_pre_update_snapshot(version: str, db_path: str | Path) -> Path | None:
     return matches[-1] if matches else None
 
 
-def launch_silent_install(installer_path: Path) -> None:
+def launch_silent_install(installer_path: Path, target_version: str) -> None:
     """Spawn a single detached watchdog that installs the verified update and
     relaunches the freshly installed app.
 
@@ -851,7 +851,9 @@ def launch_silent_install(installer_path: Path) -> None:
             # дізнатись, яка версія була до нього. Порожній рядок = нічим, і
             # сторож це коректно переживе.
             str(find_rollback_installer(VERSION) or ""),
-            str(find_pre_update_snapshot(VERSION, DB_PATH) or ""),
+            # Копія зветься версією, НА ЯКУ оновлюємось. За поточною тут знаходилась
+            # копія ПОПЕРЕДНЬОГО оновлення, і відкат вернув би базу на дні назад.
+            str(find_pre_update_snapshot(target_version, DB_PATH) or ""),
             str(DB_PATH),
         ],
         creationflags=spawn_flags,

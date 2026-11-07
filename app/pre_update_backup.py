@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 SNAPSHOT_PREFIX = "kuubmill-pre-"
 KEEP = 5
+_STAMP = re.compile(r"-(\d{8}-\d{6})\.db$")
 
 
 def pre_update_dir(db_path: str | Path) -> Path:
@@ -47,13 +48,20 @@ def _is_snapshot(path: Path) -> bool:
     return path.is_file() and path.name.startswith(SNAPSHOT_PREFIX) and path.suffix == ".db"
 
 
+def _age_key(path: Path) -> tuple[str, str]:
+    """Вік копії — лише час у назві. За цілою назвою 0.21.100 «старша» за 0.21.99, і
+    з 06.11.26 кожну щойно зняту копію стирало в ту саму секунду (лог на проді)."""
+    match = _STAMP.search(path.name)
+    return (match.group(1) if match else "", path.name)
+
+
 def list_pre_update_snapshots(db_path: str | Path) -> list[Path]:
     """Наявні копії, найновіша перша (сортування за часом у назві)."""
     try:
         files = [p for p in pre_update_dir(db_path).iterdir() if _is_snapshot(p)]
     except OSError:
         return []
-    return sorted(files, key=lambda p: p.name, reverse=True)
+    return sorted(files, key=_age_key, reverse=True)
 
 
 def _safe_version(version: str) -> str:
@@ -106,7 +114,7 @@ def snapshot_before_update(
 
 
 def _prune(folder: Path) -> None:
-    snapshots = sorted((p for p in folder.iterdir() if _is_snapshot(p)), key=lambda p: p.name)
+    snapshots = sorted((p for p in folder.iterdir() if _is_snapshot(p)), key=_age_key)
     excess = len(snapshots) - KEEP
     for path in snapshots[: max(0, excess)]:
         try:

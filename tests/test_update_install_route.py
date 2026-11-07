@@ -241,7 +241,7 @@ def test_install_in_background_calls_download_then_launch():
     assert mock_download.call_count == 1
     assert mock_download.call_args.args == (_RELEASE,)
     assert callable(mock_download.call_args.kwargs.get("progress"))
-    mock_launch.assert_called_once_with("C:/fake/installer.exe")
+    mock_launch.assert_called_once_with("C:/fake/installer.exe", "9.9.9")
 
 
 # --- стан встановлення для оверлею -----------------------------------------
@@ -261,7 +261,7 @@ def test_background_install_reports_progress_then_launched(monkeypatch):
         return "C:/fake/installer.exe"
 
     monkeypatch.setattr(settings_router_mod, "download_and_verify", fake_download)
-    monkeypatch.setattr(settings_router_mod, "launch_silent_install", lambda path: seen.append(uc.install_state()))
+    monkeypatch.setattr(settings_router_mod, "launch_silent_install", lambda path, version: seen.append(uc.install_state()))
     settings_router_mod._install_update_in_background(_RELEASE)
 
     assert seen[0] == {"stage": "downloading", "version": "9.9.9", "done": 5, "total": 10}

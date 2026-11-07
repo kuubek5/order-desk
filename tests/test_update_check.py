@@ -347,7 +347,7 @@ def test_launch_silent_install_noop_in_dev(tmp_path):
     """Not a frozen/packaged build (the normal state under pytest) — must
     not attempt to spawn any subprocess."""
     with patch("app.update_check.subprocess.Popen") as mock_popen:
-        launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe")
+        launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe", "9.9.9")
     mock_popen.assert_not_called()
 
 
@@ -368,7 +368,7 @@ def test_launch_silent_install_frozen_spawns_single_watchdog(tmp_path):
     with patch("app.update_check.is_frozen", return_value=True), patch(
         "app.update_check.data_dir", return_value=tmp_path
     ), patch("app.update_check.subprocess.Popen") as mock_popen:
-        launch_silent_install(installer)
+        launch_silent_install(installer, "9.9.9")
 
     assert mock_popen.call_count == 1
     args, kwargs = mock_popen.call_args
@@ -652,7 +652,7 @@ def test_watchdog_script_is_written_with_a_bom(tmp_path, monkeypatch):
     monkeypatch.setattr(update_check, "data_dir", lambda: tmp_path)
     monkeypatch.setattr(update_check.subprocess, "Popen", lambda *a, **k: None)
 
-    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe")
+    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe", "9.9.9")
 
     written = (tmp_path / "update-watchdog.ps1").read_bytes()
     assert written[:3] == b"\xef\xbb\xbf", (
@@ -731,12 +731,29 @@ def test_watchdog_receives_the_rollback_material(tmp_path, monkeypatch):
         lambda args, **k: captured.setdefault("args", args),
     )
 
-    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe")
+    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe", "9.9.9")
 
     args = captured["args"]
     joined = " ".join(str(a) for a in args)
     assert "old.exe" in joined, "інсталятор для відкату не переданий сторожу"
     assert "snap.db" in joined, "знімок бази не переданий сторожу"
+
+
+def test_rollback_takes_the_snapshot_of_this_attempt_not_of_the_previous_update(tmp_path, monkeypatch):
+    """Копію підписано цільовою версією; за поточною знайшлась би копія минулого
+    оновлення, і відкат загубив би все, що зроблено відтоді."""
+    asked = []
+    monkeypatch.setattr(update_check, "is_frozen", lambda: True)
+    monkeypatch.setattr(update_check, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(update_check, "find_rollback_installer", lambda v: None)
+    monkeypatch.setattr(
+        update_check, "find_pre_update_snapshot", lambda v, db: asked.append(v) or Path("C:/snap.db")
+    )
+    monkeypatch.setattr(update_check.subprocess, "Popen", lambda args, **k: None)
+
+    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe", "9.9.9")
+
+    assert asked == ["9.9.9"]
 
 
 def test_rollback_waits_for_the_forked_installer_like_the_install_path_does():

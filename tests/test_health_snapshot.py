@@ -24,16 +24,25 @@ from sqlalchemy.pool import StaticPool
 from app.__version__ import VERSION
 from app.db import Base
 from app.models import Order, User
+from app.services import health_snapshot
 from app.services.health_snapshot import (
     BEFORE_KEY,
     REPORT_KEY,
     capture,
     check_after_update,
     compare,
+    failed_install,
     last_report,
     remember_before_update,
 )
 from app.settings_store import get_setting, set_setting
+
+
+@pytest.fixture(autouse=True)
+def _no_failed_install_between_tests():
+    health_snapshot._failed_install = None
+    yield
+    health_snapshot._failed_install = None
 
 
 @pytest.fixture()
@@ -136,3 +145,49 @@ def test_totals_are_declined_properly(n, expected):
         {"version": "0.2", "tables": {"machines": n}},
     )
     assert report["totals_text"] == expected
+
+
+def test_same_version_after_an_install_attempt_says_it_failed(db, caplog):
+    """07.11.26: інсталятор скасувався, сторож запустив стару версію, екран мовчав."""
+    remember_before_update(db, "9.9.9")
+    db.commit()
+
+    assert check_after_update(db) is None
+
+    assert failed_install() == {
+        "target": "9.9.9",
+        "current": VERSION,
+        "at": json.loads(get_setting(db, BEFORE_KEY))["at"],
+    }
+    assert "не встановилось" in caplog.text
+    assert get_setting(db, BEFORE_KEY), "знімок лишається: ще одна спроба попереду"
+
+
+def test_failed_install_is_reported_once_and_a_retry_clears_it(db):
+    remember_before_update(db, "9.9.9")
+    check_after_update(db)
+    health_snapshot._failed_install = None  # наступний запуск тієї самої версії
+
+    check_after_update(db)
+    assert failed_install() is None
+
+    health_snapshot._failed_install = {"target": "9.9.9", "current": VERSION}
+    remember_before_update(db, "9.9.9")
+    assert failed_install() is None
+
+
+def test_old_attempt_is_not_presented_as_a_failure_of_this_start(db):
+    remember_before_update(db, "9.9.9")
+    stale = json.loads(get_setting(db, BEFORE_KEY))
+    stale["at"] = "2026-01-01T08:00:00"
+    set_setting(db, BEFORE_KEY, json.dumps(stale))
+
+    check_after_update(db)
+
+    assert failed_install() is None
+
+
+def test_restart_without_an_install_attempt_is_not_a_failure(db):
+    remember_before_update(db)
+    check_after_update(db)
+    assert failed_install() is None

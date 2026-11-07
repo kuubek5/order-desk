@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import threading
+
 import pytest
 
 import app.windows_launcher as launcher
@@ -137,3 +139,20 @@ def test_a_failing_dialog_does_not_wedge_the_menu_forever():
 
     quit_item()
     assert len(started) == 2
+
+
+def test_stuck_threads_cannot_hold_the_program_files(monkeypatch):
+    """07.11.26: потік висів на шарі 40 с, інсталятор скасувався й лишилась стара версія."""
+    exited = threading.Event()
+    monkeypatch.setattr(launcher.os, "_exit", lambda code: exited.set())
+    monkeypatch.setattr(launcher.logging, "shutdown", lambda: None)
+
+    launcher._hard_exit_after(0.01)
+
+    assert exited.wait(2)
+
+
+def test_installer_waits_longer_than_the_app_can_take_to_exit():
+    graceful = 10  # timeout_graceful_shutdown у uvicorn.Config
+    tray_join = 15  # server_thread.join у _run_server_with_tray
+    assert max(graceful, tray_join) + launcher.HARD_EXIT_AFTER_SECONDS < launcher.SHUTDOWN_WAIT_SECONDS

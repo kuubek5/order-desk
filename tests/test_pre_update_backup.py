@@ -69,6 +69,22 @@ def test_only_the_last_keep_snapshots_survive(tmp_path):
     assert all("080000" not in p.name for p in kept)
 
 
+def test_fresh_snapshot_of_a_three_digit_version_survives(tmp_path):
+    """За назвою 0.21.104 «старша» за 0.21.95, і нова копія зникала одразу."""
+    engine, db_path = _seeded_db(tmp_path)
+    folder = pre_update_dir(db_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    for index, version in enumerate(("95", "96", "97", "98", "99")):
+        (folder / f"kuubmill-pre-0.21.{version}-2026110{index + 1}-100000.db").write_bytes(b"x")
+
+    created = snapshot_before_update(engine, db_path, "0.21.104", now=datetime(2026, 11, 7, 8, 29, 26))
+
+    assert created.exists()
+    kept = list_pre_update_snapshots(db_path)
+    assert kept[0] == created and len(kept) == KEEP
+    assert all("0.21.95" not in p.name for p in kept)
+
+
 def test_leftover_tmp_from_a_crashed_attempt_does_not_block(tmp_path):
     engine, db_path = _seeded_db(tmp_path)
     folder = pre_update_dir(db_path)

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -45,6 +45,13 @@ logger = logging.getLogger(__name__)
 
 BEFORE_KEY = "health_snapshot_before"
 REPORT_KEY = "health_snapshot_report"
+# Старший знімок не привід казати «не встановилось»: людина могла просто перезапустити
+# програму через кілька днів після спроби, що зламалась ще на скачуванні.
+FAILED_INSTALL_WINDOW = timedelta(hours=1)
+
+# Спроба оновитись, що не дійшла. Лише до наступного перезапуску: це повідомлення про
+# щойно зроблену дію, кнопка «Встановити» лишається на місці.
+_failed_install: dict | None = None
 
 # Таблиці, які застосунок сам чистить за розкладом: їхнє зменшення — робота
 # прибиральника, а не втрата. Решта таблиць зменшуватись не має.
@@ -90,9 +97,43 @@ def capture(db: Session) -> dict:
     return {"version": VERSION, "at": datetime.now().isoformat(timespec="seconds"), "tables": tables}
 
 
-def remember_before_update(db: Session) -> None:
+def remember_before_update(db: Session, target_version: str | None = None) -> None:
     """Запамʼятати стан ПЕРЕД встановленням оновлення. Не комітить."""
-    set_setting(db, BEFORE_KEY, json.dumps(capture(db), ensure_ascii=False))
+    global _failed_install
+    _failed_install = None
+    state = capture(db)
+    if target_version:
+        state["target"] = target_version
+    set_setting(db, BEFORE_KEY, json.dumps(state, ensure_ascii=False))
+
+
+def failed_install() -> dict | None:
+    """Яке оновлення не встановилось при цьому запуску (для рейки адміна)."""
+    return _failed_install
+
+
+def _note_failed_install(db: Session, before: dict) -> None:
+    """Після спроби оновитись стартувала ТА САМА версія.
+
+    Сторож бачить лише «health 200» і сам про це не скаже: 07.11.26 інсталятор
+    скасувався, а на екрані виглядало, що все встановлено.
+    """
+    global _failed_install
+    target = before.get("target")
+    if not target or before.get("failure_noted"):
+        return
+    try:
+        recent = datetime.now() - datetime.fromisoformat(before.get("at") or "") < FAILED_INSTALL_WINDOW
+    except ValueError:
+        recent = False
+    set_setting(db, BEFORE_KEY, json.dumps({**before, "failure_noted": True}, ensure_ascii=False))
+    if not recent:
+        return
+    _failed_install = {"target": target, "current": VERSION, "at": before.get("at")}
+    logger.error(
+        "Оновлення на %s не встановилось: після перезапуску лишилась %s (спроба %s)",
+        target, VERSION, before.get("at"),
+    )
 
 
 def _stored(db: Session, key: str) -> dict | None:
@@ -142,6 +183,7 @@ def check_after_update(db: Session) -> dict | None:
     if not before:
         return None
     if before.get("version") == VERSION:
+        _note_failed_install(db, before)
         return None  # ще та сама збірка — оновлення не доїхало
 
     report = compare(before, capture(db))

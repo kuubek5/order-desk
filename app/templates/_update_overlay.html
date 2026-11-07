@@ -6,6 +6,18 @@
    дуга по колу, блюпринт-сітка; моноширинні статус-рядки міняються за
    таймером у JS. Без JS форма працює як раніше (flash-текст на /settings).
    prefers-reduced-motion → спрощена статична версія (див. base.css). #}
+{# Не в рейці: там повідомлення лягає нижче краю екрана, а його мусять побачити
+   одразу після перезапуску. Закриття пам'ятає саме цю спробу, а не версію:
+   наступна невдала спроба на ту саму версію знову має бути видна. #}
+{% set failed_attempt = failed_update() %}
+{% if failed_attempt and user and user.role == 'адмін' %}
+<div class="update-failed" id="update-failed" role="alert" data-attempt="{{ failed_attempt.at }}">
+  <p><strong>Оновлення v{{ failed_attempt.target }} не встановилось.</strong> Працює v{{ failed_attempt.current }}, дані не змінено. Зачекайте 2–3 хв і спробуйте ще раз.</p>
+  <button type="button" class="update-failed-close" id="update-failed-close" aria-label="Закрити">
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9m0-9l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+</div>
+{% endif %}
 <div class="update-overlay" id="update-overlay" hidden aria-hidden="true" role="alertdialog" aria-label="Встановлення оновлення" aria-live="polite">
   <div class="update-overlay-grid" aria-hidden="true"></div>
   <div class="update-card">

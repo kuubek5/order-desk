@@ -437,3 +437,17 @@ def test_mcp_gives_one_ready_line_and_reissue_replaces_it(app_db):
     assert second != first, "перевипуск не змінив токен"
     assert first not in after, "старий токен усе ще на сторінці"
     assert second in after
+
+
+def test_failed_update_is_shown_to_the_admin_only(app_db, monkeypatch):
+    """Проходить весь шлях до HTML: глобал шаблону, плашка й ознака спроби для закриття."""
+    from app.services import health_snapshot
+
+    monkeypatch.setattr(
+        health_snapshot, "_failed_install", {"target": "9.9.9", "current": "1.2.3", "at": "2026-11-07T08:29:27"}
+    )
+    app, _ = app_db
+    html = _open_settings(app, ADMIN)
+    assert 'id="update-failed"' in html and "v9.9.9" in html and 'data-attempt="2026-11-07T08:29:27"' in html
+
+    assert 'id="update-failed"' not in _open_settings(app, OPERATOR)

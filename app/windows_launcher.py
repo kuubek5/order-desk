@@ -62,7 +62,33 @@ def _create_shutdown_event() -> None:
         raise OSError("Не вдалося створити Windows shutdown event")
 
 
-def _signal_shutdown(timeout_seconds: int = 15) -> bool:
+# Сервер зупиняється до 10 с (timeout_graceful_shutdown), після нього вихід чекає ще
+# пул-потоки, а ті можуть висіти на мережевій теці: щойно ввімкнений ПК 07.11.26
+# тримав файли ще 40 с. Інсталятор на «не вийшов за 15 с» скасовувався, а сторож
+# запускав стару версію. Тому межа на вихід є, і вона менша за те, скільки чекають.
+SHUTDOWN_WAIT_SECONDS = 60
+HARD_EXIT_AFTER_SECONDS = 20.0
+
+
+def _hard_exit_after(delay_seconds: float = HARD_EXIT_AFTER_SECONDS) -> None:
+    """Сервер уже зупинився: дати потокам дописати, але не тримати файли програми.
+
+    Потік запасний (daemon) і працює далі, поки інтерпретатор чекає пул-потоки. Базі
+    обрив не шкодить: незакомічене SQLite відкотить, а незаписане в таблицю лишається
+    в позначках повтору.
+    """
+
+    def _exit_now() -> None:
+        logging.warning("Завершення затягнулось на %s с: виходимо примусово", delay_seconds)
+        logging.shutdown()
+        os._exit(0)
+
+    timer = threading.Timer(delay_seconds, _exit_now)
+    timer.daemon = True
+    timer.start()
+
+
+def _signal_shutdown(timeout_seconds: int = SHUTDOWN_WAIT_SECONDS) -> bool:
     if os.name != "nt":
         return False
     import ctypes
@@ -560,6 +586,7 @@ def main() -> int:
         if args.open_browser:
             threading.Thread(target=_open_browser_when_ready, daemon=True).start()
         _run_server_with_tray(server, tray_holder)
+        _hard_exit_after()
         return 0
     except (Exception, SystemExit):
         import traceback

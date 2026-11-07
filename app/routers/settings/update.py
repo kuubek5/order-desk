@@ -60,7 +60,7 @@ def _install_update_in_background(release) -> None:
             ),
         )
         set_install_state(stage="launching", version=version)
-        launch_silent_install(installer_path)
+        launch_silent_install(installer_path, version)
         global _launched_at
         _launched_at = time.monotonic()
         # Далі — watchdog: інсталятор, перезапуск, /health. Оверлей чекає на
@@ -172,7 +172,7 @@ def install_update(request: Request, db: Session = Depends(get_db)):
     # зникло (app/services/health_snapshot.py). Збій знімка не має зривати
     # оновлення — це страховка, а не умова.
     try:
-        remember_before_update(db)
+        remember_before_update(db, release.version)
         db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()

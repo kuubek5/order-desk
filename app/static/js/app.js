@@ -444,7 +444,18 @@ document.addEventListener("click", (event) => {
 
   document.addEventListener("click", (event) => {
     if (event.target.closest("#update-close")) hideUpdateOverlay();
+    if (event.target.closest("#update-failed-close")) {
+      const notice = document.getElementById("update-failed");
+      if (notice) {
+        if (window.KMStore) window.KMStore.set("updateFailedSeen", notice.dataset.attempt);
+        notice.remove();
+      }
+    }
   });
+  const failedNotice = document.getElementById("update-failed");
+  if (failedNotice && window.KMStore && window.KMStore.get("updateFailedSeen") === failedNotice.dataset.attempt) {
+    failedNotice.remove();
+  }
 
   // Poll /health. The app is about to restart, so /health will first start
   // failing (connection dropped) and then, once the new process is up, answer

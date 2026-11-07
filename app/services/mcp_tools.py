@@ -447,6 +447,13 @@ def _log_candidates() -> dict[str, Path]:
     return found
 
 
+def _update_logs() -> dict[str, Path]:
+    """Що сталось під час встановлення. Окремо від `_log_candidates`: auto їх не бере,
+    бо це не журнал застосунку й тиша в них нічого не означала б."""
+    folder = DATA_DIR / "logs"
+    return {"оновлення": folder / "update-watchdog.log", "інсталятор": folder / "update-installer.log"}
+
+
 def _pick_log(choice: str | None) -> tuple[str, Path]:
     """Яким файлом відповідаємо — і назва їде у відповідь.
 
@@ -457,11 +464,12 @@ def _pick_log(choice: str | None) -> tuple[str, Path]:
     candidates = _log_candidates()
     asked = (choice or "auto").strip().lower()
     if asked not in ("auto", ""):
-        if asked not in candidates:
+        named = {**candidates, **_update_logs()}
+        if asked not in named:
             raise ToolError(
-                f"джерело «{choice}» невідоме. Доступні: {', '.join(candidates)} або auto"
+                f"джерело «{choice}» невідоме. Доступні: {', '.join(named)} або auto"
             )
-        path = candidates[asked]
+        path = named[asked]
         if not path.exists():
             raise ToolError(f"«{asked}»: файла {path} немає на цій машині")
         return asked, path
@@ -1059,7 +1067,7 @@ TOOLS: tuple[Tool, ...] = (
                 },
                 "log": {
                     "type": "string",
-                    "description": "Звідки читати: auto (типово), поточний, встановлений.",
+                    "description": "Звідки читати: auto (типово), поточний, встановлений, оновлення (сторож встановлення), інсталятор.",
                 },
             },
             "additionalProperties": False,
@@ -1081,7 +1089,7 @@ TOOLS: tuple[Tool, ...] = (
                 "limit": {"type": "integer", "minimum": 1, "maximum": 300},
                 "log": {
                     "type": "string",
-                    "description": "Звідки читати: auto (типово), поточний, встановлений.",
+                    "description": "Звідки читати: auto (типово), поточний, встановлений, оновлення (сторож встановлення), інсталятор.",
                 },
             },
             "required": ["pattern"],

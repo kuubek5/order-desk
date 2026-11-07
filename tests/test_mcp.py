@@ -508,3 +508,16 @@ def test_quota_parses_a_line_written_by_the_real_logger(app_db, fake_log, monkey
     ]
     assert data["проб"] == written.count("Sheets API"), written
     assert data["максимум"] == 2, written
+
+
+def test_install_logs_are_readable_by_name_but_not_by_auto(app_db, fake_log, tmp_path, monkeypatch):  # noqa: F811
+    """Причина невдалого оновлення лежала на цеховому ПК, і MCP її не бачив (07.11.26)."""
+    watchdog = tmp_path / "logs" / "update-watchdog.log"
+    watchdog.write_text("2026-11-07T08:29:28 installer finished\n", encoding="utf-8")
+    monkeypatch.setattr(mcp_tools, "_update_logs", lambda: {"оновлення": watchdog})
+    fake_log.write_text(_log_line(1, "звичайний рядок"), encoding="utf-8")
+
+    assert mcp_tools._pick_log("оновлення") == ("оновлення", watchdog)
+    assert mcp_tools._pick_log(None)[1] == fake_log
+    with pytest.raises(mcp_tools.ToolError):
+        mcp_tools._pick_log("../../secret")

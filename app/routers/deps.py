@@ -52,6 +52,7 @@ from app.statuses import STATUSES, is_overdue, status_dot
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.triage_status import files_on_disk, triage_readiness
 from app.mail_hold import HOLD_REASONS, hold_label
+from app.services.health_snapshot import failed_install
 from app.update_check import get_known_update
 
 logger = logging.getLogger(__name__)
@@ -970,6 +971,7 @@ templates.env.filters["kyiv"] = utc_to_business
 # in-memory "last known result" (see app/update_check.py::get_known_update),
 # never touches the network from a request-handling thread.
 templates.env.globals["get_known_update"] = get_known_update
+templates.env.globals["failed_update"] = failed_install
 templates.env.globals["license_notice"] = license_notice
 # Product version, available in every template (rail foot, settings "about")
 # without threading it through each route's context — same rationale as the

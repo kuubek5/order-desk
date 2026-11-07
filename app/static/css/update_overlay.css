@@ -902,3 +902,24 @@ body.has-toast-chip .toast-stack[data-toast-pos="tc"]{padding-top:40px}
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .fpath-actions .fpath-copy{border-color:var(--accent);color:var(--accent-c)}
 .fpath-actions button:hover{background:rgba(255,255,255,.06)}
+
+/* Оновлення не встановилось: плашка над сторінкою, бо в рейці її не видно. */
+.update-failed{
+  position:fixed;top:12px;left:50%;transform:translateX(-50%);
+  z-index:calc(var(--z-update) - 1);
+  display:flex;align-items:flex-start;gap:var(--space-2);
+  width:min(560px,calc(100vw - 24px));
+  padding:var(--space-3) var(--space-2) var(--space-3) var(--space-3);
+  background:var(--color-card-bg);
+  border:1px solid var(--color-warning);
+  border-radius:var(--radius-card);
+  box-shadow:0 10px 30px rgb(0 0 0 / .35);
+}
+.update-failed p{margin:0;flex:1;font-size:var(--fs-2);line-height:1.45;color:var(--color-text)}
+.update-failed-close{
+  flex:none;width:32px;height:32px;display:grid;place-items:center;
+  background:none;border:0;border-radius:var(--radius-input);
+  color:var(--color-text-muted);cursor:pointer;
+}
+.update-failed-close:hover{color:var(--color-text);background:rgb(255 255 255 / .08)}
+.update-failed-close:focus-visible{outline:2px solid var(--color-accent);outline-offset:1px}
