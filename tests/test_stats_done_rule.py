@@ -256,6 +256,36 @@ def test_same_client_rows_on_one_tab_are_not_copies(db):
     assert _facts(db)["units"] == 10
 
 
+def test_same_sum3d_two_weeks_later_is_another_work(db):
+    """Бойовий випадок 07.11.26: Sum3D це час доби, і в клієнта він повторився."""
+    _client(db, tab="20.10.26", qty="1", sum3d="23-29-24")
+    _client(db, tab="03.11.26", qty="1", sum3d="23-29-24")
+    db.commit()
+    result = _facts(db)
+    assert result["units"] == 1 and result["by_day"][TUE]["works"] == 1
+    arrived = data.summarize(
+        data.facts(db, DAYS, data.Filters(), arrivals=True), DAYS, data._material_group_map(db)
+    )
+    assert arrived["by_day"][TUE]["works"] == 1
+
+
+def test_client_copy_carried_over_several_tabs_counts_once(db):
+    _client(db, tab="27.10.26")
+    _client(db, tab="03.11.26")
+    _client(db, tab="04.11.26")
+    db.commit()
+    assert _facts(db)["units"] == 0
+
+
+def test_block_pasted_twice_on_the_later_tab_is_still_a_copy(db):
+    _client(db, tab="03.11.26")
+    _client(db, tab="04.11.26")
+    _client(db, tab="04.11.26")
+    db.commit()
+    result = _facts(db)
+    assert result["units"] == 5 and result["by_day"][WED]["works"] == 0
+
+
 def test_first_day_outside_the_period_still_makes_a_copy(db):
     _lab(db, tab="02.11.26", work_order_no="36652")
     _lab(db, tab="03.11.26", work_order_no="36652")

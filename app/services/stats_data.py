@@ -76,6 +76,11 @@ MAX_UNITS = MAX_ROW_UNITS
 # перед часом або текст оператора («немає папки», «робота за 30.10»): лише останній
 # не є взяттям у роботу. Те саме правило для Python — `st.has_sum3d_time`.
 _SUM3D_TIME_GLOB = "*[0-9]-[0-9][0-9]-[0-9][0-9]*"
+# Sum3D — лише час доби, тож у клієнта він рано чи пізно повторюється: 08.10 і 22.10
+# в одного клієнта дві різні роботи на `23-29-24`, той самий матеріал і кількість
+# (звірка на проді 07.11.26). Копія лежить поруч: блок вставляють наступного дня. У лаби
+# цієї межі немає, там рядок ще й тримає номер наряду.
+CLIENT_COPY_GAP_DAYS = 7
 
 
 def clear_cache() -> None:
@@ -167,6 +172,7 @@ def repeats(db: Session) -> Repeats:
         first_day_of_order: dict[str, date] = {}
         copies: set[int] = set()
         later: set[int] = set()
+        client_runs: dict[tuple, tuple[date, date]] = {}  # ключ → (перший день, останній)
         for row_id, tab, kind, number, sum3d, material, work_kind, quantity, client, done in ordered:
             day = idx.dated[tab]
             number_text, sum3d_text = _same_text(number), _same_text(sum3d)
@@ -188,8 +194,12 @@ def repeats(db: Session) -> Repeats:
             if not sum3d_text:
                 continue
             key = ("client", _same_text(client), *shared)
-            first_seen = first_day_of_work.setdefault(key, day)
-            if day != first_seen:
+            run = client_runs.get(key)
+            if run is None or (day - run[1]).days > CLIENT_COPY_GAP_DAYS:
+                client_runs[key] = (day, day)
+                continue
+            client_runs[key] = (run[0], day)
+            if day != run[0]:
                 later.add(row_id)
                 if done:
                     copies.add(row_id)
