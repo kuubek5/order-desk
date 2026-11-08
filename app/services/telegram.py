@@ -208,9 +208,17 @@ def api_call(
 
     Не піднімає винятків: мережа й сміття у відповіді згортаються в `error`,
     і всі тексти помилок проходять крізь `_net_error` — токен у лог не йде."""
+    return _post(session, token, method, timeout=timeout, json=payload or {})
+
+
+def _post(session, token: str, method: str, *, timeout=_TIMEOUT, **body_kwargs) -> ApiResult:
+    """Один POST до Bot API і розбір відповіді — спільне для JSON і multipart.
+
+    Не піднімає винятків: мережа й сміття у відповіді згортаються в `error`,
+    і текст помилки проходить крізь `_net_error` — токен у лог не йде."""
     url = _API.format(token=token, method=method)
     try:
-        resp = session.post(url, json=payload or {}, timeout=timeout)
+        resp = session.post(url, timeout=timeout, **body_kwargs)
     except Exception as exc:  # noqa: BLE001
         return ApiResult(False, None, None, _net_error(exc, token))
     try:
@@ -221,6 +229,24 @@ def api_call(
         return ApiResult(True, 200, body.get("result"), None)
     detail = str(body.get("description", "") or "").replace(token, "***")
     return ApiResult(False, resp.status_code, None, f"HTTP {resp.status_code} {detail}".strip())
+
+
+def api_call_files(
+    session, token: str, method: str, payload: dict, files: dict, *, timeout=_TIMEOUT
+) -> ApiResult:
+    """Метод Bot API з файлами (multipart): sendPhoto, editMessageMedia.
+
+    У multipart кожне поле — рядок, тож вкладені обʼєкти (`reply_markup`,
+    `media`) їдуть JSON-рядком, як і вимагає Telegram. Не піднімає винятків;
+    текст помилки — без токена, як у `api_call`."""
+    import json
+
+    data = {
+        key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+        for key, value in payload.items()
+        if value is not None
+    }
+    return _post(session, token, method, timeout=timeout, data=data, files=files)
 
 
 def send_document(
@@ -228,24 +254,11 @@ def send_document(
 ) -> ApiResult:
     """Файл одним повідомленням (sendDocument, multipart). Не піднімає
     винятків; текст помилки — без токена, як у `api_call`."""
-    url = _API.format(token=token, method="sendDocument")
     data = {"chat_id": chat_id}
     if caption:
         data["caption"] = caption[:_CAPTION_LIMIT]
-    try:
-        resp = session.post(
-            url, data=data, files={"document": (filename, content, "text/plain")}, timeout=_TIMEOUT
-        )
-    except Exception as exc:  # noqa: BLE001
-        return ApiResult(False, None, None, _net_error(exc, token))
-    try:
-        body = resp.json()
-    except Exception:  # noqa: BLE001
-        body = {}
-    if resp.status_code == 200 and body.get("ok"):
-        return ApiResult(True, 200, body.get("result"), None)
-    detail = str(body.get("description", "") or "").replace(token, "***")
-    return ApiResult(False, resp.status_code, None, f"HTTP {resp.status_code} {detail}".strip())
+    return _post(session, token, "sendDocument",
+                 data=data, files={"document": (filename, content, "text/plain")})
 
 
 def discover_chat_id(db: Session) -> tuple[str | None, str | None]:

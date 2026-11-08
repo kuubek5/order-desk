@@ -17,6 +17,9 @@ hiddenimports = (
     # Власне вікно-сповіщення (05.10.26): tkinter і PIL.ImageTk імпортуються
     # ліниво, лише коли вікно ввімкнено, — статичний аналіз може їх не побачити.
     + ["app.desktop_popup_ui", "tkinter", "PIL.ImageTk"]
+    # Картинка верстатів у Telegram-боті (08.11.26): модуль імпортується
+    # ліниво з обробника кнопки, шрифти — через PIL.ImageFont (FreeType).
+    + ["app.services.telegram_board", "PIL.ImageFont"]
 )
 datas = [
     ("app/templates", "app/templates"),

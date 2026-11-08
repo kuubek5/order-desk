@@ -44,7 +44,7 @@ except app/services/screen_inbox.py 2
 except app/services/sum3d_capture.py 1
 except app/services/support_report.py 8
 except app/services/system_load.py 4
-except app/services/telegram.py 12
+except app/services/telegram.py 10
 except app/services/telegram_bot.py 7
 except app/services/whats_wrong.py 3
 except app/sheet_colors.py 1

@@ -589,6 +589,15 @@ def _machine(card, token: str) -> ShopMachine:
     return item
 
 
+def board_machine(card) -> ShopMachine:
+    """Верстат так, як його бачить табло, для ІНШОГО екрана (картинка бота).
+
+    Той самий збирач, що й для телевізора: слово стану, роботи, назва
+    програми рахуються в одному місці, і бот не може розійтись із табло.
+    Адреса фото тут не потрібна, тож токен порожній."""
+    return _machine(card, "")
+
+
 def _sisma(card, token: str) -> ShopMachine:
     item = _machine(card, token)
     item.is_sisma = True

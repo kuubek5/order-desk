@@ -56,6 +56,9 @@ from app.services import telegram
 from app.services.telegram import KMILL_PREFIX, ApiResult
 from app.settings_store import get_setting, set_setting
 
+# Межа підпису до фото в Telegram.
+CAPTION_LIMIT = 1024
+
 logger = logging.getLogger(__name__)
 
 # ── Налаштування ────────────────────────────────────────────────────────────
@@ -1083,6 +1086,11 @@ class Action:
 
     method: str
     payload: dict = field(default_factory=dict)
+    # Файли для multipart (sendPhoto, editMessageMedia): поле → (імʼя, байти, тип).
+    files: dict = field(default_factory=dict)
+    # Лише якщо ПОПЕРЕДНЯ дія вдалась: старе меню прибираємо тільки тоді, коли
+    # нове вже в чаті, інакше збій мережі лишив би чат порожнім.
+    after_ok: bool = False
 
 
 def _chat_of(update: dict) -> tuple[Optional[str], Optional[str]]:
@@ -1118,6 +1126,155 @@ def _menu_payload(
         "disable_web_page_preview": True,
         "reply_markup": keyboard(view, notify, admin=admin),
     }
+
+
+# ── Верстати картинкою (власник 08.11.26, варіант C) ────────────────────────
+
+MACHINE_CALLBACK = "m"
+_MACHINE_BUTTONS_PER_ROW = 3
+_MAX_DETAIL_WORKS = 8
+
+
+def _machines_keyboard(board, notify: bool, focus: Optional[str]) -> dict:
+    from app.services.telegram_board import button_label
+
+    rows: list[list[dict]] = []
+    row: list[dict] = []
+    for tile in board.tiles:
+        data = f"{MACHINE_CALLBACK}:{tile.key}"
+        if len(data.encode("utf-8")) > 64:  # межа callback_data у Telegram
+            continue
+        row.append({"text": button_label(tile, tile.key == focus), "callback_data": data})
+        if len(row) == _MACHINE_BUTTONS_PER_ROW:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    if focus is not None:
+        rows.append([
+            {"text": "⬅ Усі верстати", "callback_data": "v:machines"},
+            {"text": "🔄 Оновити", "callback_data": f"{MACHINE_CALLBACK}:{focus}"},
+        ])
+        rows.append([{"text": "🏠 Меню", "callback_data": "v:home"}])
+    else:
+        rows.append([
+            {"text": "🔄 Оновити", "callback_data": "v:machines"},
+            {"text": "🏠 Меню", "callback_data": "v:home"},
+        ])
+    bell = "🔔 Сповіщення: так" if notify else "🔕 Сповіщення: ні"
+    rows.append([{"text": bell, "callback_data": "n:machines"}])
+    return {"inline_keyboard": rows}
+
+
+def _machine_detail(card) -> str:
+    """Підпис для одного верстата: стан, програма, усі роботи на диску."""
+    from app.services.shop_board import board_machine
+
+    item = board_machine(card)
+    lines = [f"<b>{_e(item.name)}</b>"]
+    if item.state == "run" and item.percent is not None:
+        lines.append(f"⚙️ фрезерує · <b>{item.percent}%</b>")
+    elif item.state == "done":
+        lines.append("✅ завершено · <b>зняти</b>")
+    elif item.state == "off":
+        # Пояснення обриву вже починається словами «немає зв'язку».
+        lines.append(f"⚠️ {_e(_clip(item.note or item.word, 160))}")
+    elif item.state == "fault":
+        lines.append("⚠️ помилка на екрані верстата")
+    else:
+        word = item.word or item.state
+        note = f" · {_e(_clip(item.note, 120))}" if item.note and item.note != word else ""
+        lines.append(f"{_e(word)}{note}")
+    if item.has_prog:
+        tail = f"<b>{_e(item.prog_tail)}</b>" if item.prog_tail else ""
+        lines.append(f"Програма <code>{_e(item.prog_head)}</code>{tail}")
+    elif item.sum3d:
+        lines.append(f"Sum3D <code>{_e(item.sum3d)}</code>")
+    last = item.works_are_last
+    orders = list((getattr(card, "last_orders", None) if last else card.orders) or [])
+    orders.sort(key=lambda o: (getattr(o, "id", 0) or 0))
+    works = []
+    for order in orders:
+        name = (order.client_name or "").strip()
+        number = (order.work_order_no or "").strip()
+        if name and number:
+            name = f"{name} · наряд {number}"
+        elif number:
+            name = f"наряд {number}"
+        bits = [b for b in ((order.material_color or "").strip(), (order.quantity or "").strip()) if b]
+        if bits and bits[-1].isdigit():
+            bits[-1] = f"{bits[-1]} од."
+        text = " · ".join(b for b in [name, *bits] if b)
+        if text:
+            works.append(text)
+    if works:
+        lines.append("")
+        lines.append("<b>Щойно знято</b>" if last else "<b>На диску</b>")
+        lines.extend(f"• {_e(w)}" for w in works[:_MAX_DETAIL_WORKS])
+        if len(works) > _MAX_DETAIL_WORKS:
+            lines.append(f"ще {len(works) - _MAX_DETAIL_WORKS}")
+    return "\n".join(lines)
+
+
+def _machines_board_actions(
+    db: Session,
+    chat_id: str,
+    message_id: int,
+    is_photo: bool,
+    notify: bool,
+    now: Optional[datetime],
+    *,
+    focus: Optional[str] = None,
+) -> Optional[list[Action]]:
+    """Вид «Верстати» картинкою. None — малювати нічого (верстатів немає чи
+    малювання впало): тоді бот показує звичайний текстовий список."""
+    from app.services import telegram_board
+    from app.services.machines import snapshot
+
+    moment = now or business_now()
+    try:
+        cards = [card for card in snapshot(db) if not card.is_sisma_machine]
+        if not cards:
+            return None
+        board = telegram_board.board_of(cards)
+        if focus is not None and not any(t.key == focus for t in board.tiles):
+            focus = None  # верстат перейменували чи йому змінилась адреса
+        png = telegram_board.render_png(board, moment, focus)
+        if focus is not None:
+            body = _machine_detail(next(c for c in cards if c.key == focus))
+        else:
+            words = telegram_board.summary_words(board)
+            body = f"⚙️ {_e(words[:1].upper() + words[1:])}"
+    except Exception:  # noqa: BLE001 — текстовий список кращий за мовчазну кнопку
+        logger.exception("telegram-бот: картинку верстатів не намальовано, показую текст")
+        return None
+    caption = f"<b>{KMILL_PREFIX}</b> · ⚙️ Верстати\n\n{body}\n\n{_footer(moment)}"
+    if len(caption) > CAPTION_LIMIT:
+        # Межа підпису до фото — 1024; обрізати так, щоб не розірвати тег, не
+        # можна, тож при переповненні лишаємо без хвоста робіт.
+        caption = f"<b>{KMILL_PREFIX}</b> · ⚙️ Верстати\n\n{body.split(chr(10) + chr(10))[0]}\n\n{_footer(moment)}"
+    markup = _machines_keyboard(board, notify, focus)
+    photo = ("machines.png", png, "image/png")
+    if is_photo:
+        return [Action(
+            "editMessageMedia",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "media": {"type": "photo", "media": "attach://board", "caption": caption,
+                          "parse_mode": "HTML"},
+                "reply_markup": markup,
+            },
+            files={"board": photo},
+        )]
+    return [
+        Action(
+            "sendPhoto",
+            {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML", "reply_markup": markup},
+            files={"photo": photo},
+        ),
+        Action("deleteMessage", {"chat_id": chat_id, "message_id": message_id}, after_ok=True),
+    ]
 
 
 def handle_update(
@@ -1162,6 +1319,10 @@ def handle_update(
             return [answer]
         message = query.get("message") or {}
         kind, _, view = data.partition(":")
+        focus: Optional[str] = None
+        if kind == MACHINE_CALLBACK:
+            # «m:<ключ верстата>» — той самий вид верстатів з одним виділеним.
+            kind, view, focus = "v", "machines", view
         # Вид, закритий для ролі, не відкривається навіть підробленою
         # кнопкою: callback_data приходить від клієнта, і вірити їй не можна.
         if (
@@ -1176,7 +1337,23 @@ def handle_update(
             set_notify(db, who, notify)
             db.commit()
             answer.payload["text"] = "Сповіщення увімкнено" if notify else "Сповіщення вимкнено"
+        is_photo = bool(message.get("photo"))
+        if view == "machines":
+            board = _machines_board_actions(
+                db, update_chat, message["message_id"], is_photo, notify, now, focus=focus
+            )
+            if board is not None:
+                return [answer, *board]
         payload = _menu_payload(db, update_chat, view, notify, now, admin=who.is_owner)
+        if is_photo:
+            # Текст у фото не вписати (editMessageText на фото Telegram
+            # відхиляє): нове меню текстом, а картинку прибрати.
+            return [
+                answer,
+                Action("sendMessage", payload),
+                Action("deleteMessage", {"chat_id": update_chat, "message_id": message["message_id"]},
+                       after_ok=True),
+            ]
         payload["message_id"] = message["message_id"]
         return [answer, Action("editMessageText", payload)]
 
@@ -1258,7 +1435,11 @@ def _benign_failure(action: Action, result: ApiResult) -> bool:
     """Помилки, які не є збоєм: «Оновити» без змін (той самий текст у ту саму
     хвилину) і прострочена кнопка (натиснули, поки ПК стояв)."""
     text = (result.error or "").lower()
-    if action.method == "editMessageText" and "message is not modified" in text:
+    if action.method in ("editMessageText", "editMessageMedia") and "message is not modified" in text:
+        return True
+    # Старіше 48 год повідомлення Telegram видалити не дає: нове меню вже в
+    # чаті, старе просто лишиться вище.
+    if action.method == "deleteMessage" and ("can't be deleted" in text or "not found" in text):
         return True
     if action.method == "answerCallbackQuery" and "query is too old" in text:
         return True
@@ -1777,8 +1958,15 @@ def _webhook_host(session, token: str) -> tuple[Optional[str], Optional[str]]:
 
 
 def run_actions(session, token: str, actions: list[Action]) -> None:
+    previous_ok = True
     for action in actions:
-        result = telegram.api_call(session, token, action.method, action.payload)
+        if action.after_ok and not previous_ok:
+            continue
+        if action.files:
+            result = telegram.api_call_files(session, token, action.method, action.payload, action.files)
+        else:
+            result = telegram.api_call(session, token, action.method, action.payload)
+        previous_ok = result.ok
         if not result.ok and not _benign_failure(action, result):
             _log_throttled(
                 f"action:{action.method}",
