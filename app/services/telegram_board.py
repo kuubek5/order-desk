@@ -63,6 +63,17 @@ _ALARM = {"off", "fault"}
 _QUIET = {"idle", "busy", "check", "wait", "unreadable"}
 
 _DATE_TAIL = re.compile(r"[_-]?\d{4}-\d{2}-\d{2}[_-]?$")
+# Початок назви програми «1_14-…» = одиниць на диску _ номер диска (власник
+# 08.11.26: «одна одиниця фрезерується в 14-му диску»).
+_DISC_MARK = re.compile(r"^\s*(\d{1,3})_(\d{1,4})-")
+
+
+def disc_mark(program: Optional[str]) -> Optional[tuple[int, int]]:
+    """(одиниць, номер диска) з початку назви програми; немає позначки — None."""
+    match = _DISC_MARK.match(program or "")
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
 
 @dataclass
@@ -127,6 +138,10 @@ def tile_of(card) -> Tile:
     item = board_machine(card)
     tile = Tile(key=item.key, name=item.name, state=item.state, percent=item.percent)
     tile.material = _first_material(card, item.works_are_last)
+    mark = disc_mark(item.prog_head)
+    if mark is not None and tile.material:
+        # Номер диска поруч із матеріалом: за ним диск шукають на полиці.
+        tile.material = f"{tile.material} · №{mark[1]}"
     if item.works:
         names = [w.name for w in item.works if w.name]
         line = names[0] if names else ""
@@ -143,6 +158,8 @@ def tile_of(card) -> Tile:
             tile.line = "помилка на екрані"
         elif item.state in _ALARM:
             tile.line = item.note or item.word
+        elif mark is not None:
+            tile.line = f"диск №{mark[1]} · {mark[0]} од."
         elif item.has_prog:
             tile.line = _program_short(item.prog_head, item.prog_tail)
         elif item.sum3d:

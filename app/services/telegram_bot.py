@@ -1169,6 +1169,7 @@ def _machines_keyboard(board, notify: bool, focus: Optional[str]) -> dict:
 def _machine_detail(card) -> str:
     """Підпис для одного верстата: стан, програма, усі роботи на диску."""
     from app.services.shop_board import board_machine
+    from app.services.telegram_board import disc_mark
 
     item = board_machine(card)
     lines = [f"<b>{_e(item.name)}</b>"]
@@ -1188,6 +1189,9 @@ def _machine_detail(card) -> str:
     if item.has_prog:
         tail = f"<b>{_e(item.prog_tail)}</b>" if item.prog_tail else ""
         lines.append(f"Програма <code>{_e(item.prog_head)}</code>{tail}")
+        mark = disc_mark(item.prog_head)
+        if mark is not None:
+            lines.append(f"Диск <b>№{mark[1]}</b> · {mark[0]} од.")
     elif item.sum3d:
         lines.append(f"Sum3D <code>{_e(item.sum3d)}</code>")
     last = item.works_are_last

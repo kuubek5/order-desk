@@ -77,7 +77,7 @@ def test_tiles_follow_the_tv_board_and_skip_sisma():
     assert [t.name for t in board.tiles] == ["350i-Boris", "250i-Sec", "250i-dry", "150i-Olejka", "350i-2"]
     boris, sec, dry, olejka, fault = board.tiles
     # Перша робота — за id, як на телевізорі; решта — «+N».
-    assert (boris.material, boris.line) == ("МОНО А3", "Дент-Арт +2")
+    assert (boris.material, boris.line) == ("МОНО А3 · №14", "Дент-Арт +2")
     assert (sec.lead, sec.line) == ("зняти", "Коваль")
     assert dry.line == "стоїть"
     assert olejka.line == "немає зв'язку 12 хв"
@@ -85,10 +85,23 @@ def test_tiles_follow_the_tv_board_and_skip_sisma():
     assert tb.summary_words(board) == "фрезерують 1 з 5 · зняти 1 · тривога 2"
 
 
-def test_machine_without_works_shows_its_program_without_the_date():
+def test_machine_without_works_names_the_disc_from_the_program():
+    """«2_18-…» — дві одиниці на диску №18 (власник 08.11.26)."""
     tile = tb.tile_of(_card("250-pmma", "busy", word="запуск",
                             iso_name="2_18-Emotions-a1-x193_2026-10-12_09-09-40.iso"))
-    assert tile.line == "2_18-Emotions-a1-x193"
+    assert tile.line == "диск №18 · 2 од."
+
+
+def test_program_without_disc_mark_is_shown_without_the_date():
+    tile = tb.tile_of(_card("250-pmma", "busy", word="запуск",
+                            iso_name="Emotions-a1_2026-10-12_09-09-40.iso"))
+    assert tile.line == "Emotions-a1"
+
+
+def test_disc_mark_reads_units_and_disc():
+    assert tb.disc_mark("1_14-MONOLITH-A3-X89_2026-11-08_") == (1, 14)
+    assert tb.disc_mark("2026-11-08_09-12-40") is None
+    assert tb.disc_mark(None) is None
 
 
 def test_render_is_a_png_that_grows_with_rows():
@@ -143,6 +156,7 @@ def test_machine_button_shows_every_work_on_the_disc(machines):
     caption = actions[1].payload["media"]["caption"]
     assert "<b>350i-Boris</b>" in caption and "67%" in caption
     assert "<code>1_14-MONOLITH-A3-X89_2026-11-08_</code><b>09-12-40</b>" in caption
+    assert "Диск <b>№14</b> · 1 од." in caption
     order = ["24122", "24125", "Білодент"]
     assert [caption.index(x) for x in order] == sorted(caption.index(x) for x in order)
     assert "Дент-Арт · наряд 24122 · моно А3 · 4 од." in caption
