@@ -215,6 +215,7 @@ def outbox_summary(db: Session) -> dict:
 ADMIN_VIEWS = (
     "home", "furnaces", "machines", "sisma",
     "orders", "orders_y", "handout", "handout_y",
+    "mail", "lab", "lab_y",
 )
 OPERATOR_VIEWS = ("home", "furnaces", "sisma")
 VIEWS = ADMIN_VIEWS  # усі відомі види
@@ -227,6 +228,9 @@ _VIEW_TITLE = {
     "handout_y": "📦 Видача · вчора",
     "machines": "⚙️ Верстати",
     "sisma": "🖨 Sisma",
+    "mail": "📬 Пошта",
+    "lab": "🧪 Лабораторія · сьогодні",
+    "lab_y": "🧪 Лабораторія · вчора",
 }
 # Вид із вибором дня → (той самий вид сьогодні, вчора).
 _DAY_PAIRS = {
@@ -234,6 +238,8 @@ _DAY_PAIRS = {
     "orders_y": ("orders", "orders_y"),
     "handout": ("handout", "handout_y"),
     "handout_y": ("handout", "handout_y"),
+    "lab": ("lab", "lab_y"),
+    "lab_y": ("lab", "lab_y"),
 }
 
 
@@ -692,40 +698,112 @@ def _safe(fn: Callable[[Session], str], db: Session, what: str) -> str:
         return f"{what}: не вдалось прочитати (подробиці в лозі KuubMill)"
 
 
+def _outage_line(db: Session) -> str:
+    from app.services.power_watch import home_line
+
+    line = home_line(db, datetime.now())
+    return f"<blockquote>{_e(line)}</blockquote>" if line else ""
+
+
+def _mail_summary(db: Session) -> str:
+    from app.services.telegram_views import mail_summary
+
+    return mail_summary(db)
+
+
+def _lab_summary(db: Session) -> str:
+    from app.services.telegram_views import lab_summary
+
+    return lab_summary(db)
+
+
 def home_text(db: Session, admin: bool = True) -> str:
     if not admin:
-        lines = [_safe(_furnaces_summary, db, "Пічки"), _safe(_sisma_summary, db, "Sisma")]
-    else:
         lines = [
+            _safe(_outage_line, db, "Світло"),
             _safe(_furnaces_summary, db, "Пічки"),
-            _safe(_orders_summary, db, "Роботи"),
-            _safe(_handout_summary, db, "Видача"),
-            _safe(_machines_summary, db, "Верстати"),
             _safe(_sisma_summary, db, "Sisma"),
         ]
-    return "\n".join(line for line in lines if line)
+    else:
+        lines = [
+            _safe(_outage_line, db, "Світло"),
+            _safe(_furnaces_summary, db, "Пічки"),
+            _safe(_machines_summary, db, "Верстати"),
+            _safe(_sisma_summary, db, "Sisma"),
+            "",
+            _safe(_mail_summary, db, "Пошта"),
+            _safe(_lab_summary, db, "Лабораторія"),
+            _safe(_orders_summary, db, "Роботи"),
+            _safe(_handout_summary, db, "Видача"),
+        ]
+    text = "\n".join(line for line in lines if line is not None)
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    return text.strip("\n")
 
 
-def render(db: Session, view: str, now: Optional[datetime] = None, admin: bool = True) -> str:
+#: Розділи зі списками, що розгортаються: вид → (db, відкритий ключ, зараз).
+def _sectioned(view: str):
+    from app.services import telegram_views as tv
+
+    return {
+        "mail": lambda db, opened, now: tv.mail_view(db, opened, now),
+        "lab": lambda db, opened, now: tv.lab_view(db, 0, opened, now),
+        "lab_y": lambda db, opened, now: tv.lab_view(db, -1, opened, now),
+    }.get(view)
+
+
+def _view_parts(
+    db: Session, view: str, now: datetime, admin: bool, opened: Optional[str] = None
+) -> tuple[str, list[list[dict]]]:
+    """Тіло виду і кнопки розгортання (для розділів зі списками)."""
+    if view == "home":
+        return home_text(db, admin), []
+    builder = _sectioned(view)
+    if builder is None:
+        return _safe(_BODIES[view], db, _VIEW_TITLE[view]), []
+    try:
+        parts = builder(db, opened, now)
+    except Exception:  # noqa: BLE001 — один розділ не гасить меню
+        logger.exception("telegram-бот: не вдалось зібрати «%s»", _VIEW_TITLE[view])
+        return f"{_VIEW_TITLE[view]}: не вдалось прочитати (подробиці в лозі KuubMill)", []
+    return parts.text, parts.rows
+
+
+def render(
+    db: Session,
+    view: str,
+    now: Optional[datetime] = None,
+    admin: bool = True,
+    opened: Optional[str] = None,
+) -> str:
     """Текст відповіді меню (parse_mode=HTML), з шапкою й підписом часу.
     Вид, закритий для ролі, стає головним — а не чужим текстом."""
     if view not in views_for(admin):
         view = "home"
     now = now or business_now()
+    body, _ = _view_parts(db, view, now, admin, opened)
+    return _frame(view, body, now)
+
+
+def _frame(view: str, body: str, now: datetime) -> str:
     title = _VIEW_TITLE[view]
     head = f"<b>{KMILL_PREFIX}</b>" + (f" · {title}" if title else "")
-    body = home_text(db, admin) if view == "home" else _safe(_BODIES[view], db, title)
     return f"{head}\n\n{body}\n\n{_footer(now)}"
 
 
-def keyboard(view: str, notify: bool = True, admin: bool = True) -> dict:
+def keyboard(
+    view: str, notify: bool = True, admin: bool = True, extra: Optional[list[list[dict]]] = None
+) -> dict:
     def button(text: str, target: str) -> dict:
         return {"text": text, "callback_data": f"v:{target}"}
 
     if admin:
-        rows = [
+        rows = [*(extra or [])]
+        rows += [
             [button("🔥 Пічки", "furnaces"), button("⚙️ Верстати", "machines"), button("🖨 Sisma", "sisma")],
-            [button("🧾 Роботи", "orders"), button("📦 Видача", "handout")],
+            [button("📬 Пошта", "mail"), button("🧪 Лабораторія", "lab"), button("📦 Видача", "handout")],
+            [button("🧾 Роботи за день", "orders")],
             # Не вид, а дія: звіт збирається у фоні й приходить НОВИМИ
             # повідомленнями (підсумок + файл), меню лишається на місці.
             [{"text": "🩺 Стан системи", "callback_data": REPORT_CALLBACK}],
@@ -1113,10 +1191,13 @@ def _menu_payload(
     *,
     admin: bool,
     lead: str = "",
+    opened: Optional[str] = None,
 ) -> dict:
     if view not in views_for(admin):
         view = "home"
-    text = render(db, view, now, admin=admin)
+    moment = now or business_now()
+    body, extra = _view_parts(db, view, moment, admin, opened)
+    text = _frame(view, body, moment)
     if lead:
         text = f"{lead}\n\n{text}"
     return {
@@ -1124,13 +1205,14 @@ def _menu_payload(
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
-        "reply_markup": keyboard(view, notify, admin=admin),
+        "reply_markup": keyboard(view, notify, admin=admin, extra=extra),
     }
 
 
 # ── Верстати картинкою (власник 08.11.26, варіант C) ────────────────────────
 
 MACHINE_CALLBACK = "m"
+EXPAND_CALLBACK = "e"  # той самий, що `telegram_views.EXPAND_CALLBACK`
 _MACHINE_BUTTONS_PER_ROW = 3
 _MAX_DETAIL_WORKS = 8
 
@@ -1324,9 +1406,14 @@ def handle_update(
         message = query.get("message") or {}
         kind, _, view = data.partition(":")
         focus: Optional[str] = None
+        opened: Optional[str] = None
         if kind == MACHINE_CALLBACK:
             # «m:<ключ верстата>» — той самий вид верстатів з одним виділеним.
             kind, view, focus = "v", "machines", view
+        elif kind == EXPAND_CALLBACK:
+            # «e:<вид>:<розділ>» — той самий вид із розгорнутим списком.
+            view, _, opened = view.partition(":")
+            kind = "v"
         # Вид, закритий для ролі, не відкривається навіть підробленою
         # кнопкою: callback_data приходить від клієнта, і вірити їй не можна.
         if (
@@ -1348,7 +1435,7 @@ def handle_update(
             )
             if board is not None:
                 return [answer, *board]
-        payload = _menu_payload(db, update_chat, view, notify, now, admin=who.is_owner)
+        payload = _menu_payload(db, update_chat, view, notify, now, admin=who.is_owner, opened=opened)
         if is_photo:
             # Текст у фото не вписати (editMessageText на фото Telegram
             # відхиляє): нове меню текстом, а картинку прибрати.

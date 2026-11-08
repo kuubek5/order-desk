@@ -20,6 +20,8 @@ hiddenimports = (
     # Картинка верстатів у Telegram-боті (08.11.26): модуль імпортується
     # ліниво з обробника кнопки, шрифти — через PIL.ImageFont (FreeType).
     + ["app.services.telegram_board", "PIL.ImageFont"]
+    # Розділи бота й сторож вимкнення ПК (08.11.26) — теж ліниві імпорти.
+    + ["app.services.telegram_views", "app.services.power_watch"]
 )
 datas = [
     ("app/templates", "app/templates"),

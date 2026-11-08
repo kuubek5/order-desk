@@ -339,6 +339,11 @@ PREFERENCE_KEYS = {
     "health_snapshot_before",
     "health_snapshot_report",
     "stats_work_frame",  # робочі години статистики: перший день-останній-початок-кінець
+    # Сторож вимкнення ПК (app/services/power_watch.py): мітка «живий» раз на
+    # хвилину, мітка штатного виходу й остання перерва для меню бота.
+    "app_alive_at",
+    "app_clean_exit_at",
+    "power_last_outage",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

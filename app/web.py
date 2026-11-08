@@ -1158,6 +1158,25 @@ def _stl_height_worker(stop_event: Event) -> None:
             return
 
 
+def _power_watch_worker(stop_event: Event) -> None:
+    """Перерва перед стартом (світло, вимкнення ПК) — один раз; далі мітка
+    «живий» раз на хвилину. Див. `app/services/power_watch.py`."""
+    from app.services import power_watch
+
+    try:
+        with SessionLocal() as db:
+            power_watch.check_on_start(db)
+    except Exception:  # noqa: BLE001 — сторож не має валити застосунок
+        logger.exception("Перерву перед стартом не розібрано")
+    while not stop_event.wait(power_watch.BEAT_SECONDS):
+        try:
+            with SessionLocal() as db:
+                power_watch.beat(db, datetime.now())
+                db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("Мітку «живий» не записано")
+
+
 @dataclass
 class _BackgroundWorker:
     """Один фоновий daemon-потік і його вимикач. Раніше кожен воркер
@@ -1286,6 +1305,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-stats-forecast", _stats_forecast_worker),
         _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
         _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
+        _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
     ]
     for w in workers:
         w.start()
@@ -1302,6 +1322,15 @@ async def lifespan(_: FastAPI):
             logger.exception("Пачку правок не дописано на вимкненні")
         for w in workers:
             w.stop()
+        # Штатний вихід: наступний старт не прийме цю перерву за аварію.
+        try:
+            from app.services import power_watch
+
+            with SessionLocal() as db:
+                power_watch.mark_clean_exit(db, datetime.now())
+                db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("Мітку штатного виходу не записано")
 
 
 def _mark_route_entry() -> None:
