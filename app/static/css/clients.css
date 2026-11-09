@@ -329,8 +329,8 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .clientsv2 .cx-cell.lit{stroke:rgba(var(--accent-rgb),.42);stroke-width:1}
 .clientsv2 .cx-cell.has:hover,.clientsv2 .cx-cell.on,.clientsv2 .cx-cell:focus-visible{stroke:var(--ink);stroke-width:2}
 .clientsv2 .cx-dial.focusday .cx-cell:not(.hit){opacity:.18}
-.clientsv2 .cx-tick{fill:var(--ink-3);font:500 11px var(--font-mono)}
-.clientsv2 .cx-tick.major{font-size:15px;fill:var(--ink-2)}
+.clientsv2 .cx-tick{fill:var(--ink-3);font:500 var(--fs-0) var(--font-mono)}
+.clientsv2 .cx-tick.major{font-size:var(--fs-4);fill:var(--ink-2)}
 .clientsv2 .cx-hand line{stroke:var(--ink);stroke-width:2;stroke-linecap:round}
 .clientsv2 .cx-hand circle{fill:var(--ink)}
 .clientsv2 .cx-dial-mid{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
