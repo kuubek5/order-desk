@@ -36,7 +36,20 @@ _DATE_TIME = re.compile(
 # буває будь-якою (`16.09.2026-Проєкт юшков вч цр`, зіпсована дата
 # `662026-333307-13_…`), тож зуби беремо ЛИШЕ з ряду безпосередньо перед
 # `-<тип>_cad` (dev-копія 08.10.26: загальне правило давало там зайві 16 і 13).
-_EXOCAD_TEETH = re.compile(r"(?<!\d)((?:\d{2}-)*\d{2})-([A-Za-z]+)_cad", re.IGNORECASE)
+# Тип буває з підкресленням (`bridge_slm_cad`, 09.11.26) — без цього назва
+# випадала на загальне правило і втрачала зуби мосту.
+_EXOCAD_TEETH = re.compile(
+    r"(?<!\d)((?:\d{2}-)*\d{2})-([A-Za-z]+(?:_[A-Za-z]+)*)_cad", re.IGNORECASE
+)
+# Дата через дефіс прямо перед зубами (`…_00002-2026-11-06-22-crown_cad`,
+# 09.11.26): без неї ряд «зубів» починався з місяця, і листопад давав зайвий
+# зуб 11 у кожній роботі. Час одразу за датою тут не вирізаємо — у такій назві
+# це і є зуби (`2026-11-06-16-15-14-bridge`).
+_ISO_DATE = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
+
+
+def _exocad_matches(name: str) -> list[re.Match[str]]:
+    return list(_EXOCAD_TEETH.finditer(_ISO_DATE.sub(" ", name)))
 
 # Капа (`bitesplint_cad`) — одна деталь на всю щелепу, і в таблиці вона завжди
 # 14 одиниць (власник 08.10.26; 06.10.26 «kappa 14» у трьох клієнтів). Номер
@@ -69,7 +82,7 @@ def teeth_in_filename(filename: str) -> list[int]:
     suffix = PurePath(stem).suffix
     if suffix:
         stem = stem[: -len(suffix)]
-    exocad = list(_EXOCAD_TEETH.finditer(stem))
+    exocad = _exocad_matches(stem)
     tokens = exocad[-1].group(1).split("-") if exocad else _SPLIT.split(_DATE_TIME.sub(" ", stem))
     teeth: list[int] = []
     for token in tokens:
@@ -82,7 +95,7 @@ def teeth_in_filename(filename: str) -> list[int]:
 
 def exocad_type(filename: str) -> str:
     """Тип роботи з назви Exocad (`crown`, `waxup`, `bitesplint`…) або ""."""
-    found = list(_EXOCAD_TEETH.finditer(PurePath(filename or "").name))
+    found = _exocad_matches(PurePath(filename or "").name)
     return found[-1].group(2).lower() if found else ""
 
 

@@ -51,10 +51,26 @@ def test_live_exocad_folder_gives_the_sheet_quantity():
         ("2024-02-14_7324612-001-41-bitesplint_cad — копия (3).stl", [41]),
         ("24122_11.stl", [11]),
         ("16.09.26 crown 36.stl", [36]),
+        # Дата через дефіс перед зубами (лист 09.11.26): місяць 11 — не зуб.
+        ("PROJ 16_Zr_Pacient_004_00002-2026-11-06-22-crown_cad.stl", [22]),
+        ("PROJ 16_Zr_Pacient_004_00002-2026-11-06-11-crown_cad.stl", [11]),
+        # Тип з підкресленням: міст 16-15-14.
+        ("PROJ 16_Zr_Pacient_004_00002-2026-11-06-16-15-14-bridge_slm_cad.stl", [16, 15, 14]),
     ],
 )
 def test_teeth_in_filename(name, teeth):
     assert teeth_in_filename(name) == teeth
+
+
+def test_live_letter_with_date_before_teeth_gives_operator_quantity():
+    """Лист 09.11.26: 8 коронок + міст 16-15-14 — оператор вписав 11, підказка дала 9."""
+    prefix = "PROJ 16_Zr_Pacient_004_00002-2026-11-06"
+    names = [f"{prefix}-{t}-crown_cad.stl" for t in (22, 24, 23, 21, 11, 13, 12, 25)]
+    names += [f"{prefix}-16-15-14-bridge_slm_cad.stl", f"{prefix}.constructionInfo"]
+    result = count_units(names)
+    assert result.units == 11
+    assert result.repeated == []
+    assert result.summary == "11,12,13,14,15,16 · 21,22,23,24,25"
 
 
 def test_same_tooth_in_two_files_is_one_unit():
