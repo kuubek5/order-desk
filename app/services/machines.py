@@ -44,6 +44,7 @@ from app.machine_sisma import read_sisma, screen_is_sisma
 from app.services import screen_inbox
 from app.machine_newgen_job import (
     name_row_crop as read_newgen_name_row,
+    read_newgen_bare_name,
     read_newgen_program_explained,
     read_newgen_program_variants,
 )
@@ -52,6 +53,7 @@ from app.machine_ocr import (
     MillingProgram,
     missing_caption_digits,
     pick_milling_program,
+    pick_named_program,
     read_progress_percent,
     screen_has_error_banner,
     screen_meaning,
@@ -1633,6 +1635,13 @@ def _program_from_screen(
         return None
     if program is None:
         program = _program_resolved_by_queue(db, target, frame)
+    if program is None and why is None:
+        # Хвоста `дата_час` на екрані немає взагалі — можливо, програму
+        # назвали без Sum3D (`DDD.ISO`, 250i-Tolik і 250i-Sec 09.11.26).
+        # Таку назву показуємо як є (власник), з роботою не звʼязуємо.
+        bare = _bare_program_from_screen(target, frame)
+        if bare is not None:
+            return bare
     if program is None:
         if why is not None:
             _report_unread_screen(target, frame, why)
@@ -1676,6 +1685,23 @@ def _program_from_screen(
                         f" (ще {skipped} разів відтоді)" if skipped else "")
         return program if _full_name_is_fresh(program, now or datetime.now()) else None
     return program
+
+
+def _bare_program_from_screen(target: MachineTarget, frame: Image.Image) -> Optional[MillingProgram]:
+    """Назва програми без дати й часу з екрана JOBS — або None."""
+    try:
+        name, _why = read_newgen_bare_name(frame)
+    except Exception:  # noqa: BLE001 — читання кадру не валить опитування
+        skipped = log_throttle.due(f"machines.newgen_bare_error:{target.key}")
+        if skipped is not None:
+            logger.exception("Назву без Sum3D з екрана верстата %s не прочитано", target.host)
+        return None
+    if not name:
+        return None
+    skipped = log_throttle.due(f"machines.newgen_bare:{target.key}:{name}")
+    if skipped is not None:
+        logger.info("Верстат %s: програма без Sum3D у назві — %s (показуємо як є)", target.name, name)
+    return MillingProgram(iso_name=name, sum3d_id="", date="")
 
 
 def _report_unread_screen(target: MachineTarget, frame: Image.Image, why: str) -> None:
@@ -2159,6 +2185,10 @@ def poll_target(
         if titles is not None:  # агент відповів — довіряємо результату
             known = True
             program = pick_milling_program(titles)
+            if program is None:
+                # Назва без часу Sum3D (`…_2026-11-09_.iso`, власник 09.11.26):
+                # показати на табло, з роботою в черзі не звʼязувати.
+                program = pick_named_program(titles)
             # ДРУГИЙ канал помилки. RemiCORE показує її звичайним вікном ОС із
             # заголовком «Error», і слово в заголовку надійніше за будь-який
             # розбір картинки: на тому екрані червоний — норма (смуги
@@ -2223,7 +2253,7 @@ def poll_target(
         # завершення.
         with _states_lock:
             state.iso_name = program.iso_name if program else None
-            state.sum3d_id = program.sum3d_id if program else None
+            state.sum3d_id = (program.sum3d_id or None) if program else None
             state.program_at = now
             # «Остання бачена» НЕ стирається разом із поточною: саме нею
             # завершений верстат називає щойно зняту роботу.

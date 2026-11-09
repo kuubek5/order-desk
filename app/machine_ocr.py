@@ -668,6 +668,27 @@ def pick_milling_program(titles) -> Optional[MillingProgram]:
     return first
 
 
+# Назва без часу Sum3D у заголовку RemiCORE (власник 09.11.26): 350i-Boris
+# фрезерував `-6-_16-Monolith-A1-x26_2026-11-09_.iso` — дата є, часу немає, і
+# табло було порожнє. Беремо ЛИШЕ заголовок вікна RemiCORE («Remote - …»):
+# `.iso` в іншому вікні (Провідник, діалог) — не те, що фрезерується.
+_REMOTE_ISO_RE = re.compile(r"^Remote - (?P<program>[^\s\/]+\.iso)\s*$", re.IGNORECASE)
+
+
+def pick_named_program(titles) -> Optional[MillingProgram]:
+    """Програма лише з назвою, коли Sum3D ID у ній немає (`pick_milling_program`
+    нічого не дав). `sum3d_id` і `date` порожні: показати назву можна, звʼязати
+    з роботою в черзі — ні. Два різні вікна з різними назвами — нічого."""
+    names = []
+    for title in titles or []:
+        m = _REMOTE_ISO_RE.match(str(title).strip())
+        if m and not _ISO_RE.search(m.group("program")):
+            names.append(m.group("program"))
+    if not names or any(n != names[0] for n in names):
+        return None
+    return MillingProgram(iso_name=names[0], sum3d_id="", date="")
+
+
 # ── Другий сигнал: ПІДПИС усередині смуги ──────────────────────────────────
 # Геометрія смуги — оцінка (частка заливки), а підпис «43%» — це те, що
 # верстат САМ про себе пише. Тому підпис, прочитаний точно, головніший за

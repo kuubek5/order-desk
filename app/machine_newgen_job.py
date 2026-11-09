@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from itertools import product
@@ -766,26 +767,73 @@ def _name_prefix(layout: _Layout) -> "tuple[str, Optional[str]]":
         return "", why
     if [s for s in slots if s >= date_at] != [date_at, date_at + 10]:
         return "", "підкреслення не там, де їх ставить Sum3D (перед датою й перед часом)"
-    under = set(slots)
+    text, why = _confident_text(glyphs[:date_at], set(slots), templates)
+    return (text, None) if text is not None else ("", why)
+
+
+def _confident_text(
+    glyphs: "list[_Glyph]", under: "set[int]", templates: "dict[str, np.ndarray]"
+) -> "tuple[Optional[str], Optional[str]]":
+    """Символи рядка назви — ЦІЛКОМ або (None, чому).
+
+    Кожен символ упізнано впевнено (`_name_char`); перенос рядка лише після
+    «-» (за ним софт і переносить, інакше на місці переносу міг стояти
+    пробіл); між сусідами в рядку немає проміжку, схожого на пробіл. `under` —
+    номери символів, ПЕРЕД якими стоїть `_` (`_underscore_slots`)."""
     chars: "list[str]" = []
-    for index in range(date_at):
-        char, why_not = _name_char(glyphs[index], templates)
+    for index, glyph in enumerate(glyphs):
+        char, why_not = _name_char(glyph, templates)
         if char is None:
-            return "", f"символ №{index + 1} назви: {why_not}"
+            return None, f"символ №{index + 1} назви: {why_not}"
         chars.append(char)
-    for index in range(date_at - 1):
+    for index in range(len(glyphs) - 1):
         if index + 1 in under:
             continue
         a, b = glyphs[index], glyphs[index + 1]
         if a.line != b.line:
             if chars[index] != "-":
-                return "", f"перенос рядка після «{chars[index]}», а не після «-»"
+                return None, f"перенос рядка після «{chars[index]}», а не після «-»"
             continue
         gap = b.left - (a.left + a.bits.shape[1])
         limit = NAME_GAP_WIDE if chars[index] in "1." else NAME_GAP
         if gap > limit * a.cap:
-            return "", f"проміжок {gap} px після символа №{index + 1} — схоже на пробіл"
+            return None, f"проміжок {gap} px після символа №{index + 1} — схоже на пробіл"
     return "".join(("_" if i in under else "") + c for i, c in enumerate(chars)), None
+
+
+_DATE_IN_NAME = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def read_newgen_bare_name(image: Image.Image) -> "tuple[Optional[str], Optional[str]]":
+    """Назва програми БЕЗ дати й часу Sum3D (`DDD.ISO`) — цілком або нічого.
+
+    Власник 09.11.26: оператор зберіг програми як `DDD.ISO`, на табло було
+    порожньо. Показуємо таку назву як є, з роботою в черзі вона не звʼязується
+    (Sum3D ID у ній немає). Правила ті самі, що для початку назви: кожен
+    символ упевнено, `_` лише між символами, перенос лише після «-», без
+    пробілів. Назва з датою сюди НЕ потрапляє: її читає строгий читач, і коли
+    він відмовив (цифру не впізнано), вигадувати її тут не можна.
+    (назва | None, чому ні | None — тут нема чого читати)."""
+    layout = _name_layout(image)
+    if layout is None or not layout.glyphs:
+        return None, None
+    glyphs = layout.glyphs
+    if len(glyphs) < 5 or [_shape_class(g) for g in glyphs[-4:-3]] != ["."]:
+        return None, None  # не `….ISO`: інший рядок біля кружка (SUMMARY тощо)
+    templates = load_newgen_name_glyphs()
+    if not templates:
+        return None, "еталонів для назви немає"
+    slots, why = _underscore_slots(layout)
+    if slots is None:
+        return None, why
+    text, why = _confident_text(glyphs, set(slots), templates)
+    if text is None:
+        return None, why
+    if not text.upper().endswith(".ISO"):
+        return None, f"назва «{text}» не закінчується на .ISO"
+    if _DATE_IN_NAME.search(text):
+        return None, "у назві є дата — її читає строгий читач"
+    return text, None
 
 
 def read_newgen_name_prefix_explained(image: Image.Image) -> "tuple[str, Optional[str]]":

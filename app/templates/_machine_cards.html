@@ -113,6 +113,13 @@
                 <span class="mc-nomatch" title="{{ card.match_note or card.iso_name }}">{{ card.match_note or "немає в черзі" }}</span>
                 {% endif %}
             </p>
+            {% elif card.iso_name %}
+            {# Назва без Sum3D (`DDD.ISO`, власник 09.11.26): показуємо як є,
+               з роботою в черзі вона не звʼязується. #}
+            <p class="mc-prog">
+                <span class="mono mc-sid">{{ card.iso_name }}</span>
+                <span class="mc-nomatch" title="У назві програми немає часу Sum3D — роботу в черзі не знайти">без Sum3D</span>
+            </p>
             {% endif %}
             {% if card.link_report %}
             {# Історія звʼязку. Показується лише коли обриви БУЛИ — на здоровому
@@ -218,6 +225,12 @@
             {% else %}
             <span class="mc-nomatch" title="{{ card.match_note or card.iso_name }}">{{ card.match_note or "немає в черзі" }}</span>
             {% endif %}
+        </p>
+        {% elif card.iso_name %}
+        {# Назва без Sum3D (`DDD.ISO`, власник 09.11.26) — як у плитці вище. #}
+        <p class="mc-prog">
+            <span class="mono mc-sid">{{ card.iso_name }}</span>
+            <span class="mc-nomatch" title="У назві програми немає часу Sum3D — роботу в черзі не знайти">без Sum3D</span>
         </p>
         {% endif %}
 

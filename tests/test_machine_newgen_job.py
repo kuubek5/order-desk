@@ -85,6 +85,9 @@ SHOP_FRAMES = {
     # читався з неї: «цифру №1 не впізнано (8=85)» 3920 разів із 13.09.26 —
     # схоже на брак еталона, хоч еталони були ні до чого.
     "newgen_250i_03-31-40.png": ("2026-11-03", "03-31-40"),
+    # 150i-Olejka 09.11.26: «D» в «D3» шрифту 150i не впізнавалась (D=71), назва
+    # була лише датою й часом; довчено `learn --letters-only`.
+    "newgen_150i_19-19-22.png": ("2026-11-06", "19-19-22"),
 }
 READABLE = {
     FRAME_250I.name: ("2026-09-04", "12-57-22"),
@@ -752,6 +755,7 @@ FULL_NAMES = {
     "newgen_250i_12-38-27.png": "14_25-MONOLITH-B2-X04_2026-10-12_12-38-27",
     "newgen_150i_15-43-29.png": "7_18-MONOLITH-A2-X45_2026-10-12_15-43-29",
     "newgen_150i_21-47-58.png": "3_14-MONOLITH-A1-X17_2026-10-13_21-47-58",
+    "newgen_150i_19-19-22.png": "5_20-MONOLITH-D3-X06_2026-11-06_19-19-22",
 }
 # Вирізи рядка назви зі скриньки невідомих екранів (kmill_frame part="zone",
 # рідний масштаб, 250i-Sec 25.09–09.10.26). Кружка ▶ у них немає, тож тут
@@ -1026,3 +1030,36 @@ def test_learn_refuses_a_typo_that_matches_another_symbol(tmp_path, monkeypatch,
     assert script.learn(FRAME_250I, FULL_NAMES[FRAME_250I.name] + ".ISO") == 0
     assert json.loads(glyphs_file.read_text(encoding="utf-8")) == json.loads(original)
     capsys.readouterr()
+
+
+# ── Назва без дати й часу Sum3D (власник 09.11.26) ────────────────────────────
+# 250i-Tolik і 250i-Sec фрезерували `DDD.ISO`: строгий читач мовчав (хвоста
+# `дата_час` немає), і табло було порожнє. Таку назву показуємо як є.
+BARE_NAMES = {
+    "newgen_250i_ddd.png": "DDD.ISO",
+    "newgen_250i_ddd_sec.png": "DDD.ISO",
+}
+
+
+@pytest.mark.parametrize("name, bare", BARE_NAMES.items())
+def test_a_name_without_sum3d_is_read_as_is(name, bare):
+    image = Image.open(FIX / name).convert("RGB")
+    assert ng.read_newgen_program(image) is None  # строгий читач не змінився
+    assert ng.read_newgen_bare_name(image) == (bare, None)
+
+
+def test_bare_reader_never_touches_a_dated_name_or_another_screen():
+    """Назва з датою — справа строгого читача: коли він відмовив, тут нічого
+    не вигадується. Чужі екрани — тиша без причини."""
+    for path in FIX.glob("*.png"):
+        if path.name in BARE_NAMES:
+            continue
+        name, _why = ng.read_newgen_bare_name(Image.open(path).convert("RGB"))
+        assert name is None, path.name
+
+
+def test_bare_name_with_an_unlearned_letter_stays_silent(monkeypatch):
+    without = {k: v for k, v in ng.load_newgen_name_glyphs().items() if k != "D"}
+    monkeypatch.setattr(ng, "load_newgen_name_glyphs", lambda: without)
+    name, why = ng.read_newgen_bare_name(Image.open(FIX / "newgen_250i_ddd.png").convert("RGB"))
+    assert name is None and "символ №1" in why
