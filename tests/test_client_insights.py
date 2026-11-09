@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import date, datetime
 
 import pytest
@@ -292,7 +294,7 @@ def app_db(monkeypatch):
         set_setting(db, "license_key", license_module.encode_license_key(
             {"machine_id": license_module.get_machine_id(), "customer": "tests", "issued_at": "2026-01-01T00:00:00", "expires_at": "2099-01-01T00:00:00"}, private))
         db.add(User(username="cardop", password_hash=hash_password("Card-Op-1!x"), full_name="cardop", role="оператор"))
-        letter = _letter(db, body="Відправте НП Дніпро, відд. 14, мій 067 111 22 33 на швидку <script>")
+        letter = _letter(db, body="Відправте НП Дніпро, відд. 14, мій 067 111 22 33 на швидку, глазурувати <script>")
         _work(db, letter)
         client = _client(db)
         db.commit()
@@ -311,8 +313,29 @@ def test_card_renders_facts_rhythm_and_volume(app_db):
     app, _, client_id = app_db
     status, _, html = _logged(app).get(f"/clients/{client_id}/pane")
     assert status == 200
-    for piece in ("Дані для відправки", "+38 067 111 22 33", "Нова пошта, Дніпро, відділення 14", "на швидку", "cx-heat", "cx-bars", 'id="client-contacts"'):
+    for piece in ("Дані для відправки", "+38 067 111 22 33", "Нова пошта, Дніпро, відділення 14", "глазурувати", "cx-heat", "cx-bars", 'id="client-contacts"'):
         assert piece in html, piece
+    assert "на швидку" not in html  # власник 09.11.26: не показуємо
+
+
+def test_card_draws_the_dial_with_clickable_hours(app_db):
+    """Циферблат (09.11.26): 7×24 сектори, клік по сектору з листами — той самий /slot."""
+    app, _, client_id = app_db
+    _, _, html = _logged(app).get(f"/clients/{client_id}/pane")
+    assert html.count('data-cx-cell="') == 7 * 24
+    assert html.count('class="cx-cell has"') == 1          # у фікстурі один лист
+    assert f'hx-get="/clients/{client_id}/slot?d=' in html
+    assert html.count("data-cx-day=") == 7 and "data-cx-hand" in html
+    assert "cx-heat" in html and 'class="cx-hh' not in html  # стара сітка прибрана
+
+
+def test_dial_geometry_is_closed_and_inside_the_box():
+    for row in ci.DIAL_PATHS:
+        for path in row:
+            assert path.startswith("M") and path.endswith("Z")
+            nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", path)]
+            assert all(-1 <= n <= ci.DIAL_SIZE + 1 for n in nums)
+    assert len(ci.DIAL_TICKS) == 24 and ci.DIAL_TICKS[0]["label"] == "00"
 
 
 def test_old_card_controls_are_still_there(app_db):

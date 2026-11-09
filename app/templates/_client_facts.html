@@ -30,9 +30,9 @@
             {% if ship.phone %}<dt>Телефон</dt><dd class="mono">{{ ship.phone }}</dd>{% endif %}
             {% if ship.where %}<dt>Куди</dt><dd>{{ ship.where }}</dd>{% endif %}
         </dl>
-        <button type="button" class="cx-copy" data-copy="{{ ship.text }}" title="Скопіювати для логіста">
+        <button type="button" class="cx-copy" data-copy="{{ ship.text }}" title="Скопіювати дані для відправки">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
-            <span class="cx-l">Скопіювати для логіста</span><span class="cx-d">Скопійовано</span>
+            <span class="cx-l">Скопіювати</span><span class="cx-d">Скопійовано</span>
         </button>
     </section>
     {% endif %}

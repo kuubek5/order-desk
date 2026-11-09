@@ -77,3 +77,71 @@ document.addEventListener("click", (event) => {
     else if (tip) tip.classList.remove("on");
   });
 })();
+
+// Циферблат «Коли пише» (власник 09.11.26): стрілка «зараз», «наступний звичний
+// лист», підсвітка кільця дня, Enter по сектору. Картка приходить через HTMX,
+// тож усе вішається на htmx:load нового шматка, а не раз на сторінку.
+(() => {
+  const pad = (n) => String(n).padStart(2, "0");
+  const initDial = (root) => {
+    root.querySelectorAll("[data-cx-heat]").forEach((dial) => {
+      if (dial.dataset.ready) return;
+      dial.dataset.ready = "1";
+      const now = new Date();
+      const hand = dial.querySelector("[data-cx-hand]");
+      if (hand) {
+        const box = dial.querySelector("svg").viewBox.baseVal;
+        hand.style.transformOrigin = `${box.width / 2}px ${box.height / 2}px`;
+        hand.style.rotate = `${((now.getHours() + now.getMinutes() / 60) / 24) * 360}deg`;
+        hand.removeAttribute("hidden"); // SVG-елемент не має властивості .hidden
+      }
+      const next = dial.querySelector("[data-cx-next]");
+      if (next) {
+        const day = (now.getDay() + 6) % 7;
+        const hour = now.getHours();
+        const has = (h) => Number(dial.querySelector(`[data-cx-cell="${day},${h}"]`)?.dataset.n || 0) > 0;
+        const ahead = Array.from({ length: 24 - hour }, (_, i) => hour + i).find(has);
+        next.textContent = "";
+        if (ahead === hour) {
+          next.append("Зазвичай пише ");
+          const b = document.createElement("b");
+          b.textContent = "саме зараз";
+          next.append(b);
+        } else if (ahead !== undefined) {
+          next.append("Сьогодні зазвичай ~");
+          const b = document.createElement("b");
+          b.textContent = `${pad(ahead)}:00`;
+          next.append(b);
+        } else {
+          next.textContent = "Сьогодні вже зазвичай не пише";
+        }
+      }
+    });
+  };
+  document.addEventListener("htmx:load", (event) => initDial(event.detail.elt));
+  if (document.readyState !== "loading") initDial(document);
+  else document.addEventListener("DOMContentLoaded", () => initDial(document));
+
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest?.("[data-cx-day]");
+    if (!btn) return;
+    const row = btn.closest(".cx-dialrow");
+    const dial = row?.querySelector("[data-cx-heat]");
+    if (!dial) return;
+    const on = btn.getAttribute("aria-pressed") !== "true";
+    row.querySelectorAll("[data-cx-day]").forEach((el) => el.setAttribute("aria-pressed", "false"));
+    dial.querySelectorAll("[data-cx-cell]").forEach((el) => {
+      el.classList.toggle("hit", on && el.dataset.cxCell.split(",")[0] === btn.dataset.cxDay);
+    });
+    dial.classList.toggle("focusday", on);
+    if (on) btn.setAttribute("aria-pressed", "true");
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const cell = event.target.closest?.("[data-cx-heat] .cx-cell.has");
+    if (!cell) return;
+    event.preventDefault();
+    cell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+})();

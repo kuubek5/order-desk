@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import statistics
 import time
@@ -101,8 +102,9 @@ _CITIES = {
 _CITY_WORD = re.compile(r"[А-ЯІЇЄҐа-яіїєґ'’-]{2,}")
 
 # Часті прохання: підпис на екрані → вираз. Лише те, що власник назвав або що є в цеху.
+# «На швидку» прибрано (власник 09.11.26): терміновість приходить окремим листом
+# адміністраторів, а в картці клієнта це слово лише шуміло.
 ASKS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("на швидку", re.compile(r"на\s+швидк\w*|на\s+быстр\w*|термінов\w*|срочн\w*", re.I)),
     ("покрити опаком", re.compile(r"покри\w*\s+опак\w*", re.I)),
     ("не фарбувати", re.compile(r"не\s+(?:роз)?фарб\w*|не\s+крас\w*|без\s+фарбув\w*", re.I)),
     ("фарбувати", re.compile(r"(?<!не\s)(?:роз)?фарбуват\w*|(?<!не\s)покрас\w*", re.I)),
@@ -323,6 +325,40 @@ def extract_facts(letters: Sequence[Letter], excluded_phones: frozenset[str] = f
 
 
 # ── Ритм ─────────────────────────────────────────────────────────────────────
+# Циферблат «коли пише» (власник 09.11.26, макет design/client-card-motion-variants.html#B):
+# 24 години по колу, 7 кілець — дні (Пн усередині). Геометрія стала, рахується раз.
+DIAL_SIZE = 560
+_DIAL_C = DIAL_SIZE / 2
+_DIAL_R0, _DIAL_RW, _DIAL_STEP, _DIAL_GAP = 112.0, 20.0, 22.0, 2.2
+
+
+def _dial_point(r: float, a: float) -> tuple[float, float]:
+    return _DIAL_C + r * math.sin(a), _DIAL_C - r * math.cos(a)
+
+
+def _dial_arc(day: int, hour: int) -> str:
+    r1 = _DIAL_R0 + day * _DIAL_STEP
+    r2 = r1 + _DIAL_RW
+    a = 2 * math.pi / HEAT_HOURS
+    pad = _DIAL_GAP / r2
+    a1, a2 = hour * a + pad, (hour + 1) * a - pad
+    (x1, y1), (x2, y2) = _dial_point(r2, a1), _dial_point(r2, a2)
+    (x3, y3), (x4, y4) = _dial_point(r1, a2), _dial_point(r1, a1)
+    return (f"M{x1:.1f} {y1:.1f}A{r2:.0f} {r2:.0f} 0 0 1 {x2:.1f} {y2:.1f}"
+            f"L{x3:.1f} {y3:.1f}A{r1:.0f} {r1:.0f} 0 0 0 {x4:.1f} {y4:.1f}Z")
+
+
+DIAL_PATHS = [[_dial_arc(d, h) for h in range(HEAT_HOURS)] for d in range(7)]
+_TICK_R = _DIAL_R0 + 7 * _DIAL_STEP + 16
+DIAL_TICKS = [
+    {"x": round(_dial_point(_TICK_R, h * 2 * math.pi / HEAT_HOURS)[0], 1),
+     "y": round(_dial_point(_TICK_R, h * 2 * math.pi / HEAT_HOURS)[1], 1),
+     "label": f"{h:02d}" if h % 3 == 0 else "·", "major": h % 3 == 0}
+    for h in range(HEAT_HOURS)
+]
+DIAL_HAND = {"x": _DIAL_C, "y1": _DIAL_C - _DIAL_R0 + 10, "y2": _DIAL_C - _DIAL_R0 - 7 * _DIAL_STEP + 4}
+
+
 def rhythm(letters: Sequence[Letter], today: date) -> dict:
     moments = [letter.received_at for letter in letters if letter.received_at]
     heat = [[0] * HEAT_HOURS for _ in range(7)]
@@ -331,7 +367,7 @@ def rhythm(letters: Sequence[Letter], today: date) -> dict:
     peak = max((v for row in heat for v in row), default=0)
     cells = [
         [
-            {"n": v, "o": round(0.18 + 0.82 * (v / peak) ** 0.5, 2) if v else 0, "x": x, "y": y}
+            {"n": v, "o": round(0.18 + 0.82 * (v / peak) ** 0.5, 2) if v else 0, "x": x, "y": y, "p": DIAL_PATHS[y][x]}
             for x, v in enumerate(row)
         ]
         for y, row in enumerate(heat)
@@ -363,6 +399,14 @@ def rhythm(letters: Sequence[Letter], today: date) -> dict:
         "quiet": quiet,
         "top_days": [DOW[i].lower() for i in top_days],
         "top_hours": f"{best_start:02d}:00–{best_start + 3:02d}:00" if moments else None,
+        "top_hours_short": f"{best_start:02d}–{best_start + 3:02d}" if moments else None,
+        "day_bars": [
+            {"day": DOW[i], "n": n, "w": round(100 * n / max(day_totals), 1) if any(day_totals) else 0}
+            for i, n in enumerate(day_totals)
+        ],
+        "ticks": DIAL_TICKS,
+        "hand": DIAL_HAND,
+        "size": DIAL_SIZE,
     }
 
 

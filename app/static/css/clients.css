@@ -254,6 +254,9 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .clientsv2 .cx-state{padding:3px 9px;border-radius:7px;font-size:var(--fs-0);font-weight:600;background:rgba(var(--ok-rgb),.12);color:var(--ok)}
 .clientsv2 .cx-state.warn{background:rgba(var(--warn-rgb),.14);color:var(--warn)}
 .clientsv2 .cx-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+/* У шапці картки обидві — одна висота й без відступів зі старої панелі (власник 09.11.26). */
+.clientsv2 .cx-acts .cp-openfolder{margin:0}
+.clientsv2 .cx-acts .cp-state{margin:0;height:30px;box-sizing:border-box;padding:0 12px;border-radius:8px;font-size:var(--fs-2)}
 .clientsv2 .cx-grid{display:grid;grid-template-columns:minmax(290px,370px) minmax(0,1fr);gap:24px}
 @container cxpane (max-width:760px){.clientsv2 .cx-grid{grid-template-columns:minmax(0,1fr)}}
 .clientsv2 .cx-sec{margin:0 0 22px}
@@ -309,14 +312,42 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .clientsv2 .cx-link{background:none;border:0;padding:0;color:var(--accent-c);font:inherit;cursor:pointer}
 
 /* Одна подія при виборі клієнта: карта проявляється зліва направо, стовпчики ростуть. */
-.clientsv2 .cx-heat{display:grid;grid-template-columns:24px repeat(24,minmax(0,1fr));gap:3px;user-select:none}
-.clientsv2 .cx-hh{font-size:var(--fs-0);color:var(--ink-3);height:14px;white-space:nowrap}
-.clientsv2 .cx-dd{display:flex;align-items:center;font-size:var(--fs-0);color:var(--ink-3)}
-.clientsv2 .cx-cell{height:20px;width:100%;padding:0;border:0;border-radius:3px;background:var(--field);position:relative;cursor:pointer;transition:box-shadow .12s ease}
-.clientsv2 .cx-cell i{position:absolute;inset:0;border-radius:3px;background:var(--accent-b);opacity:var(--o,0);animation:cx-cell .5s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--x) * 18ms + var(--y) * 9ms)}
-@keyframes cx-cell{from{opacity:0;transform:scale(.3)}to{opacity:var(--o,0);transform:scale(1)}}
-.clientsv2 .cx-cell:hover,.clientsv2 .cx-cell.on{box-shadow:0 0 0 1.5px var(--ink)}
-.clientsv2 .cx-cell.lit{box-shadow:0 0 0 1px rgba(var(--accent-rgb),.42)}
+/* Циферблат «коли пише» (власник 09.11.26): сектор = година, кільце = день. */
+.clientsv2 .cx-dialrow{display:grid;grid-template-columns:minmax(0,400px) minmax(150px,1fr);gap:22px;align-items:center}
+@container cxpane (max-width:900px){.clientsv2 .cx-dialrow{grid-template-columns:minmax(0,1fr)}}
+.clientsv2 .cx-dial{position:relative;width:100%;max-width:400px;aspect-ratio:1/1;user-select:none}
+.clientsv2 .cx-dial svg{display:block;width:100%;height:100%;overflow:visible}
+.clientsv2 .cx-cells{animation:cx-sweep 1.4s cubic-bezier(.16,1,.3,1) both}
+@keyframes cx-sweep{
+  from{clip-path:polygon(50% 50%,50% -30%,50% -30%,50% -30%,50% -30%,50% -30%)}
+  25%{clip-path:polygon(50% 50%,50% -30%,130% -30%,130% 50%,130% 50%,130% 50%)}
+  50%{clip-path:polygon(50% 50%,50% -30%,130% -30%,130% 130%,50% 130%,50% 130%)}
+  75%{clip-path:polygon(50% 50%,50% -30%,130% -30%,130% 130%,-30% 130%,-30% 50%)}
+  to{clip-path:polygon(50% 50%,50% -30%,130% -30%,130% 130%,-30% 130%,-30% -30%)}}
+.clientsv2 .cx-cell{fill:color-mix(in srgb,var(--accent-b) calc(var(--o,0) * 100%),var(--field));stroke:transparent;stroke-width:2;transition:opacity .2s ease,stroke .12s ease;outline:none}
+.clientsv2 .cx-cell.has{cursor:pointer}
+.clientsv2 .cx-cell.lit{stroke:rgba(var(--accent-rgb),.42);stroke-width:1}
+.clientsv2 .cx-cell.has:hover,.clientsv2 .cx-cell.on,.clientsv2 .cx-cell:focus-visible{stroke:var(--ink);stroke-width:2}
+.clientsv2 .cx-dial.focusday .cx-cell:not(.hit){opacity:.18}
+.clientsv2 .cx-tick{fill:var(--ink-3);font:500 11px var(--font-mono)}
+.clientsv2 .cx-tick.major{font-size:15px;fill:var(--ink-2)}
+.clientsv2 .cx-hand line{stroke:var(--ink);stroke-width:2;stroke-linecap:round}
+.clientsv2 .cx-hand circle{fill:var(--ink)}
+.clientsv2 .cx-dial-mid{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
+.clientsv2 .cx-dial-mid>div{max-width:34%}
+.clientsv2 .cx-dial-mid b{display:block;font:700 clamp(22px,4.2cqi,34px)/1 var(--font-mono);letter-spacing:-.04em;color:var(--ink)}
+.clientsv2 .cx-dial-mid span{display:block;margin-top:5px;font-size:var(--fs-0);color:var(--ink-3)}
+.clientsv2 .cx-dial-mid em{display:block;margin-top:9px;font-style:normal;font-size:var(--fs-1);color:var(--ink-2)}
+.clientsv2 .cx-dial-mid em b{display:inline;font:600 var(--fs-1) var(--font-mono);letter-spacing:0}
+.clientsv2 .cx-days{display:flex;flex-direction:column;gap:3px}
+.clientsv2 .cx-days-h{font-size:var(--fs-0);color:var(--ink-3);margin-bottom:5px}
+.clientsv2 .cx-days button{display:flex;align-items:center;gap:10px;padding:6px 8px;border:0;border-radius:8px;background:none;color:var(--ink-2);font:inherit;font-size:var(--fs-2);cursor:pointer;text-align:left;transition:background .15s ease,color .15s ease}
+.clientsv2 .cx-days button:hover,.clientsv2 .cx-days button[aria-pressed="true"]{background:var(--field);color:var(--ink)}
+.clientsv2 .cx-days-d{width:22px}
+.clientsv2 .cx-days-bar{flex:1;height:6px;border-radius:4px;background:var(--field);overflow:hidden}
+.clientsv2 .cx-days-bar i{display:block;height:100%;border-radius:4px;background:var(--accent-b);transform-origin:0 50%;animation:cx-grow .9s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--x) * 70ms + .5s)}
+@keyframes cx-grow{from{transform:scaleX(0)}to{transform:none}}
+.clientsv2 .cx-days-n{width:26px;text-align:right;font-size:var(--fs-1);color:var(--ink-3)}
 .clientsv2 .cx-insights{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:11px;font-size:var(--fs-2);color:var(--ink-2)}
 .clientsv2 .cx-insights b{color:var(--ink);font-weight:600}
 .clientsv2 .cx-slot:empty{display:none}
@@ -347,6 +378,6 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 #cx-tip b{display:block;font:600 var(--fs-3) var(--font-mono);color:var(--ink)}
 #cx-tip span{color:var(--ink-2)}
 @media (prefers-reduced-motion:reduce){
-  .clientsv2 .cx-cell i,.clientsv2 .cx-bar i,.clientsv2 .cx-t i,.clientsv2 .cx-slot-row{animation:none}
+  .clientsv2 .cx-cells,.clientsv2 .cx-days-bar i,.clientsv2 .cx-bar i,.clientsv2 .cx-t i,.clientsv2 .cx-slot-row{animation:none}
   .clientsv2 .cx-ev{transition:none}
 }

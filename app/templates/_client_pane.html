@@ -54,18 +54,34 @@
                 <h3>Коли пише</h3>
                 <div class="cx-panel" data-cx-client="{{ client.id }}">
                     {% if rhythm.total %}
-                    <div class="cx-heat" data-cx-heat>
-                        <span></span>
-                        {% for h in range(24) %}<span class="cx-hh mono">{{ h if h % 3 == 0 else '' }}</span>{% endfor %}
-                        {% for row in rhythm.cells %}
-                        <span class="cx-dd">{{ ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'][loop.index0] }}</span>
-                        {% for c in row %}
-                        <button type="button" class="cx-cell" style="--x:{{ c.x }};--y:{{ c.y }};--o:{{ c.o }}" data-cx-cell="{{ c.y }},{{ c.x }}"
-                                data-tip="{{ c.n }}|{{ ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'][c.y] }}, {{ '%02d'|format(c.x) }}:00"
-                                aria-label="{{ ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'][c.y] }} {{ c.x }}:00, листів: {{ c.n }}"
-                                {% if c.n %}hx-get="/clients/{{ client.id }}/slot?d={{ c.y }}&h={{ c.x }}" hx-target="#cx-slot" hx-swap="innerHTML"{% endif %}><i></i></button>
-                        {% endfor %}
-                        {% endfor %}
+                    {# Циферблат (власник 09.11.26): 24 години по колу, кільця — дні, Пн усередині.
+                       Клік по сектору — ті самі листи години (/slot), що й у старій сітці. #}
+                    {% set dn = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'] %}
+                    <div class="cx-dialrow">
+                        <div class="cx-dial" data-cx-heat>
+                            <svg viewBox="0 0 {{ rhythm.size }} {{ rhythm.size }}" role="group" aria-label="Коли пише: години по колу, дні кільцями від понеділка всередині">
+                                <g class="cx-cells">
+                                {% for row in rhythm.cells %}{% for c in row %}
+                                <path d="{{ c.p }}" class="cx-cell{% if c.n %} has{% endif %}" style="--o:{{ c.o }}" data-cx-cell="{{ c.y }},{{ c.x }}" data-n="{{ c.n }}"
+                                      data-tip="{{ c.n }}|{{ dn[c.y] }}, {{ '%02d'|format(c.x) }}:00"
+                                      aria-label="{{ dn[c.y] }} {{ c.x }}:00, листів: {{ c.n }}"
+                                      {% if c.n %}role="button" tabindex="0" hx-get="/clients/{{ client.id }}/slot?d={{ c.y }}&h={{ c.x }}" hx-target="#cx-slot" hx-swap="innerHTML"{% endif %}/>
+                                {% endfor %}{% endfor %}
+                                </g>
+                                {% for t in rhythm.ticks %}<text x="{{ t.x }}" y="{{ t.y }}" class="cx-tick{% if t.major %} major{% endif %}" text-anchor="middle" dominant-baseline="middle">{{ t.label }}</text>{% endfor %}
+                                <g class="cx-hand" data-cx-hand hidden><line x1="{{ rhythm.hand.x }}" y1="{{ rhythm.hand.y1 }}" x2="{{ rhythm.hand.x }}" y2="{{ rhythm.hand.y2 }}"/><circle cx="{{ rhythm.hand.x }}" cy="{{ rhythm.hand.y1 }}" r="4"/></g>
+                            </svg>
+                            <div class="cx-dial-mid"><div>
+                                {% if rhythm.top_hours_short %}<b class="mono">{{ rhythm.top_hours_short }}</b><span>години, коли пише найчастіше</span>{% endif %}
+                                <em data-cx-next></em>
+                            </div></div>
+                        </div>
+                        <div class="cx-days">
+                            <span class="cx-days-h">Листів по днях · клік — підсвітити кільце</span>
+                            {% for d in rhythm.day_bars %}
+                            <button type="button" data-cx-day="{{ loop.index0 }}" aria-pressed="false"><span class="cx-days-d">{{ d.day }}</span><span class="cx-days-bar"><i style="width:{{ d.w }}%;--x:{{ loop.index0 }}"></i></span><span class="cx-days-n mono">{{ d.n }}</span></button>
+                            {% endfor %}
+                        </div>
                     </div>
                     <div class="cx-insights">
                         {% if rhythm.top_days %}<span>Найчастіше: <b>{{ rhythm.top_days|join(', ') }}</b></span>{% endif %}
