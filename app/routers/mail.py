@@ -16,14 +16,13 @@
 import json
 import logging
 import re
-import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import ColumnElement, and_ as sa_and, false as sa_false, func, not_ as sa_not, select, text, update as sa_update
+from sqlalchemy import ColumnElement, and_ as sa_and, false as sa_false, func, not_ as sa_not, select, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
@@ -32,8 +31,6 @@ from app.business_day import business_now, business_today, get_rollover
 from app.export_scanner import clear_export_cache
 from app.link_attachments import (
     LinkAttachment,
-    LinkDownloadError,
-    download_link,
     extract_download_links,
     undownloaded_links,
 )
@@ -140,6 +137,7 @@ from app.services.mail_accept import (
     resolve_wizard_overrides,
     write_merged_row,
 )
+from app.services.mail_link_fetch import fetch_link, unpack_if_archive
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
 from app.services.mail_rework import accept_rework, rework_form, rework_order_ids
 from app.services import mail_auto_backfill
@@ -1469,43 +1467,6 @@ def _files_changed_response(
     return response
 
 
-def _mark_link_handled(db: Session, email_id: int, ref: str) -> None:
-    """Додати посилання до `handled_link_refs` одним атомарним UPDATE.
-
-    Список відсортований і без дублів (як і раніше писався з Python), але
-    читається й пишеться всередині SQLite — паралельні запити не перетирають
-    позначки одне одного. Комітить викликач."""
-    db.execute(
-        text(
-            "UPDATE email_messages SET handled_link_refs = ("
-            " SELECT json_group_array(value) FROM ("
-            "  SELECT value FROM json_each(COALESCE(email_messages.handled_link_refs, '[]'))"
-            "  UNION SELECT :ref ORDER BY 1))"
-            " WHERE id = :id"
-        ),
-        {"ref": ref, "id": email_id},
-    )
-
-
-_link_fetch_locks_guard = threading.Lock()
-_link_fetch_locks: dict[tuple[int, str], threading.Lock] = {}
-
-
-def _link_fetch_lock(email_id: int, ref: str) -> threading.Lock:
-    """Один лок на (лист, посилання): два запити на ТЕ САМЕ посилання (клік по
-    рядку, поки «Скачати за посиланням» його вже качає; друга вкладка чи другий
-    оператор) ідуть по черзі, і другий бачить файл першого серед вкладень —
-    «такий файл уже є», а не двійник «(2)». Різні посилання одного листа
-    качаються паралельно, як і раніше."""
-    key = (email_id, ref)
-    with _link_fetch_locks_guard:
-        lock = _link_fetch_locks.get(key)
-        if lock is None:
-            lock = threading.Lock()
-            _link_fetch_locks[key] = lock
-        return lock
-
-
 @router.post("/mail/{email_id}/fetch-link", response_class=HTMLResponse)
 def fetch_email_link(
     request: Request,
@@ -1546,88 +1507,15 @@ def fetch_email_link(
              "link_status": "error", "link_message": "посилання не знайдено в листі"},
         )
 
-    with _link_fetch_lock(email.id, ref):
-        # Під локом — СВІЖИЙ склад вкладень: запит на те саме посилання, що
-        # чекав на лок, мусить побачити файл попереднього й відповісти «уже є».
-        db.refresh(email)
-        existing = frozenset(a.filename for a in email.attachments)
-        status = message = result_name = None
-        path = None
-        try:
-            # Та сама тека спулу, що й у вкладень листа (`<uidvalidity>_<uid>`,
-            # mail_spool.spool_folder_name). Тут стояв голий `email.uid`, і файли
-            # за посиланням лягали в ІНШУ теку, ніж вкладення того самого листа.
-            spool_dir = Path(get_mail_attachments_path(db)) / spool_folder_name(email.uid, email.uid_validity)
-            path = download_link(link, spool_dir, existing_names=existing)
-        except LinkDownloadError as exc:
-            status, message = "error", str(exc)
-            # Відмова без сліду в лозі — саме так «скачати все» роками
-            # губило файли непомітно: з лога не видно, що і чому не дійшло.
-            logger.warning(
-                "Лист %s: файл за посиланням (%s) не скачано — %s",
-                email.id, urlsplit(link.url).hostname or "?", message,
-            )
-        except Exception:  # noqa: BLE001 — one bad link mustn't 500 the panel
-            logger.exception("Link download failed for email %s: %s", email.id, link.url)
-            host = (urlsplit(link.url).hostname or "сервер файлів")
-            status, message = "error", f"немає з'єднання з {host} (інтернет / проксі?)"
-        else:
-            if path is None:
-                status = "skip"
-            else:
-                attachment = Attachment(
-                    email_message_id=email.id,
-                    filename=path.name,
-                    saved_path=str(path),
-                    size_bytes=path.stat().st_size,
-                )
-                db.add(attachment)
-                email.attachments_status = "ready"
-                status, result_name = "done", path.name
-        if status in ("done", "skip"):
-            # Remember this link as handled so the «ще N за посиланням» count drops.
-            # АТОМАРНО, одним UPDATE: «Скачати за посиланням» шле запит на КОЖНЕ
-            # посилання паралельно, і читання-зміна-запис у Python губив чужі
-            # позначки — останній запис перемагав. Бойовий лист 25.09.26: 9 файлів
-            # ukr.net скачано, «оброблених» записано 2, картка казала «🔗 7 не
-            # скачано», гейт прийняття блокував, а повторне скачування дало б
-            # дублі «(1)». Той самий принцип, що в лічильниках видачі (двоє
-            # операторів): список міняє сам SQLite під своїм локом запису.
-            _mark_link_handled(db, email.id, ref)
-        try:
-            db.commit()
-        except Exception as commit_error:  # noqa: BLE001 — файл уже на диску
-            # Файл скачано ДО коміту. Невдалий коміт відкочує рядок `Attachment`,
-            # і в спулі лишається файл, якого в базі немає: у тріажі його не
-            # видно, але «Відкрити папку» показує зайву коронку поруч зі
-            # справжніми (ревʼю 07.09.26, LOW).
-            db.rollback()
-            logger.exception("Link download commit failed for email %s", email.id)
-            if status == "done" and path is not None:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    logger.error("Orphan link file left in spool: %s", path)
-            status, result_name = "error", None
-            message = f"не вдалося зберегти запис про файл: {commit_error}"
+    # Скачування, вкладення, позначка «оброблено», коміт і прибирання файлу при
+    # невдалому коміті — спільні з фоновим проходом (services/mail_link_fetch).
+    result = fetch_link(db, email, link)
+    status, message, result_name = result.status, result.message, result.result_name
 
     # Auto-unpack a freshly downloaded archive (client packed the STL in a
     # .zip/.rar). Best-effort; the extracted files show on the next panel load,
     # and a toast tells the operator it happened.
-    toast = None
-    if status == "done" and result_name and is_archive(result_name):
-        db.refresh(email)
-        try:
-            extracted, extract_errors = extract_archive_attachments(db, email)
-            if extracted or extract_errors:
-                db.commit()
-            if extracted:
-                toast = {"message": f"Розпаковано {extracted} файл(ів) з архіву", "kind": "success"}
-            elif extract_errors:
-                toast = {"message": "Архів: " + extract_errors[0], "kind": "error"}
-        except Exception:  # noqa: BLE001 — extraction must not 500 the panel
-            logger.exception("Archive extract failed for email %s", email.id)
-            db.rollback()
+    toast = unpack_if_archive(db, email, result_name) if status == "done" else None
 
     response = templates.TemplateResponse(
         request,

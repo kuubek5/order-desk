@@ -70,6 +70,7 @@ GET /palette/search
 GET /orders/{order_id}
 POST /account/password
 POST /settings/mail-download/toggle
+POST /settings/mail-download/links
 POST /clients/duplicates/folder-unmerge
 POST /settings/mail/processed-folder
 GET /clients/{client_id}/pane

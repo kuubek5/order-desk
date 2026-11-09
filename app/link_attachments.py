@@ -10,7 +10,9 @@ Security posture (this is the server fetching a URL taken from email content):
   * Redirects are followed BY HAND (`_get_checked`), so the whitelist is
     enforced on every hop — not only on the final URL after requests has
     already visited whatever the chain pointed at.
-  * Operator-initiated only (a button in triage), never automatic.
+  * Who triggers a fetch: the operator's button in triage, or the background
+    pass for TRUSTED senders only (app/services/mail_link_fetch.py, owner
+    09.11.26) — never for an arbitrary letter.
   * A hard size cap and timeout bound each download.
   * Files land in the email's own mail-spool folder and then flow through the
     normal accept path — no new export code path.

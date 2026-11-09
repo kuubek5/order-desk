@@ -17,6 +17,7 @@ from app import sync_control
 from app.business_day import set_rollover
 from app.changelog import load_changelog
 from app.services.handout_qc import qc_checklist_enabled
+from app.services.mail_link_fetch import autofetch_enabled
 from app.services.mail_merge import merge_enabled
 from app.services.health_snapshot import last_report
 from app.config import DB_PATH
@@ -329,6 +330,7 @@ def get_settings(
             select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
         ).all(),
         "mail_download_all": get_mail_download_all(db),
+        "mail_link_autofetch": autofetch_enabled(db),
         # Папка «оброблено», куди сторінка пошти переносить листи робіт, що пішли
         # в цех. Список папок НЕ читаємо тут (IMAP round-trip на кожному відкритті
         # /settings) — його тягне кнопка «Зчитати папки». Порожній список = ще не

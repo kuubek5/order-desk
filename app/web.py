@@ -1128,6 +1128,32 @@ def _folder_binding_worker(stop_event: Event) -> None:
             return
 
 
+MAIL_LINKS_INITIAL_DELAY_SECONDS = 45.0
+MAIL_LINKS_INTERVAL_SECONDS = 60.0
+
+
+def _mail_links_worker(stop_event: Event) -> None:
+    """Файли за посиланням (Google Диск, ukr.net) для відправників з
+    автоскачуванням — у фоні (власник 09.11.26, `app/services/mail_link_fetch.py`).
+    Раз на хвилину, по одному файлу; окремо від синку пошти, бо великий файл
+    качається хвилинами, а синку дано 180 с."""
+    from app.mail_sync_service import zombie_fetch_blocks_files
+    from app.services.mail_link_fetch import fetch_pending_once
+
+    if stop_event.wait(MAIL_LINKS_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                fetch_pending_once(
+                    db, should_stop=stop_event.is_set, blocked=zombie_fetch_blocks_files
+                )
+        except Exception:  # noqa: BLE001 — фонове скачування не валить застосунок
+            logger.exception("Фонове скачування файлів за посиланням не вдалось")
+        if stop_event.wait(MAIL_LINKS_INTERVAL_SECONDS):
+            return
+
+
 STL_HEIGHT_INITIAL_DELAY_SECONDS = 60.0
 # Прохід займає ~0,6 с у власному потоці (лог цеху 05.11.26), а до бейджа технік
 # чекав до 3 хв: майже вся затримка була саме в цій паузі.
@@ -1305,6 +1331,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-stats-forecast", _stats_forecast_worker),
         _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
         _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
+        _BackgroundWorker("kuubmill-mail-links", _mail_links_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
     ]
     for w in workers:

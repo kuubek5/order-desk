@@ -53,7 +53,7 @@ def test_parallel_link_marks_do_not_overwrite_each_other(db_engine):
     from sqlalchemy.orm import Session
 
     from app.models import EmailMessage
-    from app.routers.mail import _mark_link_handled
+    from app.services.mail_link_fetch import mark_link_handled as _mark_link_handled
 
     with Session(db_engine) as s:
         s.add(EmailMessage(uid="1", status="нове", handled_link_refs=json.dumps(["a"])))

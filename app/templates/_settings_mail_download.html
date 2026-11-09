@@ -40,7 +40,7 @@
 
                     <div class="stand-cell w3">
                         <h3>Що саме качається</h3>
-                        <p class="stand-note">Стосується вкладень листа (MIME). Файли за посиланням (Google Drive, ukr.net) якщо треба — тягнуться окремо у вкладці «Файли». Завеликі файли (понад 200 МБ) пропускаються.</p>
+                        <p class="stand-note">Стосується вкладень листа (MIME). Завеликі файли (понад 200 МБ) пропускаються. Файли за посиланням — окремий перемикач нижче.</p>
                         {% if spool_report %}
                         <p class="stand-note">
                             Спул зайняв <strong>{{ spool_report.total_mb }} МБ</strong> у {{ spool_report.total_dirs }} папк(ах).
@@ -48,6 +48,25 @@
                         </p>
                         <p class="stand-note">Раз на добу застосунок сам прибирає файли листів, завершених понад 2 дні тому: прийнятих, відхилених і тих, що покинули «Вхідні» пошти. Листи у «Вхідних» і «На уточненні» не чіпаються ніколи, файли в export — теж.</p>
                         {% endif %}
+                    </div>
+                </div>
+
+                {# ── Файли за посиланням у фоні (власник 09.11.26,
+                   app/services/mail_link_fetch.py). Окрема форма з однією
+                   галочкою: незазначена галочка не приходить узагалі (§14). #}
+                <div class="stand-cells">
+                    <div class="stand-cell w3">
+                        <h3>Файли за посиланням</h3>
+                        <p class="settings-help">Google Диск і ukr.net у тексті листа. Увімкнено — фон сам качає їх для відправників з автоскачуванням, раз на хвилину, по одному файлу. Решта листів — лише кнопкою «Скачати за посиланням». Листи, що прийшли до першого ввімкнення, не чіпаються.</p>
+                        <form method="post" action="/settings/mail-download/links">
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="mail_link_autofetch" value="1" {{ 'checked' if mail_link_autofetch else '' }}>
+                                Качати у фоні для відправників з автоскачуванням
+                            </label>
+                            <div class="settings-check-row">
+                                <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
 

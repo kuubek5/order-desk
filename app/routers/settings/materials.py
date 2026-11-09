@@ -34,6 +34,7 @@ from app.services.material_suggest import (
     invalidate_cache as invalidate_suggest_cache,
     usage_for_expansion,
 )
+from app.services.mail_link_fetch import set_autofetch_enabled
 from app.services.materials_console import (
     load_colour_rows,
     material_views,
@@ -375,6 +376,29 @@ def toggle_mail_download_all(
         request.session["toast_flash"] = {"kind": "success", "message": message}
         return RedirectResponse("/mail", status_code=303)
     request.session["settings_flash"] = {"kind": "success", "message": message}
+    return RedirectResponse("/settings#mail-download", status_code=303)
+
+
+@router.post("/settings/mail-download/links")
+async def save_mail_link_autofetch(request: Request, db: Session = Depends(get_db)):
+    """Увімкнути/вимкнути фонове скачування файлів за посиланням (Google Диск,
+    ukr.net) для довірених відправників (власник 09.11.26).
+
+    Окрема форма з однією галочкою: незазначена галочка не приходить узагалі,
+    тож спільна форма вимикала б сусідній перемикач (§14 «Порожнє поле»)."""
+    require_settings_edit(request, db, "mail-download")
+    form = await request.form()
+    enabled = bool(form.get("mail_link_autofetch"))
+    set_autofetch_enabled(db, enabled)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (
+            "Файли за посиланням від довірених відправників качаються у фоні."
+            if enabled
+            else "Фонове скачування за посиланням вимкнено — лише кнопкою в листі."
+        ),
+    }
     return RedirectResponse("/settings#mail-download", status_code=303)
 
 

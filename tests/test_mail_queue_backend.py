@@ -13,6 +13,7 @@ import app.web as web
 from app.link_attachments import LinkDownloadError
 from app.services.queue import known_order_dates
 from app.routers import mail as mail_router_mod
+from app.services import mail_link_fetch as mail_link_fetch_mod
 import app.settings_store as settings_store_mod
 from app.services import mail_accept as mail_accept_svc
 from app.routers import orders as orders_router_mod
@@ -1193,7 +1194,7 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
     monkeypatch.setattr(settings_store_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
     saved = tmp_path / "model.stl"
     saved.write_bytes(b"STL")
-    monkeypatch.setattr(mail_router_mod, "download_link", lambda link, dest, existing_names=frozenset(): saved)
+    monkeypatch.setattr(mail_link_fetch_mod, "download_link", lambda link, dest, existing_names=frozenset(): saved)
     captured = {}
     def _fake_tr(request, template, context):
         captured.update(template=template, ctx=context)
@@ -1244,7 +1245,7 @@ def test_fetch_email_link_uses_the_same_spool_folder_as_attachments(monkeypatch,
         dests.append(dest)
         return saved
 
-    monkeypatch.setattr(mail_router_mod, "download_link", _fake_download)
+    monkeypatch.setattr(mail_link_fetch_mod, "download_link", _fake_download)
     monkeypatch.setattr(
         web.templates, "TemplateResponse",
         lambda request, template, context: SimpleNamespace(context=context, headers={}),
@@ -1270,7 +1271,7 @@ def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
     def boom(link, dest, existing_names=frozenset()):
         raise LinkDownloadError("файл не розшарено")
 
-    monkeypatch.setattr(mail_router_mod, "download_link", boom)
+    monkeypatch.setattr(mail_link_fetch_mod, "download_link", boom)
     captured = {}
     monkeypatch.setattr(
         web.templates, "TemplateResponse",
