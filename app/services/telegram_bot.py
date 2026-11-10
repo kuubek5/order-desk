@@ -793,8 +793,14 @@ def _frame(view: str, body: str, now: datetime) -> str:
 
 
 def keyboard(
-    view: str, notify: bool = True, admin: bool = True, extra: Optional[list[list[dict]]] = None
+    view: str,
+    notify: bool = True,
+    admin: bool = True,
+    extra: Optional[list[list[dict]]] = None,
+    refresh: Optional[str] = None,
 ) -> dict:
+    """`refresh` — куди веде «Оновити», якщо не на сам вид (текст «Пошти»:
+    `v:mail` — уже картинка, а оновити треба той самий список)."""
     def button(text: str, target: str) -> dict:
         return {"text": text, "callback_data": f"v:{target}"}
 
@@ -817,7 +823,7 @@ def keyboard(
             button(("✓ " if view == today_view else "") + "Сьогодні", today_view),
             button(("✓ " if view == yesterday_view else "") + "Вчора", yesterday_view),
         ])
-    last = [button("🔄 Оновити", view)]
+    last = [{"text": "🔄 Оновити", "callback_data": refresh} if refresh else button("🔄 Оновити", view)]
     if view != "home":
         last.append(button("🏠 Меню", "home"))
     rows.append(last)
@@ -1205,8 +1211,18 @@ def _menu_payload(
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
-        "reply_markup": keyboard(view, notify, admin=admin, extra=extra),
+        "reply_markup": keyboard(view, notify, admin=admin, extra=extra, refresh=_text_refresh(view, opened)),
     }
+
+
+def _text_refresh(view: str, opened: Optional[str]) -> Optional[str]:
+    """«Оновити» в текстовій «Пошті» лишає той самий список: `v:mail` —
+    це вже картинка."""
+    if view != "mail":
+        return None
+    from app.services.telegram_views import MAIL_LIST
+
+    return f"{EXPAND_CALLBACK}:mail:{opened or MAIL_LIST}"
 
 
 # ── Верстати картинкою (власник 08.11.26, варіант C) ────────────────────────
@@ -1340,7 +1356,15 @@ def _machines_board_actions(
         # можна, тож при переповненні лишаємо без хвоста робіт.
         caption = f"<b>{KMILL_PREFIX}</b> · ⚙️ Верстати\n\n{body.split(chr(10) + chr(10))[0]}\n\n{_footer(moment)}"
     markup = _machines_keyboard(board, notify, focus)
-    photo = ("machines.png", png, "image/png")
+    return _photo_actions(chat_id, message_id, is_photo, ("machines.png", png, "image/png"), caption, markup)
+
+
+def _photo_actions(
+    chat_id: str, message_id: int, is_photo: bool, photo: tuple, caption: str, markup: dict
+) -> list[Action]:
+    """Показати картинку на місці меню. На фото — замінити його (кнопка
+    «Оновити»); на текстовому меню — НОВЕ фото, а старе меню прибрати лише
+    ПІСЛЯ того, як фото дійшло (текст у фото не перетворити)."""
     if is_photo:
         return [Action(
             "editMessageMedia",
@@ -1361,6 +1385,51 @@ def _machines_board_actions(
         ),
         Action("deleteMessage", {"chat_id": chat_id, "message_id": message_id}, after_ok=True),
     ]
+
+
+# ── Пошта картинкою (власник 10.11.26, варіант E) ───────────────────────────
+
+
+def _mail_keyboard(letters: int, notify: bool) -> dict:
+    from app.services.telegram_views import MAIL_ALL
+
+    rows: list[list[dict]] = []
+    if letters:
+        rows.append([{"text": f"📋 Листи списком · {letters}",
+                      "callback_data": f"{EXPAND_CALLBACK}:mail:{MAIL_ALL}"}])
+    rows.append([
+        {"text": "🔄 Оновити", "callback_data": "v:mail"},
+        {"text": "🏠 Меню", "callback_data": "v:home"},
+    ])
+    bell = "🔔 Сповіщення: так" if notify else "🔕 Сповіщення: ні"
+    rows.append([{"text": bell, "callback_data": "n:mail"}])
+    return {"inline_keyboard": rows}
+
+
+def _mail_picture_actions(
+    db: Session, chat_id: str, message_id: int, is_photo: bool, notify: bool, now: Optional[datetime]
+) -> Optional[list[Action]]:
+    """Вид «Пошта» картинкою. None — малювання впало: тоді бот показує
+    текстовий вид, а не мовчить."""
+    from app.services import telegram_mail_picture, telegram_views
+
+    moment = now or business_now()
+    try:
+        board = telegram_views.mail_board(db, moment)
+        png = telegram_mail_picture.render_png(board, moment)
+    except Exception:  # noqa: BLE001 — текстовий вид кращий за мовчазну кнопку
+        logger.exception("telegram-бот: картинку пошти не намальовано, показую текст")
+        db.rollback()
+        return None
+    if board.letters:
+        body = f"📬 <b>{_e(telegram_views.mail_headline(board))}</b>"
+        if board.unknown:
+            body += f"\n{_e(telegram_views.no_number_line(board.unknown))}"
+    else:
+        body = "📬 <b>Усі листи взято в роботу</b> ✅"
+    caption = f"<b>{KMILL_PREFIX}</b> · 📬 Пошта\n\n{body}\n\n{_footer(moment)}"
+    return _photo_actions(chat_id, message_id, is_photo, ("mail.png", png, "image/png"), caption,
+                          _mail_keyboard(board.letters, notify))
 
 
 def handle_update(
@@ -1435,6 +1504,10 @@ def handle_update(
             )
             if board is not None:
                 return [answer, *board]
+        if view == "mail" and opened is None:
+            picture = _mail_picture_actions(db, update_chat, message["message_id"], is_photo, notify, now)
+            if picture is not None:
+                return [answer, *picture]
         payload = _menu_payload(db, update_chat, view, notify, now, admin=who.is_owner, opened=opened)
         if is_photo:
             # Текст у фото не вписати (editMessageText на фото Telegram

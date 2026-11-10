@@ -2,7 +2,10 @@
 
 Що стережеться:
 * «не взято в роботу» = ті самі «Вхідні», що в CRM, і лише статус «нове»:
-  повернутий прийнятий лист роботу вже має, лист під винятком — окремо;
+  повернутий прийнятий лист роботу вже має; лист під винятком і СЛМ — не
+  фрезерування, їх у «Пошті» немає зовсім (власник 10.11.26);
+* «Пошта» — картинкою (варіант E), «Листи списком» — текст, і «Оновити»
+  там лишає той самий список; картинка впала — текст, а не мовчання;
 * «непрочитаний» = ще ніхто не відкрив у KuubMill (`seen_at`), рішення власника;
 * «зроблено» в лабораторії = стоїть Sum3D (рішення власника), термінові першими;
 * кнопка розгортає список у тому самому повідомленні, вдруге згортає;
@@ -68,17 +71,55 @@ def test_mail_view_counts_and_expands_one_group():
         _mail(db)
         closed = tv.mail_view(db, None, NOW)
         opened = tv.mail_view(db, "zr", NOW)
-    assert "4 листи не взято в роботу · 12 од." in closed.text
-    assert "найстаріший чекає 2 год 15 хв" in closed.text
+    assert "4 листи чекають · 12 од." in closed.text
+    assert "⏳ найдовше чекає 2 год 15 хв · Дент-Арт" in closed.text
     assert "🆕 не відкрито 3" in closed.text
+    # Число без листа не вигадуємо, а кажемо, скільки таких.
+    assert "у 1 листі числа одиниць немає" in closed.text
     assert "🦷 Цирконій — <b>2</b> листи · 8 од." in closed.text
-    assert "<blockquote>" not in closed.text.replace("<blockquote expandable>", "")
-    assert "<blockquote expandable>▫️ Не фрезерування — 1 лист\n3D-друк · Друк · 10:22" in closed.text
+    assert "❔ Матеріал не розпізнано — <b>1</b> лист\n" in closed.text
+    assert "<blockquote" not in closed.text
+    # Не фрезерування в «Пошті» немає зовсім (власник 10.11.26).
+    assert "Друк" not in closed.text and "фрезерування" not in closed.text
     assert "🆕 <b>Дент-Арт</b> · 08:37 · моно А3 · 2 од." in opened.text
+    # Згорнути — лишитись у тексті: «v:mail» уже веде на картинку.
     zr = [b for row in opened.rows for b in row if "Цирконій" in b["text"]][0]
-    assert zr == {"text": "▾ 🦷 Цирконій 2", "callback_data": "v:mail"}
+    assert zr == {"text": "▾ 🦷 Цирконій 2", "callback_data": "e:mail:list"}
     pm = [b for row in closed.rows for b in row if "ПММА" in b["text"]][0]
     assert pm["callback_data"] == "e:mail:pm"
+    assert closed.rows[-1] == [{"text": "🖼 Картинкою", "callback_data": "v:mail"}]
+
+
+def test_mail_view_all_lists_every_letter_oldest_first():
+    with _session() as db:
+        _mail(db)
+        text = tv.mail_view(db, "all", NOW).text
+    quote = text.split("<b>Усі листи</b>")[1]
+    assert quote.index("Дент-Арт") < quote.index("Smile Lab")
+    assert "<b>Без матеріалу</b> · 10:22 · число ?" in quote
+
+
+def test_slm_is_not_milling_and_is_not_counted():
+    with _session() as db:
+        _letter(db, "1", name="Метал", material="СЛМ", quantity="5")
+        _letter(db, "2", name="Цирконій", material="моно А3", quantity="2")
+        db.commit()
+        board = tv.mail_board(db, NOW)
+        text = tv.mail_view(db, None, NOW).text
+    assert (board.letters, board.units, board.unknown) == (1, 2, 0)
+    assert [r.title for r in board.rows] == ["Цирконій"]
+    assert "Метал" not in text and "СЛМ" not in text
+
+
+def test_mail_board_rows_for_the_picture():
+    with _session() as db:
+        _mail(db)
+        board = tv.mail_board(db, NOW)
+    assert (board.letters, board.units, board.unknown, board.unread) == (4, 12, 1, 3)
+    assert [(r.title, r.letters, r.units, r.units_known) for r in board.rows] == [
+        ("Цирконій", 2, 8, True), ("ПММА", 1, 4, True), ("Без матеріалу", 1, 0, False),
+    ]
+    assert board.waited == timedelta(hours=2, minutes=15) and board.oldest_name == "Дент-Арт"
 
 
 def test_mail_time_with_timezone_does_not_break_the_view():
@@ -91,7 +132,7 @@ def test_mail_time_with_timezone_does_not_break_the_view():
                             received_at=datetime(2026, 11, 8, 7, 0, tzinfo=timezone.utc)))
         db.commit()
         text = tv.mail_view(db, "zr", NOW).text
-    assert "UTC" in text and "найстаріший чекає" in text
+    assert "UTC" in text and "найдовше чекає" in text
 
 
 def test_empty_mail_says_everything_is_taken():
@@ -150,14 +191,80 @@ def test_expand_button_edits_the_same_message():
     assert [a.method for a in actions] == ["answerCallbackQuery", "editMessageText"]
     payload = actions[1].payload
     assert "<b>Вітадент</b>" in payload["text"] and payload["message_id"] == 42
-    first_row = payload["reply_markup"]["inline_keyboard"][0]
-    assert any(b["text"] == "▾ ◻️ ПММА 1" for b in first_row)
+    rows = payload["reply_markup"]["inline_keyboard"]
+    assert rows[0] == [{"text": "📋 Усі листи 4", "callback_data": "e:mail:all"}]
+    assert any(b["text"] == "▾ ◻️ ПММА 1" for b in rows[1])
+
+
+def _png_size(data: bytes) -> tuple[int, int]:
+    from io import BytesIO
+
+    from PIL import Image
+
+    with Image.open(BytesIO(data)) as image:
+        return image.size
+
+
+def test_mail_from_text_menu_sends_picture_then_deletes_old():
+    from tests.test_telegram_board import _photo_press
+
+    with _session() as db:
+        _mail(db)
+        actions = bot.handle_update(db, _press(CHAT, "v:mail"), now=NOW)
+        refresh = bot.handle_update(db, _photo_press("v:mail"), now=NOW)
+    assert [a.method for a in actions] == ["answerCallbackQuery", "sendPhoto", "deleteMessage"]
+    assert actions[2].after_ok
+    photo = actions[1]
+    assert _png_size(photo.files["photo"][1])[0] == 1080
+    assert "📬 <b>4 листи чекають · 12 од.</b>\nу 1 листі числа одиниць немає" in photo.payload["caption"]
+    buttons = [b["callback_data"] for row in photo.payload["reply_markup"]["inline_keyboard"] for b in row]
+    assert buttons == ["e:mail:all", "v:mail", "v:home", "n:mail"]
+    # «Оновити» на картинці — та сама картинка на місці.
+    assert [a.method for a in refresh] == ["answerCallbackQuery", "editMessageMedia"]
+
+
+def test_list_button_under_the_picture_sends_text_and_keeps_it_on_refresh():
+    from tests.test_telegram_board import _photo_press
+
+    with _session() as db:
+        _mail(db)
+        actions = bot.handle_update(db, _photo_press("e:mail:all"), now=NOW)
+    assert [a.method for a in actions] == ["answerCallbackQuery", "sendMessage", "deleteMessage"]
+    payload = actions[1].payload
+    assert "<b>Усі листи</b>" in payload["text"]
+    buttons = [b["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for b in row]
+    assert "e:mail:all" in buttons and "v:mail" in buttons  # «Картинкою»
+    refresh = [b for row in payload["reply_markup"]["inline_keyboard"] for b in row if b["text"] == "🔄 Оновити"]
+    assert refresh == [{"text": "🔄 Оновити", "callback_data": "e:mail:all"}]
+
+
+def test_empty_mail_picture_has_no_list_button():
+    with _session() as db:
+        actions = bot.handle_update(db, _press(CHAT, "v:mail"), now=NOW)
+    photo = actions[1]
+    assert "Усі листи взято в роботу" in photo.payload["caption"]
+    buttons = [b["callback_data"] for row in photo.payload["reply_markup"]["inline_keyboard"] for b in row]
+    assert "e:mail:all" not in buttons
+
+
+def test_broken_mail_picture_falls_back_to_text(monkeypatch):
+    from app.services import telegram_mail_picture
+
+    def boom(*_a, **_k):
+        raise RuntimeError("шрифт")
+
+    monkeypatch.setattr(telegram_mail_picture, "render_png", boom)
+    with _session() as db:
+        _mail(db)
+        actions = bot.handle_update(db, _press(CHAT, "v:mail"), now=NOW)
+    assert [a.method for a in actions] == ["answerCallbackQuery", "editMessageText"]
+    assert "4 листи чекають" in actions[1].payload["text"]
 
 
 def test_operator_cannot_expand_admin_sections():
     with _session() as db:
         _member(db)
-        for forged in ("e:mail:zr", "e:lab:take", "v:lab_y"):
+        for forged in ("e:mail:zr", "e:mail:all", "v:mail", "e:lab:take", "v:lab_y"):
             actions = bot.handle_update(db, _press("700", forged), now=NOW)
             assert [a.method for a in actions] == ["answerCallbackQuery"], forged
 
@@ -167,7 +274,7 @@ def test_home_has_mail_and_lab_lines_and_buttons():
         _mail(db)
         _lab(db)
         payload = bot.handle_update(db, _press(CHAT, "v:home"), now=NOW)[1].payload
-    assert "📬 Пошта: <b>4</b> листи не взято · 12 од." in payload["text"]
+    assert "📬 Пошта: <b>4</b> листи чекають · <b>12</b> од.\n      ⏳ найдовше" in payload["text"]
     assert "🧪 Лабораторія: зроблено <b>2</b> з 5" in payload["text"]
     buttons = {b["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for b in row}
     assert {"v:mail", "v:lab", "v:machines", "v:orders"} <= buttons

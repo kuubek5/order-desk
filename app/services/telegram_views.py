@@ -1,9 +1,13 @@
 """Розділи бота зі списками, що розгортаються (власник 08.11.26).
 
 * «📬 Пошта» — листи у «Вхідних», ще не взяті в роботу, за матеріалом
-  фрезерування; «не фрезерування» (листи під правилом-винятком) — окремо,
-  згорнутою цитатою. «Непрочитаний» = лист ще ніхто не відкрив у KuubMill
-  (`seen_at`), а не позначка скриньки ukr.net — рішення власника 08.11.26.
+  фрезерування. Що не фрезерування (правило-виняток: 3D-друк, моделювання;
+  СЛМ), не рахується й не показується зовсім (власник 10.11.26). Головний
+  вид — картинка (`telegram_mail_picture`, варіант E), текст — «Листи
+  списком» і запасний. Одиниць не вигадуємо: лист без числа лишається поза
+  сумою, і бот пише, у скількох таких листах числа немає. «Непрочитаний» =
+  лист ще ніхто не відкрив у KuubMill (`seen_at`), а не позначка скриньки
+  ukr.net — рішення власника 08.11.26.
 * «🧪 Лабораторія» — лабораторні роботи дня: скільки зайшло, скільки зроблено
   (стоїть Sum3D, рішення власника 08.11.26 — те саме правило, що «В роботі»
   у черзі) і що лишається: «можна брати» і «технік ще не здав».
@@ -20,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import EmailMessage, Order
@@ -89,24 +93,33 @@ def _bar(done: int, total: int, width: int = 20) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
-def _toggle(label: str, view: str, key: str, opened: Optional[str]) -> dict:
+def _toggle(
+    label: str, view: str, key: str, opened: Optional[str], closed: Optional[str] = None
+) -> dict:
+    """Кнопка розгортання. `closed` — куди веде повторне натискання (згорнути);
+    за замовчуванням сам вид."""
     is_open = opened == key
-    data = f"v:{view}" if is_open else f"{EXPAND_CALLBACK}:{view}:{key}"
+    data = (closed or f"v:{view}") if is_open else f"{EXPAND_CALLBACK}:{view}:{key}"
     return {"text": ("▾ " if is_open else "") + label, "callback_data": data}
 
 
 # ── Пошта ───────────────────────────────────────────────────────────────────
 
-#: Групи листів за категорією матеріалу. Порядок — як у каталозі.
+#: Групи листів за категорією матеріалу. Порядок — як у каталозі. СЛМ тут
+#: немає свідомо: це друк металом, не фрезерування (власник 10.11.26).
 MAIL_GROUPS = (
     ("zr", "Цирконій", "🦷"),
     ("pm", "ПММА", "◻️"),
     ("ti", "Титан", "🔩"),
     ("wx", "Віск", "🕯"),
-    ("slm", "СЛМ", "🖨"),
     ("none", None, "❔"),
 )
 _GROUP_TITLE = {"none": "Матеріал не розпізнано"}
+#: Категорії, які в «Пошті» не рахуються й не показуються.
+_NOT_MILLING = frozenset({"СЛМ"})
+#: `opened` текстового виду: весь список одним блоком / нічого не розгорнуто.
+MAIL_ALL = "all"
+MAIL_LIST = "list"
 
 
 @dataclass
@@ -144,29 +157,13 @@ def _letter(email: EmailMessage) -> Letter:
 
 def _not_taken(db: Session) -> list[EmailMessage]:
     """У «Вхідних» і ще не прийняті. Повернутий прийнятий лист (`reopened`)
-    роботу вже має, тож сюди не йде."""
+    роботу вже має, тож сюди не йде. Листи під правилом-винятком («не наша
+    робота»: 3D-друк, моделювання) і «на погодженні» `in_inbox` уже відсікає."""
     from app.mail_inbox import in_inbox
 
     return list(db.scalars(
         select(EmailMessage).options(selectinload(EmailMessage.attachments))
         .where(in_inbox, EmailMessage.status == "нове")
-        .order_by(EmailMessage.received_at)
-    ).all())
-
-
-def _not_milling(db: Session) -> list[EmailMessage]:
-    """Нові листи, які правило-виняток відклало як «не наша робота»."""
-    from app.mail_hold import not_on_hold
-
-    return list(db.scalars(
-        select(EmailMessage).options(selectinload(EmailMessage.attachments))
-        .where(and_(
-            EmailMessage.status == "нове",
-            EmailMessage.filter_category.is_not(None),
-            EmailMessage.mailbox_folder.is_(None),
-            EmailMessage.inbox_gone_at.is_(None),
-            not_on_hold,
-        ))
         .order_by(EmailMessage.received_at)
     ).all())
 
@@ -178,6 +175,8 @@ def mail_groups(db: Session) -> dict[str, list[Letter]]:
     groups: dict[str, list[Letter]] = {key: [] for key, _, _ in MAIL_GROUPS}
     for email in _not_taken(db):
         category = classify_material(email.material_color_guess) if email.material_color_guess else None
+        if category in _NOT_MILLING:
+            continue
         groups[names.get(category or "", "none")].append(_letter(email))
     return groups
 
@@ -186,19 +185,88 @@ def _units_sum(letters: list[Letter]) -> int:
     return sum(letter.units or 0 for letter in letters)
 
 
-def mail_summary(db: Session) -> str:
+def _unknown(letters: list[Letter]) -> int:
+    """Скільки листів без числа одиниць: бот його не вигадує."""
+    return sum(1 for letter in letters if not letter.units)
+
+
+def _oldest(letters: list[Letter]) -> Optional[Letter]:
+    dated = [x for x in letters if x.received_at is not None]
+    return min(dated, key=lambda x: x.received_at or datetime.min) if dated else None
+
+
+def letters_word(n: int) -> str:
+    return _plural(n, "лист чекає", "листи чекають", "листів чекають")
+
+
+def no_number_line(unknown: int) -> str:
+    return f"у {unknown} {_plural(unknown, 'листі', 'листах', 'листах')} числа одиниць немає"
+
+
+@dataclass
+class MailRow:
+    """Рядок картинки: матеріал, листи, одиниці. `units_known` False — у
+    жодному листі групи числа немає (смуга штрихована, «? од.»)."""
+
+    title: str
+    letters: int
+    units: int
+    units_known: bool
+
+
+@dataclass
+class MailBoard:
+    """Те, що малює картинка «Пошти» (`telegram_mail_picture`)."""
+
+    letters: int
+    units: int
+    unknown: int
+    unread: int
+    rows: list[MailRow]
+    waited: Optional[timedelta]
+    oldest_name: str
+
+
+def mail_board(db: Session, now: datetime) -> MailBoard:
+    now = _local(now) or now
     groups = mail_groups(db)
     letters = [letter for group in groups.values() for letter in group]
-    if not letters:
+    rows = [
+        MailRow(name or "Без матеріалу", len(groups[key]), _units_sum(groups[key]),
+                _unknown(groups[key]) < len(groups[key]))
+        for key, name, _ in MAIL_GROUPS if groups[key]
+    ]
+    oldest = _oldest(letters)
+    waited = (now - oldest.received_at) if oldest and oldest.received_at else None
+    return MailBoard(
+        letters=len(letters),
+        units=_units_sum(letters),
+        unknown=_unknown(letters),
+        unread=sum(1 for x in letters if x.unread),
+        rows=rows,
+        waited=waited,
+        oldest_name=oldest.name if oldest else "",
+    )
+
+
+def wait_text(delta: timedelta) -> str:
+    return _span(delta)
+
+
+def mail_headline(board: MailBoard) -> str:
+    """«12 листів чекають · 35 од.» — у підписі до картинки й у тексті."""
+    return f"{board.letters} {letters_word(board.letters)} · {board.units} од."
+
+
+def mail_summary(db: Session, now: Optional[datetime] = None) -> str:
+    board = mail_board(db, now or datetime.now())
+    if not board.letters:
         return "📬 Пошта: усі листи взято в роботу"
-    head = (f"📬 Пошта: <b>{len(letters)}</b> {_plural(len(letters), 'лист', 'листи', 'листів')}"
-            f" не взято · {_units_sum(letters)} од.")
-    bits = [f"{icon} {(name or 'інше').lower()} {len(groups[key])}"
-            for key, name, icon in MAIL_GROUPS if groups[key]]
-    unread = sum(1 for letter in letters if letter.unread)
-    if unread:
-        bits.append(f"🆕 {unread}")
-    return head + "\n      " + " · ".join(bits)
+    line = (f"📬 Пошта: <b>{board.letters}</b> {letters_word(board.letters)}"
+            f" · <b>{board.units}</b> од.")
+    if board.waited is not None:
+        line += f"\n      ⏳ найдовше {_span(board.waited)}"
+    return line
 
 
 def _letter_line(letter: Letter, now: datetime) -> str:
@@ -206,32 +274,44 @@ def _letter_line(letter: Letter, now: datetime) -> str:
     bits = [f"{mark}<b>{_e(letter.name)}</b>", _when(letter.received_at, now)]
     if letter.material:
         bits.append(_e(letter.material))
-    if letter.units:
-        bits.append(f"{letter.units} од.")
+    bits.append(f"{letter.units} од." if letter.units else "число ?")
     return " · ".join(b for b in bits if b)
 
 
+def _quote(letters: list[Letter], now: datetime) -> str:
+    shown = [_letter_line(x, now) for x in letters[:MAX_LIST]]
+    if len(letters) > MAX_LIST:
+        shown.append(f"ще {len(letters) - MAX_LIST}")
+    return "<blockquote>" + "\n".join(shown) + "</blockquote>"
+
+
 def mail_view(db: Session, opened: Optional[str], now: datetime) -> ViewParts:
+    """Текстовий вид «Пошти»: «Листи списком» з-під картинки (`opened` =
+    `MAIL_ALL`) і запасний, коли картинку не намальовано."""
     now = _local(now) or now
     groups = mail_groups(db)
-    letters = [letter for group in groups.values() for letter in group]
+    letters = sorted(
+        (letter for group in groups.values() for letter in group),
+        key=lambda x: (x.received_at is None, x.received_at or now),
+    )
     lines: list[str] = []
     rows: list[list[dict]] = []
+    # Згорнути = лишитись у тексті; «v:mail» вже веде на картинку.
+    closed = f"{EXPAND_CALLBACK}:mail:{MAIL_LIST}"
     if not letters:
         lines.append("<b>Усі листи взято в роботу</b> ✅")
     else:
-        count = len(letters)
-        lines.append(f"<b>{count} {_plural(count, 'лист', 'листи', 'листів')} не взято в роботу"
-                     f" · {_units_sum(letters)} од.</b>")
-        oldest = min((x.received_at for x in letters if x.received_at), default=None)
+        board = mail_board(db, now)
+        lines.append(f"<b>{mail_headline(board)}</b>")
         sub = []
-        if oldest is not None:
-            sub.append(f"найстаріший чекає {_span(now - oldest)}")
-        unread = sum(1 for x in letters if x.unread)
-        if unread:
-            sub.append(f"🆕 не відкрито {unread}")
+        if board.waited is not None:
+            sub.append(f"⏳ найдовше чекає {_span(board.waited)} · {_e(board.oldest_name)}")
+        if board.unread:
+            sub.append(f"🆕 не відкрито {board.unread}")
         if sub:
             lines.append(" · ".join(sub))
+        if board.unknown:
+            lines.append(no_number_line(board.unknown))
         lines.append("")
         buttons: list[dict] = []
         for key, name, icon in MAIL_GROUPS:
@@ -240,27 +320,20 @@ def mail_view(db: Session, opened: Optional[str], now: datetime) -> ViewParts:
                 continue
             title = name or _GROUP_TITLE[key]
             n = len(group)
-            lines.append(f"{icon} {title} — <b>{n}</b> {_plural(n, 'лист', 'листи', 'листів')}"
-                         f" · {_units_sum(group)} од.")
+            units = f" · {_units_sum(group)} од." if _unknown(group) < n else ""
+            lines.append(f"{icon} {title} — <b>{n}</b> {_plural(n, 'лист', 'листи', 'листів')}{units}")
             if opened == key:
-                shown = [_letter_line(x, now) for x in group[:MAX_LIST]]
-                if len(group) > MAX_LIST:
-                    shown.append(f"ще {len(group) - MAX_LIST}")
-                lines.append("<blockquote>" + "\n".join(shown) + "</blockquote>")
-            buttons.append(_toggle(f"{icon} {title if key != 'none' else 'Без матеріалу'} {n}", "mail", key, opened))
+                lines.append(_quote(group, now))
+            label = f"{icon} {title if key != 'none' else 'Без матеріалу'} {n}"
+            buttons.append(_toggle(label, "mail", key, opened, closed))
+        if opened == MAIL_ALL:
+            lines.append("")
+            lines.append("<b>Усі листи</b> · найдовше чекає зверху")
+            lines.append(_quote(letters, now))
+        rows.append([_toggle(f"📋 Усі листи {len(letters)}", "mail", MAIL_ALL, opened, closed)])
         for i in range(0, len(buttons), 2):
             rows.append(buttons[i:i + 2])
-    other = [_letter(email) for email in _not_milling(db)]
-    if other:
-        n = len(other)
-        body = "\n".join(
-            f"{_e(x.category or 'інше')} · {_e(x.name)} · {_when(x.received_at, now)}" for x in other[:MAX_LIST]
-        )
-        if n > MAX_LIST:
-            body += f"\nще {n - MAX_LIST}"
-        lines.append("")
-        lines.append(f"<blockquote expandable>▫️ Не фрезерування — {n} "
-                     f"{_plural(n, 'лист', 'листи', 'листів')}\n{body}</blockquote>")
+    rows.append([{"text": "🖼 Картинкою", "callback_data": "v:mail"}])
     if any(x.unread for x in letters):
         lines.append("<i>🆕 — лист ще ніхто не відкрив у KuubMill</i>")
     return ViewParts("\n".join(lines), rows)
