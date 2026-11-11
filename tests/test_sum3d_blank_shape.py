@@ -66,8 +66,8 @@ def test_two_contours_stay_separate_and_open_one_is_marked():
     data = _blank(_circle(0, 0, 3, 9.0, 40), _circle(20, 20, 5, 6.0, 40, closed=False))
     out = shape.shape_of(data)
     lines = [r for r in out["ряди"] if r.get("стала")]
-    assert [l["стала"]["значення"] for l in lines] == [9.0, 6.0]
-    assert [l["замкнений"] for l in lines] == [True, False]
+    assert [row["стала"]["значення"] for row in lines] == [9.0, 6.0]
+    assert [row["замкнений"] for row in lines] == [True, False]
     assert out["поліліній_за_висотою"] == {"9.0": 1, "6.0": 1}
     # Лічильник точок стоїть цілим числом одразу перед рядом — його видно.
     before_second = [g for g in out["проміжки"] if g["зсув"] + g["довжина"] == lines[1]["зсув"]][0]

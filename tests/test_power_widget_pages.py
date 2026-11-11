@@ -192,7 +192,7 @@ def test_load_config_reads_both_settings(app_db):  # noqa: F811
 
 # ── Табло цеху ───────────────────────────────────────────────────────────────
 
-def _board(app_db, monkeypatch):
+def _board(app_db, monkeypatch):  # noqa: F811
     from app.routers.furnace_board import create_board_app
     from app.services import furnace_board as fb
     from app.services import machines as machines_mod

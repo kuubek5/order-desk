@@ -1143,8 +1143,10 @@ def test_assets_build_follows_version_and_newest_file(tmp_path):
     import os
 
     a, b = tmp_path / "a.js", tmp_path / "b.css"
-    a.write_text("1"); b.write_text("2")
-    os.utime(a, (1_000, 1_000)); os.utime(b, (2_000, 2_000))
+    a.write_text("1")
+    b.write_text("2")
+    os.utime(a, (1_000, 1_000))
+    os.utime(b, (2_000, 2_000))
     files = [a, b, tmp_path / "нема.js"]
     assert sb.assets_build(files, version="1.2.3") == "1.2.3.2000"
     assert sb.assets_build(files, version="1.2.4") == "1.2.4.2000"
