@@ -48,7 +48,7 @@ from app.business_day import (
 from app.config import DATA_DIR, DB_PATH
 from app.models import ActionLog, Attachment, Comment, Order, StatusEvent, SyncLog
 from app import stats as stats_rules
-from app.services import device_diag, stats_audit, sum3d_deep, sum3d_files
+from app.services import device_diag, stats_audit, sum3d_blank_shape, sum3d_deep, sum3d_files
 from app.services.order_dates import parse_sheet_tab
 
 logger = logging.getLogger(__name__)
@@ -764,8 +764,10 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
     from app.settings_store import get_setting, get_sum3d_projects_path
 
     kind = str(args.get("kind") or "both").strip().lower()
-    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare"):
-        raise ToolError("`kind` — blk, cam, both, settings, cam_deep або cam_compare (типово both)")
+    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare", "blk_shape"):
+        raise ToolError(
+            "`kind` — blk, cam, both, settings, cam_deep, cam_compare або blk_shape (типово both)"
+        )
     limit = _int_arg(args, "limit", default=2, low=1, high=5)
     blanks_root = (get_setting(db, "cam_blanks_path") or "").strip()
     projects_root = (get_sum3d_projects_path(db) or "").strip()
@@ -774,6 +776,8 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
             "налаштування": sum3d_deep.scan_settings(sum3d_deep.settings_roots(blanks_root)),
             "реєстр": sum3d_deep.scan_registry(),
         }
+    if kind == "blk_shape":
+        return _sum3d_blank_shape(blanks_root, str(args.get("brand") or ""), args)
     if kind in ("cam_deep", "cam_compare") and not projects_root:
         raise ToolError("тека проєктів Sum3D не задана (Налаштування → Шляхи)")
     if kind == "cam_deep":
@@ -813,6 +817,28 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
             )
             out["проєкти"] = [_sum3d_file_entry(f) for f in found] or "файлів .cam не знайдено"
     return out
+
+
+def _sum3d_blank_shape(root: str, brand: str, args: dict) -> dict[str, Any]:
+    """Геометрія файлу диска: полілінії вирізів і службові проміжки
+    (`sum3d_blank_shape`). Один диск за виклик — відповідь велика; два —
+    лише на явне `limit=2`, щоб звірити новий диск з ужитим."""
+    if not root:
+        raise ToolError("тека дисків CAM не задана («Нові диски» → нижня смуга)")
+    limit = _int_arg(args, "limit", default=1, low=1, high=2)
+    found = sum3d_files.newest_blanks(root, brand=brand, limit=limit)
+    return {
+        "тека_дисків": root,
+        "диски": [
+            {
+                "файл": f.name,
+                "розмір": f.size,
+                "змінено": datetime.fromtimestamp(f.mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                **sum3d_blank_shape.describe_shape(f.path),
+            }
+            for f in found
+        ] or "файлів .blk не знайдено",
+    }
 
 
 def _sum3d_cam_deep(db: Session, root: str, args: dict, limit: int) -> dict[str, Any]:
@@ -1226,14 +1252,18 @@ TOOLS = TOOLS + (
             "налаштування Sum3D і реєстр; kind=cam_deep (sum3d_id, value) — матриці "
             "масштабу, задане число, вершини STL у проєкті; kind=cam_compare — "
             "проєкти ПММА проти цирконію. Для пошуку, де Sum3D тримає "
-            "коефіцієнт усадки диска. Лише читання; текстових значень і назв STL "
+            "коефіцієнт усадки диска. kind=blk_shape (brand — підрядок назви "
+            "диска, limit 1–2) — геометрія диска: ряди чисел, полілінії вирізів "
+            "на одній висоті (межі, площа, проріджені точки) і службові проміжки "
+            "між ними шістнадцятково, літери затерто; щоб розібрати, де на диску "
+            "вже вирізано. Лише читання; текстових значень і назв STL "
             "(імена пацієнтів) не віддає."
         ),
         schema={
             "type": "object",
             "properties": {
                 "kind": {"type": "string",
-                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare."},
+                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare, blk_shape."},
                 "value": {"type": "number",
                           "description": "Для cam_deep: очікуваний коефіцієнт (1.25) — точний пошук і вершини STL × value."},
                 "brand": {"type": "string",
@@ -1242,7 +1272,8 @@ TOOLS = TOOLS + (
                 "sum3d_id": {"type": "string",
                              "description": "Хвіст Sum3D ID (13-12-29) — конкретний проєкт .cam."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 5,
-                          "description": "Скільки найновіших файлів кожного виду (типово 2)."},
+                          "description": "Скільки найновіших файлів кожного виду (типово 2; "
+                                         "для blk_shape типово 1, не більше 2)."},
             },
             "additionalProperties": False,
         },
