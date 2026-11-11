@@ -1307,6 +1307,8 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .mc-cp-unk{font-size:var(--fs-0);color:var(--warn,#e6a03c)}
 .mailv2 .mc-attshade{flex:0 0 auto;padding:1px 6px;border-radius:5px;font-size:var(--fs-0);border:1px solid rgba(var(--accent-rgb), .34);color:var(--accent-c)}
 .mailv2 .mc-attshade.unk{border-color:rgba(230,160,60,.4);color:var(--warn,#e6a03c)}
+/* Спільний файл (без номера зуба, 11.11.26): не колір і не тривога — тихо. */
+.mailv2 .mc-attshade.is-shared{border-color:var(--line-2);color:var(--ink-3)}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Режим читання листа (_mail_letter_reader.html). Виїзна панель справа — той

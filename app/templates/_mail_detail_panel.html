@@ -163,17 +163,22 @@
                    правило §2 «рішення за оператором». #}
                 <div class="mc-colorplan" role="group" aria-label="Кольори з листа">
                     <span class="mc-cp-label">Кольори з листа:</span>
+                    {# Ключ файл↔колір — пацієнт (`names`) або номер зуба (`teeth`,
+                       власник 11.11.26). Спільні файли без зуба (`extra_ids`)
+                       чіп бере лише в останнього кольору листа. #}
+                    {% set _teeth = color_plan.kind == 'teeth' %}
                     {% for g in color_plan.groups %}
+                    {% set _who = ('зуб ' if g.names|length == 1 else 'зуби ') ~ g.names|join(', ') if _teeth else g.names|join(', ') %}
                     <button type="button" class="mc-cp-chip"
-                            data-cp-ids="{{ g.attachment_ids|join(',') }}"
+                            data-cp-ids="{{ (g.attachment_ids + g.extra_ids)|join(',') }}"
                             data-cp-material="{{ g.material }}"
-                            title="Позначити файли {{ g.names|join(', ') }} і підставити «{{ g.material }}»">
+                            title="Позначити файли ({{ _who }}{% if g.extra_ids %} і спільні{% endif %}) і підставити «{{ g.material }}»">
                         <b class="mono">{{ g.shade }}</b>
-                        <span class="mc-cp-who">{{ g.names|join(', ') }} · {{ g.attachment_ids|length }} файл.</span>
+                        <span class="mc-cp-who">{{ _who }} · {{ (g.attachment_ids + g.extra_ids)|length }} файл.</span>
                     </button>
                     {% endfor %}
                     {% if color_plan.unmatched_ids %}
-                    <span class="mc-cp-unk" title="Ім'я в назві файлу не збіглось з жодним пацієнтом у тексті — віднесіть вручну">? {{ color_plan.unmatched_ids|length }} файл. без кольору</span>
+                    <span class="mc-cp-unk" title="{% if _teeth %}Номер зуба в назві файлу не збігся з кольором у тексті — віднесіть вручну{% else %}Ім'я в назві файлу не збіглось з жодним пацієнтом у тексті — віднесіть вручну{% endif %}">? {{ color_plan.unmatched_ids|length }} файл. без кольору</span>
                     {% endif %}
                 </div>
                 {% elif multi %}<div class="mc-atts-hint">познач файли цього кольору — решта лишиться в листі</div>{% endif %}
@@ -217,7 +222,11 @@
                         {% endif %}
                         {% if color_plan and not claimed and not is_missing %}
                         {% set _sh = color_plan.by_attachment.get(attachment.id) %}
+                        {% if not _sh and attachment.id in color_plan.shared_ids %}
+                        <span class="mc-attshade mono is-shared" title="Файл без номера зуба — спільний, піде з останнім кольором">спільний</span>
+                        {% else %}
                         <span class="mc-attshade mono{% if not _sh %} unk{% endif %}"{% if not _sh %} title="Колір не визначено — віднесіть вручну"{% endif %}>{{ _sh or '?' }}</span>
+                        {% endif %}
                         {% endif %}
                         {% if is_missing %}<span class="mc-attmiss">немає</span>{% endif %}
                         <span class="mc-attsize mono">{% if attachment.size_bytes %}{% if attachment.size_bytes >= 1048576 %}{{ (attachment.size_bytes / 1048576)|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}{% else %}—{% endif %}</span>

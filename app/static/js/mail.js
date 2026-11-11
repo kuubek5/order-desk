@@ -835,9 +835,14 @@ document.addEventListener("click", (event) => {
   const form = chip.closest("#mail-card-form");
   if (!form) return;
   const ids = new Set((chip.dataset.cpIds || "").split(",").filter(Boolean));
-  form.querySelectorAll(".mc-attcb").forEach((cb) => {
+  const boxes = form.querySelectorAll(".mc-attcb");
+  boxes.forEach((cb) => {
     cb.checked = ids.has(cb.value);
   });
+  // Галочки поставлені кодом — подія change сама не прийде, а кількість за
+  // зубами (обробник `.mc-attcb` нижче) рахується саме на ній. Без цього чіп
+  // «b1 · зуб 23» лишав у полі 2 одиниці з обох кольорів (11.11.26).
+  if (boxes.length) boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
   const material = form.querySelector("#mc-material");
   if (material && chip.dataset.cpMaterial) {
     material.value = chip.dataset.cpMaterial;

@@ -15,6 +15,16 @@
 Розбір тексту: ім'я (імена) ДО відтінку отримують цей відтінок. «денис, юшков
 а3.5» — обидва a3.5: так люди пишуть перелік. Ім'я без відтінку після нього
 («Грунський Сергій» у даних доставки) нічого не отримує.
+
+Другий ключ — НОМЕР ЗУБА (власник 11.11.26, Max Petrenko): «Колір - 23 ( B1 )
+47 ( A1 )», а файли Exocad названі `…-23-waxup_cad.stl`, `…-47-waxup_cad.stl`,
+пацієнта в назвах немає. Зуб бере колір лише тоді, коли колір стоїть ОДРАЗУ за
+ним (або за переліком зубів «23, 24 а2»): у тому самому листі «47 Коронки
+Пован» і «буд. 13» кольору не мають. Імена мають першість: цей розбір
+вмикається, лише коли за іменами підказки немає. Файл без жодного номера зуба
+(`.constructionInfo` проєкту) спільний для всіх кольорів — його бере чіп
+ОСТАННЬОГО кольору, що лишився в листі, інакше лист висів би у «Вхідних» з
+одним нікому не потрібним файлом.
 """
 
 from __future__ import annotations
@@ -22,7 +32,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from app.material_match import _SHADE_RE, _forms, _tokens
+from app.material_match import _CYRILLIC_SHADE, _SHADE_RE, _forms, _tokens
+from app.services.stl_units import teeth_in_filename
 
 # Слова, що стоять поруч із переліком кольорів, але пацієнтами не є. Вони
 # НЕ мусять ставати «іменами»: слово «проект» є в кожному імені файлу, і
@@ -67,17 +78,24 @@ class ColorGroup:
     material: str
     names: list[str] = field(default_factory=list)
     attachment_ids: list[int] = field(default_factory=list)
+    # Спільні файли (без номера зуба), які чіп позначає разом зі своїми —
+    # лише в останнього кольору листа (див. докстрінг модуля).
+    extra_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
 class ColorPlan:
     """Підказка на весь лист. `by_attachment` — відтінок кожного віднесеного
     файлу (для позначки біля імені файлу); `unmatched_ids` — файли, яких
-    однозначно віднести не вдалося."""
+    однозначно віднести не вдалося; `kind` — чим звʼязано файл і колір
+    (`names` — пацієнт, `teeth` — номер зуба); `shared_ids` — файли без
+    номера зуба, спільні для всіх кольорів."""
 
     groups: list[ColorGroup]
     unmatched_ids: list[int]
     by_attachment: dict[int, str]
+    kind: str = "names"
+    shared_ids: list[int] = field(default_factory=list)
 
 
 def _is_name(token: str, material_words: set[str]) -> bool:
@@ -117,6 +135,84 @@ def parse_name_shades(text: str | None, material_words: set[str]) -> dict[str, s
     return result
 
 
+def _tooth_number(token: str) -> int | None:
+    """Постійний зуб FDI (11–48) з токена тексту; інакше None."""
+    if len(token) != 2 or not token.isdigit():
+        return None
+    n = int(token)
+    return n if n // 10 in (1, 2, 3, 4) and 1 <= n % 10 <= 8 else None
+
+
+def parse_tooth_shades(text: str | None) -> dict[int, str]:
+    """{зуб: відтінок} із тексту листа: «23 ( B1 ) 47 ( A1 )», «23, 24 а2».
+
+    Зуби, що стоять ПІДРЯД, отримують відтінок, який іде одразу за ними; будь-яке
+    інше слово між ними обнуляє перелік. Зуб, названий з двома різними
+    кольорами, неоднозначний — його не беремо."""
+    result: dict[int, str] = {}
+    conflicts: set[int] = set()
+    for line in (text or "").splitlines():
+        pending: list[int] = []
+        line = _URL_RE.sub(" ", line)
+        for token in _tokens(line):
+            if _SHADE_RE.match(token):
+                shade = token.translate(_CYRILLIC_SHADE)
+                for tooth in pending:
+                    if tooth in result and result[tooth] != shade:
+                        conflicts.add(tooth)
+                    result[tooth] = shade
+                pending = []
+                continue
+            number = _tooth_number(token)
+            if number is None:
+                pending = []
+            else:
+                pending.append(number)
+    for tooth in conflicts:
+        result.pop(tooth, None)
+    return result
+
+
+def _tooth_plan(body_text: str | None, base: str, attachments: list) -> ColorPlan | None:
+    """Те саме групування, але ключ файл↔колір — номер зуба в імені файлу."""
+    tooth_shades = parse_tooth_shades(body_text)
+    if len(set(tooth_shades.values())) < 2:
+        return None
+    by_shade: dict[str, ColorGroup] = {}
+    by_attachment: dict[int, str] = {}
+    unmatched: list[int] = []
+    shared: list[int] = []
+    for attachment in attachments:
+        teeth = teeth_in_filename(attachment.filename or "")
+        if not teeth:
+            shared.append(attachment.id)
+            continue
+        shades = {tooth_shades.get(t) for t in teeth}
+        if None in shades or len(shades) != 1:
+            # Зуб, якого немає в тексті, або міст через два кольори — не вгадуємо.
+            unmatched.append(attachment.id)
+            continue
+        shade = next(iter(shades))
+        assert shade is not None
+        group = by_shade.get(shade)
+        if group is None:
+            group = ColorGroup(shade=shade, material=f"{base} {shade}".strip())
+            by_shade[shade] = group
+        group.attachment_ids.append(attachment.id)
+        for tooth in teeth:
+            if str(tooth) not in group.names:
+                group.names.append(str(tooth))
+        by_attachment[attachment.id] = shade
+    if not by_shade:
+        return None
+    text_order = list(dict.fromkeys(tooth_shades.values()))
+    groups = sorted(by_shade.values(), key=lambda g: text_order.index(g.shade))
+    if len(groups) == 1:
+        groups[0].extra_ids = list(shared)
+    return ColorPlan(groups=groups, unmatched_ids=unmatched, by_attachment=by_attachment,
+                     kind="teeth", shared_ids=shared)
+
+
 def _name_hits(filename: str, names: list[str]) -> set[str]:
     """Які імена з тексту стоять в імені файлу.
 
@@ -154,6 +250,13 @@ def suggest_color_plan(
     """
     base = material_base(material_guess)
     material_words = set(base.split())
+    return (_name_plan(body_text, base, material_words, attachments)
+            or _tooth_plan(body_text, base, attachments))
+
+
+def _name_plan(body_text: str | None, base: str, material_words: set[str],
+               attachments: list) -> ColorPlan | None:
+    """Групування за пацієнтом: ім'я в тексті біля кольору ↔ ім'я у файлі."""
     name_shades = parse_name_shades(body_text, material_words)
     if len(set(name_shades.values())) < 2:
         return None
