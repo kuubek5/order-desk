@@ -1185,6 +1185,41 @@ def _stl_height_worker(stop_event: Event) -> None:
             return
 
 
+BOARD_MODELS_INTERVAL_SECONDS = 30.0
+BOARD_MODELS_INITIAL_DELAY_SECONDS = 90.0
+
+
+def _board_models_worker(stop_event: Event) -> None:
+    """3D-моделі робіт для табло цеху (`app/services/board_models.py`).
+
+    Раз на 30 с, лише коли табло ввімкнене: спершу роботи на шпинделях, потім
+    свіжі з Sum3D (наперед, щоб нова програма на верстаті не чекала збірки).
+    Прохід обмежений у часі; недороблене бере наступний. Раз на годину —
+    прибирання кешу моделей."""
+    from app.services import board_models, furnace_board
+    from app.settings_store import get_technician_files_path
+
+    if stop_event.wait(BOARD_MODELS_INITIAL_DELAY_SECONDS):
+        return
+    last_prune = 0.0
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                if furnace_board.board_enabled(db):
+                    export_root = (get_export_folder_path(db) or "").strip()
+                    board_models.warm_once(
+                        db, get_technician_files_path(db),
+                        Path(export_root) if export_root else None,
+                    )
+            if time.monotonic() - last_prune > 3600:
+                board_models.prune_cache()
+                last_prune = time.monotonic()
+        except Exception:  # noqa: BLE001 — фонова збірка не валить застосунок
+            logger.exception("Фонова збірка 3D-моделей табло не вдалась")
+        if stop_event.wait(BOARD_MODELS_INTERVAL_SECONDS):
+            return
+
+
 def _power_schedule_worker(stop_event: Event) -> None:
     """Графік відключень світла для черги цеху (`power_schedule`): раз на
     10 хв, а поки живого знімка немає — раз на 2 хв. Черга не задана — запитів
@@ -1356,6 +1391,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-stats-forecast", _stats_forecast_worker),
         _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
         _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
+        _BackgroundWorker("kuubmill-board-models", _board_models_worker),
         _BackgroundWorker("kuubmill-mail-links", _mail_links_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
         _BackgroundWorker("kuubmill-power-schedule", _power_schedule_worker),

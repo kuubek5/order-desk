@@ -137,6 +137,26 @@ def create_board_app() -> FastAPI:
             return _not_found()
         return _no_store(FileResponse(path, media_type="image/jpeg"))
 
+    @app.get("/t/{token}/model/{key}.json")
+    def shop_model(token: str, key: str):
+        """3D-модель роботи для плитки верстата (`board_models`). Ключ — хеш
+        файлу, 24 hex-символи: назви файлу чи теки назовні не йдуть, а вийти
+        за теку кешу ним неможливо. Шматок уже стиснутий; ключ міняється
+        разом із файлом, тож браузер тримає модель у себе."""
+        from app.services import board_models
+
+        with _db() as db:
+            if not _allowed(db, token):
+                return _not_found()
+        path = board_models.cached_file(key)
+        if path is None:
+            return _not_found()
+        return FileResponse(path, media_type="application/json", headers={
+            "Content-Encoding": "gzip",
+            "Cache-Control": "private, max-age=604800, immutable",
+            "X-Content-Type-Options": "nosniff",
+        })
+
     @app.get("/static/css/{name}")
     def board_css(name: str):
         if name not in _CSS:

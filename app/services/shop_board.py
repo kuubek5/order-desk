@@ -238,6 +238,10 @@ class ShopMachine:
     # просто Sum3D. Шаблон сам обгортає хвіст у `<b>` (екранування тоді його).
     prog_head: str = ""
     prog_tail: str = ""
+    # 3D-моделі робіт на шпинделі (`board_models.models_for`): адреса за
+    # секретом табло, скільки одиниць несе модель, чи вона замкнена. Порожньо —
+    # моделей ще немає (не зібрані, немає STL), і плитка лишається як була.
+    models: list = field(default_factory=list)
 
     @property
     def has_prog(self) -> bool:
@@ -590,6 +594,11 @@ def _machine(card, token: str) -> ShopMachine:
     item.prog_head, item.prog_tail = program_line(getattr(card, "iso_name", None))
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
+    if token:
+        # Без токена (картинка бота) адреси моделей нікому не потрібні.
+        from app.services import board_models
+
+        item.models = board_models.models_for(getattr(card, "orders", None) or [], token)
     if not item.works:
         # Верстат щойно доробив, а програма вже зникла з екрана (на новому
         # поколінні SUMMARY назви не несе). Тоді картка називає ОСТАННЮ роботу
