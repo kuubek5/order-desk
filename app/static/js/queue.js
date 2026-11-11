@@ -1324,6 +1324,7 @@ document.addEventListener("click", (event) => {
 const HEADER_WIDGET_HOSTS = {
   machines: { url: "/machines/strip", target: "#machine-strip" },
   sisma: { url: "/machines/sisma", target: "#sisma-strip" },
+  power: { url: "/power/widget", target: "#power-widget" },
   // Секції з власним поллом: полл, що вилетів ДО збереження, повернув би
   // старий стан — тож після збереження перемальовуємо їх явно.
   "side-furnace": { url: "/furnaces/side", target: "#furnace-side" },

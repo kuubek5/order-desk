@@ -291,6 +291,10 @@ PREFERENCE_KEYS = {
     # Що малює плитка SISMA на табло цеху: "classic" | "melt" | "tower"
     # (`shop_board.SISMA_STYLES`); не задано — "classic", як до вибору.
     "shop_board_sisma_style",
+    # Графік відключень світла (`app/services/power_schedule.py`): номер черги
+    # ("4.1"; порожньо — віджета немає ніде) і смуга на табло цеху ("1").
+    "power_group",
+    "power_board_enabled",
     # Доступ до `/mcp` по мережі (app/services/mcp_gateway.py): окремий слухач
     # на порту 8011, лише читання. enabled — "1"/""; token — єдина межа
     # доступу, бо запит приходить з ІНШОЇ машини (тунель), а не з петлі. У

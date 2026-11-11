@@ -352,6 +352,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/icon-styles.css",
     "/static/css/element-styles.css",
     "/static/css/lookgear.css",
+    "/static/css/power.css",
     "/static/css/feedback.css",
     # screen_inbox.css свідомо НЕ тут: файл вантажиться лише екраном
     # «Невідомі екрани» через extra_head у screens.html (як discs.css і

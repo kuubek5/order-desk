@@ -413,6 +413,9 @@ class ShopView:
     nearest_iso: str = ""
     # Стиль малюнка в полотні SISMA (`SISMA_STYLES`); плитку не змінює.
     sisma_style: str = DEFAULT_SISMA_STYLE
+    # Смуга «Світло» в шапці (`power_schedule.PowerView`); None — вимкнено в
+    # налаштуваннях або черга відключень не задана.
+    power: Optional[object] = None
 
     @property
     def columns(self) -> int:
@@ -657,6 +660,10 @@ def shop_view(
     view = ShopView(now=now)
     view.sisma_style = (normalize_sisma_style(sisma_style) if sisma_style is not None
                         else read_sisma_style(db))
+    # Графік світла вже лежить у памʼяті — табло по нього нікуди не ходить.
+    from app.services import power_schedule
+
+    view.power = power_schedule.board_view(now)
 
     for card in source:
         # Верстат, прибраний із табло в Налаштуваннях, сюди не потрапляє —

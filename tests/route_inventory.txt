@@ -292,3 +292,5 @@ POST /settings/users/initials
 GET /clients/{client_id}/fact-proof
 GET /clients/{client_id}/slot
 POST /clients/{client_id}/facts
+GET /power/widget
+POST /settings/feedback/board/power

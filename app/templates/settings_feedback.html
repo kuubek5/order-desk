@@ -251,6 +251,18 @@
                             {% endfor %}
                             <button type="submit" class="settings-secondary-button">Зберегти вигляд</button>
                         </form>
+                        {# Графік відключень світла (власник 11.11.26). Номер черги
+                           вмикає віджет узагалі (CRM і табло); прапорець — лише
+                           смугу на телевізорі. У CRM кожен ховає плашку для себе
+                           в шестерні «Черги». #}
+                        <form method="post" action="/settings/feedback/board/power" class="sisma-style" id="power-schedule">
+                            <p class="settings-help"><b>Графік відключень світла</b> — плашка в шапці «Черги» й «Нових з пошти» і смуга на табло цеху. Потрібен лише номер черги, як на сайті ДТЕК (наприклад 4.1); адреса не зберігається. Порожньо — віджета немає ніде.</p>
+                            <label class="settings-help" for="power-group">Черга відключень</label>
+                            <input class="login-input" type="text" id="power-group" name="group" value="{{ power_group }}"
+                                   inputmode="decimal" autocomplete="off" maxlength="5" placeholder="4.1">
+                            <label class="schip"><input type="checkbox" name="board" value="1" {% if power_board %}checked{% endif %}> Показувати смугу на табло цеху</label>
+                            <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        </form>
                         {# Ряд кнопок — не рядок реєстру: `.stand-drow` малює межу
                            згори й розтягує вміст, наче це запис у переліку. #}
                         <div class="sbtnrow">

@@ -92,6 +92,7 @@ from app.routers.discs import router as discs_router
 from app.routers.screens import router as screens_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
+from app.routers.power import router as power_router
 from app.routers.feedback import router as feedback_router
 from app.routers.diag import router as diag_router
 from app.routers.mcp import router as mcp_router
@@ -1184,6 +1185,30 @@ def _stl_height_worker(stop_event: Event) -> None:
             return
 
 
+def _power_schedule_worker(stop_event: Event) -> None:
+    """Графік відключень світла для черги цеху (`power_schedule`): раз на
+    10 хв, а поки живого знімка немає — раз на 2 хв. Черга не задана — запитів
+    немає взагалі. Зміна черги в налаштуваннях будить прохід одразу (`wake`)."""
+    from app.services import power_schedule
+
+    if stop_event.wait(5.0):
+        return
+    while not stop_event.is_set():
+        fresh = True
+        try:
+            with SessionLocal() as db:
+                group = power_schedule.load_config(db)
+            power_schedule.wake.clear()
+            if group:
+                fresh = power_schedule.refresh(group, power_schedule.http_fetch_json)
+        except Exception:  # noqa: BLE001 — віджет не має валити застосунок
+            logger.exception("Графік світла: прохід не вдався")
+            fresh = False
+        for _ in range(power_schedule.REFRESH_SECONDS if fresh else 120):
+            if stop_event.wait(1.0) or power_schedule.wake.is_set():
+                break
+
+
 def _power_watch_worker(stop_event: Event) -> None:
     """Перерва перед стартом (світло, вимкнення ПК) — один раз; далі мітка
     «живий» раз на хвилину. Див. `app/services/power_watch.py`."""
@@ -1333,6 +1358,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
         _BackgroundWorker("kuubmill-mail-links", _mail_links_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
+        _BackgroundWorker("kuubmill-power-schedule", _power_schedule_worker),
     ]
     for w in workers:
         w.start()
@@ -1723,6 +1749,8 @@ app.include_router(shift_router)
 app.include_router(furnace_router)
 # Верстати — живі кадри екранів RemiCORE, дзеркало пічного модуля.
 app.include_router(machines_router)
+# Віджет «Світло» в шапці CRM — власний хвилинний полл (app/routers/power.py).
+app.include_router(power_router)
 # «Нові диски» — узяті з архіву диски й замовлення на склад (замінив
 # розділ налаштувань «Заготовки», 10.09.26).
 app.include_router(discs_router)

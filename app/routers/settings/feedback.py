@@ -57,6 +57,8 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "board_port": furnace_board.BOARD_PORT,
             "sisma_styles": shop_board.SISMA_STYLES,
             "sisma_style": shop_board.read_sisma_style(db),
+            "power_group": get_setting(db, "power_group") or "",
+            "power_board": (get_setting(db, "power_board_enabled") or "") == "1",
             "flash": flash,
         },
     )
@@ -281,6 +283,34 @@ def regenerate_furnace_board_link(request: Request, db: Session = Depends(get_db
     furnace_board.regenerate_token(db)
     db.commit()
     return _board_flash(request, "success", "Нове посилання готове — старе більше не відкривається.")
+
+
+@router.post("/settings/feedback/board/power")
+def save_power_schedule(request: Request, group: str = Form(""), board: str = Form(""),
+                        db: Session = Depends(get_db)):
+    """Графік відключень світла: номер черги й смуга на табло (власник 11.11.26).
+
+    Форма шле обидва поля одним «Зберегти», тож порожній прапорець тут — це
+    справді «вимкнути смугу», а порожня черга — «прибрати віджет звідусіль».
+    Адреса не питається й не зберігається: графік іде по черзі."""
+    require_settings_admin(request, db)
+    from app.services import power_schedule
+
+    clean = power_schedule.clean_group(group)
+    if group.strip() and not clean:
+        return _board_flash(request, "error", "Номер черги має вигляд 4.1 — як на сайті ДТЕК.")
+    on_board = board == "1"
+    set_setting(db, power_schedule.GROUP_KEY, clean)
+    set_setting(db, power_schedule.BOARD_KEY, "1" if on_board else "")
+    db.commit()
+    power_schedule.configure(clean, on_board)
+    if not clean:
+        return _board_flash(request, "success", "Чергу прибрано — віджета «Світло» більше немає ніде.")
+    return _board_flash(
+        request, "success",
+        f"Черга {clean} збережена. Графік зʼявиться за кілька секунд; смуга на табло цеху "
+        + ("увімкнена." if on_board else "вимкнена."),
+    )
 
 
 @router.post("/settings/feedback/board/sisma-style")

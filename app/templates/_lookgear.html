@@ -176,7 +176,7 @@
         <div class="lookrow lookrow-full">
             <span class="lookrow-name">Віджети в шапці</span>
             <div class="loadtoggles" role="group" aria-label="Віджети в шапці черги">
-                {% for key, title in [('machines', 'Верстати'), ('sisma', 'Sisma')] %}
+                {% for key, title in [('machines', 'Верстати'), ('sisma', 'Sisma'), ('power', 'Світло')] %}
                 <button type="button" class="loadtoggle" data-header-widget="{{ key }}"
                         aria-pressed="{{ 'false' if key in widgets_hidden else 'true' }}">{{ title }}</button>
                 {% endfor %}

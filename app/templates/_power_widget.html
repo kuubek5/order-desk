@@ -1,0 +1,56 @@
+{# Віджет «Світло» в шапці «Черги» й «Нових з пошти» (власник 11.11.26):
+   плашка зі стрічкою доби, по кліку — сітка годин на сьогодні й завтра.
+
+   Обгортка віддається ЗАВЖДИ, навіть порожня й схована: у ній живе полл, і
+   без неї віджет не зміг би ні зʼявитись, коли задали чергу, ні повернутись
+   після вмикання в шестерні (той самий контракт, що в смуги верстатів).
+   Сховано — `hidden`: ключ `power` у прихованих віджетах акаунта.
+
+   Чи відкрита сітка, памʼятає клас `power-open` на body (app.js), а не сам
+   віджет: полл замінює його цілком раз на хвилину, і відкрита сітка інакше
+   закривалась би під руками. Тексти й числа рахує сервер
+   (`power_schedule.build_view`), тут — лише розмітка. #}
+{% set pw = power_live() %}
+<div id="power-widget" class="pw-slot"
+     hx-get="/power/widget" hx-trigger="every 60s[!document.hidden]"
+     hx-target="this" hx-swap="outerHTML" hx-disinherit="*"
+     {% if pw is none or 'power' in hidden_widgets(request) %}hidden{% endif %}>
+  {% if pw is not none %}
+  <button type="button" class="pw-head {{ pw.tone }}" data-power-toggle
+          aria-expanded="false" aria-controls="power-panel" title="Світло · черга {{ pw.group }}">
+    <svg class="pw-ico{% if pw.lit %} is-lit{% endif %}" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.5 5 13.6h6.1l-1 7.9 8.9-11.6h-6.3z"/></svg>
+    <span class="pw-say">{{ pw.say }}{% if pw.sub %} <span>· {{ pw.sub }}</span>{% endif %}</span>
+    <span class="pw-track">
+      <span class="pw-bar{% if not pw.has_bar %} is-void{% endif %}">
+        {% if pw.has_bar %}{% for s in pw.segments %}<i class="pw-off" style="left:{{ s.left }}%;width:{{ s.width }}%"></i>{% endfor %}<i class="pw-past" style="width:{{ pw.now_pct }}%"></i>{% endif %}
+      </span>
+      {% if pw.has_bar %}<i class="pw-now" style="left:{{ pw.now_pct }}%"></i>{% endif %}
+    </span>
+    {% if pw.left %}<span class="pw-left">{{ pw.left }}</span>{% endif %}
+    <svg class="pw-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+  </button>
+
+  <div class="pw-panel {{ pw.tone }}" id="power-panel" role="region" aria-label="Графік світла">
+    <header>
+      <h4>Світло <span>· черга {{ pw.group }}</span></h4>
+      {% if pw.updated %}<span class="pp-upd">{{ pw.updated }}</span>{% endif %}
+    </header>
+    <p class="pp-now"><b>{{ pw.say }}</b>{% if pw.sub %} — {{ pw.sub }}{% endif %}{% if pw.left %}, через <span class="pp-left">{{ pw.left }}</span>{% endif %}</p>
+    <div class="pg">
+      <div class="pg-row pg-hours">
+        <span class="pg-lab"></span>
+        <div class="pg-cells">{% for h in range(24) %}<span>{{ '%02d' % h }}</span>{% endfor %}</div>
+        <span class="pg-sum"></span>
+      </div>
+      {% for label, cells, total in [('Сьогодні', pw.today_cells, pw.today_sum), ('Завтра', pw.tomorrow_cells, pw.tomorrow_sum)] %}
+      <div class="pg-row">
+        <span class="pg-lab">{{ label }}</span>
+        <div class="pg-cells">{% for c in cells %}<i class="is-{{ c.kind }}{% if c.past %} is-past{% endif %}{% if c.now %} is-now{% endif %}"></i>{% endfor %}</div>
+        <span class="pg-sum">{{ total }}</span>
+      </div>
+      {% endfor %}
+      <p class="pg-key"><i class="is-on"></i>світло є<i class="is-off"></i>немає<i class="is-first"></i>пів години<i class="is-now"></i>зараз</p>
+    </div>
+  </div>
+  {% endif %}
+</div>

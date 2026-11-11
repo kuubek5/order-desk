@@ -7,6 +7,35 @@
      data-build="{{ build|default('', true) }}"
      style="--cols:{{ view.columns }}">
 
+  {# Світло (власник 11.11.26): смуга доби в шапці, ліворуч від годинника.
+     Шапка стоїть поза живим шматком, тому смуга лежить ТУТ і піднята в шапку
+     стилем (`.pw-strip` у shop_board.html) — інакше вона не оновлювалась би.
+     Відлік тікає сам (`data-left-to`, як у печей). За пів години до
+     вимкнення додається смуга попередження на всю ширину. #}
+  {% if view.power %}{% set pw = view.power %}
+  <div class="pw-strip {{ pw.tone }}">
+    <svg class="pw-ico{% if pw.lit %} is-lit{% endif %}" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.5 5 13.6h6.1l-1 7.9 8.9-11.6h-6.3z"/></svg>
+    <span class="pw-two"><b>{{ pw.say }}</b><span>{{ pw.sub }}</span></span>
+    {% if pw.change_iso %}<span class="pw-count"><span data-left-to="{{ pw.change_iso }}">{{ pw.left }}</span><small>{{ pw.count_label }}</small></span>{% endif %}
+    <div class="pw-wrap">
+      <div class="pw-track">
+        <div class="pw-bar{% if not pw.has_bar %} is-void{% endif %}">
+          {% if pw.has_bar %}{% for s in pw.segments %}<i class="pw-off" style="left:{{ s.left }}%;width:{{ s.width }}%"></i>{% endfor %}<i class="pw-past" style="width:{{ pw.now_pct }}%"></i>{% endif %}
+        </div>
+        {% if pw.has_bar %}<i class="pw-now" style="left:{{ pw.now_pct }}%"></i>{% endif %}
+      </div>
+      <div class="pw-ticks">{% for h in range(0, 25, 3) %}<span style="left:{{ (h / 24 * 100)|round(2) }}%">{{ '%02d' % h }}</span>{% endfor %}</div>
+    </div>
+  </div>
+  {% if pw.kind == 'soon' %}
+  <div class="pw-alert">
+    <svg class="pw-ico is-lit" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.5 5 13.6h6.1l-1 7.9 8.9-11.6h-6.3z"/></svg>
+    <b>Через <span data-left-to="{{ pw.change_iso }}">{{ pw.left }}</span> вимкнуть світло</b>
+    <span>о {{ pw.at }} · {{ pw.back }}</span>
+  </div>
+  {% endif %}
+  {% endif %}
+
   <div class="mgrid">
     {% for m in view.machines %}
       {# `data-key`/`data-tone` — для ПЕРЕХОДІВ (shop_board.html): шматок

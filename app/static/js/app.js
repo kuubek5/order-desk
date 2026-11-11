@@ -1956,3 +1956,36 @@ document.addEventListener("toggle", (event) => {
   const search = box.querySelector("[data-fp-search]");
   if (search) search.focus();
 }, true);
+
+/* ── Віджет «Світло» в шапці: клік відкриває сітку годин ──
+   Стан «відкрито» живе класом на body, а не у віджеті: полл замінює віджет
+   цілком раз на хвилину, і відкрита сітка інакше закривалась би під руками. */
+(function () {
+  "use strict";
+  var OPEN = "power-open";
+  function sync() {
+    var head = document.querySelector("[data-power-toggle]");
+    if (head) head.setAttribute("aria-expanded", document.body.classList.contains(OPEN) ? "true" : "false");
+  }
+  function close() {
+    if (!document.body.classList.contains(OPEN)) return;
+    document.body.classList.remove(OPEN);
+    sync();
+  }
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("[data-power-toggle]")) {
+      document.body.classList.toggle(OPEN);
+      sync();
+    } else if (!target.closest("#power-widget")) {
+      close();
+    }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") close();
+  });
+  document.body.addEventListener("htmx:afterSettle", function (event) {
+    if (event.target && event.target.id === "power-widget") sync();
+  });
+})();

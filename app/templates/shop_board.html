@@ -355,7 +355,48 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink);
   font-size:clamp(11px,1vw,20px)}
 .lost[hidden]{display:none}
-#shop-live{flex:1;display:flex;flex-direction:column;min-height:0}
+#shop-live{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+
+/* ── Світло (власник 11.11.26): смуга доби в шапці ліворуч від годинника ──
+   Розмітка живе в живому шматку, а не в шапці (шапка не оновлюється), тому
+   смуга піднята над шматком: `bottom:100%`, висота — рядок годинника,
+   праворуч лишено місце під сам годинник. Тон спокійний: «світла немає» —
+   звичайний стан; колір тривоги лише перед вимкненням і на аварійних. */
+.pw-strip{position:absolute;z-index:3;left:1.4vw;right:clamp(130px,14.5vw,290px);bottom:100%;
+  height:clamp(31px,3.74vw,64px);margin-bottom:.2vh;display:flex;align-items:center;gap:1.5vw;min-width:0}
+.pw-strip.is-soon{--pw-tone:var(--warn)}
+.pw-strip.is-alarm{--pw-tone:var(--alarm)}
+.pw-ico{flex:none;display:block;width:2.1vw;height:2.1vw;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;color:var(--pw-tone,var(--accent-c))}
+.pw-ico.is-lit{fill:currentColor}
+.pw-two{display:flex;flex-direction:column;white-space:nowrap}
+.pw-two b{font:700 clamp(15px,1.5vw,30px)/1.15 var(--font-head);letter-spacing:.02em;
+  text-transform:uppercase;color:var(--pw-tone,var(--ink))}
+.pw-two span{font:500 clamp(11px,1.02vw,20px)/1.3 var(--font-body);color:var(--ink-2)}
+.pw-count{font:600 clamp(18px,2.2vw,44px)/1 var(--font-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em;white-space:nowrap;color:var(--pw-tone,var(--accent-c))}
+.pw-count small{font:500 .42em var(--font-body);color:var(--ink-3);margin-left:.5em;letter-spacing:0}
+.pw-wrap{flex:1;min-width:0;padding-top:1.9vh}
+.pw-track{position:relative}
+.pw-bar{position:relative;height:1.5vh;border-radius:.3vh;background:var(--accent-c);overflow:hidden}
+.pw-bar.is-void{background:rgba(255,255,255,.07)}
+.pw-bar .pw-off{position:absolute;top:0;bottom:0;background:#14100b;
+  background-image:repeating-linear-gradient(135deg,transparent 0 .5vh,rgba(255,255,255,.1) .5vh .65vh)}
+.pw-bar .pw-past{position:absolute;left:0;top:0;bottom:0;background:rgba(10,8,5,.58)}
+.pw-track .pw-now{position:absolute;top:-.7vh;bottom:-.7vh;width:.2vw;margin-left:-.1vw;
+  background:var(--ink);border-radius:1px;box-shadow:0 0 0 2px rgba(10,8,5,.75)}
+.pw-ticks{position:relative;height:1.9vh;margin-top:.4vh;
+  font:500 clamp(9px,.78vw,15px)/1.9vh var(--font-mono);color:var(--ink-3)}
+.pw-ticks span{position:absolute;transform:translateX(-50%)}
+.pw-ticks span:first-child{transform:none}
+.pw-ticks span:last-child{transform:translateX(-100%)}
+.pw-alert{flex:0 0 auto;display:flex;align-items:center;gap:1.4vw;margin:0 .7vw .9vh;padding:1.1vh 1.4vw;
+  border:1px solid rgba(var(--warn-rgb),.7);border-radius:6px;background:rgba(var(--warn-rgb),.12);
+  color:var(--warn-ink)}
+.pw-alert .pw-ico{width:2.2vw;height:2.2vw;color:var(--warn)}
+.pw-alert b{font:700 clamp(16px,1.9vw,38px)/1.1 var(--font-head);letter-spacing:.03em;
+  text-transform:uppercase;color:var(--warn)}
+.pw-alert span{font:500 clamp(12px,1.15vw,22px)/1.2 var(--font-body)}
 
 @media (prefers-reduced-motion:no-preference){
   /* Рядок програми — ОДИН рядок (власник 12.10.26). Рамка — `.prog` (її

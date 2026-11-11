@@ -100,7 +100,7 @@ def load_metrics_set(raw: str | None) -> set[str]:
 
 #: Віджети шапки черги, які можна сховати в шестерні: смуга верстатів і
 #: принтер Sisma. Ключ — те, що летить з кнопки й лежить на акаунті.
-HEADER_WIDGETS = ("machines", "sisma")
+HEADER_WIDGETS = ("machines", "sisma", "power")
 
 #: Секції бокової панелі, які можна сховати, — `side-` + ключ `data-sec`.
 #: Префікс, бо «machines» (смуга в шапці) і «machine» (секція збоку) — різні
