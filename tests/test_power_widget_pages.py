@@ -232,8 +232,13 @@ def test_board_strip_obeys_its_own_switch(app_db, monkeypatch):  # noqa: F811
     for path in (f"/t/{token}/shop", f"/t/{token}/shop/cards"):
         html = board.get(path)[2]
         strip = html.split('class="pw-strip', 1)[1].split('class="mgrid"', 1)[0]
-        for needle in ("Світла немає", "до кінця доби", 'class="pw-off"', "pw-ticks"):
+        for needle in ("Світла немає", "до кінця доби", 'class="pw-cells"', 'class="pw-hours"'):
             assert needle in strip, (path, needle)
+        # Доба 24 клітинками з номером години під кожною (варіант В, 11.11.26).
+        cells = strip.split('class="pw-cells"', 1)[1].split("</div>", 1)[0]
+        hours = strip.split('class="pw-hours"', 1)[1].split("</div>", 1)[0]
+        assert cells.count("<i ") == 24 and cells.count("is-off") == 24 and cells.count("is-now") == 1
+        assert hours.count("<span") == 24 and ">00<" in hours and ">23<" in hours
         assert "pw-alert" not in strip and "data-left-to" not in strip, "до кінця доби відліку немає"
     ps.configure("", True)
     assert 'class="pw-strip' not in board.get(f"/t/{token}/shop/cards")[2], "немає черги — немає смуги"
