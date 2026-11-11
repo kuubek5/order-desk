@@ -4,6 +4,7 @@
    «починався б спочатку» кожні пів хвилини. #}
 <div id="shop-live"
      data-server-now="{{ (view.now.timestamp() * 1000)|int }}"
+     data-build="{{ build|default('', true) }}"
      style="--cols:{{ view.columns }}">
 
   <div class="mgrid">

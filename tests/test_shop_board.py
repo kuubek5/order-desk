@@ -1133,3 +1133,57 @@ def test_program_line_is_one_line_only_with_motion():
     assert "text-overflow" not in motion.split("}", 3)[0]
     assert '<script src="/static/js/shop_board_prog.js" defer></script>' in html
     assert "window.KMProg.apply(document)" in html, "після свапу рамки не переміряні"
+
+
+# ── Телевізор сам бере нову версію (власник 11.11.26) ────────────────────────
+
+def test_assets_build_follows_version_and_newest_file(tmp_path):
+    """Відбиток міняється і від версії, і від збереженого файлу; відсутній
+    файл не валить і не рахується."""
+    import os
+
+    a, b = tmp_path / "a.js", tmp_path / "b.css"
+    a.write_text("1"); b.write_text("2")
+    os.utime(a, (1_000, 1_000)); os.utime(b, (2_000, 2_000))
+    files = [a, b, tmp_path / "нема.js"]
+    assert sb.assets_build(files, version="1.2.3") == "1.2.3.2000"
+    assert sb.assets_build(files, version="1.2.4") == "1.2.4.2000"
+    os.utime(a, (3_000, 3_000))
+    assert sb.assets_build(files, version="1.2.3") == "1.2.3.3000"
+    assert sb.assets_build([], version="1.2.3") == "1.2.3.0"
+
+
+def test_page_and_live_fragment_carry_the_same_build(app_db, monkeypatch):  # noqa: F811
+    """Сторінка памʼятає відбиток, з яким відкрилась, а кожен живий шматок
+    несе поточний: поки вони однакові, табло себе не перечитує. Стилі й
+    скрипти віддаються без кешу, щоб перечитана сторінка взяла свіжі;
+    картинки кеш зберігають (їх шматок вставляє раз на пів хвилини)."""
+    import re
+
+    from app.__version__ import VERSION
+    from app.routers.furnace_board import create_board_app
+    from app.services import furnace_board as fb
+    from app.services import machines as machines_mod
+    from tests.test_furnace_board import _enable
+
+    _, factory = app_db
+    token = _enable(factory)
+    monkeypatch.setattr("app.db.SessionLocal", factory)
+    monkeypatch.setattr(machines_mod, "snapshot", lambda db: [])
+    monkeypatch.setattr(fb, "board_view", lambda db, now=None, cards=None: SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso=""))
+
+    board = MiniClient(create_board_app())
+    _, _, html = board.get(f"/t/{token}/shop")
+    _, _, frag = board.get(f"/t/{token}/shop/cards")
+    page_build = re.search(r'const BUILD = "([^"]+)";', html).group(1)
+    assert page_build.startswith(VERSION + ".") and not page_build.endswith(".0")
+    assert re.search(r'data-build="([^"]*)"', frag).group(1) == page_build
+    assert f'data-build="{page_build}"' in html, "шматок усередині сторінки — з тим самим відбитком"
+    for asset in ("css/fonts.css", "css/tokens.css", "css/theme-forge.css",
+                  "js/shop_board_slm.js", "js/shop_board_slm_melt.js", "js/shop_board_prog.js"):
+        status, headers, _ = board.get(f"/static/{asset}")
+        assert status == 200 and headers.get("cache-control") == "no-cache", asset
+    status, headers, _ = board.get("/static/img/shop-cat-a.webp")
+    assert status == 200 and headers.get("cache-control") != "no-cache"
+    assert "reloadIfNewBuild" in html and "location.reload()" in html

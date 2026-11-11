@@ -31,6 +31,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.__version__ import VERSION
 from app.business_day import business_now
 
 # Стани, які вимагають людини, — і те, як їх бачить око з проходу.
@@ -97,6 +98,25 @@ DISC_MAX_UNITS = 36          # більше на 98-мм заготовку не
 _DISC_FIELD = 37.0           # радіус поля коронок у viewBox 0..100 (диск 42, дуга 47)
 _DISC_ARC = 2 * math.pi * 47  # довжина дуги прогресу — у `stroke-dasharray`
 _GOLDEN_ANGLE = math.pi * (3 - math.sqrt(5))
+
+
+def assets_build(files, version: str = VERSION) -> str:
+    """Відбиток коду, який зараз крутить телевізор: версія + найсвіжіший файл.
+
+    Сторінка табло вантажить скрипти й стилі ОДИН раз, далі міняється лише
+    живий шматок. Тому після оновлення програми телевізор до ручного
+    перезавантаження показував стару анімацію (власник 11.11.26). Відбиток
+    їде і в сторінці, і в кожному шматку: розійшлися — сторінка перечитує
+    себе сама. Час файлів — щоб у розробці вистачало зберегти файл, без зміни
+    версії; файл, якого немає, просто не рахується.
+    """
+    newest = 0
+    for path in files:
+        try:
+            newest = max(newest, int(path.stat().st_mtime))
+        except OSError:
+            continue
+    return f"{version}.{newest}"
 
 
 @dataclass(frozen=True)

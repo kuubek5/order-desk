@@ -40,6 +40,14 @@ _JS = {"shop_board_slm.js", "shop_board_slm_melt.js", "shop_board_slm_tower.js",
        "shop_board_prog.js"}
 
 
+# Стилі й скрипти табло браузер не зберігає: після оновлення програми сторінка
+# телевізора перечитує себе сама (`shop_board.assets_build`), і зі збереженими
+# файлами вона б знову зібралась зі старої анімації. Вантажаться вони раз на
+# відкриття сторінки, тож ціна нульова. Картинок це НЕ стосується: їх живий
+# шматок вставляє раз на пів хвилини, і без кешу фото верстатів блимали б.
+_FRESH = {"Cache-Control": "no-cache"}
+
+
 def _db():
     from app.db import SessionLocal
 
@@ -65,6 +73,16 @@ def create_board_app() -> FastAPI:
 
     def _allowed(db, token: str) -> bool:
         return furnace_board.board_enabled(db) and furnace_board.token_matches(db, token)
+
+    templates_root = Path(resource_path("app/templates"))
+
+    def _shop_build() -> str:
+        """Відбиток усього, з чого складається табло цеху (`assets_build`)."""
+        return shop_board.assets_build([
+            templates_root / "shop_board.html", templates_root / "_shop_board_cards.html",
+            *(static_root / "css" / name for name in _CSS),
+            *(static_root / "js" / name for name in _JS),
+        ])
 
     @app.get("/t/{token}", response_class=HTMLResponse)
     def board_page(request: Request, token: str):
@@ -92,6 +110,7 @@ def create_board_app() -> FastAPI:
             view = shop_board.shop_view(db, token=token)
         return _no_store(templates.TemplateResponse(request, "shop_board.html", {
             "view": view, "token": token, "refresh": furnace_board.BOARD_REFRESH_SECONDS,
+            "build": _shop_build(),
         }))
 
     @app.get("/t/{token}/shop/cards", response_class=HTMLResponse)
@@ -101,7 +120,7 @@ def create_board_app() -> FastAPI:
                 return _not_found()
             view = shop_board.shop_view(db, token=token)
         return _no_store(templates.TemplateResponse(request, "_shop_board_cards.html", {
-            "view": view, "token": token,
+            "view": view, "token": token, "build": _shop_build(),
         }))
 
     @app.get("/t/{token}/portrait/{machine_id}.jpg")
@@ -122,7 +141,7 @@ def create_board_app() -> FastAPI:
     def board_css(name: str):
         if name not in _CSS:
             return _not_found()
-        return FileResponse(static_root / "css" / name, media_type="text/css")
+        return FileResponse(static_root / "css" / name, media_type="text/css", headers=_FRESH)
 
     @app.get("/static/img/{name}")
     def board_image(name: str):
@@ -137,6 +156,7 @@ def create_board_app() -> FastAPI:
     def board_js(name: str):
         if name not in _JS:
             return _not_found()
-        return FileResponse(static_root / "js" / name, media_type="application/javascript")
+        return FileResponse(static_root / "js" / name, media_type="application/javascript",
+                            headers=_FRESH)
 
     return app

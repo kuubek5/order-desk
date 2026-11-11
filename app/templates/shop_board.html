@@ -408,6 +408,12 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 (function () {
   "use strict";
   const REFRESH = {{ refresh }} * 1000;
+  /* Відбиток коду, з яким відкрито сторінку. Кожен живий шматок несе свій;
+     розійшлися — програму оновили, і телевізор має взяти нові скрипти й
+     стилі сам, без походу до нього. Самі файли табло віддає без кешу
+     (`furnace_board.board_js` / `board_css`), тож перечитана сторінка бере
+     свіжі, а не збережені браузером. */
+  const BUILD = {{ (build or "")|tojson }};
   let offset = 0;
   const pad = (n) => String(n).padStart(2, "0");
   const left = (ms) => {
@@ -512,11 +518,31 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
     });
   }
 
+  /* Перечитати сторінку, коли сервер віддає вже інший код. Спершу проба самої
+     сторінки: перезавантаження в мить, коли сервер ще піднімається, лишило б
+     на телевізорі сторінку помилки браузера назавжди. Один раз на відбиток
+     (sessionStorage): якщо після перечитування відбитки все одно різні, табло
+     не має смикатись раз на пів хвилини. */
+  async function reloadIfNewBuild(html) {
+    const found = /data-build="([^"]*)"/.exec(html);
+    const next = found && found[1];
+    if (!BUILD || !next || next === BUILD) return false;
+    try {
+      if (sessionStorage.getItem("km-board-reloaded") === next) return false;
+    } catch (_e) { /* сховище вимкнене — тоді без запобіжника від повтору */ }
+    const page = await fetch(location.href, { cache: "no-store" });
+    if (!page.ok) return false;
+    try { sessionStorage.setItem("km-board-reloaded", next); } catch (_e) { /* див. вище */ }
+    location.reload();
+    return true;
+  }
+
   async function refresh() {
     try {
       const resp = await fetch(location.pathname.replace(/\/$/, "") + "/cards", { cache: "no-store" });
       if (!resp.ok) throw new Error(resp.status);
       const html = await resp.text();
+      if (await reloadIfNewBuild(html)) return;
       const live = document.getElementById("shop-live");
       const canvas = document.getElementById("slm");
       // Живі котики — за ключем верстата: свіжий шматок приносить нові картинки,
