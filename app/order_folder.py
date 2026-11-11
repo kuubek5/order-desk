@@ -175,6 +175,12 @@ def resolve_email_attachment_folder(
         if resolved_root.is_dir():
             roots.append((lexical_root, resolved_root))
 
+    # Спершу файли, які ще не прийнято (`order_id is None`). У листі двох
+    # кольорів після першого прийняття його файли вже лежать у export, і
+    # «Відкрити папку» та прев'ю вели до вже прорахованої роботи замість
+    # решти листа (власник 11.11.26). Повністю прийнятий лист — як і раніше:
+    # нерозібраних немає, береться тека прийнятої роботи.
+    attachments = sorted(attachments, key=lambda a: getattr(a, "order_id", None) is not None)
     for attachment in attachments:
         raw = Path(attachment.saved_path)
         if not raw.is_absolute() or ".." in raw.parts:

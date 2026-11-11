@@ -179,6 +179,28 @@ def test_resolve_email_attachment_folder_accepts_file_under_trusted_root(tmp_pat
     ) == folder.resolve()
 
 
+def test_partly_accepted_letter_opens_the_folder_of_what_is_left(tmp_path):
+    """Лист двох кольорів (власник 11.11.26): b1 уже прийнято — його файл
+    переїхав в export, — а 47-й ще в спулі. «Відкрити папку» й прев'ю мусять
+    вести до файлів, які лишились, а не до теки вже прийнятої роботи."""
+    spool, export = tmp_path / "mail", tmp_path / "export"
+    accepted_dir = export / "Max" / "11.11.26" / "mono b1"
+    spool_dir = spool / "7"
+    accepted_dir.mkdir(parents=True)
+    spool_dir.mkdir(parents=True)
+    (accepted_dir / "x-23-waxup_cad.stl").write_bytes(b"mesh")
+    (spool_dir / "x-47-waxup_cad.stl").write_bytes(b"mesh")
+    accepted = _FakeAttachment(str(accepted_dir / "x-23-waxup_cad.stl"))
+    accepted.order_id = 5
+    left = _FakeAttachment(str(spool_dir / "x-47-waxup_cad.stl"))
+    left.order_id = None
+
+    assert resolve_email_attachment_folder([accepted, left], [spool, export]) == spool_dir.resolve()
+    # Лист прийнято повністю — тека прийнятої роботи, як і раніше.
+    left.order_id = 6
+    assert resolve_email_attachment_folder([accepted, left], [spool, export]) == accepted_dir.resolve()
+
+
 def test_resolve_email_attachment_folder_rejects_outside_and_traversal(tmp_path):
     root = tmp_path / "mail"
     root.mkdir()
