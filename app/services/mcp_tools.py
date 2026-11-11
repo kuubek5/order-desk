@@ -1335,6 +1335,133 @@ TOOLS = TOOLS + (
     ),
 )
 
+def tool_stl_shapes(db: Session, args: dict) -> dict[str, Any]:
+    """STL робіт цеху для 3D на табло: заміри й малюнок, без назв файлів і тек
+    (`app/services/stl_shapes.py`). Без `kind` — які види робіт є за період."""
+    import time
+    from collections import Counter
+    from datetime import datetime, timedelta
+
+    from PIL import Image
+    from sqlalchemy import or_
+
+    from app.models import Order
+    from app.services import stl_shapes
+    from app.services.device_diag import _encode
+    from app.services.stl_height import work_folder
+    from app.settings_store import get_export_folder_path, get_technician_files_path
+
+    days = _int_arg(args, "days", default=21, low=1, high=120)
+    since = datetime.now() - timedelta(days=days)
+    kind = str(args.get("kind") or "").strip().lower()
+    if not kind:
+        rows = db.execute(
+            select(Order.kind, Order.material_color).where(Order.created_at >= since)
+        ).all()
+        kinds = Counter((k or "—").strip().lower() for k, _m in rows)
+        return {
+            "днів": days,
+            "робіт": len(rows),
+            "види_робіт": dict(kinds.most_common(40)),
+            "підказка": "kind — частина виду роботи або матеріалу (абатмент, міст, вкладка, капа, віск).",
+        }
+    works_limit = _int_arg(args, "works", default=3, low=1, high=6)
+    files_limit = _int_arg(args, "files", default=2, low=1, high=4)
+    export_raw = (get_export_folder_path(db) or "").strip()
+    export_root = Path(export_raw) if export_raw else None
+    tech_root = get_technician_files_path(db)
+    pattern = f"%{kind}%"
+    candidates = db.scalars(
+        select(Order)
+        .where(Order.created_at >= since,
+               or_(Order.kind.ilike(pattern), Order.material_color.ilike(pattern)))
+        .order_by(Order.created_at.desc())
+        .limit(200)
+    ).all()
+    started = time.monotonic()
+    works: list[dict[str, Any]] = []
+    tiles: list[Any] = []
+    seen_folders: set[Path] = set()
+    no_folder = no_stl = 0
+    for order in candidates:
+        if len(works) >= works_limit or time.monotonic() - started > 40:
+            break
+        folder = work_folder(order, tech_root, export_root)
+        if folder is None:
+            no_folder += 1
+            continue
+        if folder in seen_folders:
+            continue
+        seen_folders.add(folder)
+        files = stl_shapes.stl_files(folder, files_limit)
+        if not files:
+            no_stl += 1
+            continue
+        number = len(works) + 1
+        described = []
+        for f_index, path in enumerate(files, 1):
+            info, poses = stl_shapes.describe(path)
+            label = f"р{number}·ф{f_index}"
+            info["кадр"] = label
+            described.append(info)
+            if poses is not None:
+                as_file, stood = poses
+                tiles.append(stl_shapes.render(as_file, label=f"{label} файл"))
+                tiles.append(stl_shapes.render(stood, label=f"{label} поворот"))
+        works.append({
+            "№": number,
+            "id": order.id,
+            "вид_роботи": order.kind,
+            "матеріал": order.material_color,
+            "кількість": order.quantity,
+            "джерело": order.source,
+            "файли": described,
+        })
+    result: dict[str, Any] = {
+        "вид": kind,
+        "днів": days,
+        "кандидатів": len(candidates),
+        "без_теки": no_folder,
+        "тека_без_stl": no_stl,
+        "роботи": works,
+    }
+    if tiles:
+        cols = min(4, len(tiles))
+        rows_n = (len(tiles) + cols - 1) // cols
+        side = tiles[0].size[0]
+        sheet = Image.new("RGB", (cols * side, rows_n * side), (12, 13, 18))
+        for i, tile in enumerate(tiles):
+            sheet.paste(tile, ((i % cols) * side, (i // cols) * side))
+        note: list[str] = []
+        result["_image"] = _encode(sheet, note)
+        if note:
+            result["примітка"] = note
+    return result
+
+
+TOOLS = TOOLS + (
+    Tool(
+        name="kmill_stl_shapes",
+        description=(
+            "STL робіт цеху для 3D на табло: для свіжих робіт заданого виду — чи модель замкнена, "
+            "чи знайдено край, габарити, висота, тип Exocad, і малюнок кожної моделі двічі: як лежить "
+            "у файлі і після повороту за краєм (пари «файл»/«поворот», по два кадри на файл). "
+            "Без kind — які види робіт є за період. Назв файлів, тек і клієнтів не віддає. Лише читання."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "description": "Частина виду роботи або матеріалу: абатмент, міст, вкладка, капа, віск, анатомія."},
+                "days": {"type": "integer", "minimum": 1, "maximum": 120, "description": "За скільки днів шукати, типово 21."},
+                "works": {"type": "integer", "minimum": 1, "maximum": 6, "description": "Скільки робіт, типово 3."},
+                "files": {"type": "integer", "minimum": 1, "maximum": 4, "description": "Скільки STL з кожної роботи, типово 2."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_stl_shapes,
+    ),
+)
+
 TOOLS_BY_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}
 
 # Анотації однакові для всіх: інструментів, що пишуть, тут немає й не буде
