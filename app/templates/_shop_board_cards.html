@@ -20,10 +20,14 @@
     {# Доба 24 клітинками з номером години під кожною (власник обрав
        варіант В 11.11.26): з відстані видно, о котрій дадуть і вимкнуть, без
        підрахунку по рисках. Зелена — світло є, темна — немає, половинка —
-       пів години, поточна година обведена. Без графіка — порожні, без «зараз». #}
-    <div class="pw-wrap{% if not pw.has_bar %} is-void{% endif %}">
+       пів години, поточна година обведена. Без графіка — порожні, без «зараз».
+       Поточна година з відстані (власник 12.11.26, фото з цеху: «погано
+       видно годину, що зараз»): товста світла рамка з сяйвом, риска хвилини
+       всередині (`--pw-min`, шматок оновлюється раз на 30 с) і номер години
+       плашкою навиворіт; минулі години й номери пригашені. #}
+    <div class="pw-wrap{% if not pw.has_bar %} is-void{% endif %}" style="--pw-min:{{ '%.3f' % ((view.now.minute * 60 + view.now.second) / 3600) }}">
       <div class="pw-cells">{% for c in pw.today_cells %}<i class="is-{{ c.kind }}{% if pw.has_bar and c.past %} is-past{% endif %}{% if pw.has_bar and c.now %} is-now{% endif %}"></i>{% endfor %}</div>
-      <div class="pw-hours">{% for c in pw.today_cells %}<span{% if pw.has_bar and c.now %} class="is-now"{% endif %}>{{ '%02d' % loop.index0 }}</span>{% endfor %}</div>
+      <div class="pw-hours">{% for c in pw.today_cells %}<span{% if pw.has_bar and c.now %} class="is-now"{% elif pw.has_bar and c.past %} class="is-past"{% endif %}>{{ '%02d' % loop.index0 }}</span>{% endfor %}</div>
     </div>
   </div>
   {% if pw.kind == 'soon' %}
