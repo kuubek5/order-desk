@@ -361,6 +361,14 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink);
   font-size:clamp(11px,1vw,20px)}
 .lost[hidden]{display:none}
+/* ── 3D-робота на плитці (shop_board_3d.js, варіант А власника 11.11.26) ──
+   Полотно лежить під текстом плитки, над фото верстата. `.mc>*` у плитці
+   має position:relative і перебив би клас полотна — тому селектор із класом. */
+.mc.has-3d>*:not(.mc-port):not(.g3){position:relative;z-index:1}
+.mc.has-3d>canvas.g3{display:block;position:absolute;z-index:0;left:0;width:100%;pointer-events:none}
+.mc.has-3d .mc-bot>.unit3{position:absolute;right:0;top:-.2vh;text-align:right;
+  font:500 clamp(10px,.8vw,24px)/1.2 var(--font-mono);color:var(--ink-2);white-space:nowrap}
+.unit3 b{font-weight:600;font-size:1.35em;color:var(--accent-c)}
 #shop-live{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
 
 /* ── Світло (власник 11.11.26): смуга доби в шапці ліворуч від годинника ──
@@ -625,6 +633,8 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
       phaseLock(document);
       // Рядок програми: поміряти нові рамки, фаза руху — від годинника.
       if (window.KMProg) window.KMProg.apply(document);
+      // 3D-роботи: повернути живі полотна на свіжі плитки (як котиків).
+      if (window.KM3D) window.KM3D.apply(document);
       animateChanges(seen);
       document.getElementById("shop-lost").hidden = true;
       syncOffset();
@@ -651,5 +661,8 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 </script>
 <script src="/static/js/shop_board_slm.js" defer></script>
 <script src="/static/js/shop_board_prog.js" defer></script>
+<script src="/static/js/storage.js" defer></script>
+<script src="/static/js/three-0.128.0.min.js" defer></script>
+<script src="/static/js/shop_board_3d.js" defer></script>
 </body>
 </html>

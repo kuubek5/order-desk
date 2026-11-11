@@ -200,3 +200,29 @@ def test_board_serves_models_only_behind_the_secret(app_db, tmp_path, monkeypatc
     assert board.get(f"/t/wrong/model/{key}.json")[0] == 404
     assert board.get(f"/t/{token}/model/{'0' * 24}.json")[0] == 404
     assert board.get(f"/t/{token}/model/..%2F..%2Fsecret.json")[0] == 404
+
+
+def test_running_tile_carries_its_models_and_others_do_not(monkeypatch):
+    """Плитка, що фрезерує, несе адреси моделей (екрановані в атрибуті);
+    завершена — ні, навіть коли моделі є: 3D там нічого не ріже."""
+    from app.services import shop_board as sb
+    from app.routers.deps import templates
+    from tests.test_shop_board import _card, _order, _view
+
+    models = [{"url": "/t/t/model/" + "a" * 24 + ".json", "units": 3, "closed": True}]
+    monkeypatch.setattr(bm, "models_for", lambda orders, token: models)
+    view = _view([
+        _card("A", "run", percent=40, sum3d="12-00-40", orders=[_order("Клієнт", "mono a2", "3")]),
+        _card("B", "done", word="завершено", orders=[_order("Інший", "pmma", "1")]),
+    ])
+    html = templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
+    assert html.count("data-models=") == 1
+    assert '&#34;url&#34;: &#34;/t/t/model/' in html and 'data-models="[{&#34;' in html, "лапки JSON не рвуть атрибут"
+    assert 'data-pct="40"' in html and 'data-mat="mono a2 · 3"' in html
+    assert sb.board_machine(_card("C", "run", percent=1)).models == [], "картинка бота адрес не має"
+
+
+def test_board_serves_the_3d_scripts():
+    from app.routers import furnace_board as fbr
+
+    assert {"three-0.128.0.min.js", "shop_board_3d.js", "storage.js"} <= fbr._JS

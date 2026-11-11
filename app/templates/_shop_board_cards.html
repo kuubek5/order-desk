@@ -50,7 +50,7 @@
          класом `has-cat` на картці: клас потрібен рядку програми, щоб його
          хвіст (Sum3D) не опинився під котиком. Дві копії умови розійшлись би. #}
       {% set cat_on = m.percent == 100 and m.state not in ('done', 'fault') %}
-      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}{% if cat_on %} has-cat{% endif %}" data-key="{{ m.key }}" data-tone="{{ m.tone }}">
+      <div class="mc t-{{ m.tone }}{% if m.state == 'fault' %} is-fault{% endif %}{% if cat_on %} has-cat{% endif %}" data-key="{{ m.key }}" data-tone="{{ m.tone }}"{% if m.models and m.tone == 'run' %} data-models="{{ m.models|tojson|forceescape }}" data-pct="{{ m.percent or 0 }}" data-mat="{{ m.material }}"{% endif %}>
         {% if m.portrait %}<div class="mc-port"><i style="background-image:url('{{ m.portrait }}')"></i></div>{% endif %}
         {# Тривога (ТВ 4): товста рамка й легка заливка поверх фото, без
            ореолу. Один сильний імпульс — лише на переході в червоне; далі в
