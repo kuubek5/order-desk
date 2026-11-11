@@ -89,6 +89,9 @@ def test_outage_reaches_queue_mail_and_the_poll_fragment(app_db):  # noqa: F811
         for needle in ("data-power-toggle", "Світла немає", "до кінця доби", "черга 4.1",
                        "без світла 24 год", "ще не опубліковано", "оновлено сьогодні о 07:00"):
             assert needle in slot, (path, needle)
+        # Плашка: доба 24 клітинками, рівно одна поточна година.
+        hours = slot.split('class="pw-hours', 1)[1].split("</span>", 1)[0]
+        assert hours.count("<i ") == 24 and hours.count("is-now") == 1, path
         panel = slot.split('id="power-panel"', 1)[1].split("pg-key", 1)[0]
         assert panel.count('class="is-off') == 24 and panel.count('class="is-wait') == 24, path
         assert panel.count("is-now") == 1, "рівно одна поточна година"
@@ -99,8 +102,21 @@ def test_day_without_outages_is_calm_and_lit(app_db):  # noqa: F811
     _install([], status="NoOutages")
     _, _, html = _login(app).get("/power/widget")
     assert "Світло є" in html and "сьогодні без відключень" in html
+    hours = html.split('class="pw-hours', 1)[1].split("</span>", 1)[0]
+    assert hours.count('class="is-on') == 24
     assert 'class="pw-ico is-lit"' in html
     assert "is-soon" not in html and "is-alarm" not in html
+
+
+def test_no_schedule_shows_empty_hours_without_now(app_db):  # noqa: F811
+    """Джерело ще не відповіло: плашка є, але години порожні й без «зараз»,
+    щоб ніхто не прочитав їх як «світло є»."""
+    app, _ = app_db
+    ps.configure("4.1", False)
+    _, _, html = _login(app).get("/power/widget")
+    assert "Графіка немає" in html
+    hours = html.split('class="pw-hours', 1)[1].split("</span>", 1)[0]
+    assert hours.startswith(' is-void"') and "is-now" not in hours and "is-on" not in hours
 
 
 def test_poll_fragment_needs_login(app_db):  # noqa: F811

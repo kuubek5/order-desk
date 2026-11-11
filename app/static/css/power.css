@@ -7,10 +7,16 @@
    вимкненням (`is-soon`) і на аварійних відключеннях (`is-alarm`). */
 
 /* На широкому вікні плашка стоїть між заголовком і кнопками й займає вільне
-   місце: основа 420px — це слова без стрічки, далі росте до 560px. Вужчає
-   лише стрічка доби; слова не обрізаються ніколи. */
-.pw-slot{position:relative;flex:1 1 420px;max-width:560px;min-width:0;align-self:center;margin-left:auto;
-  --pw-lit:var(--accent-c);--pw-dark:var(--bg-rail);
+   місце: основа 420px — це слова без годин, далі росте до 560px. Вужчає
+   лише рядок годин; слова не обрізаються ніколи.
+
+   Висота, верх і поверхня — як у пошуку поруч (32px, `--field`, межа
+   `--line`, `--radius-input`): плашка стоїть в одному ряду з кнопками шапки,
+   а не нижче за них. «Світло є» — зелений стану `--ok` у кожній темі: акцент
+   «Аврори» блідо-бузковий, і доба читалась сірою (власник 11.11.26). */
+.pw-slot{position:relative;flex:1 1 420px;max-width:560px;min-width:0;align-self:flex-start;margin-left:auto;
+  --pw-lit:var(--ok);--pw-dark:var(--bg-rail);
+  --pw-gap:color-mix(in srgb,var(--ink) 9%,transparent);
   --pw-hatch:color-mix(in srgb,var(--ink) 12%,transparent)}
 /* Клас задає display нащадкам, а не обгортці — та мусить слухатись `hidden`. */
 .pw-slot[hidden]{display:none}
@@ -20,15 +26,17 @@
 .pw-slot .is-soon,.pw-slot .is-soon~.pw-panel{--pw-tone:var(--warn)}
 .pw-slot .is-alarm,.pw-slot .is-alarm~.pw-panel{--pw-tone:var(--alarm)}
 
-.pw-head{display:flex;align-items:center;gap:12px;width:100%;height:36px;padding:0 12px 0 14px;cursor:pointer;
-  border:1px solid var(--line);border-radius:var(--radius-input);background:color-mix(in srgb,var(--ink) 2%,transparent);
+.pw-head{display:flex;align-items:center;gap:12px;width:100%;height:32px;padding:0 10px 0 12px;cursor:pointer;
+  border:1px solid var(--line);border-radius:var(--radius-input);background:var(--field);
   color:var(--ink);font:inherit;text-align:left}
 .pw-head:hover{border-color:var(--line-2)}
 .pw-head:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
-body.power-open .pw-head{border-color:var(--line-2);background:color-mix(in srgb,var(--ink) 5%,transparent)}
-.pw-ico{flex:none;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;
+body.power-open .pw-head{border-color:var(--line-2)}
+/* На «Нових з пошти» кнопки шапки вищі (34px) — плашка рівняється на них. */
+.mailv2 .pw-head{height:34px}
+.pw-ico{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round;color:var(--pw-tone,var(--ink-2))}
-.pw-ico.is-lit{fill:currentColor}
+.pw-ico.is-lit{fill:currentColor;color:var(--pw-tone,var(--pw-lit))}
 .pw-say{flex:none;font-size:var(--fs-2);font-weight:600;white-space:nowrap;color:var(--pw-tone,var(--ink))}
 .pw-say span{font-weight:500;color:var(--ink-2)}
 .pw-left{font:600 var(--fs-2)/1 var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap;
@@ -37,15 +45,19 @@ body.power-open .pw-head{border-color:var(--line-2);background:color-mix(in srgb
   stroke-linecap:round;stroke-linejoin:round;transition:transform .18s cubic-bezier(.16,1,.3,1)}
 body.power-open .pw-chev{transform:rotate(180deg)}
 
-/* Стрічка доби: світле — світло є, штриховане — немає, риска — зараз. */
-.pw-track{position:relative;display:block;flex:1 1 0;min-width:0;max-width:210px;margin-left:auto}
-.pw-bar{position:relative;display:block;height:8px;border-radius:2px;background:var(--pw-lit);overflow:hidden}
-.pw-bar.is-void{background:color-mix(in srgb,var(--ink) 8%,transparent)}
-.pw-bar .pw-off{position:absolute;top:0;bottom:0;background:var(--pw-dark);
-  background-image:repeating-linear-gradient(135deg,transparent 0 3px,var(--pw-hatch) 3px 4px)}
-.pw-bar .pw-past{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--pw-dark) 58%,transparent)}
-.pw-track .pw-now{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;border-radius:1px;
-  background:var(--ink);box-shadow:0 0 0 2px var(--pw-dark)}
+/* Доба 24 клітинками: зелена — світло є, тьмяна — немає, половинка — пів
+   години. Минуле приглушене, поточна година вища й обведена. Рядок займає
+   місце між словами й відліком, але клітинка не ширша за 12px — інакше на
+   широкій плашці вона перетворилась би на цеглину. */
+.pw-hours{flex:1 1 0;min-width:0;max-width:calc(24 * 12px + 23 * 2px);margin-left:auto;
+  display:grid;grid-template-columns:repeat(24,1fr);gap:2px;align-items:center;height:14px}
+.pw-hours i{display:block;height:10px;border-radius:2px;background:var(--pw-gap)}
+.pw-hours i.is-on{background:var(--pw-lit)}
+.pw-hours i.is-first{background:linear-gradient(90deg,var(--pw-gap) 0 50%,var(--pw-lit) 50%)}
+.pw-hours i.is-second{background:linear-gradient(90deg,var(--pw-lit) 0 50%,var(--pw-gap) 50%)}
+.pw-hours i.is-past{opacity:.45}
+.pw-hours i.is-now{height:14px;box-shadow:0 0 0 1.5px var(--ink)}
+.pw-hours.is-void i{background:var(--pw-gap)}
 
 /* ── Сітка годин ── */
 .pw-panel{display:none;position:absolute;z-index:60;right:0;top:calc(100% + 10px);padding:18px 20px;
@@ -91,8 +103,8 @@ body.power-open .pw-panel{display:block}
   .pw-slot~#system-load{order:2}
   .pw-slot:not([hidden])+.head-actions{margin-left:auto}
   .pw-head{width:auto}
-  .pw-track{flex:none;width:210px}
+  .pw-hours{flex:none;width:calc(24 * 9px + 23 * 2px)}
 }
 @media (max-width:720px){
-  .pw-track{display:none}
+  .pw-hours{display:none}
 }

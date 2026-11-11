@@ -20,11 +20,11 @@
           aria-expanded="false" aria-controls="power-panel" title="Світло · черга {{ pw.group }}">
     <svg class="pw-ico{% if pw.lit %} is-lit{% endif %}" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.5 5 13.6h6.1l-1 7.9 8.9-11.6h-6.3z"/></svg>
     <span class="pw-say">{{ pw.say }}{% if pw.sub %} <span>· {{ pw.sub }}</span>{% endif %}</span>
-    <span class="pw-track">
-      <span class="pw-bar{% if not pw.has_bar %} is-void{% endif %}">
-        {% if pw.has_bar %}{% for s in pw.segments %}<i class="pw-off" style="left:{{ s.left }}%;width:{{ s.width }}%"></i>{% endfor %}<i class="pw-past" style="width:{{ pw.now_pct }}%"></i>{% endif %}
-      </span>
-      {% if pw.has_bar %}<i class="pw-now" style="left:{{ pw.now_pct }}%"></i>{% endif %}
+    {# Доба 24 клітинками — та сама мова, що й сітка по кліку (власник обрав
+       варіант А 11.11.26 замість суцільної стрічки). Без графіка (аварійні,
+       джерело мовчить) клітинки порожні й без «зараз». #}
+    <span class="pw-hours{% if not pw.has_bar %} is-void{% endif %}" aria-hidden="true">
+      {%- for c in pw.today_cells %}<i class="is-{{ c.kind }}{% if pw.has_bar and c.past %} is-past{% endif %}{% if pw.has_bar and c.now %} is-now{% endif %}"></i>{% endfor -%}
     </span>
     {% if pw.left %}<span class="pw-left">{{ pw.left }}</span>{% endif %}
     <svg class="pw-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
