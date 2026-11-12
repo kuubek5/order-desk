@@ -300,7 +300,10 @@ def test_clearing_does_not_undo_a_status_that_moved_on(app_db):  # noqa: F811
             db.commit()
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": ""})
     finally:
-        orders.queue_sheet_fields = original
+        # Відновлюємо САМЕ підмінене імʼя: тут роками стояло queue_sheet_fields,
+        # і фальшивий await_on_writeback протікав у наступні тести (12.11.26:
+        # паралельний прогін на CI зламав test_cam_remark).
+        orders.await_on_writeback = original
 
     with session_factory() as db:
         assert db.get(Order, order_id).status == "відфрезеровано"
@@ -348,7 +351,10 @@ def test_editing_the_id_then_clearing_still_rolls_the_status_back(app_db):  # no
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": "13-00-00"})
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": ""})
     finally:
-        orders.queue_sheet_fields = original
+        # Відновлюємо САМЕ підмінене імʼя: тут роками стояло queue_sheet_fields,
+        # і фальшивий await_on_writeback протікав у наступні тести (12.11.26:
+        # паралельний прогін на CI зламав test_cam_remark).
+        orders.await_on_writeback = original
 
     with session_factory() as db:
         assert db.get(Order, order_id).status == "нове"
