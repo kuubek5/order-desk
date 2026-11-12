@@ -23,6 +23,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import sys
 import time
 import urllib.request
 from pathlib import Path
@@ -904,6 +905,14 @@ SCENARIOS = {
 
 
 def main():
+    # Консоль Windows — cp1251: стрілка «→» у назві S12/S13 валила print у
+    # record(), виняток ловився як «збій навчання», і самі сценарії не
+    # перевірялись (12.11.26). Вивід — UTF-8, неможливе — замінюється.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     ap.add_argument("--root", default="")
