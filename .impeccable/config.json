@@ -13,6 +13,15 @@
         ],
         "createdAt": "2026-08-14T15:45:43.530Z",
         "reason": "Blueprint grid on the update overlay is a pinned brief element (CLAUDE.md section 8)"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/static/css/settings.css"
+        ],
+        "createdAt": "2026-11-12T12:59:51.411Z",
+        "reason": "User confirmed: thin left rule in the 'докладніше' hint (0.21.121) and the material stripe in the queue mini-row are intentional"
       }
     ]
   }
