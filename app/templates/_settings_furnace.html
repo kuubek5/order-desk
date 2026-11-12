@@ -79,7 +79,7 @@
                     <span class="connection-state {% if furnace_password_set %}connection-state-ready{% endif %}">{% if furnace_password_set %}збережено{% else %}не задано{% endif %}</span>
                 </h3>
                 <div class="settings-field">
-                    <p class="settings-help">Заводський пароль для пічок без власного. Порожньо — не змінювати.</p>
+                    <div class="settings-help">Заводський пароль для пічок без власного. Порожньо — не змінювати. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Заводський пароль моделі — ним відкриваються пічки без власного. Порожнє поле лишає збережений пароль без змін.</div></details></div>
                     <form method="post" action="/settings/furnaces/password" class="fu-add-row">
                         <input id="furnace_shared_password" class="login-input" type="password" name="password"
                                autocomplete="new-password"

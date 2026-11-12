@@ -1216,6 +1216,17 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .b3d-switch b { display: block; font: 600 13px/1.25 var(--font-body); color: var(--ink); }
 .b3d-switch small { display: block; margin-top: 2px; font-size: var(--fs-1); line-height: 1.3; color: var(--ink-3); }
 /* «Табло цеху» (settings_board.html): компактні форми в комірках. */
+/* «докладніше» під короткою підказкою (власник 12.11.26: пояснення не
+   різати, а оформити компактно). Видно одне речення, повне — кліком. */
+.hint-more { display: inline; }
+.hint-more > summary { display: inline; cursor: pointer; list-style: none; white-space: nowrap;
+  color: var(--accent-c, var(--accent)); font-size: var(--fs-1); }
+.hint-more > summary::-webkit-details-marker { display: none; }
+.hint-more > summary::after { content: " ▸"; }
+.hint-more[open] > summary::after { content: " ▾"; }
+.hint-full { margin: 6px 0 2px; padding: 8px 10px; border-left: 2px solid rgba(var(--accent-rgb), .35);
+  border-radius: 0 6px 6px 0; background: rgba(255, 255, 255, .025); color: var(--ink-2);
+  font-size: var(--fs-1); line-height: 1.5; }
 .b-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .b-label { width: 100%; font-size: var(--fs-1); color: var(--ink-3); }
 .b-short { max-width: 120px; }

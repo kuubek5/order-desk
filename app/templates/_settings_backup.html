@@ -17,7 +17,7 @@
                 <div class="stand-cells">
                     <div class="stand-cell w3">
                         <h3>Створити копію</h3>
-                        <p class="settings-help">Усе: роботи, клієнти, налаштування й секрети. Відкривається на будь-якому ПК з цим паролем.</p>
+                        <div class="settings-help">Усе: роботи, клієнти, налаштування й секрети. Відкривається на будь-якому ПК з цим паролем. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Роботи, клієнти, оператори, налаштування й секрети (Google, IMAP), перешифровані під цей пароль. Ключем цього ПК копія не прив’язана — її можна відкрити на іншій машині.</div></details></div>
                         <form method="post" action="/settings/backup/export" class="settings-backup-form">
                             <div class="settings-field">
                                 <label for="backup_password">Пароль резервної копії</label>
@@ -69,7 +69,7 @@
                        ЛИШЕ обрані набори (app/backup_parts.py). #}
                     <div class="stand-cell w3">
                         <h3>Копія окремих наборів</h3>
-                        <p class="settings-help">Зберегти або повернути щось одне, не чіпаючи решти.</p>
+                        <div class="settings-help">Зберегти або повернути щось одне, не чіпаючи решти. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Для точкової втрати: зберегти й повернути щось одне, не чіпаючи решти. Відновлення такої копії заміщає лише обрані набори — роботи, історія й налаштування лишаються як є.</div></details></div>
                         <form method="post" action="/settings/backup/export-part" class="settings-backup-form">
                             <div class="bkp-parts">
                                 {% for part in backup_parts %}
@@ -96,7 +96,7 @@
                             </div>
                             <button type="submit" class="settings-secondary-button">Зберегти обрані набори</button>
                         </form>
-                        <p class="settings-help" style="margin-top:10px;">Відновлюється тією ж кнопкою «Відновити з бекапу» — решта бази лишається як є.</p>
+                        <div class="settings-help" style="margin-top:10px;">Відновлюється тією ж кнопкою «Відновити з бекапу» — решта бази лишається як є. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Повертається тим самим «Відновити з бекапу» нижче — застосунок сам бачить, що копія часткова, і не чіпає нічого поза нею.</div></details></div>
                     </div>
 
                     {# Автоматичні місячні знімки БД (app/monthly_backup.py). Read-only
@@ -106,7 +106,7 @@
                        ПК — бекап з паролем ліворуч). #}
                     <div class="stand-cell w3 monthly-backups">
                         <h3>Автоматичні місячні копії</h3>
-                        <p class="settings-help">Щомісяця програма сама зберігає повну копію в теку backups\monthly біля бази.</p>
+                        <div class="settings-help">Щомісяця програма сама зберігає повну копію в теку backups\monthly біля бази. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Наприкінці кожного місяця застосунок сам зберігає повну копію бази (роботи, клієнти, історія) у папку <span class="mono">backups\monthly</span> поряд з базою.</div></details></div>
                         {% if monthly_snapshots %}
                         <ul class="monthly-backups-list">
                             {% for snap in monthly_snapshots %}
@@ -127,7 +127,7 @@
                            08.09.26). Порожнє поле = вимкнено, усе працює як раніше. #}
                         <form method="post" action="/settings" class="settings-backup-form backup-mirror-form">
                             <label for="backup_mirror_dir">Друга копія на іншому носії</label>
-                            <p class="settings-help">Додаткова тека для копій — інший диск чи мережа. Порожньо — вимкнено.</p>
+                            <div class="settings-help">Додаткова тека для копій — інший диск чи мережа. Порожньо — вимкнено. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Знімки вище лежать на тому самому диску, що й база. Вкажіть інший диск або мережеву папку — копія автоматично ляже ще й туди. Порожнє поле вимикає.</div></details></div>
                             <input type="text" id="backup_mirror_dir" name="backup_mirror_dir"
                                    class="mono" autocomplete="off" spellcheck="false"
                                    placeholder="\\server\backup\kuubmill  або  D:\kuubmill-backup"

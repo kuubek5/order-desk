@@ -46,7 +46,7 @@
 
                     <div class="stand-cell w6"><h3>Системні події</h3>
                     <div class="settings-field">
-                        <p class="settings-help">Про що повідомляти. Лише при зміні стану, без повторів.</p>
+                        <div class="settings-help">Про що повідомляти. Лише при зміні стану, без повторів. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Що саме має спливати. Перевірка стану — раз на 30 секунд; повідомлення показується лише на <strong>зміні</strong> стану, не повторюється щохвилини.</div></details></div>
                         <div class="notify-events">
                             {% for key, label, level, _default in notify_all %}
                             <label class="notify-ev lvl-{{ level }}">
@@ -66,7 +66,7 @@
                         <span class="check-spinner htmx-indicator" id="notify-spinner" aria-hidden="true"></span>
                         <button type="submit" class="login-submit settings-submit">Зберегти</button>
                     </div>
-                    <p class="settings-help">Клік по варіанту показує приклад. На робочих екранах — після «Зберегти» й перезавантаження.</p>
+                    <div class="settings-help">Клік по варіанту показує приклад. На робочих екранах — після «Зберегти» й перезавантаження. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Клік по варіанту одразу показує справжнє сповіщення в ньому — приміряти можна без збереження. «Показати приклад» перебирає всі типи подій по черзі: у вигляді «Аврора» вони йдуть трьома різними каналами. На робочих екранах вибір почне діяти після <strong>Зберегти</strong> й перезавантаження.</div></details></div>
                 </form>
 
                 {# ── Спливаюче вікно KuubMill (власник 05.10.26) ────────────────

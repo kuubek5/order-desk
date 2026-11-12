@@ -48,7 +48,7 @@
                             <span class="stand-state stand-state-none">вмикається…</span>
                         {% endif %}
                         </h3>
-                        <p class="settings-help">Сторінки лише для перегляду, відкриваються з будь-якого ПК чи телефона в мережі цеху.</p>
+                        <div class="settings-help">Сторінки лише для перегляду, відкриваються з будь-якого ПК чи телефона в мережі цеху. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Телевізор цеху — верстати з роботами й відсотком, SLM-принтер і печі; оновлюється сам кожні 30 с. Печі для логістів — лише температура й коли відкриється. На цих сторінках немає входу в KuubMill і нічого не можна змінити. Посилання з імʼям ПК не змінюється, коли роутер видає нову IP; щоб не мінялось і цифрове — закріпіть IP цього ПК у роутері.</div></details></div>
                         {% if board_enabled %}
                         <div class="b-links">
                             <div class="b-link">
@@ -84,7 +84,7 @@
 
                     <div class="stand-cell w3" id="power-schedule">
                         <h3>Графік світла</h3>
-                        <p class="settings-help">Номер черги, як на сайті ДТЕК. Порожньо — графіка немає ніде.</p>
+                        <div class="settings-help">Номер черги, як на сайті ДТЕК. Порожньо — графіка немає ніде. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Плашка в шапці «Черги» й «Нових з пошти» і смуга на телевізорі. Потрібен лише номер черги (наприклад 4.1), адреса не зберігається. Галочка вмикає лише смугу на телевізорі; у CRM кожен ховає плашку для себе в шестерні «Черги».</div></details></div>
                         <form method="post" action="/settings/feedback/board/power" class="b-form">
                             <label class="b-label" for="power-group">Черга</label>
                             <input class="login-input b-short" type="text" id="power-group" name="group" value="{{ power_group }}"
@@ -96,7 +96,7 @@
 
                     <div class="stand-cell w3" id="sisma-style">
                         <h3>SISMA</h3>
-                        <p class="settings-help">Що малює плитка принтера. Рух — лише поки друкує.</p>
+                        <div class="settings-help">Що малює плитка принтера. Рух — лише поки друкує. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Розмір плитки, шар N з M, відсоток і час кінця однакові в усіх варіантах — змінюється лише картинка.</div></details></div>
                         <form method="post" action="/settings/feedback/board/sisma-style" class="b-form">
                             <div class="sisma-style-opts" role="radiogroup" aria-label="Вигляд SISMA на табло">
                                 {% for key, name, hint in sisma_styles %}
@@ -116,7 +116,7 @@
                         <div class="b3d-head">
                             <div>
                                 <b class="b3d-title">Вигляд на телевізорі</b>
-                                <p class="settings-help">3D роботи на плитці — симуляція, не реальний хід фрези.</p>
+                                <div class="settings-help">3D роботи на плитці — симуляція, не реальний хід фрези. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Верстат не каже, яку коронку ріже, і фрезерує роботи програми разом, тому велика модель по черзі «фрезерується» сама. Рух повзунка одразу видно в прев'ю; телевізор бере збережене протягом 30 с без перезавантаження.</div></details></div>
                             </div>
                             <div class="b3d-zoom" role="group" aria-label="Масштаб прев'ю">
                                 <button type="button" class="b3d-seg is-on" data-b3d-zoom="board">Усе табло</button>

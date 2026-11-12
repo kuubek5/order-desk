@@ -15,8 +15,8 @@
                         <h3>Режим</h3>
                         {# Обидва пояснення в DOM — перемикаються за data-dl-state секції,
                            щоб текст не брехав після клієнтського перемикання тогла. #}
-                        <p class="settings-help dl-when-trusted">Зараз качаються лише файли довірених відправників, решта — кнопкою. Увімкніть, щоб качалось усе.</p>
-                        <p class="settings-help dl-when-all">Зараз качаються файли з кожного листа. Вимкніть, щоб лише від довірених.</p>
+                        <div class="settings-help dl-when-trusted">Зараз качаються лише файли довірених відправників, решта — кнопкою. Увімкніть, щоб качалось усе. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Зараз авто-скачуються файли лише від довірених відправників; решта — «не скачано» до ручного натискання. Увімкни, щоб качалось <strong>усе</strong>, що заходить на пошту.</div></details></div>
+                        <div class="settings-help dl-when-all">Зараз качаються файли з кожного листа. Вимкніть, щоб лише від довірених. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Зараз файли з <strong>кожного</strong> листа авто-скачуються в тимчасові папки, щойно надходять. Вимкни, щоб качались лише від довірених відправників, а решта чекала ручного «Скачати вкладення».</div></details></div>
                         {# Рідке скло: сегментний перемикач із SVG-дисторсією (порт
                            компонента 21st.dev на наш стек — React у проєкті немає).
                            Клік по неактивній стороні ковзає плитку й фоном шле POST на
@@ -36,13 +36,13 @@
 
                     <div class="stand-cell w3">
                         <h3>Що саме качається</h3>
-                        <p class="stand-note">Вкладення листа; файли понад 200 МБ пропускаються.</p>
+                        <div class="stand-note">Вкладення листа; файли понад 200 МБ пропускаються. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Стосується вкладень листа (MIME). Завеликі файли (понад 200 МБ) пропускаються. Файли за посиланням — окремий перемикач нижче.</div></details></div>
                         {% if spool_report %}
                         <p class="stand-note">
                             Спул зайняв <strong>{{ spool_report.total_mb }} МБ</strong> у {{ spool_report.total_dirs }} папк(ах).
                             {% if not spool_report.prunable_dirs %}Прибирати нічого — усе на місці.{% endif %}
                         </p>
-                        <p class="stand-note">Файли листів, завершених понад 2 дні тому, прибираються самі. Вхідні й export не чіпаються.</p>
+                        <div class="stand-note">Файли листів, завершених понад 2 дні тому, прибираються самі. Вхідні й export не чіпаються. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Раз на добу застосунок сам прибирає файли листів, завершених понад 2 дні тому: прийнятих, відхилених і тих, що покинули «Вхідні» пошти. Листи у «Вхідних» і «На уточненні» не чіпаються ніколи, файли в export — теж.</div></details></div>
                         {% endif %}
                     </div>
                 </div>
@@ -53,7 +53,7 @@
                 <div class="stand-cells">
                     <div class="stand-cell w3">
                         <h3>Файли за посиланням</h3>
-                        <p class="settings-help">Посилання Google Диск і ukr.net у листі качаються самі для довірених відправників. Решта — кнопкою.</p>
+                        <div class="settings-help">Посилання Google Диск і ukr.net у листі качаються самі для довірених відправників. Решта — кнопкою. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Google Диск і ukr.net у тексті листа. Увімкнено — фон сам качає їх для відправників з автоскачуванням, раз на хвилину, по одному файлу. Решта листів — лише кнопкою «Скачати за посиланням». Листи, що прийшли до першого ввімкнення, не чіпаються.</div></details></div>
                         <form method="post" action="/settings/mail-download/links">
                             <label class="settings-backup-confirm stand-toggle">
                                 <input type="checkbox" name="mail_link_autofetch" value="1" {{ 'checked' if mail_link_autofetch else '' }}>
@@ -73,7 +73,7 @@
                 <div class="stand-cells">
                     <div class="stand-cell w3">
                         <h3>Тека для файлів з листів</h3>
-                        <p class="settings-help">Тимчасова тека для файлів листів до прийняття. Порожньо — стандартна.</p>
+                        <div class="settings-help">Тимчасова тека для файлів листів до прийняття. Порожньо — стандартна. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Куди скачуються вкладення листів, поки лист не прийнято в роботу. Порожнє поле — стандартна тека програми. Уже скачані файли лишаються там, де лежать.</div></details></div>
                         <form method="post" action="/settings">
                             <div class="settings-field">
                                 <label for="mail_attachments_path">Шлях до теки</label>
@@ -118,7 +118,7 @@
                 <div class="stand-cells">
                     <div class="stand-cell w3">
                         <h3>Куди переносити оброблені листи</h3>
-                        <p class="settings-help">Папка скриньки, куди переноситься прийнятий лист. Спершу «Зчитати папки».</p>
+                        <div class="settings-help">Папка скриньки, куди переноситься прийнятий лист. Спершу «Зчитати папки». <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Лист, робота якого пішла в цех, оператор переносить у цю папку скриньки кнопкою на сторінці пошти («Скачано-просчитано» тощо). Спершу зчитай папки, тоді вибери й збережи.</div></details></div>
                         <form method="post" action="/settings/mail/processed-folder" class="mail-folder-form">
                             {% include "_settings_mail_folder_picker.html" %}
                             <div class="mail-folder-actions">

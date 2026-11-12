@@ -85,7 +85,7 @@
                        на пів екрана кожна не було за чим. #}
                     <div class="stand-cell w2">
                         <h3>Перевірка зв'язку</h3>
-                        <p class="settings-help">Збережіть токен → відкрийте бота в Telegram, натисніть Start → «Прив'язати чат».</p>
+                        <div class="settings-help">Збережіть токен → відкрийте бота в Telegram, натисніть Start → «Прив'язати чат». <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Бот не може написати першим, поки з ним не почали діалог. Порядок: збережи токен → відкрий бота в Telegram і натисни <b>Start</b> → «Прив'язати чат»: chat_id підставиться сам.</div></details></div>
                         <form method="post" action="/settings/feedback/bind">
                             <button type="submit" class="settings-secondary-button">Прив'язати чат</button>
                         </form>
@@ -121,23 +121,23 @@
                         </h3>
                         {% if bot_enabled %}
                             {% if st.webhook_host %}
-                            <p class="stand-note">На боті чужий вебхук ({{ st.webhook_host }}) — повідомлення йдуть туди. Зняти може власник бота.</p>
+                            <div class="stand-note">На боті чужий вебхук ({{ st.webhook_host }}) — повідомлення йдуть туди. Зняти може власник бота. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">На боті стоїть вебхук ({{ st.webhook_host }}), тож Telegram віддає натискання туди, а не KuubMill. Чужий вебхук KuubMill не знімає сам — це зламало б той сервіс. Зняти може власник бота (метод deleteWebhook); перевіряємо знову раз на 5 хв.</div></details></div>
                             {% elif st.conflict %}
-                            <p class="stand-note">Бота вже опитує інша програма (друга копія KuubMill чи інший сервіс). Найпростіше — окремий бот: @BotFather → /newbot.</p>
+                            <div class="stand-note">Бота вже опитує інша програма (друга копія KuubMill чи інший сервіс). Найпростіше — окремий бот: @BotFather → /newbot. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Telegram відповідає 409: бота вже опитує інша програма, і повідомлення з чату забирає вона. Це або друга копія KuubMill з увімкненим ботом (dev і робоча одночасно — лишіть бота в одній), або інша програма з тим самим токеном. Надійно — окремий бот для KuubMill: @BotFather → /newbot, новий токен сюди.</div></details></div>
                             {% elif st.error %}
                             <p class="stand-note">Остання помилка: {{ st.error }}</p>
                             {% endif %}
                             {% if st.last_ok_at %}<p class="stand-note">Останнє опитування Telegram: <span class="mono">{{ st.last_ok_at.strftime('%H:%M:%S') }}</span>{% if st.last_update_at %} · останній запит із чату: <span class="mono">{{ st.last_update_at.strftime('%H:%M') }}</span>{% endif %}</p>{% endif %}
                             <p class="stand-note">Черга сповіщень: {{ bot_outbox.pending }} чекає{% if bot_outbox.last_sent_at %} · останнє надіслано <span class="mono">{{ bot_outbox.last_sent_at.strftime('%d.%m %H:%M') }}</span>{% endif %}{% if bot_outbox.last_error %} · остання невдача: {{ bot_outbox.last_error }}{% endif %}</p>
                         {% endif %}
-                        <p class="settings-help">Боту можна написати будь-що — прийде меню: пічки, роботи, верстати, Sisma. Сповіщення про пічки й Sisma він шле сам. Працює, поки увімкнений KuubMill.</p>
+                        <div class="settings-help">Боту можна написати будь-що — прийде меню: пічки, роботи, верстати, Sisma. Сповіщення про пічки й Sisma він шле сам. Працює, поки увімкнений KuubMill. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Напишіть боту будь-що — у відповідь прийде меню: пічки, роботи сьогодні, верстати, Sisma. Кнопка переписує те саме повідомлення, чат не засипає. Сповіщення бот шле сам: пічка закрилась, цикл завершено — можна відкривати, Sisma закінчила друк. Відповідає лише вам і учасникам нижче; решті — мовчить. Бот живе, поки працює KuubMill на цьому ПК.</div></details></div>
                     </div>
 
                     {# Учасники. Прийти можна лише за одноразовим посиланням звідси:
                        сторонньому бот мовчить, і «попроситись» у нього нема як. #}
                     <div class="stand-cell w6 stand-members" id="bot-members">
                         <h3>Учасники бота</h3>
-                        <p class="settings-help">Створіть посилання й надішліть людині — вона натисне Start і буде в боті. Посилання одноразове, 24 год. Учасники бачать пічки й Sisma; склад — лише замовлення дисків.</p>
+                        <div class="settings-help">Створіть посилання й надішліть людині — вона натисне Start і буде в боті. Посилання одноразове, 24 год. Учасники бачать пічки й Sisma; склад — лише замовлення дисків. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою <i class="ico ico-bell" aria-hidden="true"></i> у боті. Учасники бачать лише пічки й Sisma; роботи, видача, верстати й звернення зворотного зв'язку — лише вам. <b><i class="ico ico-box" aria-hidden="true"></i> Склад</b> — окрема роль: отримує лише замовлення дисків, які оператор надсилає з екрана «Нові диски», без меню й сповіщень.</div></details></div>
                         {% if not bot_enabled %}<p class="stand-note">Бот зараз вимкнено — посилання спрацює, коли його ввімкнете вище.</p>{% endif %}
 
                         <div class="stand-drow">
