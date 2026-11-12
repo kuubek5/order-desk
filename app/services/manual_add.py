@@ -325,6 +325,7 @@ def create_manual_batch(
         return ManualBatchResult(
             error="У таблиці немає жодної датованої вкладки — створіть день у таблиці спершу."
         )
+    tab: str
     note_rows: list[int]
     tab, note_rows = result
 

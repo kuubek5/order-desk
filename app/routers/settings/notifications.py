@@ -24,6 +24,7 @@ from app.services.shift import open_note_count as open_shift_note_count
 from app.settings_store import set_notify_prefs
 from app.sync_heartbeat import sync_status_pair
 from app.update_check import get_known_update
+from .common import form_text, form_texts
 
 router = APIRouter()
 
@@ -127,9 +128,9 @@ async def save_notification_prefs(request: Request, db: Session = Depends(get_db
     form = await request.form()
     set_notify_prefs(
         db,
-        style=(form.get("notify_style") or "").strip(),
-        position=(form.get("notify_position") or "").strip(),
-        events=form.getlist("notify_events"),
+        style=form_text(form, "notify_style").strip(),
+        position=form_text(form, "notify_position").strip(),
+        events=form_texts(form, "notify_events"),
     )
     db.commit()
     if request.headers.get("HX-Request") == "true":

@@ -45,3 +45,17 @@ def require_settings_edit(request: Request, db: Session, key: str, *, loopback: 
     if loopback and not is_trusted_request(request, db):
         raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
     return user
+
+
+def form_text(form, key: str, default: str = "") -> str:
+    """Текстове поле форми як рядок; відсутнє або файл замість тексту — `default`.
+
+    `request.form()` віддає `str | UploadFile`, і `.strip()` на файлі впав би
+    500-кою. Тут — один спосіб читати текст, без копій `(x or "").strip()`."""
+    value = form.get(key)
+    return value if isinstance(value, str) else default
+
+
+def form_texts(form, key: str) -> list[str]:
+    """Усі текстові значення поля (галочки з однаковою назвою); файли — геть."""
+    return [v for v in form.getlist(key) if isinstance(v, str)]

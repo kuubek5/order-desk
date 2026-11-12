@@ -386,7 +386,8 @@ def list_snapshots(db_path: str | Path) -> list[SnapshotInfo]:
         tab_date = _parse_iso(iso)
         if tab_date is None:
             continue
-        meta = manifest.get(iso) if isinstance(manifest.get(iso), dict) else {}
+        raw_meta = manifest.get(iso)
+        meta: dict = raw_meta if isinstance(raw_meta, dict) else {}
         try:
             size = path.stat().st_size
         except OSError:

@@ -182,7 +182,7 @@ def cam_units(db: Session, days: int, examples: int = 25) -> dict[str, Any]:
             continue
         for tail in set(tail_re.findall(o.sum3d_id or "")):
             groups[(day, tail)].append(o)
-    counts = Counter()
+    counts: Counter[str] = Counter()
     rows: list[dict[str, Any]] = []
     started = time.monotonic()
     for (day, tail), members in sorted(groups.items(), reverse=True):
@@ -328,7 +328,7 @@ def export_overview(db: Session) -> dict[str, Any]:
         for p in db.scalars(select(Order.export_folder_path).where(Order.export_folder_path.is_not(None)))
     }
     if root:
-        ages = Counter()
+        ages: Counter[str] = Counter()
         clients = 0
         batches = unbound = 0
         files = size = 0

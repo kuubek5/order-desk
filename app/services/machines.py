@@ -2522,26 +2522,27 @@ class MachineCard:
     @property
     def layers(self) -> Optional[tuple[int, int]]:
         """Шар N з M — точні числа з екрана, а не оцінка."""
-        if not self.is_sisma:
+        state = self.state
+        if not self.is_sisma or state is None:
             return None
-        if not (self.state.layer and self.state.layers_total):
+        if not (state.layer and state.layers_total):
             return None
-        return (self.state.layer, self.state.layers_total)
+        return (state.layer, state.layers_total)
 
     @property
     def started_at(self) -> Optional[datetime]:
         """Коли машина почала друк — її ж слова з екрана."""
-        return self.state.started_at if self.is_sisma else None
+        return self.state.started_at if (self.is_sisma and self.state) else None
 
     @property
     def ends_at(self) -> Optional[datetime]:
         """Коли машина обіцяє закінчити — ЇЇ прогноз, не наш."""
-        return self.state.ends_at if self.is_sisma else None
+        return self.state.ends_at if (self.is_sisma and self.state) else None
 
     @property
     def lasing(self) -> Optional[bool]:
         """True — пише шар, False — розрівнює порошок. Обидва = працює."""
-        return self.state.lasing if self.is_sisma else None
+        return self.state.lasing if (self.is_sisma and self.state) else None
 
     @property
     def left_text(self) -> str:

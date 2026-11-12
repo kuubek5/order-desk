@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.routers.deps import get_db, require_admin_or_redirect, templates
 from app.settings_store import get_setting, set_setting
-from .common import require_settings_admin
+from .common import form_text, require_settings_admin
 
 router = APIRouter()
 
@@ -93,8 +93,8 @@ def get_board_settings(request: Request, db: Session = Depends(get_db)):
 async def save_feedback_settings(request: Request, db: Session = Depends(get_db)):
     require_settings_admin(request, db)
     form = await request.form()
-    token = (form.get("telegram_bot_token") or "").strip()
-    chat_id = (form.get("telegram_chat_id") or "").strip()
+    token = form_text(form, "telegram_bot_token").strip()
+    chat_id = form_text(form, "telegram_chat_id").strip()
     enabled = "1" if form.get("feedback_telegram_enabled") else ""
     bot_enabled = "1" if form.get("telegram_bot_enabled") else ""
 

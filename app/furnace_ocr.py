@@ -35,7 +35,7 @@ import re
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from PIL import Image
 
@@ -282,7 +282,7 @@ def _segments(
     точно збігається з еталоном. Передає лише `read_zone`: той самий
     `_segments` читає й підписи верстатів, і еталони печі там ні до чого.
     """
-    px = image.load()
+    px: Any = image.load()
     width, height = image.size
     filled = [any(ink(px[x, y][:3]) for y in range(height)) for x in range(width)]
     runs: list[tuple[int, int]] = []
@@ -384,7 +384,7 @@ def _valley_cuts(
 
 
 def _bitmap(image: Image.Image, box: tuple[int, int, int, int], ink: Callable) -> list[str]:
-    px = image.load()
+    px: Any = image.load()
     left, top, right, bottom = box
     return [
         "".join("1" if ink(px[x, y][:3]) else "0" for x in range(left, right))

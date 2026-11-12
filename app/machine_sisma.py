@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -190,7 +190,7 @@ def load_sisma_glyphs() -> dict[str, dict[int, dict[str, tuple[tuple[int, ...], 
 
 def _mask(image: Image.Image, ink: int) -> list[list[int]]:
     grey = image.convert("L")
-    px = grey.load()
+    px: Any = grey.load()
     w, h = grey.size
     return [[1 if px[x, y] < ink else 0 for x in range(w)] for y in range(h)]
 

@@ -10,6 +10,7 @@ import logging
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -233,7 +234,7 @@ def get_clients(
     # кілька сотень різних написань імені на тисячі рядків, тож нечітке
     # порівняння повторювалось намарно тисячі разів на кожен показ екрана.
     name_index = index_orders_by_name(named_orders)
-    client_rows = [
+    client_rows: list[dict[str, Any]] = [
         {
             "client": client,
             "order_count": count_matching_orders(client.canonical_name, name_index),

@@ -15,6 +15,7 @@ from app.services.operators import (
     validate_password,
     validate_role,
 )
+from .common import form_text
 
 router = APIRouter()
 
@@ -26,11 +27,11 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
         return user
 
     form = await request.form()
-    username = form.get("username", "").strip()
-    password = form.get("password", "").strip()
-    full_name = form.get("full_name", "").strip() or None
-    role = form.get("role", "оператор").strip() or "оператор"
-    initial = normalize_initial(form.get("sheet_initial", ""))
+    username = form_text(form, "username").strip()
+    password = form_text(form, "password").strip()
+    full_name = form_text(form, "full_name").strip() or None
+    role = form_text(form, "role", "оператор").strip() or "оператор"
+    initial = normalize_initial(form_text(form, "sheet_initial"))
 
     if not username or not password:
         return RedirectResponse("/settings?error=логін+і+пароль+обов'язкові", status_code=303)
@@ -80,7 +81,7 @@ async def set_operator_initial(request: Request, user_id: int, db: Session = Dep
         raise HTTPException(status_code=404, detail="користувача не знайдено")
 
     form = await request.form()
-    initial = normalize_initial(form.get("sheet_initial", ""))
+    initial = normalize_initial(form_text(form, "sheet_initial"))
     if initial is not None:
         err = validate_initial(db, initial, exclude_user_id=user_id)
         if err:
@@ -178,7 +179,7 @@ async def reset_operator_password(
         raise HTTPException(status_code=404, detail="користувача не знайдено")
 
     form = await request.form()
-    new_password = form.get("new_password", "").strip()
+    new_password = form_text(form, "new_password").strip()
     if not new_password:
         return RedirectResponse("/settings?error=введіть+новий+пароль", status_code=303)
     password_error = validate_password(new_password)

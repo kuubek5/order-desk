@@ -39,7 +39,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -443,7 +443,7 @@ def _find_bar_by_track(image: Image.Image, masks: "_FrameMasks | None" = None) -
 
     m = masks or _FrameMasks(image)
     source = m.image
-    px = source.load()
+    px: Any = source.load()
     width, height = m.width, m.height
     white_mask = m.white
     start_y = int(height * BOTTOM_BAND)
@@ -776,9 +776,9 @@ def caption_mask(image: Image.Image, bar: "ProgressBar") -> Optional[Image.Image
         return None
 
     source = image.convert("RGB")
-    px = source.load()
+    px: Any = source.load()
     mask = Image.new("RGB", (x1 - x0, y1 - y0), (255, 255, 255))
-    mpx = mask.load()
+    mpx: Any = mask.load()
     for y in range(y0, y1):
         for x in range(x0, x1):
             r, g, b = px[x, y][:3]

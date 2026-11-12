@@ -39,7 +39,7 @@ from app.settings_store import (
 )
 from app.sheets import measure_sheet_weight, open_spreadsheet, reset_sheets_cache
 from app.services.settings_nav import can_edit
-from .common import require_settings_admin, require_settings_edit
+from .common import form_text, require_settings_admin, require_settings_edit
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +131,8 @@ async def save_imap_settings(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     form = await request.form()
-    login = (form.get("imap_login") or "").strip()
-    password = (form.get("imap_password") or "").strip()
+    login = form_text(form, "imap_login").strip()
+    password = form_text(form, "imap_password").strip()
     # Empty password means "keep the saved one" — the field renders blank on
     # purpose (placeholder "•••• збережено"), so a save that only edits the login
     # must not wipe the stored password.

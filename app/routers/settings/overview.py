@@ -490,7 +490,7 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         if not allowed:
             continue
         raw = form.get(field.key)
-        if raw is None:
+        if not isinstance(raw, str):
             # ПОЛЯ НЕ БУЛО В ЦІЙ ФОРМІ — не чіпаємо його. Екран налаштувань
             # має ТРИ окремі <form>, і всі три шлють POST сюди: Google, IMAP,
             # шляхи. Раніше тут стояло form.get(key, ""), тобто «відсутнє»
