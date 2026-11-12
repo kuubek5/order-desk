@@ -1,3 +1,6 @@
+# Точні версії всіх залежностей — constraints.txt (12.11.26).
+-c constraints.txt
+
 # Upper bound is deliberate. gspread 6 renamed Worksheet.update's arguments
 # (values first, range second); a jump to 7 would break every write path
 # silently at runtime, not at install. Raise it only together with a pass over

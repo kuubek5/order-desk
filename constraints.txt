@@ -1,0 +1,105 @@
+# Точні версії ВСІХ залежностей (і транзитивних) — 12.11.26.
+#
+# Навіщо. У requirements*.txt лише нижні межі (`fastapi>=0.100`), тож GitHub
+# при кожній збірці ставив НАЙСВІЖІШЕ: 12.11.26 mypy 2.4 + SQLAlchemy 2.1
+# завалили перевірку на старому коді, а інсталятор міг так само тихо отримати
+# нову версію бібліотеки з помилкою. Тепер тести, CI й інсталятор беруть ті
+# самі версії, на яких пройшов повний прогін.
+#
+# Підключено через `-c constraints.txt` у requirements.txt — працює для
+# requirements-dev.txt і requirements-build.txt автоматично.
+#
+# Оновити свідомо: свіже середовище (`python -m venv x`), `pip install -r
+# requirements-dev.txt -r requirements-build.txt` БЕЗ цього файлу (тимчасово
+# закоментувати рядок -c), повний pytest + mypy, далі
+# `pip freeze --all --exclude pip --exclude setuptools --exclude wheel`.
+alembic==1.20.1
+altgraph==0.17.5
+annotated-doc==0.0.6
+annotated-types==0.8.0
+anyio==4.16.0
+ast_serialize==0.13.1
+asyncvnc==1.3.0
+backports.zstd==1.8.0
+bcrypt==4.0.1
+brotli==1.2.1
+certifi==2026.10.23
+cffi==2.1.1
+cfgv==3.5.0
+charset-normalizer==3.5.2
+click==8.5.1
+colorama==0.4.6
+coverage==7.17.3
+cryptography==49.0.0
+distlib==0.4.4
+fastapi==0.162.5
+filelock==4.2.10
+google-auth==2.62.2
+google-auth-oauthlib==1.5.0
+gspread==6.2.1
+h11==0.16.0
+httptools==0.9.0
+identify==2.6.20
+idna==3.20
+imap-tools==1.16.0
+inflate64==1.0.4
+iniconfig==2.3.1
+itsdangerous==2.2.0
+Jinja2==3.1.6
+keysymdef==1.2.0
+librt==0.16.0
+Mako==1.4.3
+MarkupSafe==3.0.4
+multivolumefile==0.2.3
+mypy==2.4.1
+mypy_extensions==1.2.0
+nodeenv==1.12.0
+numpy==2.4.6
+oauthlib==4.0.1
+opentelemetry-api==1.45.2
+packaging==26.3
+passlib==1.7.4
+pathspec==1.1.1
+pefile==2024.8.26
+pillow==13.0.0
+platformdirs==4.14.5
+pluggy==1.7.0
+pre_commit==4.7.0
+psutil==7.2.2
+py7zr==1.1.4
+pyasn1==0.6.5
+pyasn1_modules==0.4.2
+pybcj==1.0.8
+pycparser==3.12
+pycryptodomex==3.24.2
+pydantic==2.14.3
+pydantic_core==2.50.4
+Pygments==2.21.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+pyppmd==1.3.1
+pystray==0.19.5
+pytest==9.2.0
+pytest-cov==7.1.0
+python-discovery==1.9.5
+python-dotenv==1.2.4
+python-multipart==0.0.33
+pywin32-ctypes==0.2.3
+PyYAML==6.0.3
+RapidFuzz==3.14.6
+rarfile==4.5
+requests==2.34.2
+requests-oauthlib==2.0.0
+ruff==0.17.4
+six==1.17.0
+SQLAlchemy==2.1.8
+starlette==1.10.0
+texttable==1.7.2
+typing-inspection==0.4.5
+typing_extensions==4.16.0
+tzdata==2026.6
+urllib3==2.8.0
+uvicorn==0.54.0
+virtualenv==21.15.6
+watchfiles==1.3.0
+websockets==17.4
