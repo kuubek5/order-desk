@@ -62,7 +62,7 @@
                         <button type="button" class="settings-secondary-button" data-diag-copy hidden>Скопіювати звіт</button>
                         <span class="settings-help" style="margin:0">7 перевірок · нічого не змінює</span>
                     </div>
-                    <p class="settings-help">Звіт лягає в буфер обміну текстом — можна вставити в чат підтримки. Секрети в нього не потрапляють, лише «задано / не задано».</p>
+                    <p class="settings-help">Звіт копіюється текстом — без паролів і ключів.</p>
                 </div>
 
                 {# ── Звіт для розробника ────────────────────────────────────
@@ -76,11 +76,7 @@
                     <div class="scon-diag-head">
                         <span class="t">Звіт для розробника</span>
                     </div>
-                    <p class="settings-help" style="margin-top:6px">
-                        Усе, що потрібно, щоб розібратись у проблемі, — одним файлом:
-                        самоперевірка, налаштування, стан бази, журнали й останні
-                        помилки з лога. Паролі й ключі в нього не потрапляють.
-                    </p>
+                    <p class="settings-help" style="margin-top:6px">Усе для розбору проблеми одним файлом — без паролів і ключів.</p>
                     <div class="settings-check-row">
                         <a class="login-submit settings-submit" href="/settings/report.txt"
                            download>Зібрати звіт</a>
@@ -102,7 +98,7 @@
                     <span class="check-spinner htmx-indicator" id="sheet-weight-spinner" aria-hidden="true"></span>
                     <span id="sheet-weight-result" class="settings-check-result" aria-live="polite"></span>
                 </div>
-                <p class="settings-help">Рахує умовне форматування — найчастішу причину повільного додавання. Нічого не змінює, лише читає (може зайняти кілька секунд).</p>
+                <p class="settings-help">Шукає, що гальмує таблицю. Нічого не змінює.</p>
                 {% endif %}
             </div>
         </section>

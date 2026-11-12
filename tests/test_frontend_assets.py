@@ -271,11 +271,11 @@ SETTINGS_SECTIONS = [
     "_settings_backup.html",
     "_settings_imap.html",
     "_settings_paths.html",
-    "_settings_mail_filters.html",
     "_settings_furnace.html",
     "_settings_machines.html",
     # «Заготовки» прибрано 10.09.26 — окремий екран «Нові диски» (/discs).
     "_settings_handout.html",
+    "_settings_workday.html",
     "_settings_about.html",
     "_settings_mcp.html",
 ]

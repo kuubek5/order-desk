@@ -17,7 +17,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
             </div>
             <div class="box">
-                {{ slab('Пічки спікання', 'Читаємо власний екран пічки по VNC, тільки перегляд. На черзі показуються лише ті, з яких справді приходять дані.', slabs['furnaces']) }}
+                {{ slab('Пічки спікання', 'Температура й таймер з екрана пічки. Лише читання.', slabs['furnaces']) }}
 
                 {% if furnaces %}
                 <table class="fu-table">
@@ -79,7 +79,7 @@
                     <span class="connection-state {% if furnace_password_set %}connection-state-ready{% endif %}">{% if furnace_password_set %}збережено{% else %}не задано{% endif %}</span>
                 </h3>
                 <div class="settings-field">
-                    <p class="settings-help">Заводський пароль моделі — ним відкриваються пічки без власного. Порожнє поле лишає збережений пароль без змін.</p>
+                    <p class="settings-help">Заводський пароль для пічок без власного. Порожньо — не змінювати.</p>
                     <form method="post" action="/settings/furnaces/password" class="fu-add-row">
                         <input id="furnace_shared_password" class="login-input" type="password" name="password"
                                autocomplete="new-password"

@@ -1,0 +1,31 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Робоча доба ────────────────────────────────────────────────
+           Окремий розділ з 12.11.26 (раніше жила в «Шляхах папок», а це не
+           тека). Поле те саме (`day_rollover_time`), зберігає той самий
+           POST /settings; відсутні в цій формі поля він не чіпає. #}
+        <section id="workday" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="workday">
+            <div class="box">
+                {{ slab('Робоча доба', 'Коли в програмі починається новий день.', slabs['workday']) }}
+                <form method="post" action="/settings">
+                    <div class="stand-cells">
+                        <div class="stand-cell w3">
+                            <h3>Початок дня</h3>
+                            <p class="settings-help">До цього часу черга ще показує вчорашній день — нічна зміна доробляє його після півночі.</p>
+                            <div class="login-glow">
+                                <div class="login-input-wrap">
+                                    <input type="time" id="day_rollover_time" name="day_rollover_time"
+                                           class="login-input mono" aria-label="Початок робочого дня"
+                                           value="{{ values['day_rollover_time'] or '07:30' }}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button type="submit" name="action" value="save" class="login-submit settings-submit"
+                                hx-post="/settings" hx-include="closest form"
+                                hx-indicator="#workday-save-spinner" hx-disabled-elt="this">Зберегти</button>
+                        <span class="check-spinner htmx-indicator" id="workday-save-spinner" aria-hidden="true"></span>
+                    </div>
+                </form>
+            </div>
+        </section>

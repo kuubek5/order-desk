@@ -23,7 +23,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     if isinstance(user, RedirectResponse):
         return user
 
-    from app.services import board_models, furnace_board, shop_board, telegram_bot
+    from app.services import telegram_bot
 
     flash = request.session.pop("feedback_settings_flash", None)
     # Лише з пам'яті: відкриття сторінки не має ходити в Telegram.
@@ -50,6 +50,29 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
                 for i in telegram_bot.active_invites(db)
             ],
             "bot_username": username,
+            "flash": flash,
+        },
+    )
+
+
+@router.get("/settings/board", response_class=HTMLResponse)
+def get_board_settings(request: Request, db: Session = Depends(get_db)):
+    """«Табло цеху» (власник 12.11.26): телевізор і табло печей окремою
+    сторінкою меню «Обладнання» — раніше жило всередині «Зворотного зв'язку».
+    Форми шлють на ті самі `/settings/feedback/board/*`."""
+    user = require_admin_or_redirect(request, db, loopback=False)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    from app.services import board_models, furnace_board, shop_board
+
+    flash = request.session.pop("board_settings_flash", None)
+    return templates.TemplateResponse(
+        request,
+        "settings_board.html",
+        {
+            "page_title": "Табло цеху",
+            "user": user,
             "board_enabled": furnace_board.board_enabled(db),
             "board_links": furnace_board.board_links(db),
             "shop_links": shop_board.shop_links(db),
@@ -250,8 +273,8 @@ def toggle_bot_member_notify(request: Request, member_id: int, db: Session = Dep
 
 
 def _board_flash(request: Request, kind: str, message: str) -> RedirectResponse:
-    request.session["feedback_settings_flash"] = {"kind": kind, "message": message}
-    return RedirectResponse("/settings/feedback#furnace-board", status_code=303)
+    request.session["board_settings_flash"] = {"kind": kind, "message": message}
+    return RedirectResponse("/settings/board", status_code=303)
 
 
 @router.post("/settings/feedback/board/toggle")

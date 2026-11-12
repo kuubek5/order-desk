@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% from "_settings_slab.html" import slab %}
+
+{% block title %}Табло цеху — KuubMill{% endblock %}
+
+{% block extra_head %}
+{# Той самий комплект CSS і в тому самому порядку, що на /settings (каскад —
+   порядком, CLAUDE.md §14). #}
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+<link rel="stylesheet" href="/static/css/settings_console.css?v={{ static_ver('css/settings_console.css') }}">
+<link rel="stylesheet" href="/static/css/settings_stand.css?v={{ static_ver('css/settings_stand.css') }}">
+<script src="/static/js/settings_board3d.js?v={{ static_ver('js/settings_board3d.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'settings' %}
+{% include "_topbar_nav.html" %}
+
+{# «Табло цеху» (власник 12.11.26): усе про телевізор і табло печей в одному
+   місці — раніше лежало всередині «Зворотного зв'язку». Форми й адреси
+   збереження ті самі (`/settings/feedback/board/*`), змінилось лише місце. #}
+<main class="setv2 scon">
+    {% if flash %}
+    <div class="settings-success{% if flash.kind == 'error' %} settings-error{% endif %}"><p>{{ flash.message }}</p></div>
+    {% endif %}
+
+    <header class="scon-top scon-top-sub">
+        <a href="/settings" class="scon-back">← Налаштування</a>
+    </header>
+
+    <div class="scon-panel">
+        <div class="wizard-step scon-sec stand-sec is-shown" data-sec="board">
+            <div class="box">
+                {{ slab('Табло цеху', 'Телевізор у цеху й табло печей для логістів.', none) }}
+
+                <div class="stand-cells">
+                    {% set bs = board_status %}
+                    <div class="stand-cell w6" id="furnace-board">
+                        <h3>Табло
+                        {% if not board_enabled %}
+                            <span class="stand-state stand-state-none">вимкнено</span>
+                        {% elif bs.listening %}
+                            <span class="stand-state stand-state-ok">працює з {{ bs.since.strftime('%H:%M') if bs.since else '—' }}</span>
+                        {% elif bs.error %}
+                            <span class="stand-state stand-state-warn">{{ bs.error }}</span>
+                        {% else %}
+                            <span class="stand-state stand-state-none">вмикається…</span>
+                        {% endif %}
+                        </h3>
+                        <p class="settings-help">Сторінки лише для перегляду, відкриваються з будь-якого ПК чи телефона в мережі цеху.</p>
+                        {% if board_enabled %}
+                        <div class="b-links">
+                            <div class="b-link">
+                                <span class="b-link-name">Телевізор цеху</span>
+                                {% for link in shop_links %}
+                                <div class="scmd"><code>{{ link }}</code>
+                                    <button type="button" class="settings-secondary-button" data-copy="{{ link }}">Скопіювати</button></div>
+                                {% endfor %}
+                            </div>
+                            <div class="b-link">
+                                <span class="b-link-name">Печі для логістів</span>
+                                {% for link in board_links %}
+                                <div class="scmd"><code>{{ link }}</code>
+                                    <button type="button" class="settings-secondary-button" data-copy="{{ link }}">Скопіювати</button></div>
+                                {% else %}
+                                <p class="stand-note">Не вдалось визначити адресу цього ПК — перевірте мережу.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <p class="stand-note">Не відкривається з іншого ПК — дозвольте KuubMill «Приватні мережі» в запиті Windows. «Змінити посилання» вимикає старе.</p>
+                        {% endif %}
+                        <div class="sbtnrow">
+                            <form method="post" action="/settings/feedback/board/toggle">
+                                <button type="submit" class="settings-secondary-button">{{ 'Вимкнути табло' if board_enabled else 'Увімкнути табло' }}</button>
+                            </form>
+                            {% if board_enabled %}
+                            <form method="post" action="/settings/feedback/board/regenerate">
+                                <button type="submit" class="settings-secondary-button">Змінити посилання</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="stand-cell w3" id="power-schedule">
+                        <h3>Графік світла</h3>
+                        <p class="settings-help">Номер черги, як на сайті ДТЕК. Порожньо — графіка немає ніде.</p>
+                        <form method="post" action="/settings/feedback/board/power" class="b-form">
+                            <label class="b-label" for="power-group">Черга</label>
+                            <input class="login-input b-short" type="text" id="power-group" name="group" value="{{ power_group }}"
+                                   inputmode="decimal" autocomplete="off" maxlength="5" placeholder="4.1">
+                            <label class="schip"><input type="checkbox" name="board" value="1" {% if power_board %}checked{% endif %}> Смуга на телевізорі</label>
+                            <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        </form>
+                    </div>
+
+                    <div class="stand-cell w3" id="sisma-style">
+                        <h3>SISMA</h3>
+                        <p class="settings-help">Що малює плитка принтера. Рух — лише поки друкує.</p>
+                        <form method="post" action="/settings/feedback/board/sisma-style" class="b-form">
+                            <div class="sisma-style-opts" role="radiogroup" aria-label="Вигляд SISMA на табло">
+                                {% for key, name, hint in sisma_styles %}
+                                <label class="schip" title="{{ hint }}"><input type="radio" name="style" value="{{ key }}" {% if sisma_style == key %}checked{% endif %}> {{ name }}</label>
+                                {% endfor %}
+                            </div>
+                            <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        </form>
+                    </div>
+
+                    {# Вигляд телевізора з ЖИВИМ прев'ю (`settings_board3d.js` →
+                       `KM3D.setConfig`): рух повзунка одразу в прев'ю, у базу —
+                       кнопкою «Зберегти»; телевізор бере збережене за ≤30 с.
+                       Форма шле всі поля разом: знята галочка = вимкнено. #}
+                    <div class="stand-cell w6">
+                    <form method="post" action="/settings/feedback/board/3d" class="b3d" id="board-3d" data-b3d>
+                        <div class="b3d-head">
+                            <div>
+                                <b class="b3d-title">Вигляд на телевізорі</b>
+                                <p class="settings-help">3D роботи на плитці — симуляція, не реальний хід фрези.</p>
+                            </div>
+                            <div class="b3d-zoom" role="group" aria-label="Масштаб прев'ю">
+                                <button type="button" class="b3d-seg is-on" data-b3d-zoom="board">Усе табло</button>
+                                <button type="button" class="b3d-seg" data-b3d-zoom="tile">Плитка крупно</button>
+                            </div>
+                        </div>
+                        <div class="b3d-stage" data-b3d-stage>
+                            <iframe class="b3d-frame" src="/settings/feedback/board/3d/preview" title="Прев'ю табло цеху" loading="lazy" tabindex="-1"></iframe>
+                            <span class="b3d-badge" data-b3d-dirty hidden>прев'ю · ще не збережено</span>
+                            <p class="b3d-empty" data-b3d-empty hidden>Моделей ще немає — прев'ю оживе з першою роботою з Sum3D.</p>
+                        </div>
+                        <div class="b3d-switches" role="group" aria-label="Що показувати">
+                            {% for f in three_d_fields if f.is_switch %}
+                            <label class="b3d-switch" title="{{ f.hint }}">
+                                <input type="checkbox" name="{{ f.key }}" value="1" data-default="{{ '1' if f.default else '' }}" {% if three_d[f.key] %}checked{% endif %}>
+                                <span class="b3d-knob" aria-hidden="true"></span>
+                                <span><b>{{ f.label }}</b><small>{{ f.hint }}</small></span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <div class="b3d-grid">
+                            {% for f in three_d_fields if not f.is_switch %}
+                            <label class="b3d-row"{% if f.hint %} title="{{ f.hint }}"{% endif %}>
+                                <span class="b3d-name">{{ f.label }}</span>
+                                <input type="range" name="{{ f.key }}" min="{{ f.low }}" max="{{ f.high }}" step="{{ f.step }}" value="{{ three_d[f.key] }}" data-default="{{ f.default }}" data-unit="{{ f.unit }}">
+                                <output class="b3d-val">{{ three_d[f.key] }}{{ f.unit }}</output>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <div class="sbtnrow">
+                            <button type="submit" class="settings-secondary-button b3d-save">Зберегти</button>
+                            <button type="button" class="settings-secondary-button" data-b3d-revert>Скасувати зміни</button>
+                            <button type="button" class="settings-secondary-button" data-b3d-defaults>Типові</button>
+                        </div>
+                    </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

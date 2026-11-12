@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_settings_slab.html" import slab %}
 
-{% block title %}Зворотний зв'язок — KuubMill{% endblock %}
+{% block title %}Telegram-бот — KuubMill{% endblock %}
 
 {% block extra_head %}
 {# Той самий комплект і в тому самому порядку, що на /settings: розкладка
@@ -14,7 +14,6 @@
 <link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
 <link rel="stylesheet" href="/static/css/settings_console.css?v={{ static_ver('css/settings_console.css') }}">
 <link rel="stylesheet" href="/static/css/settings_stand.css?v={{ static_ver('css/settings_stand.css') }}">
-<script src="/static/js/settings_board3d.js?v={{ static_ver('js/settings_board3d.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -37,8 +36,8 @@
            settings_console.js сюди не вантажиться й перемикати нічого. #}
         <div class="wizard-step scon-sec stand-sec is-shown" data-sec="feedback">
             <div class="box">
-                {{ slab('Зворотний зв\'язок',
-                        'Форма «баг / ідея / питання» доступна операторам на кожному екрані. Звернення завжди пишуться в базу; Telegram — необов\'язковий пуш зі скріншотом.',
+                {{ slab('Telegram-бот',
+                        'Бот із меню й сповіщеннями та звернення операторів у Telegram.',
                         none) }}
 
                 <div class="stand-cells">
@@ -86,7 +85,7 @@
                        на пів екрана кожна не було за чим. #}
                     <div class="stand-cell w2">
                         <h3>Перевірка зв'язку</h3>
-                        <p class="settings-help">Бот не може написати першим, поки з ним не почали діалог. Порядок: збережи токен → відкрий бота в Telegram і натисни <b>Start</b> → «Прив'язати чат»: chat_id підставиться сам.</p>
+                        <p class="settings-help">Збережіть токен → відкрийте бота в Telegram, натисніть Start → «Прив'язати чат».</p>
                         <form method="post" action="/settings/feedback/bind">
                             <button type="submit" class="settings-secondary-button">Прив'язати чат</button>
                         </form>
@@ -122,23 +121,23 @@
                         </h3>
                         {% if bot_enabled %}
                             {% if st.webhook_host %}
-                            <p class="stand-note">На боті стоїть вебхук ({{ st.webhook_host }}), тож Telegram віддає натискання туди, а не KuubMill. Чужий вебхук KuubMill не знімає сам — це зламало б той сервіс. Зняти може власник бота (метод deleteWebhook); перевіряємо знову раз на 5 хв.</p>
+                            <p class="stand-note">На боті чужий вебхук ({{ st.webhook_host }}) — повідомлення йдуть туди. Зняти може власник бота.</p>
                             {% elif st.conflict %}
-                            <p class="stand-note">Telegram відповідає 409: бота вже опитує інша програма, і повідомлення з чату забирає вона. Це або друга копія KuubMill з увімкненим ботом (dev і робоча одночасно — лишіть бота в одній), або інша програма з тим самим токеном. Надійно — окремий бот для KuubMill: @BotFather → /newbot, новий токен сюди.</p>
+                            <p class="stand-note">Бота вже опитує інша програма (друга копія KuubMill чи інший сервіс). Найпростіше — окремий бот: @BotFather → /newbot.</p>
                             {% elif st.error %}
                             <p class="stand-note">Остання помилка: {{ st.error }}</p>
                             {% endif %}
                             {% if st.last_ok_at %}<p class="stand-note">Останнє опитування Telegram: <span class="mono">{{ st.last_ok_at.strftime('%H:%M:%S') }}</span>{% if st.last_update_at %} · останній запит із чату: <span class="mono">{{ st.last_update_at.strftime('%H:%M') }}</span>{% endif %}</p>{% endif %}
                             <p class="stand-note">Черга сповіщень: {{ bot_outbox.pending }} чекає{% if bot_outbox.last_sent_at %} · останнє надіслано <span class="mono">{{ bot_outbox.last_sent_at.strftime('%d.%m %H:%M') }}</span>{% endif %}{% if bot_outbox.last_error %} · остання невдача: {{ bot_outbox.last_error }}{% endif %}</p>
                         {% endif %}
-                        <p class="settings-help">Напишіть боту будь-що — у відповідь прийде меню: пічки, роботи сьогодні, верстати, Sisma. Кнопка переписує те саме повідомлення, чат не засипає. Сповіщення бот шле сам: пічка закрилась, цикл завершено — можна відкривати, Sisma закінчила друк. Відповідає лише вам і учасникам нижче; решті — мовчить. Бот живе, поки працює KuubMill на цьому ПК.</p>
+                        <p class="settings-help">Боту можна написати будь-що — прийде меню: пічки, роботи, верстати, Sisma. Сповіщення про пічки й Sisma він шле сам. Працює, поки увімкнений KuubMill.</p>
                     </div>
 
                     {# Учасники. Прийти можна лише за одноразовим посиланням звідси:
                        сторонньому бот мовчить, і «попроситись» у нього нема як. #}
                     <div class="stand-cell w6 stand-members" id="bot-members">
                         <h3>Учасники бота</h3>
-                        <p class="settings-help">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою <i class="ico ico-bell" aria-hidden="true"></i> у боті. Учасники бачать лише пічки й Sisma; роботи, видача, верстати й звернення зворотного зв'язку — лише вам. <b><i class="ico ico-box" aria-hidden="true"></i> Склад</b> — окрема роль: отримує лише замовлення дисків, які оператор надсилає з екрана «Нові диски», без меню й сповіщень.</p>
+                        <p class="settings-help">Створіть посилання й надішліть людині — вона натисне Start і буде в боті. Посилання одноразове, 24 год. Учасники бачать пічки й Sisma; склад — лише замовлення дисків.</p>
                         {% if not bot_enabled %}<p class="stand-note">Бот зараз вимкнено — посилання спрацює, коли його ввімкнете вище.</p>{% endif %}
 
                         <div class="stand-drow">
@@ -199,140 +198,6 @@
                             </label>
                             <button type="submit" class="settings-secondary-button">Створити посилання</button>
                         </form>
-                    </div>
-
-                    {# Табло пічок для логістів — окремий вхід у мережі цеху (порт
-                       {{ board_port }}), лише перегляд. Статус — з самого сервера
-                       табло (слухає / порт зайнятий), не з того, що вимикач стоїть. #}
-                    {% set bs = board_status %}
-                    <div class="stand-cell w6 stand-members" id="furnace-board">
-                        <h3>Табло пічок для логістів
-                        {% if not board_enabled %}
-                            <span class="stand-state stand-state-none">вимкнено</span>
-                        {% elif bs.listening %}
-                            <span class="stand-state stand-state-ok">працює з {{ bs.since.strftime('%H:%M') if bs.since else '—' }}</span>
-                        {% elif bs.error %}
-                            <span class="stand-state stand-state-warn">{{ bs.error }}</span>
-                        {% else %}
-                            <span class="stand-state stand-state-none">вмикається…</span>
-                        {% endif %}
-                        </h3>
-                        <p class="settings-help">Сторінка в мережі цеху: картки печей, температура і коли відкриється (за Києвом), сама оновлюється кожні 30 с. Відкривається з будь-якого ПК чи телефона в тій самій мережі за посиланням нижче. Там немає нічого, крім печей: ні черги, ні входу в KuubMill, нічого не можна змінити.</p>
-                        {% if board_enabled %}
-                        {% for link in board_links %}
-                        <div class="scmd">
-                            <code>{{ link }}</code>
-                            <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати посилання">Скопіювати</button>
-                        </div>
-                        {% else %}
-                        <p class="stand-note">Не вдалось визначити адресу цього ПК у мережі — перевірте мережеве підключення.</p>
-                        {% endfor %}
-                        <p class="settings-help">Друга сторінка за тим самим посиланням — <b>табло цеху на телевізор</b>: верстати з роботами й відсотком, SLM-принтер і ті самі печі внизу. Печі для логістів лишаються за адресою вище, нічого перевідкривати не треба.</p>
-                        {% for link in shop_links %}
-                        <div class="scmd">
-                            <code>{{ link }}</code>
-                            <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати посилання">Скопіювати</button>
-                        </div>
-                        {% endfor %}
-                        <p class="stand-note">Посилання з імʼям ПК (перше) не змінюється, коли роутер видає ПК нову IP; телевізор імʼя може не знайти — тоді цифрове, а щоб цифрове не мінялось, закріпіть IP цього ПК у роутері.</p>
-                        <p class="stand-note">Якщо посилання не відкривається з іншого ПК: при першому ввімкненні Windows питає, чи дозволити KuubMill доступ до мережі — потрібно «Приватні мережі». Змінити посилання — старе одразу перестане працювати.</p>
-                        {% endif %}
-                        {# Вигляд плитки SISMA на телевізорі (власник 12.10.26): лише
-                           ЩО малює полотно; плитка, числа й «рух лише під час
-                           друку» ті самі. Своє слово в кожного варіанта. #}
-                        <form method="post" action="/settings/feedback/board/sisma-style" class="sisma-style" id="sisma-style">
-                            <p class="settings-help"><b>SISMA на телевізорі</b> — що малює плитка принтера. Розмір плитки, шар N з M, відсоток і час кінця однакові в усіх варіантах; рух — лише поки машина друкує.</p>
-                            <div class="sisma-style-opts" role="radiogroup" aria-label="Вигляд SISMA на табло">
-                                {% for key, name, hint in sisma_styles %}
-                                <label class="schip" title="{{ hint }}"><input type="radio" name="style" value="{{ key }}" {% if sisma_style == key %}checked{% endif %}> {{ name }}</label>
-                                {% endfor %}
-                            </div>
-                            {% for key, name, hint in sisma_styles %}
-                            <p class="stand-note"><b>{{ name }}</b> — {{ hint }}.</p>
-                            {% endfor %}
-                            <button type="submit" class="settings-secondary-button">Зберегти вигляд</button>
-                        </form>
-                        {# Графік відключень світла (власник 11.11.26). Номер черги
-                           вмикає віджет узагалі (CRM і табло); прапорець — лише
-                           смугу на телевізорі. У CRM кожен ховає плашку для себе
-                           в шестерні «Черги». #}
-                        <form method="post" action="/settings/feedback/board/power" class="sisma-style" id="power-schedule">
-                            <p class="settings-help"><b>Графік відключень світла</b> — плашка в шапці «Черги» й «Нових з пошти» і смуга на табло цеху. Потрібен лише номер черги, як на сайті ДТЕК (наприклад 4.1); адреса не зберігається. Порожньо — віджета немає ніде.</p>
-                            <label class="settings-help" for="power-group">Черга відключень</label>
-                            <input class="login-input" type="text" id="power-group" name="group" value="{{ power_group }}"
-                                   inputmode="decimal" autocomplete="off" maxlength="5" placeholder="4.1">
-                            <label class="schip"><input type="checkbox" name="board" value="1" {% if power_board %}checked{% endif %}> Показувати смугу на табло цеху</label>
-                            <button type="submit" class="settings-secondary-button">Зберегти</button>
-                        </form>
-                        {# 3D-роботи на плитках табло (власник 12.11.26): що показувати
-                           й якого розміру, з ЖИВИМ прев'ю справжнього табло (iframe
-                           `/settings/feedback/board/3d/preview`). Поля — реєстр
-                           `board_models.THREE_D_FIELDS`. Рух повзунка одразу йде в
-                           прев'ю (`settings_board3d.js` → `KM3D.setConfig`), у базу —
-                           лише кнопкою «Зберегти»; телевізор бере збережене за ≤30 с.
-                           Форма шле всі поля разом: знята галочка = вимкнено. #}
-                        <form method="post" action="/settings/feedback/board/3d" class="b3d" id="board-3d" data-b3d>
-                            <div class="b3d-head">
-                                <div>
-                                    <b class="b3d-title">3D на телевізорі</b>
-                                    <p class="settings-help">Модель роботи на плитці верстата, що фрезерує. Велика — симуляція по черзі: верстат не каже, яку коронку ріже, а фрезерує роботи програми разом.</p>
-                                </div>
-                                <div class="b3d-zoom" role="group" aria-label="Масштаб прев'ю">
-                                    <button type="button" class="b3d-seg is-on" data-b3d-zoom="board">Усе табло</button>
-                                    <button type="button" class="b3d-seg" data-b3d-zoom="tile">Плитка крупно</button>
-                                </div>
-                            </div>
-                            <div class="b3d-stage" data-b3d-stage>
-                                <iframe class="b3d-frame" src="/settings/feedback/board/3d/preview" title="Прев'ю табло цеху" loading="lazy" tabindex="-1"></iframe>
-                                <span class="b3d-badge" data-b3d-dirty hidden>прев'ю · ще не збережено</span>
-                                <p class="b3d-empty" data-b3d-empty hidden>Моделей ще немає: прев'ю оживе, щойно табло підготує першу роботу з Sum3D (до хвилини після ввімкнення табло).</p>
-                            </div>
-                            <div class="b3d-switches" role="group" aria-label="Що показувати">
-                                {% for f in three_d_fields if f.is_switch %}
-                                <label class="b3d-switch" title="{{ f.hint }}">
-                                    <input type="checkbox" name="{{ f.key }}" value="1" data-default="{{ '1' if f.default else '' }}" {% if three_d[f.key] %}checked{% endif %}>
-                                    <span class="b3d-knob" aria-hidden="true"></span>
-                                    <span><b>{{ f.label }}</b><small>{{ f.hint }}</small></span>
-                                </label>
-                                {% endfor %}
-                            </div>
-                            <div class="b3d-grid">
-                                {% for f in three_d_fields if not f.is_switch and f.group == "3d" %}
-                                <label class="b3d-row"{% if f.hint %} title="{{ f.hint }}"{% endif %}>
-                                    <span class="b3d-name">{{ f.label }}</span>
-                                    <input type="range" name="{{ f.key }}" min="{{ f.low }}" max="{{ f.high }}" step="{{ f.step }}" value="{{ three_d[f.key] }}" data-default="{{ f.default }}" data-unit="{{ f.unit }}">
-                                    <output class="b3d-val">{{ three_d[f.key] }}{{ f.unit }}</output>
-                                </label>
-                                {% endfor %}
-                            </div>
-                            <div class="b3d-sub">Смуга «Світло» в шапці</div>
-                            <div class="b3d-grid">
-                                {% for f in three_d_fields if f.group == "power" %}
-                                <label class="b3d-row" title="{{ f.hint }}">
-                                    <span class="b3d-name">{{ f.label }}</span>
-                                    <input type="range" name="{{ f.key }}" min="{{ f.low }}" max="{{ f.high }}" step="{{ f.step }}" value="{{ three_d[f.key] }}" data-default="{{ f.default }}" data-unit="{{ f.unit }}">
-                                    <output class="b3d-val">{{ three_d[f.key] }}{{ f.unit }}</output>
-                                </label>
-                                {% endfor %}
-                            </div>
-                            <div class="sbtnrow">
-                                <button type="submit" class="settings-secondary-button b3d-save">Зберегти</button>
-                                <button type="button" class="settings-secondary-button" data-b3d-revert>Скасувати зміни</button>
-                                <button type="button" class="settings-secondary-button" data-b3d-defaults>Типові</button>
-                            </div>
-                        </form>
-                        {# Ряд кнопок — не рядок реєстру: `.stand-drow` малює межу
-                           згори й розтягує вміст, наче це запис у переліку. #}
-                        <div class="sbtnrow">
-                            <form method="post" action="/settings/feedback/board/toggle">
-                                <button type="submit" class="settings-secondary-button">{{ 'Вимкнути табло' if board_enabled else 'Увімкнути табло' }}</button>
-                            </form>
-                            {% if board_enabled %}
-                            <form method="post" action="/settings/feedback/board/regenerate">
-                                <button type="submit" class="settings-secondary-button">Змінити посилання</button>
-                            </form>
-                            {% endif %}
-                        </div>
                     </div>
 
                 </div>

@@ -249,12 +249,12 @@ def test_3d_settings_form_saves_and_switches_tiles_off(app_db, monkeypatch):  # 
     form = {"on": "1", "hero": "1", "mesh": "1", "big": "1.4", "smallk": "0.7", "zone": "1.2",
             "sim": "7", "hold": "1", "spin_s": "20"}  # без small і spin
     status, headers, _ = client.post("/settings/feedback/board/3d", form)
-    assert status == 303 and headers["location"].endswith("#furnace-board")
+    assert status == 303 and headers["location"] == "/settings/board"
     with factory() as db:
         saved = _json.loads(get_setting(db, bm.THREE_D_KEY))
         assert saved["big"] == 1.4 and saved["sim"] == 7.0
         assert saved["small"] is False and saved["spin"] is False and saved["hero"] is True
-    status, _, page = client.get("/settings/feedback")
+    status, _, page = client.get("/settings/board")
     assert status == 200 and 'id="board-3d"' in page and 'name="big"' in page
 
     client.post("/settings/feedback/board/3d", {"big": "1"})  # «on» знято
@@ -306,8 +306,10 @@ def test_settings_preview_shows_the_board_with_a_demo_work(app_db, tmp_path):  #
     status, headers, _ = client.get(f"/settings/feedback/board/3d/model/{key}.json")
     assert status == 200 and headers.get("content-encoding") == "gzip"
     assert client.get("/settings/feedback/board/3d/model/zzz.json")[0] == 404
-    status, _, settings = client.get("/settings/feedback")
+    status, _, settings = client.get("/settings/board")
     assert 'src="/settings/feedback/board/3d/preview"' in settings and "settings_board3d.js" in settings
+    _, _, feedback = client.get("/settings/feedback")
+    assert "board-3d" not in feedback, "Табло цеху переїхало на свою сторінку (12.11.26)"
 
 
 def test_power_strip_height_rides_with_the_3d_settings(monkeypatch):

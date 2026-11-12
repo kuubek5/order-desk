@@ -4,13 +4,8 @@
            land back on this section via return_to=settings. Admin-only. #}
         {# Гейт розділу тепер у settings.html через реєстр меню
            (`app/services/settings_nav.py`) — тут дубля немає. #}
-        <section id="mail-filters" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="mail-filters">
-            <div class="num" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7z" class="duo"/><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
-            </div>
-            <div class="box">
-                {{ slab('Фільтри пошти', 'Листи 3D-друку, бухгалтерії та спам автоматично йдуть у вкладку «Відфільтровані» на екрані «Нові з пошти» — нічого не видаляється.', slabs['mail-filters']) }}
+        <div class="stand-tabpane" id="mail-filters" data-tab="mail-filters">
+                {{ slab('Фільтри пошти', 'Не наші листи (3D-друк, бухгалтерія, спам) йдуть у «Відфільтровані». Нічого не видаляється.', slabs['mail-filters']) }}
                 {% set return_to = 'settings' %}
                 {% include "_mail_filter_panel.html" %}
-            </div>
-        </section>
+        </div>

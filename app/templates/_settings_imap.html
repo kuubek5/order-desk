@@ -9,11 +9,13 @@
             <div class="box">
                 <div class="stand-tabs" role="tablist">
                     <button type="button" class="stand-tab is-on" role="tab" data-tabgo="imap" aria-selected="true">Скринька</button>
-                    <button type="button" class="stand-tab" role="tab" data-tabgo="mail-download" aria-selected="false">Скачування вкладень</button>
+                    <button type="button" class="stand-tab" role="tab" data-tabgo="mail-download" aria-selected="false">Скачування</button>
+                    {% if can_see(user, 'mail-filters') %}<button type="button" class="stand-tab" role="tab" data-tabgo="mail-filters" aria-selected="false">Фільтри</button>{% endif %}
+                    {% if can_see(user, 'mail-conveyor') %}<button type="button" class="stand-tab" role="tab" data-tabgo="mail-conveyor" aria-selected="false">Конвеєр</button>{% endif %}
                 </div>
 
                 <div class="stand-tabpane is-on" data-tab="imap">
-                {% call slab('Пошта (IMAP)', 'Замовлення клієнтів листами з усієї країни (ukr.net).', slabs['imap']) %}
+                {% call slab('Пошта', 'Скринька, з якої приходять замовлення клієнтів.', slabs['imap']) %}
                     <button
                         type="button"
                         class="settings-secondary-button settings-check-button"
@@ -99,5 +101,7 @@
                 {# «Скачування вкладень» — режим тієї самої скриньки, тому
                    вкладка тут, а не окремий пункт меню через півекрана. #}
                 {% include "_settings_mail_download.html" %}
+                {% if can_see(user, 'mail-filters') %}{% include "_settings_mail_filters.html" %}{% endif %}
+                {% if can_see(user, 'mail-conveyor') %}{% include "_settings_mail_conveyor.html" %}{% endif %}
             </div>
         </div>

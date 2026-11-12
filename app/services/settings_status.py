@@ -298,14 +298,8 @@ def _slab_paths(ctx: dict) -> Slab:
         val = (values.get(key) or "").strip()
         return Meter(k=title, v="задано" if val else "не задано", s=sub, tone=TONE_NONE if val else TONE_WARN)
 
+    # Початок робочої доби — свій розділ «Робоча доба» з 12.11.26.
     meters = [mark("export_folder_path"), mark("technician_files_path"), mark("sum3d_projects_path")]
-    meters.append(
-        Meter(
-            k="Початок робочої доби",
-            v=(values.get("day_rollover_time") or "07:30"),
-            s="«сьогодні» рахується від цього часу",
-        )
-    )
     return Slab(tone=tone, label=label, meters=meters)
 
 
@@ -664,6 +658,20 @@ def _slab_handout(ctx: dict) -> Slab:
     )
 
 
+def _slab_workday(ctx: dict) -> Slab:
+    """Робоча доба: лише факт налаштування, без «зеленого»."""
+    values = ctx.get("values") or {}
+    at = (values.get("day_rollover_time") if hasattr(values, "get") else None) or "07:30"
+    return Slab(tone=TONE_NONE, label=f"новий день о {at}",
+                meters=[Meter(k="Початок дня", v=at, s="до нього черга на вчорашньому дні")])
+
+
+def _slab_mail_conveyor(ctx: dict) -> Slab:
+    on = bool(ctx.get("mail_merge_rows"))
+    return Slab(tone=TONE_NONE, label="зводить в один рядок" if on else "кожен лист — свій рядок",
+                meters=[Meter(k="Один рядок на клієнта й колір", v="увімкнено" if on else "вимкнено")])
+
+
 # Ключ розділу → як зібрати його плиту. Словник, а не тіло функції, бо плиту
 # треба вміти зібрати й ПООДИНЦІ: «Сповіщення» живуть тепер у кабінеті
 # (/account), і тягнути туди снапшоти печей заради однієї плити не варто.
@@ -682,6 +690,8 @@ _SLAB_BUILDERS = {
     "furnaces": _slab_furnaces,
     "machines": _slab_machines,
     "handout": lambda db, ctx: _slab_handout(ctx),
+    "workday": lambda db, ctx: _slab_workday(ctx),
+    "mail-conveyor": lambda db, ctx: _slab_mail_conveyor(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
     "mcp": lambda db, ctx: _slab_mcp(ctx),
 }

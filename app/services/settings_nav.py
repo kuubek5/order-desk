@@ -85,9 +85,13 @@ class NavGroup:
 # (рішення власника 06.09.26): спершу поділ за КИМ, потім за ЧИМ.
 
 NAV: tuple = (
+    # Перекладено 12.11.26 (власник: «навести лад у меню, кожна функція у своєму
+    # логічному розділі»): табло — в Обладнання, Telegram — окремою групою
+    # «Зв'язок», стан і версія — в Обслуговування, доступ по мережі — в «Люди
+    # й доступ», фільтри пошти — вкладкою Пошти, робоча доба — окремо від тек.
     NavGroup(
         key="mine",
-        title="Моє робоче місце",
+        title="Моє",
         heading=False,
         items=(
             NavItem(
@@ -107,23 +111,11 @@ NAV: tuple = (
                 keywords=("спливні", "звук", "попап"),
             ),
             NavItem(
-                key="state",
-                title="Стан системи",
-                href="/settings#state",
-                keywords=("самоперевірка", "діагностика", "здоровʼя"),
-            ),
-            NavItem(
                 key="journal",
                 title="Журнал дій",
                 href="/journal",
                 kind="page",
                 keywords=("історія", "хто зробив", "скасувати"),
-            ),
-            NavItem(
-                key="update",
-                title="Про застосунок",
-                href="/settings#update",
-                keywords=("версія", "оновлення", "changelog", "що нового"),
             ),
         ),
     ),
@@ -148,10 +140,10 @@ NAV: tuple = (
             ),
             NavItem(
                 key="imap",
-                title="Пошта (IMAP)",
+                title="Пошта",
                 href="/settings#imap",
                 edit_roles=None,
-                keywords=("ukr.net", "пошта", "пароль", "скринька"),
+                keywords=("ukr.net", "пошта", "пароль", "скринька", "imap"),
             ),
             NavItem(
                 key="mail-download",
@@ -162,18 +154,20 @@ NAV: tuple = (
                 keywords=("вкладення", "архів", "rar", "спул"),
             ),
             NavItem(
-                key="paths",
-                title="Шляхи папок",
-                href="/settings#paths",
-                edit_roles=None,
-                keywords=("export", "sum3d", "cam-work", "тека", "мережа"),
-            ),
-            NavItem(
                 key="mail-filters",
                 title="Фільтри пошти",
                 href="/settings#mail-filters",
                 edit_roles=None,
+                parent="imap",
                 keywords=("правила", "не наша робота", "3d-друк", "категорії"),
+            ),
+            NavItem(
+                key="mail-conveyor",
+                title="Конвеєр",
+                href="/settings#mail-conveyor",
+                roles=ADMIN_ONLY,
+                parent="imap",
+                keywords=("мультипрорахунок", "один рядок", "зводити листи"),
             ),
             NavItem(
                 key="materials",
@@ -183,12 +177,26 @@ NAV: tuple = (
                 edit_roles=None,
                 keywords=("цирконій", "пмма", "синоніми", "розпізнавання"),
             ),
+            NavItem(
+                key="paths",
+                title="Теки",
+                href="/settings#paths",
+                edit_roles=None,
+                keywords=("export", "sum3d", "cam-work", "тека", "мережа", "шляхи"),
+            ),
         ),
     ),
     NavGroup(
         key="equipment",
         title="Обладнання",
         items=(
+            NavItem(
+                key="machines",
+                title="Верстати",
+                href="/settings#machines",
+                edit_roles=None,
+                keywords=("imes", "remicore", "sisma", "фрезер", "калібрування"),
+            ),
             NavItem(
                 key="furnaces",
                 title="Пічки",
@@ -197,11 +205,12 @@ NAV: tuple = (
                 keywords=("піч", "vnc", "austromat", "спікання"),
             ),
             NavItem(
-                key="machines",
-                title="Верстати",
-                href="/settings#machines",
-                edit_roles=None,
-                keywords=("imes", "remicore", "sisma", "фрезер", "калібрування"),
+                key="board",
+                title="Табло цеху",
+                href="/settings/board",
+                kind="page",
+                roles=ADMIN_ONLY,
+                keywords=("телевізор", "тв", "3d", "світло", "графік", "логісти", "sisma"),
             ),
             # «Заготовки» (тека CAM) звідси переїхали на окремий екран
             # «Нові диски» (/discs, 10.09.26): шлях до теки й «Перечитати»
@@ -218,6 +227,27 @@ NAV: tuple = (
                 href="/settings#handout",
                 roles=ADMIN_ONLY,
                 keywords=("qc", "чеклист", "знайдено", "видача", "звірка"),
+            ),
+            NavItem(
+                key="workday",
+                title="Робоча доба",
+                href="/settings#workday",
+                edit_roles=None,
+                keywords=("07:30", "межа дня", "нічна зміна", "доба"),
+            ),
+        ),
+    ),
+    NavGroup(
+        key="contact",
+        title="Зв'язок",
+        items=(
+            NavItem(
+                key="feedback",
+                title="Telegram-бот",
+                href="/settings/feedback",
+                kind="page",
+                roles=ADMIN_ONLY,
+                keywords=("telegram", "бот", "скарги", "ідеї", "зворотний зв'язок"),
             ),
         ),
     ),
@@ -239,12 +269,34 @@ NAV: tuple = (
                 roles=ADMIN_ONLY,
                 keywords=("закрити розділ", "блокатор", "у розробці"),
             ),
+            NavItem(
+                key="mcp",
+                title="Доступ по мережі",
+                href="/settings#mcp",
+                roles=ADMIN_ONLY,
+                keywords=(
+                    "mcp", "wireguard", "токен", "віддалений доступ", "8011", "тунель",
+                    "8000", "другий пк", "інший комп'ютер", "оператор по мережі", "брандмауер",
+                ),
+            ),
         ),
     ),
     NavGroup(
         key="service",
         title="Обслуговування",
         items=(
+            NavItem(
+                key="state",
+                title="Стан системи",
+                href="/settings#state",
+                keywords=("самоперевірка", "діагностика", "здоровʼя"),
+            ),
+            NavItem(
+                key="update",
+                title="Оновлення",
+                href="/settings#update",
+                keywords=("версія", "оновлення", "changelog", "що нового", "про застосунок"),
+            ),
             NavItem(
                 key="sync-journal",
                 title="Журнал синку",
@@ -263,14 +315,6 @@ NAV: tuple = (
                 keywords=("бекап", "експорт бази", "імпорт"),
             ),
             NavItem(
-                key="feedback",
-                title="Зворотний зв'язок",
-                href="/settings/feedback",
-                kind="page",
-                roles=ADMIN_ONLY,
-                keywords=("telegram", "бот", "скарги", "ідеї"),
-            ),
-            NavItem(
                 key="perf",
                 title="Швидкодія",
                 href="/diag/perf",
@@ -285,16 +329,6 @@ NAV: tuple = (
                 kind="page",
                 roles=ADMIN_ONLY,
                 keywords=("ключ", "термін", "активація"),
-            ),
-            NavItem(
-                key="mcp",
-                title="Доступ по мережі",
-                href="/settings#mcp",
-                roles=ADMIN_ONLY,
-                keywords=(
-                    "mcp", "wireguard", "токен", "віддалений доступ", "8011", "тунель",
-                    "8000", "другий пк", "інший комп'ютер", "оператор по мережі", "брандмауер",
-                ),
             ),
         ),
     ),

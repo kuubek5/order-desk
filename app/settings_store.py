@@ -139,7 +139,7 @@ SETTING_FIELDS = [
     # (див. app/business_day.py).
     SettingField(
         key="day_rollover_time",
-        section="paths",
+        section="workday",
         label="Коли починається робочий день",
         help_text="Нічна зміна після півночі ще на вчорашньому дні (типово 07:30)",
         operator_editable=True,

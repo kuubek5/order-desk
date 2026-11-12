@@ -277,6 +277,7 @@ GET /login
 POST /settings/users
 POST /settings/mcp/toggle
 GET /settings/feedback
+GET /settings/board
 POST /login
 GET /archive/search
 POST /logout

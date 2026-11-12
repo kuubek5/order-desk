@@ -65,5 +65,5 @@ async def save_mail_merge_rows(request: Request, db: Session = Depends(get_db)):
             else "Зведення вимкнено: кожен лист Конвеєра — окремий рядок, як раніше."
         ),
     }
-    return RedirectResponse("/settings?saved=1#handout", status_code=303)
+    return RedirectResponse("/settings?saved=1#mail-conveyor", status_code=303)
 

@@ -1,0 +1,22 @@
+{% from "_settings_slab.html" import slab %}
+        {# Конвеєр — вкладка Пошти (з 12.11.26; раніше лежав у «Ранковій
+           видачі»). Лише адміністратору (власник 05.10.26): оператор не
+           бачить ні перемикача, ні його стану. Роут теж адмінський. #}
+        <div class="stand-tabpane" data-tab="mail-conveyor">
+            {{ slab('Конвеєр', 'Як листи потрапляють у таблицю при мультипрорахунку.', slabs['mail-conveyor']) }}
+            <div class="stand-cells">
+                <div class="stand-cell w6">
+                    <h3>Один рядок на клієнта й колір</h3>
+                    <p class="stand-note">Листи одного клієнта з одним кольором, Sum3D і текою стають однією роботою: кількість сумується, у таблиці один рядок.</p>
+                    <form method="post" action="/settings/mail-merge-rows">
+                        <label class="settings-backup-confirm stand-toggle">
+                            <input type="checkbox" name="mail_merge_rows" value="1" {{ 'checked' if mail_merge_rows else '' }}>
+                            Зводити в один рядок
+                        </label>
+                        <div class="settings-check-row">
+                            <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>

@@ -14,7 +14,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7" class="duo"/><path d="M12 3v7"/><path d="M7 10h10v4a5 5 0 0 1-10 0z"/><path d="M12 19v2"/></svg>
             </div>
             <div class="box">
-                {{ slab('Верстати', 'CRM знімає кадр екрана RemiCORE раз на кілька секунд. Жодного вводу у верстат застосунок не шле і не вміє слати.', slabs['machines']) }}
+                {{ slab('Верстати', 'Відсоток і програма з екрана верстата. Лише читання.', slabs['machines']) }}
 
                 {% if machines %}
                 <table class="fu-table">
@@ -140,7 +140,7 @@
                 <h3>Додати верстат</h3>
                 <form method="post" action="/settings/machines" class="fu-add">
                     <div class="settings-field">
-                        <p class="settings-help">Два способи читати екран, заповни ОДИН: <b>Токен агента</b> — наш HTTP-агент (порт <b>8765</b>), бачить синю смугу %; <b>Пароль VNC</b> — класичний UltraVNC (порт <b>5900</b>), смуги % не бачить. Назву видно на екрані верстатів.</p>
+                        <p class="settings-help">Заповніть одне: токен агента (видно відсоток) або пароль VNC (без відсотка).</p>
                         <div class="fu-add-row">
                             <input id="machine_new_name" class="login-input" name="name" placeholder="350i №1" maxlength="80" required>
                             <input class="login-input mono" name="host" placeholder="192.168.1.85" maxlength="60" required>
@@ -162,7 +162,7 @@
                     <span class="connection-state {% if machine_password_set %}connection-state-ready{% endif %}">{% if machine_password_set %}збережено{% else %}не задано{% endif %}</span>
                 </h3>
                 <div class="settings-field">
-                    <p class="settings-help">View-only пароль UltraVNC, якщо він однаковий на всіх верстатних ПК. Порожнє поле лишає збережений пароль без змін.</p>
+                    <p class="settings-help">Пароль VNC, якщо він однаковий на всіх верстатах. Порожньо — не змінювати.</p>
                     <form method="post" action="/settings/machines/password" class="fu-add-row">
                         <input id="machine_shared_password" class="login-input" type="password" name="password"
                                autocomplete="new-password"
@@ -179,11 +179,7 @@
                 <div class="stand-cell w3">
                 <h3>Тека калібрувальних кадрів</h3>
                 <div class="settings-field">
-                    <p class="settings-help">
-                        Сюди складаються кадри, поки в таблиці стоїть галка <b>Калібр.</b>
-                        Порожнє поле — типова тека застосунку. Зараз:
-                        <span class="mono">{{ machine_calibration_path }}</span>.
-                    </p>
+                    <p class="settings-help">Куди складаються кадри, поки стоїть галка «Калібр». Зараз: {{ machine_calibration_path }}.</p>
                     <form method="post" action="/settings/machines/calibration-path" class="fu-add-row">
                         <input id="machine_calib_path" class="login-input mono" name="path"
                                value="{{ machine_calibration_custom }}"
@@ -207,11 +203,7 @@
                 <details class="mc-agent">
                     <summary>Агент верстата — встановлення й що він робить</summary>
                     <div class="mc-agent-body">
-                        <p class="settings-help">
-                            Агент ставиться на ПК ВЕРСТАТА і віддає кадр екрана RemiCORE на запит CRM.
-                            Тільки з ним видно <b>відсоток виконання</b> і <b>яка саме програма</b> фрезерується
-                            (класичний VNC смуги відсотка не бачить).
-                        </p>
+                        <p class="settings-help">Агент ставиться на ПК верстата: без нього не видно відсотка й назви програми.</p>
 
                         <p class="mc-agent-dl">
                             <a class="settings-secondary-button" rel="noopener"
@@ -229,24 +221,11 @@
                                 токен у поле <b>Токен агента</b>. Пароль VNC лишити порожнім.</li>
                         </ol>
 
-                        <p class="settings-help">
-                            <b>Іконка в треї</b> на верстаті: «Налаштування агента», «Призупинити спостереження»
-                            (кадр перестає віддаватись — CRM чесно покаже «немає зв'язку»), «Вийти».
-                            Налаштування агента завжди доступні на самому верстаті за адресою
-                            <code class="mono">http://127.0.0.1:8766</code>.
-                        </p>
+                        <p class="settings-help">На верстаті — значок у треї: налаштування, пауза, вихід. Налаштування також на http://127.0.0.1:8766.</p>
 
-                        <p class="settings-help">
-                            <b>Куди зберігаються кадри.</b> На верстаті — <b>нікуди</b>: кадр живе в пам'яті
-                            й іде мережею на запит. На цьому ПК — один файл на верстат у
-                            <code class="mono">%LOCALAPPDATA%\KuubMill\machine_frames</code>, який
-                            перезаписується кожні 15 секунд. Місце не росте.
-                        </p>
+                        <p class="settings-help">Кадри не накопичуються: по одному файлу на верстат, перезаписується кожні 15 с.</p>
 
-                        <p class="settings-help">
-                            Агент <b>лише читає екран</b>: він не вміє слати верстату ані клавіш, ані миші,
-                            не відкриває інших портів і нікуди не «дзвонить» сам.
-                        </p>
+                        <p class="settings-help">Агент лише дивиться на екран — нічого не натискає й нікуди не пише.</p>
                     </div>
                 </details>
 

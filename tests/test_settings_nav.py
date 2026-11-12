@@ -268,31 +268,35 @@ def test_palette_finds_words_that_are_not_in_labels():
 # відповідь на питання «а що бачить оператор», яку інакше довелось би збирати
 # з семи шаблонів.
 NAV_SNAPSHOT = {
+    # Перекладено 12.11.26 (власник: «навести лад у меню»).
     "account": ("mine", "усі", "адмін"),
     "notifications": ("mine", "усі", "усі"),
-    "state": ("mine", "усі", "адмін"),
     "journal": ("mine", "усі", "адмін"),
-    "update": ("mine", "усі", "адмін"),
     "sheets": ("sources", "усі", "усі"),
     "sheet-backup": ("sources", "усі", "усі"),
     "imap": ("sources", "усі", "усі"),
-    "paths": ("sources", "усі", "усі"),
     "mail-download": ("sources", "усі", "усі"),
     "mail-filters": ("sources", "усі", "усі"),
+    "mail-conveyor": ("sources", "адмін", "адмін"),
     "materials": ("sources", "усі", "усі"),
-    "furnaces": ("equipment", "усі", "усі"),
+    "paths": ("sources", "усі", "усі"),
     "machines": ("equipment", "усі", "усі"),
+    "furnaces": ("equipment", "усі", "усі"),
     # «Заготовки» (08.09.26) прибрано 10.09.26: переїхали на окремий екран
     # «Нові диски» (/discs) разом зі шляхом до теки CAM.
+    "board": ("equipment", "адмін", "адмін"),
+    "handout": ("workflow", "адмін", "адмін"),
+    "workday": ("workflow", "усі", "усі"),
+    "feedback": ("contact", "адмін", "адмін"),
     "operators": ("people", "адмін", "адмін"),
     "sections": ("people", "адмін", "адмін"),
-    "handout": ("workflow", "адмін", "адмін"),
+    "mcp": ("people", "адмін", "адмін"),
+    "state": ("service", "усі", "адмін"),
+    "update": ("service", "усі", "адмін"),
     "sync-journal": ("service", "адмін", "адмін"),
     "backup": ("service", "адмін", "адмін"),
-    "feedback": ("service", "адмін", "адмін"),
     "perf": ("service", "адмін", "адмін"),
     "license": ("service", "адмін", "адмін"),
-    "mcp": ("service", "адмін", "адмін"),
 }
 
 
