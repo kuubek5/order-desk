@@ -1193,7 +1193,7 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
   border-radius: 999px; cursor: pointer; transition: background .15s, color .15s; }
 .b3d-seg.is-on { background: rgba(var(--accent-rgb), .18); color: var(--ink); }
 .b3d-stage { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line);
-  background: #0d0a06; height: var(--b3d-h, 360px); transition: height .25s ease; }
+  background: #0d0a06; height: var(--b3d-h, 360px); }
 /* Розмір вікна браузера на телевізорі цеху — та сама розкладка, що на ТВ. */
 .b3d-frame { position: absolute; left: 0; top: 0; width: 3840px; height: 2007px; border: 0;
   transform-origin: 0 0; transform: var(--b3d-t, scale(.25)); transition: transform .25s ease; pointer-events: none; }
@@ -1263,7 +1263,7 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .b3d-row { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 10px; font-size: var(--fs-2); color: var(--ink-2); cursor: pointer; }
 .b3d-row input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 .b3d-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); text-align: right; }
-@media (prefers-reduced-motion: reduce) { .b3d-stage, .b3d-frame, .b3d-knob, .b3d-knob::after { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .b3d-frame, .b3d-knob, .b3d-knob::after { transition: none; } }
 
 @media (max-width: 860px) {
   .secmgr-head { display: none; }
