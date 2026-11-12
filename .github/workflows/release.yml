@@ -31,7 +31,7 @@ jobs:
       - name: Run tests
         env:
           DB_ENCRYPTION_KEY: "Un82ZLqj-Mb9wutrlh4s384pKBsG1WMn1GCYncpWgTw="
-        run: python -m pytest -q
+        run: python -m pytest -q -n auto --dist loadfile
 
   build-and-release:
     needs: tests

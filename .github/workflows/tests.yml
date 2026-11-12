@@ -62,4 +62,4 @@ jobs:
         # (CLAUDE.md section 7), so a fixed CI-only value is fine to commit.
         env:
           DB_ENCRYPTION_KEY: "Un82ZLqj-Mb9wutrlh4s384pKBsG1WMn1GCYncpWgTw="
-        run: python -m pytest -q --cov=app --cov-report=term-missing
+        run: python -m pytest -q -n auto --dist loadfile --cov=app --cov-report=term-missing

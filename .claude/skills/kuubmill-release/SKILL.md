@@ -41,8 +41,14 @@ description: Випустити нову версію KuubMill на прод (80
    .venv/Scripts/python.exe -m ruff check .
    .venv/Scripts/python.exe -m mypy app --ignore-missing-imports   # число проти .mypy-baseline
    .venv/Scripts/python.exe -m pytest tests/test_version_sync.py -q
-   .venv/Scripts/python.exe -m pytest -q
+   .venv/Scripts/python.exe -m pytest -q -n auto --dist loadfile   # ~2 хв замість 25+
    ```
+
+   **Версії бібліотек — лише з `constraints.txt`** (12.11.26, підключено `-c` з
+   `requirements.txt`): CI, інсталятор і `.venv` мусять мати ті самі версії, інакше
+   mypy-храповик на CI розходиться з локальним (12.11.26: 173 проти 170). Файли
+   залежностей — лише ASCII (pip на CI читає їх у cp1252). Оновити версії —
+   свідомо, за рецептом у шапці `constraints.txt`.
    **Лінтер ПЕРШИМ — так само, як у CI.** Він стоїть там окремим кроком і раніше
    за тести, тож зелені тести нічого не обіцяють: 0.13.11 упав саме на `ruff`
    (дві мертві змінні після рефакторингу) при 2584 зелених тестах, і тег довелось

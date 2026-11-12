@@ -1,5 +1,8 @@
 -r requirements.txt
 pytest-cov>=4.0
+# Parallel test run (python -m pytest -n auto --dist loadfile): ~2 min instead of
+# 25+. loadfile keeps one test file in one worker (shared module state).
+pytest-xdist>=3.5
 ruff>=0.4.0
 mypy>=1.8.0
 # Runs the ruff lint hook before every commit (.pre-commit-config.yaml), so a
