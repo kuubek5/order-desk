@@ -39,6 +39,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "chat_id": get_setting(db, "telegram_chat_id") or "",
             "push_enabled": (get_setting(db, "feedback_telegram_enabled") or "") == "1",
             "bot_enabled": (get_setting(db, "telegram_bot_enabled") or "") == "1",
+            "bot_pictures": (get_setting(db, "telegram_bot_pictures") or "1") != "0",
             "bot_status": telegram_bot.status_snapshot(),
             "bot_outbox": telegram_bot.outbox_summary(db),
             "owner_notify": telegram_bot.owner_notify(db),
@@ -104,6 +105,8 @@ async def save_feedback_settings(request: Request, db: Session = Depends(get_db)
     set_setting(db, "telegram_chat_id", chat_id)
     set_setting(db, "feedback_telegram_enabled", enabled)
     set_setting(db, "telegram_bot_enabled", bot_enabled)
+    # Форма шле всі галочки разом: знята = старий текстовий бот.
+    set_setting(db, "telegram_bot_pictures", "1" if form.get("telegram_bot_pictures") else "0")
     db.commit()
 
     request.session["feedback_settings_flash"] = {

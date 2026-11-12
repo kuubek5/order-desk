@@ -53,6 +53,10 @@
                                 <input type="checkbox" name="telegram_bot_enabled" value="1" {{ 'checked' if bot_enabled else '' }}>
                                 Бот: меню стану цеху й сповіщення про пічки та Sisma
                             </label>
+                            <label class="settings-backup-confirm stand-toggle" title="Усі екрани бота — картки в стилі CRM. Зняти — бот працює по-старому, текстом.">
+                                <input type="checkbox" name="telegram_bot_pictures" value="1" {{ 'checked' if bot_pictures else '' }}>
+                                Бот: екрани картками в стилі CRM
+                            </label>
 
                             <div class="settings-field">
                                 <label for="tg-token">Токен бота{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>

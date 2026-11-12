@@ -1229,6 +1229,7 @@ def _text_refresh(view: str, opened: Optional[str]) -> Optional[str]:
 
 MACHINE_CALLBACK = "m"
 EXPAND_CALLBACK = "e"  # той самий, що `telegram_views.EXPAND_CALLBACK`
+PICTURE_CALLBACK = "p"  # той самий, що `telegram_cards.PICTURE_CALLBACK`
 _MACHINE_BUTTONS_PER_ROW = 3
 _MAX_DETAIL_WORKS = 8
 
@@ -1387,6 +1388,61 @@ def _photo_actions(
     ]
 
 
+# ── Усі екрани картками (власник 12.11.26) ──────────────────────────────────
+
+
+def pictures_enabled(db: Session) -> bool:
+    """Нові картки в стилі CRM (`telegram_cards`). Вимикач — у налаштуваннях
+    бота: вимкнено = бот працює по-старому (текст, стара картинка пошти)."""
+    from app.services import telegram_cards
+
+    return telegram_cards.enabled(db)
+
+
+def _card_caption(view: str, summary: str, moment: datetime, lead: str = "") -> str:
+    from app.services import telegram_cards
+
+    title = telegram_cards.TITLES.get(view, "")
+    head = f"<b>{KMILL_PREFIX}</b>" + (f" · {title}" if title else "")
+    body = f"{head}\n\n{summary}" if summary else head
+    text = f"{body}\n\n{_footer(moment)}"
+    if lead:
+        text = f"{lead}\n\n{text}"
+    return text if len(text) <= CAPTION_LIMIT else f"{head}\n\n{_footer(moment)}"
+
+
+def _card(
+    db: Session, view: str, notify: bool, now: Optional[datetime], *, admin: bool,
+    arg: Optional[str] = None, lead: str = "",
+) -> Optional[tuple[tuple, str, dict]]:
+    """(файл, підпис, кнопки) екрана-картки або None — тоді текст."""
+    from app.services import telegram_cards
+
+    if view not in views_for(admin):
+        view = "home"
+    moment = now or business_now()
+    card = telegram_cards.build(db, view, moment, admin=admin, arg=arg)
+    if card is None:
+        return None
+    markup = telegram_cards.keyboard(view, card, admin=admin, notify=notify, report_callback=REPORT_CALLBACK)
+    return (f"{view}.png", card.png, "image/png"), _card_caption(view, card.summary, moment, lead), markup
+
+
+def _card_message(
+    db: Session, chat_id: str, view: str, notify: bool, now: Optional[datetime], *, admin: bool, lead: str = ""
+) -> Optional[Action]:
+    """Нове повідомлення-картка (відповідь на текст, вхід за запрошенням)."""
+    built = _card(db, view, notify, now, admin=admin, lead=lead)
+    if built is None:
+        return None
+    photo, caption, markup = built
+    return Action(
+        "sendPhoto",
+        {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML", "reply_markup": markup},
+        files={"photo": photo},
+    )
+
+
 # ── Пошта картинкою (власник 10.11.26, варіант E) ───────────────────────────
 
 
@@ -1476,7 +1532,13 @@ def handle_update(
         kind, _, view = data.partition(":")
         focus: Optional[str] = None
         opened: Optional[str] = None
-        if kind == MACHINE_CALLBACK:
+        picture_arg: Optional[str] = None
+        if kind == PICTURE_CALLBACK:
+            # «p:<вид>:<аргумент>» — картка з параметром (група пошти, сторінка,
+            # розгорнутий список). Без карток падає на звичайний вид.
+            view, _, picture_arg = view.partition(":")
+            kind = "v"
+        elif kind == MACHINE_CALLBACK:
             # «m:<ключ верстата>» — той самий вид верстатів з одним виділеним.
             kind, view, focus = "v", "machines", view
         elif kind == EXPAND_CALLBACK:
@@ -1498,6 +1560,13 @@ def handle_update(
             db.commit()
             answer.payload["text"] = "Сповіщення увімкнено" if notify else "Сповіщення вимкнено"
         is_photo = bool(message.get("photo"))
+        if view != "machines" and opened is None and pictures_enabled(db):
+            # Нові картки: кожен екран — фото, перехід між ними на місці.
+            # `opened` (стара кнопка «e:…») лишає текстовий список.
+            built = _card(db, view, notify, now, admin=who.is_owner, arg=picture_arg)
+            if built is not None:
+                photo, caption, markup = built
+                return [answer, *_photo_actions(update_chat, message["message_id"], is_photo, photo, caption, markup)]
         if view == "machines":
             board = _machines_board_actions(
                 db, update_chat, message["message_id"], is_photo, notify, now, focus=focus
@@ -1541,6 +1610,10 @@ def handle_update(
         if member.role == ROLE_WAREHOUSE:
             return [Action("sendMessage", {"chat_id": update_chat, "text": WAREHOUSE_WELCOME})]
         lead = "Доступ до бота KuubMill відкрито. Кнопки нижче; 🔔 вимикає сповіщення."
+        if pictures_enabled(db):
+            welcome = _card_message(db, update_chat, "home", True, now, admin=False, lead=lead)
+            if welcome is not None:
+                return [welcome]
         return [
             Action(
                 "sendMessage",
@@ -1566,6 +1639,10 @@ def handle_update(
         return []
     # Будь-який текст (зокрема /start і /menu) — головне меню новим
     # повідомленням. Окремих команд не заводимо: меню — це і є інтерфейс.
+    if pictures_enabled(db):
+        home = _card_message(db, update_chat, "home", who.notify, now, admin=who.is_owner)
+        if home is not None:
+            return [home]
     return [
         Action(
             "sendMessage",

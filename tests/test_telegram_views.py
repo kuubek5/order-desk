@@ -12,6 +12,7 @@
 * «зникало світло» кажемо лише з доказом Windows; без нього — «ПК вимикався».
 """
 
+import pytest
 from datetime import datetime, timedelta, timezone
 
 from app.business_day import business_today
@@ -22,6 +23,14 @@ from app.services import telegram_views as tv
 from tests.test_telegram_bot import CHAT, _member, _press, _session
 
 NOW = datetime(2026, 11, 8, 10, 52)
+
+
+@pytest.fixture(autouse=True)
+def _legacy_text_bot(monkeypatch):
+    """Ці тести стережуть СТАРИЙ бот (текст, окрема картинка пошти й верстатів):
+    він лишився запасним шляхом — коли картки вимкнено в налаштуваннях або
+    малювання впало. Нові картки — `tests/test_telegram_cards.py`."""
+    monkeypatch.setattr(bot, "pictures_enabled", lambda db: False)
 
 
 def _letter(db, uid, *, name, material=None, minutes_ago=30, seen=False, status="нове",

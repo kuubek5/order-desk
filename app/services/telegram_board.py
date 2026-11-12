@@ -17,14 +17,15 @@
 
 from __future__ import annotations
 
-import io
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
 from typing import Optional
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageDraw
+
+from app.services import telegram_draw as td
 
 # Ширина готової картинки. На телефоні фото займає ~330 pt, тобто кожен
 # піксель тут ≈ 0.3 pt: шрифт 34 px читається як 11 pt. Розміри нижче
@@ -32,27 +33,29 @@ from PIL import Image, ImageDraw, ImageFont
 WIDTH = 1080
 _SCALE = 2  # малюємо вдвічі більше й зменшуємо — згладжування
 
-_PAD = 32
+# Розміри й кольори — спільні з рештою карток бота (`telegram_draw`, стиль
+# CRM, власник 12.11.26): теплий темний фон, ті самі шрифти.
+_PAD = td.PAD
 _GAP = 16
-_HEAD = 176
+_HEAD = 182
 _TILE_H = 214
-_RADIUS = 22
+_RADIUS = 26
 
-_BG = (16, 19, 23)
-_GRID = (23, 27, 32)
-_TILE = (21, 25, 30)
-_TILE_EDGE = (38, 44, 51)
-_INK = (236, 240, 243)
-_INK_2 = (146, 157, 168)
-_INK_MUTED = (176, 185, 193)
-_BLUSH = (242, 198, 182)
-_GREEN = (121, 209, 153)
-_RED = (239, 138, 126)
-_AMBER = (236, 190, 112)
-_CHIP = (35, 42, 49)
-_CHIP_EDGE = (52, 60, 69)
-_CHIP_INK = (230, 214, 201)
-_RING_TRACK = (42, 49, 56)
+_BG = td.BG
+_GRID = (16, 12, 7)  # сітка старої картинки пошти (режим без карток)
+_TILE = td.TILE
+_TILE_EDGE = td.LINE
+_INK = td.INK
+_INK_2 = td.INK_2
+_INK_MUTED = td.INK_2
+_BLUSH = td.ACCENT
+_GREEN = td.GREEN
+_RED = td.RED
+_AMBER = td.ACCENT
+_CHIP = (41, 33, 19)
+_CHIP_EDGE = (74, 58, 32)
+_CHIP_INK = td.INK
+_RING_TRACK = td.LINE
 
 # Відсоток, від якого кільце зеленіє: «скоро знімати».
 NEAR_DONE = 85
@@ -180,19 +183,8 @@ def board_of(cards) -> Board:
 
 @lru_cache(maxsize=32)
 def _font(kind: str, size: int):
-    names = {
-        "bold": ("segoeuib.ttf", "seguisb.ttf", "DejaVuSans-Bold.ttf"),
-        "semi": ("seguisb.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"),
-        "text": ("segoeui.ttf", "DejaVuSans.ttf"),
-        "mono": ("consola.ttf", "DejaVuSansMono.ttf"),
-        "mono_bold": ("consolab.ttf", "consola.ttf", "DejaVuSansMono-Bold.ttf"),
-    }[kind]
-    for name in names:
-        try:
-            return ImageFont.truetype(name, size * _SCALE)
-        except OSError:
-            continue
-    return ImageFont.load_default(size * _SCALE)
+    """Шрифти CRM з `telegram_draw` (Golos Text, JetBrains Mono)."""
+    return td.font({"bold": "x", "semi": "s", "text": "t", "mono": "m", "mono_bold": "m"}[kind], size)
 
 
 def _s(value: float) -> int:
@@ -256,9 +248,9 @@ def _tile(draw, tile: Tile, x: float, y: float, w: float, focus: bool):
     alarm, quiet = tile.state in _ALARM, tile.state in _QUIET
     fill, edge = _TILE, _TILE_EDGE
     if tile.state == "done":
-        fill, edge = (22, 32, 26), (61, 90, 69)
+        fill, edge = (16, 30, 21), (47, 107, 70)
     elif alarm:
-        fill, edge = (32, 21, 20), (90, 47, 43)
+        fill, edge = (34, 19, 14), (112, 58, 42)
     if focus:
         edge = _BLUSH
     draw.rounded_rectangle([_s(x), _s(y), _s(x + w), _s(y + _TILE_H)], radius=_s(_RADIUS),
@@ -326,27 +318,13 @@ def summary_words(board: Board) -> str:
 def render_png(board: Board, now: datetime, focus: Optional[str] = None) -> bytes:
     rows = (len(board.tiles) + 1) // 2 or 1
     height = _HEAD + rows * (_TILE_H + _GAP) - _GAP + _PAD
-    image = Image.new("RGB", (_s(WIDTH), _s(height)), _BG)
-    draw = ImageDraw.Draw(image)
-    step = 32
-    for gx in range(0, WIDTH + 1, step):
-        draw.line([(_s(gx), 0), (_s(gx), _s(height))], fill=_GRID, width=_SCALE)
-    for gy in range(0, height + 1, step):
-        draw.line([(0, _s(gy)), (_s(WIDTH), _s(gy))], fill=_GRID, width=_SCALE)
-
-    draw.text((_s(_PAD), _s(26)), "Верстати", font=_font("bold", 58), fill=_INK)
-    stamp = now.strftime("%d.%m · %H:%M")
-    stamp_font = _font("mono", 34)
-    sw = draw.textlength(stamp, font=stamp_font)
-    draw.text((_s(WIDTH - _PAD) - sw, _s(46)), stamp, font=stamp_font, fill=_INK_2)
+    canvas = td.Canvas(height)
+    draw = canvas.d
     # Червоною лише тривога, а не весь рядок: інакше «фрезерують 4» теж
     # читалось би як біда.
-    left: float = _PAD
-    sum_font = _font("text", 34)
-    for index, (word, alarm) in enumerate(_summary_parts(board)):
-        text = (" · " if index else "") + word
-        draw.text((_s(left), _s(110)), text, font=sum_font, fill=_RED if alarm else _INK_2)
-        left += draw.textlength(text, font=sum_font) / _SCALE
+    parts = [((" · " if index else "") + word, "t", 30, _RED if alarm else _INK_2)
+             for index, (word, alarm) in enumerate(_summary_parts(board))]
+    td.header(canvas, "Верстати", parts, now.strftime("%d.%m · %H:%M"))
 
     tile_w = (WIDTH - 2 * _PAD - _GAP) / 2
     for index, tile in enumerate(board.tiles):
@@ -355,10 +333,7 @@ def render_png(board: Board, now: datetime, focus: Optional[str] = None) -> byte
         y = _HEAD + row * (_TILE_H + _GAP)
         _tile(draw, tile, x, y, tile_w, focus is not None and tile.key == focus)
 
-    final = image.resize((WIDTH, height), Image.Resampling.LANCZOS)
-    out = io.BytesIO()
-    final.save(out, format="PNG", optimize=True)
-    return out.getvalue()
+    return canvas.png()
 
 
 def button_label(tile: Tile, focus: bool = False) -> str:

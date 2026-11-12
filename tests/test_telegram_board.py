@@ -27,6 +27,14 @@ from tests.test_telegram_bot import CHAT, _member, _press, _session
 NOW = datetime(2026, 11, 8, 10, 52)
 
 
+@pytest.fixture(autouse=True)
+def _legacy_text_bot(monkeypatch):
+    """Ці тести стережуть СТАРИЙ бот (текст, окрема картинка пошти й верстатів):
+    він лишився запасним шляхом — коли картки вимкнено в налаштуваннях або
+    малювання впало. Нові картки — `tests/test_telegram_cards.py`."""
+    monkeypatch.setattr(bot, "pictures_enabled", lambda db: False)
+
+
 def _order(id_, client=None, number=None, material=None, quantity=None):
     return SimpleNamespace(id=id_, client_name=client, work_order_no=number,
                            material_color=material, quantity=quantity, kind=None,

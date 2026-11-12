@@ -49,6 +49,14 @@ def _session():
 
 
 @pytest.fixture(autouse=True)
+def _legacy_text_bot(monkeypatch):
+    """Ці тести стережуть СТАРИЙ бот (текст, окрема картинка пошти й верстатів):
+    він лишився запасним шляхом — коли картки вимкнено в налаштуваннях або
+    малювання впало. Нові картки — `tests/test_telegram_cards.py`."""
+    monkeypatch.setattr(bot, "pictures_enabled", lambda db: False)
+
+
+@pytest.fixture(autouse=True)
 def _clean_state():
     bot.reset_for_tests()
     furnace_service.reset_state_for_tests()

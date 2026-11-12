@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import html
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Optional
@@ -28,6 +29,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import EmailMessage, Order
+
+logger = logging.getLogger(__name__)
 
 EXPAND_CALLBACK = "e"
 # Межа повідомлення Telegram — 4096 символів; довгий список ріжемо.
@@ -130,6 +133,12 @@ class Letter:
     units: Optional[int]
     unread: bool
     category: Optional[str] = None
+    # Для картинки-списку (як рядок «Нових з пошти» в CRM, 12.11.26):
+    group: str = "none"  # ключ MAIL_GROUPS
+    shade: str = ""  # код відтінку для маркера («A3», «800»)
+    files: int = 0  # файлів на диску
+    files_note: str = ""  # «не скачано» / «качаються» замість числа
+    ready: bool = False  # готовий до прийняття (той самий бейдж, що в CRM)
 
 
 def _letter_units(email: EmailMessage) -> Optional[int]:
@@ -145,7 +154,7 @@ def _letter_units(email: EmailMessage) -> Optional[int]:
 
 def _letter(email: EmailMessage) -> Letter:
     name = (email.from_name or email.client_name_guess or email.from_address or "—").strip()
-    return Letter(
+    letter = Letter(
         name=name,
         received_at=_local(email.received_at),
         material=(email.material_color_guess or "").strip(),
@@ -153,6 +162,41 @@ def _letter(email: EmailMessage) -> Letter:
         unread=email.seen_at is None,
         category=email.filter_category,
     )
+    _letter_row_state(letter, email)
+    return letter
+
+
+_CYRILLIC_SHADE = str.maketrans({"А": "A", "В": "B", "С": "C", "Д": "D", "а": "A", "в": "B", "с": "C", "д": "D"})
+
+
+def shade_code(badge: Optional[dict]) -> str:
+    """Код відтінку для маркера матеріалу («A3», «800»). Кирилична А/В/С —
+    те саме, що латинська (CLAUDE.md §4): люди набирають «А3» на українській
+    розкладці."""
+    code = ((badge or {}).get("color") or "").rsplit(" ", 1)[-1]
+    if not any(ch.isdigit() for ch in code):
+        return ""
+    return code.translate(_CYRILLIC_SHADE).upper()
+
+
+def _letter_row_state(letter: Letter, email: EmailMessage) -> None:
+    """Те, що рядок пошти в CRM показує поруч з іменем: відтінок, файли,
+    готовність. Збій тут не має гасити список — рядок просто лишиться без них."""
+    try:
+        from app.material_class import mail_material_badge
+        from app.triage_status import files_on_disk, triage_readiness
+
+        letter.shade = shade_code(mail_material_badge(email.material_color_guess))
+        status = email.attachments_status
+        if status == "pending":
+            letter.files_note = "качаються"
+        elif status == "skipped":
+            letter.files_note = "не скачано"
+        else:
+            letter.files = files_on_disk(email)
+        letter.ready = triage_readiness(email).get("state") == "ready"
+    except Exception:  # noqa: BLE001 — список важливіший за один значок
+        logger.exception("telegram-бот: стан рядка листа %s не зібрано", getattr(email, "id", "?"))
 
 
 def _not_taken(db: Session) -> list[EmailMessage]:
@@ -177,8 +221,17 @@ def mail_groups(db: Session) -> dict[str, list[Letter]]:
         category = classify_material(email.material_color_guess) if email.material_color_guess else None
         if category in _NOT_MILLING:
             continue
-        groups[names.get(category or "", "none")].append(_letter(email))
+        key = names.get(category or "", "none")
+        letter = _letter(email)
+        letter.group = key
+        groups[key].append(letter)
     return groups
+
+
+def mail_letters(db: Session) -> list[Letter]:
+    """Усі листи «не взято в роботу» одним списком, найновіші зверху — як у CRM."""
+    letters = [letter for group in mail_groups(db).values() for letter in group]
+    return sorted(letters, key=lambda x: x.received_at or datetime.min, reverse=True)
 
 
 def _units_sum(letters: list[Letter]) -> int:
