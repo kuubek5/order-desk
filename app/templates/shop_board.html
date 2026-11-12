@@ -186,6 +186,8 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .disc-free{align-self:center;white-space:nowrap;font:500 clamp(10px,.8vw,22px)/1.2 var(--font-mono);color:var(--ink-3)}
 /* Число лишається біля правого краю на всіх картках — як було зі смужкою. */
 .disc+.pc,.disc-free+.pc{margin-left:auto}
+/* На завершеній плитці диск стоїть праворуч від «зняти». */
+.take+.disc{margin-left:auto}
 /* Ширина числа ОДНАКОВА на всіх картках (місце під «100%», вирівнювання
    праворуч): смужка займає решту рядка, і з «3%» вона була помітно довша,
    ніж із «100%» — на телевізорі сусідні шкали різної довжини (власник

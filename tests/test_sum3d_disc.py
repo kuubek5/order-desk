@@ -93,7 +93,10 @@ def test_tile_gets_the_real_disc(tmp_path, monkeypatch):
     html = templates.env.get_template("_shop_board_cards.html").render(view=_view([card]), token="t")
     assert html.count('<path class="rc"') == 2 and "вільно ≈" in html and 'class="crown' not in html
     idle = _view([_card("B", "idle", iso_name="pmma18_18-a3-5-x41_2026-11-12_00-47-30.iso")]).machines[0]
-    assert idle.disc is None, "без відсотка диск не шукаємо"
+    assert idle.disc is None, "верстат стоїть — диска не показуємо"
+    done_card = _card("C", "done", word="завершено", iso_name="pmma18_18-a3-5-x41_2026-11-12_00-47-30.iso")
+    done_html = templates.env.get_template("_shop_board_cards.html").render(view=_view([done_card]), token="t")
+    assert "зняти" in done_html and 'class="disc is-done"' in done_html and done_html.count('<path class="rc"') == 2
 
 
 def test_full_program_name_comes_from_the_sum3d_project(tmp_path):

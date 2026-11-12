@@ -133,6 +133,16 @@
           {% set _cat %}<span class="mc-cat" data-cat="{{ m.key }}" aria-hidden="true"><img src="/static/img/shop-cat-a.webp" alt=""></span>{% endset %}
           {% if m.state == 'done' %}
             <span class="take">зняти</span>
+            {# Справжній диск і поруч зі «зняти» (власник 12.11.26): що на ньому
+               розставлено й скільки лишилось — саме тоді, коли диск знімають. #}
+            {% if m.disc %}
+            <svg class="disc is-done" viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="disc-body" cx="50" cy="50" r="42"></circle>
+              {% for d in m.disc.paths %}<path class="rc" d="{{ d }}"></path>{% endfor %}
+              <circle class="disc-track" cx="50" cy="50" r="47"></circle>
+            </svg>
+            <span class="disc-free" title="{{ m.disc.name }}">вільно ≈{{ m.disc.free_pct }}%</span>
+            {% endif %}
           {# Помилка — так само голосно, як «зняти» (власник 18.09.26), і так
              само без смуги: відсоток поруч читався б як «працює». #}
           {% elif m.state == 'fault' %}

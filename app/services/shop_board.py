@@ -605,9 +605,9 @@ def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
     iso = getattr(card, "iso_name", None)
     program = sum3d_names.full_name(iso) or iso
     item.prog_head, item.prog_tail = program_line(program)
-    # Диск програми — за назвою (`sum3d_disc`), лише поки є відсоток (тобто
-    # програма на шпинделі).
-    if card.percent is not None and program:
+    # Диск програми — за назвою (`sum3d_disc`): поки програма на шпинделі
+    # (є відсоток) і на завершеному верстаті — поруч зі «зняти» (власник 12.11.26).
+    if program and (card.percent is not None or state == "done"):
         from app.services import sum3d_disc
 
         item.disc = sum3d_disc.disc_for_program(program)
