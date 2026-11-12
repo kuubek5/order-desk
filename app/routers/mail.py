@@ -141,6 +141,7 @@ from app.services.mail_link_fetch import fetch_link, unpack_if_archive
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
 from app.services.mail_rework import accept_rework, rework_form, rework_order_ids
 from app.services import mail_auto_backfill
+from app.services import disc_suggest
 from app.services.focus import recently_taken_ids
 from app.services.stl_height import letter_chip
 from app.services.stl_units import count_units, is_model_file, letter_quantity, teeth_in_filename
@@ -1367,6 +1368,8 @@ def _mail_panel_context(
         "attachment_ids": selected_ids,
         "dup_report": dup_report,
         "material_cands": material_cands,
+        # Підказка диска під полем матеріалу — лише кому її дав адмін.
+        "disc_hint_on": disc_suggest.enabled_for(db, user),
         "body_links": extract_download_links(email.body_text),
         # Один розрахунок на бейдж списку, панель і гейт прийняття —
         # link_attachments.undownloaded_links (аудит 05.09.26, UX 1.4).

@@ -278,6 +278,7 @@ NAV_SNAPSHOT = {
     "mail-download": ("sources", "усі", "усі"),
     "mail-filters": ("sources", "усі", "усі"),
     "mail-conveyor": ("sources", "адмін", "адмін"),
+    "mail-disc": ("sources", "адмін", "адмін"),
     "materials": ("sources", "усі", "усі"),
     "paths": ("sources", "усі", "усі"),
     "machines": ("equipment", "усі", "усі"),
@@ -285,6 +286,7 @@ NAV_SNAPSHOT = {
     # «Заготовки» (08.09.26) прибрано 10.09.26: переїхали на окремий екран
     # «Нові диски» (/discs) разом зі шляхом до теки CAM.
     "board": ("equipment", "адмін", "адмін"),
+    "sum3d": ("equipment", "адмін", "адмін"),
     "handout": ("workflow", "адмін", "адмін"),
     "workday": ("workflow", "усі", "усі"),
     "feedback": ("contact", "адмін", "адмін"),

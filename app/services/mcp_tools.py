@@ -1780,6 +1780,47 @@ TOOLS = TOOLS + (
     ),
 )
 
+def tool_disc_suggest_audit(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import disc_suggest
+
+    return disc_suggest.audit(db, _int_arg(args, "days", default=7, low=1, high=60),
+                              _int_arg(args, "limit", default=30, low=1, high=200))
+
+
+def tool_sum3d_install(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import sum3d_install
+
+    return sum3d_install.overview(db, limit=_int_arg(args, "limit", default=40, low=1, high=300))
+
+
+TOOLS = TOOLS + (
+    Tool(
+        name="kmill_sum3d_install",
+        description=(
+            "Встановлення Sum3D (Налаштування → Програма Sum3D: кілька версій) і спільна тека стратегій: "
+            "версія exe, теки першого рівня, розширення файлів, файли налаштувань і бібліотек (.xml/.ini/"
+            ".cfg/.dat/.lib…) з розміром і часом, журнали (.log), що змінювалось останнім. Назви STL і "
+            "вміст файлів не віддає. Лише читання."
+        ),
+        schema={"type": "object", "properties": {
+            "limit": {"type": "integer", "minimum": 1, "maximum": 300,
+                      "description": "Скільки файлів налаштувань і журналів показати, типово 40."},
+        }, "additionalProperties": False},
+        run=tool_sum3d_install,
+    ),
+    Tool(
+        name="kmill_disc_suggest_audit",
+        description=(
+            "Прогін підказки диска на прийнятих листах за N днів: яку висоту й диск запропонувала б "
+            "картка листа (правила власника: +1 мм, наступна наявна висота, Monolith +1 крок, "
+            "мультиколор ±1, початий першим) проти диска з назви програми на верстаті. Лічильники "
+            "«висота_як_у_цеху / інша», приклади. Назв STL не віддає. Лише читання."
+        ),
+        schema=_days_limit_schema(7, 60),
+        run=tool_disc_suggest_audit,
+    ),
+)
+
 TOOLS_BY_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}
 
 # Анотації однакові для всіх: інструментів, що пишуть, тут немає й не буде

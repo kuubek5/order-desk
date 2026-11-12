@@ -24,6 +24,8 @@ READ_ONLY_MODULES = (
     "app/services/disc_check.py",
     "app/services/disc_inventory.py",
     "app/services/shop_history.py",
+    "app/services/sum3d_install.py",
+    "app/services/disc_suggest.py",
 )
 _FORBIDDEN_CALLS = {
     "unlink", "rename", "replace", "rmdir", "remove", "removedirs", "rmtree", "mkdir",
@@ -243,7 +245,7 @@ def test_admin_saves_and_checks_program_folder_operator_cannot(app_db, tmp_path)
 
     operator = MiniClient(app)
     operator.login(*OPERATOR)
-    assert "Теки програм фрезерування" not in operator.get("/settings")[2]
+    assert 'id="program-folders"' not in operator.get("/settings")[2]
     assert operator.post(f"/settings/machines/{mid}/program-folder", {"path": ""})[0] == 403
     with factory() as db:
         assert db.get(Machine, mid).program_folder == str(tmp_path)

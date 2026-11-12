@@ -12,6 +12,7 @@
                     <button type="button" class="stand-tab" role="tab" data-tabgo="mail-download" aria-selected="false">Скачування</button>
                     {% if can_see(user, 'mail-filters') %}<button type="button" class="stand-tab" role="tab" data-tabgo="mail-filters" aria-selected="false">Фільтри</button>{% endif %}
                     {% if can_see(user, 'mail-conveyor') %}<button type="button" class="stand-tab" role="tab" data-tabgo="mail-conveyor" aria-selected="false">Конвеєр</button>{% endif %}
+                    {% if can_see(user, 'mail-disc') %}<button type="button" class="stand-tab" role="tab" data-tabgo="mail-disc" aria-selected="false">Підказка диска</button>{% endif %}
                 </div>
 
                 <div class="stand-tabpane is-on" data-tab="imap">
@@ -103,5 +104,6 @@
                 {% include "_settings_mail_download.html" %}
                 {% if can_see(user, 'mail-filters') %}{% include "_settings_mail_filters.html" %}{% endif %}
                 {% if can_see(user, 'mail-conveyor') %}{% include "_settings_mail_conveyor.html" %}{% endif %}
+                {% if can_see(user, 'mail-disc') %}{% include "_settings_mail_disc.html" %}{% endif %}
             </div>
         </div>

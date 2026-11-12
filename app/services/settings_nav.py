@@ -170,6 +170,14 @@ NAV: tuple = (
                 keywords=("мультипрорахунок", "один рядок", "зводити листи"),
             ),
             NavItem(
+                key="mail-disc",
+                title="Підказка диска",
+                href="/settings#mail-disc",
+                roles=ADMIN_ONLY,
+                parent="imap",
+                keywords=("диск", "висота", "monolith", "емо", "підказка", "прийняття"),
+            ),
+            NavItem(
                 key="materials",
                 title="Матеріали",
                 href="/settings/materials",
@@ -211,6 +219,13 @@ NAV: tuple = (
                 kind="page",
                 roles=ADMIN_ONLY,
                 keywords=("телевізор", "тв", "3d", "світло", "графік", "логісти", "sisma"),
+            ),
+            NavItem(
+                key="sum3d",
+                title="Програма Sum3D",
+                href="/settings#sum3d",
+                roles=ADMIN_ONLY,
+                keywords=("sum3d", "cam", "стратегії", "версія", "прорахунок", "диски"),
             ),
             # «Заготовки» (тека CAM) звідси переїхали на окремий екран
             # «Нові диски» (/discs, 10.09.26): шлях до теки й «Перечитати»

@@ -5,8 +5,10 @@
    прев'ю через `KM3D.setConfig` (той самий origin), у базу — лише кнопкою
    «Зберегти». «Скасувати зміни» повертає форму й прев'ю до збереженого,
    «Типові» ставить типові у форму (зберегти — тією ж кнопкою).
-   Масштаб: «Усе табло» — рамка 1920×1003 вписана в ширину; «Плитка крупно» —
-   перша плитка з 3D на всю ширину. */
+   Масштаб: рамка має РОЗМІР ТЕЛЕВІЗОРА цеху (3840×2007 — вікно браузера на
+   ТВ, власник 12.11.26: прев'ю 1920 показувало табло не так, як ТВ, бо
+   розкладка табло рахується від ширини вікна). «Усе табло» — рамка вписана
+   в ширину; «Плитка крупно» — перша плитка з 3D на всю ширину. */
 (function(){
   "use strict";
   var form = document.querySelector("[data-b3d]");
@@ -14,6 +16,7 @@
   var stage = form.querySelector("[data-b3d-stage]"), frame = stage.querySelector("iframe");
   var dirtyBadge = form.querySelector("[data-b3d-dirty]"), empty = form.querySelector("[data-b3d-empty]");
   var zoom = "board";
+  var TV_W = 3840, TV_H = 2007;
 
   function inputs(){ return Array.prototype.slice.call(form.querySelectorAll("input[name]")); }
   function label(input){
@@ -53,9 +56,9 @@
       stage.style.setProperty("--b3d-t", "scale(" + k + ") translate(" + (-r.left) + "px," + (-r.top) + "px)");
       stage.style.setProperty("--b3d-h", Math.round(r.height * k) + "px");
     } else {
-      var s = w / 1920;
+      var s = w / TV_W;
       stage.style.setProperty("--b3d-t", "scale(" + s + ")");
-      stage.style.setProperty("--b3d-h", Math.round(1003 * s) + "px");
+      stage.style.setProperty("--b3d-h", Math.round(TV_H * s) + "px");
     }
   }
 

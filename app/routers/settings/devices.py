@@ -28,7 +28,7 @@ from app.settings_store import (
 from app.crypto import encrypt_value
 from app.services.undo import log_action
 from app.services.furnace import FurnaceConfigError, validate_address
-from .common import require_settings_edit
+from .common import require_settings_admin, require_settings_edit
 
 logger = logging.getLogger(__name__)
 
@@ -577,3 +577,62 @@ def delete_machine(request: Request, machine_id: int, db: Session = Depends(get_
         "message": f"Верстат «{name}» прибрано з переліку.",
     }
     return RedirectResponse("/settings#machines", status_code=303)
+
+
+# ── Програма Sum3D (власник 12.11.26) ──────────────────────────────────────
+# Дві версії Sum3D і спільна тека стратегій. Зберігаємо лише ШЛЯХИ в базі CRM;
+# у самі теки — тільки читання (`app/services/sum3d_install.py`).
+
+
+@router.post("/settings/sum3d")
+async def save_sum3d(request: Request, db: Session = Depends(get_db)):
+    """Версії Sum3D (рядки `name_N`/`path_N`) і спільна тека стратегій."""
+    from app.services import sum3d_install
+
+    user = require_settings_admin(request, db)
+    form = await request.form()
+    pairs = [
+        (str(form.get(f"name_{i}") or ""), str(form.get(f"path_{i}") or ""))
+        for i in range(sum3d_install.MAX_INSTALLS + 1)
+    ]
+    installs = sum3d_install.clean_installs(pairs)
+    strategies = str(form.get("strategies") or "").strip().strip('"')[:400]
+    set_setting(db, sum3d_install.INSTALLS_KEY, sum3d_install.installs_json(installs))
+    set_setting(db, sum3d_install.STRATEGIES_KEY, strategies)
+    log_action(
+        db, order=None, operator=user, action_type="settings", field="sum3d_installs",
+        note="Sum3D: " + ("; ".join(f"{i.name} = {i.path}" for i in installs) or "не задано")
+        + f" · стратегії: {strategies or 'не задано'}",
+    )
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Sum3D збережено: версій {len(installs)}, стратегії {'задано' if strategies else 'не задано'}.",
+    }
+    return RedirectResponse("/settings#sum3d", status_code=303)
+
+
+@router.post("/settings/sum3d/check")
+async def check_sum3d_folder(request: Request, db: Session = Depends(get_db)):
+    """Що лежить у теці з поля `field` — ще не зберігаючи. Лише читання."""
+    from html import escape
+
+    from app.services import sum3d_install
+
+    require_settings_admin(request, db)
+    form = await request.form()
+    field = str(form.get("field") or "")
+    if field != "strategies" and not (field.startswith("path_") and field[5:].isdigit()):
+        raise HTTPException(status_code=400, detail="невідоме поле")
+    raw = str(form.get(field) or "").strip().strip('"')
+    probe = sum3d_install.probe_folder(raw, with_versions=field != "strategies")
+    if not probe.path:
+        tone = "none"
+    elif probe.state == "present" and not probe.error:
+        tone = "ok" if probe.files else "warn"
+    else:
+        tone = "bad"
+    return Response(
+        f'<span class="pf-result pf-{tone}">{escape(probe.summary())}</span>',
+        media_type="text/html",
+    )

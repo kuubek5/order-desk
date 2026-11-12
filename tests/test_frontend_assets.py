@@ -273,6 +273,7 @@ SETTINGS_SECTIONS = [
     "_settings_paths.html",
     "_settings_furnace.html",
     "_settings_machines.html",
+    "_settings_sum3d.html",
     # «Заготовки» прибрано 10.09.26 — окремий екран «Нові диски» (/discs).
     "_settings_handout.html",
     "_settings_workday.html",
@@ -286,6 +287,7 @@ SETTINGS_SECTIONS = [
 SETTINGS_TAB_PARTIALS = {
     "_settings_sheet_backup.html": "_settings_google.html",
     "_settings_mail_download.html": "_settings_imap.html",
+    "_settings_mail_disc.html": "_settings_imap.html",
     "_settings_notifications.html": "account.html",
 }
 

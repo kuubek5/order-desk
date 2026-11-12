@@ -1699,3 +1699,18 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
   100%{box-shadow:0 0 0 10px rgba(var(--accent-rgb),0);color:var(--ink-2);transform:scale(1)}
 }
 @media (prefers-reduced-motion:reduce){.mailv2 .qmir-count.is-landed{animation:none}}
+/* Підказка диска під полем матеріалу (12.11.26, варіант A). `mdh-` — свій
+   префікс: CSS глобальний, а `.mdh`/`.mc-disc` більше ніде не вживаються. */
+.mailv2 .mc-disc:empty{display:none}
+.mailv2 .mc-disc{margin-top:8px}
+.mailv2 .mdh{display:inline-flex;align-items:center;gap:10px;padding:6px 12px 6px 8px;border-radius:10px;
+  border:1px solid rgba(var(--accent-rgb), .38);background:linear-gradient(180deg,rgba(var(--accent-rgb), .07),rgba(var(--accent-rgb), .02));
+  max-width:100%;cursor:help}
+.mailv2 .mdh-disc{width:34px;height:34px;flex:0 0 auto}
+.mailv2 .mdh-disc .rim{fill:rgba(var(--accent-rgb), .16);stroke:rgba(var(--accent-rgb), .7);stroke-width:2.5}
+.mailv2 .mdh-disc .cut{fill:var(--bg);stroke:rgba(var(--accent-rgb), .55);stroke-width:1.5}
+.mailv2 .mdh-text{display:grid;gap:2px;min-width:0}
+.mailv2 .mdh-name{font-size:var(--fs-1);font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .mdh-free{font-size:var(--fs-0);color:var(--ok)}
+.mailv2 .mdh.is-new .mdh-free{color:var(--ink-2)}
+.mailv2 .mdh.is-quiet{display:block;border:0;background:none;padding:0;font-size:var(--fs-0);color:var(--ink-3, var(--ink-2));cursor:default}

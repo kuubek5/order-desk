@@ -300,3 +300,7 @@ GET /clients/{client_id}/slot
 POST /clients/{client_id}/facts
 GET /power/widget
 POST /settings/feedback/board/power
+POST /settings/sum3d
+POST /settings/sum3d/check
+POST /settings/disc-suggest
+GET /mail/{email_id}/disc-hint

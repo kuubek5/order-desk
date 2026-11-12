@@ -1,0 +1,33 @@
+{% from "_settings_slab.html" import slab %}
+        {# Підказка диска — вкладка Пошти (власник 12.11.26). Лише адміністратор:
+           загальний вимикач і поіменно, кому показувати рядок «який диск взяти»
+           під полем «Матеріал · колір» у картці листа
+           (`app/services/disc_suggest.py`). Підказка нічого не обирає сама. #}
+        <div class="stand-tabpane" data-tab="mail-disc">
+            {{ slab('Підказка диска', 'Який диск взяти під роботу з листа — рядок під полем матеріалу.', slabs['mail-disc']) }}
+            <form method="post" action="/settings/disc-suggest">
+                <div class="stand-cells">
+                    <div class="stand-cell w3">
+                        <h3>Увімкнути</h3>
+                        <div class="settings-help">Вимкнено — підказки не бачить ніхто, галочки нижче зберігаються. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Висота — найвища конструкція листа (STL × усадка) + запас 1 мм, далі найближча висота, що є серед дисків (14,7 → 16). Monolith — завжди на крок вище, інші мультиколори (емо, Katana) — ця висота або ще одна вище, ПММА й віск — саме ця. Спершу пропонується початий диск, у який робота влізе за вільною площею, новий — лише коли такого немає. Висота відома лише з STL exocad. Це підказка: диск обирає оператор у Sum3D.</div></details></div>
+                        <label class="settings-backup-confirm stand-toggle">
+                            <input type="checkbox" name="enabled" value="1" {{ 'checked' if disc_suggest_enabled else '' }}>
+                            Показувати підказку диска
+                        </label>
+                    </div>
+                    <div class="stand-cell w3">
+                        <h3>Кому показувати</h3>
+                        <div class="settings-help">Підказку бачать лише відмічені люди.</div>
+                        <div class="ds-people">
+                            {% for op in operators %}
+                            <label class="schip"><input type="checkbox" name="user_{{ op.id }}" value="1" {{ 'checked' if op.id in disc_suggest_users else '' }}>
+                                {{ op.full_name or op.username }}{% if op.role == 'адмін' %} · адмін{% endif %}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-check-row">
+                    <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                </div>
+            </form>
+        </div>

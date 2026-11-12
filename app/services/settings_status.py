@@ -666,6 +666,29 @@ def _slab_workday(ctx: dict) -> Slab:
                 meters=[Meter(k="Початок дня", v=at, s="до нього черга на вчорашньому дні")])
 
 
+def _slab_sum3d(ctx: dict) -> Slab:
+    """Sum3D: скільки встановлень задано. Зеленим не буває — «задано» ≠ «є»."""
+    installs = ctx.get("sum3d_installs") or []
+    strategies = (ctx.get("sum3d_strategies_path") or "").strip()
+    label = (f"встановлень: {len(installs)}" if installs else "встановлення не задано")
+    return Slab(
+        tone=TONE_NONE if installs else TONE_WARN,
+        label=label,
+        meters=[
+            Meter(k="Версії", v=str(len(installs)) if installs else "—", s="кожна — своя тека програми"),
+            Meter(k="Стратегії", v="задано" if strategies else "не задано", s="спільні для всіх версій",
+                  tone=TONE_NONE if strategies else TONE_WARN),
+        ],
+    )
+
+
+def _slab_mail_disc(ctx: dict) -> Slab:
+    on = bool(ctx.get("disc_suggest_enabled"))
+    people = len(ctx.get("disc_suggest_users") or [])
+    return Slab(tone=TONE_NONE, label=(f"увімкнено · {people} осіб" if on else "вимкнено"),
+                meters=[Meter(k="Кому показувати", v=str(people), s="вмикає адміністратор поіменно")])
+
+
 def _slab_mail_conveyor(ctx: dict) -> Slab:
     on = bool(ctx.get("mail_merge_rows"))
     return Slab(tone=TONE_NONE, label="зводить в один рядок" if on else "кожен лист — свій рядок",
@@ -692,6 +715,8 @@ _SLAB_BUILDERS = {
     "handout": lambda db, ctx: _slab_handout(ctx),
     "workday": lambda db, ctx: _slab_workday(ctx),
     "mail-conveyor": lambda db, ctx: _slab_mail_conveyor(ctx),
+    "sum3d": lambda db, ctx: _slab_sum3d(ctx),
+    "mail-disc": lambda db, ctx: _slab_mail_disc(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
     "mcp": lambda db, ctx: _slab_mcp(ctx),
 }

@@ -67,3 +67,33 @@ async def save_mail_merge_rows(request: Request, db: Session = Depends(get_db)):
     }
     return RedirectResponse("/settings?saved=1#mail-conveyor", status_code=303)
 
+
+
+@router.post("/settings/disc-suggest")
+async def save_disc_suggest(request: Request, db: Session = Depends(get_db)):
+    """Підказка диска в картці листа: загальний вимикач і кому показувати
+    (власник 12.11.26: «я як адміністратор комусь додам, комусь відключу»).
+
+    Одна форма шле і вимикач, і всі галочки людей: незазначена галочка не
+    приходить, тож відсутня = «не показувати» (як у формі верстата)."""
+    import json
+
+    from sqlalchemy import select
+
+    from app.models import User
+    from app.services import disc_suggest
+    from app.settings_store import set_setting
+
+    require_settings_admin(request, db)
+    form = await request.form()
+    enabled = bool(form.get("enabled"))
+    ids = sorted(u.id for u in db.scalars(select(User)).all() if form.get(f"user_{u.id}"))
+    set_setting(db, disc_suggest.SETTINGS_ENABLED_KEY, "1" if enabled else "")
+    set_setting(db, disc_suggest.SETTINGS_USERS_KEY, json.dumps(ids))
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (f"Підказку диска увімкнено для {len(ids)} осіб." if enabled
+                    else "Підказку диска вимкнено для всіх."),
+    }
+    return RedirectResponse("/settings?saved=1#mail-disc", status_code=303)

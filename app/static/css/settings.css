@@ -1194,8 +1194,9 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .b3d-seg.is-on { background: rgba(var(--accent-rgb), .18); color: var(--ink); }
 .b3d-stage { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line);
   background: #0d0a06; height: var(--b3d-h, 360px); transition: height .25s ease; }
-.b3d-frame { position: absolute; left: 0; top: 0; width: 1920px; height: 1003px; border: 0;
-  transform-origin: 0 0; transform: var(--b3d-t, scale(.5)); transition: transform .25s ease; pointer-events: none; }
+/* Розмір вікна браузера на телевізорі цеху — та сама розкладка, що на ТВ. */
+.b3d-frame { position: absolute; left: 0; top: 0; width: 3840px; height: 2007px; border: 0;
+  transform-origin: 0 0; transform: var(--b3d-t, scale(.25)); transition: transform .25s ease; pointer-events: none; }
 .b3d-badge { position: absolute; right: 10px; top: 10px; padding: 4px 10px; border-radius: 999px;
   font: 600 11px/1.2 var(--font-body); color: #0d0a06; background: var(--accent-c, #ffc56b); }
 .b3d-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 46ch; margin: 0;
@@ -1236,6 +1237,17 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .pf-path { min-width: 0; width: 100%; }
 .pf-out { grid-column: 2 / -1; font-size: var(--fs-1); }
 .pf-out:empty { display: none; }
+/* Програма Sum3D: рядок версії — назва, шлях, «Перевірити», відповідь під шляхом. */
+.s3-list { display: grid; gap: 8px; margin-top: 10px; }
+.s3-row { display: grid; grid-template-columns: minmax(80px, 130px) minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; margin-top: 8px; }
+.s3-row .s3-out { grid-column: 2 / -1; font-size: var(--fs-1); }
+.s3-row .s3-out:empty { display: none; }
+.s3-label { font-weight: 600; }
+.s3-path { min-width: 0; width: 100%; }
+.s3-shared { display: grid; grid-template-columns: minmax(80px, 130px) minmax(0, 1fr); gap: 6px 8px; margin: 14px 0 0; font-size: var(--fs-1); }
+.s3-shared dt { color: var(--ink-2); }
+.s3-shared dd { margin: 0; overflow-wrap: anywhere; }
+.s3-shared a { margin-left: 8px; font-family: var(--font-body); }
 .pf-result { color: var(--ink-2); }
 .pf-result.pf-ok { color: var(--ok); }
 .pf-result.pf-warn { color: var(--warn); }

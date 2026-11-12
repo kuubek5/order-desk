@@ -239,6 +239,15 @@ CLEARABLE_SETTING_KEYS = {
 # днів простою надолужити» після ввімкнення (app/sheet_sync_service.py).
 PREFERENCE_KEYS = {
     "furnace_background",
+    # Програма Sum3D (Налаштування → Обладнання, 12.11.26): JSON-список версій
+    # `{"name","path"}` і спільна тека стратегій. Лише шляхи — CRM ці теки
+    # читає (`app/services/sum3d_install.py`). Власна форма й роут.
+    "sum3d_installs",
+    "sum3d_strategies_path",
+    # Підказка диска в картці листа (Пошта → «Підказка диска», 12.11.26):
+    # "1" — увімкнено загалом; _users — JSON-список id, кому показувати.
+    "disc_suggest_enabled",
+    "disc_suggest_users",
     # Тека калібрувальних кадрів верстатів (Налаштування → Верстати). Порожнє
     # значення = типова тека застосунку, тому ключ ще й у CLEARABLE.
     "machine_calibration_path",

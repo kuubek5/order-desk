@@ -372,6 +372,16 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+                {# Підказка диска (власник 12.11.26, варіант A): рядок під чіпами
+                   матеріалу. Лише тим, кому її дав адміністратор (Пошта →
+                   «Підказка диска»). Вантажиться окремим запитом, щоб читання
+                   дисків не гальмувало картку, і перераховується при зміні
+                   матеріалу. #}
+                {% if disc_hint_on %}
+                <div class="mc-disc" id="mail-disc-hint" hx-get="/mail/{{ email.id }}/disc-hint"
+                     hx-trigger="load, change from:#mc-material delay:150ms" hx-include="#mc-material"
+                     hx-swap="innerHTML" aria-live="polite"></div>
+                {% endif %}
             </div>
             {# Кількість з назв STL (STL_UNITS_BRIEF.md): бейдж «?», поки в полі
                саме авто-число — оператор бачить, що це не його введення. Зникає,

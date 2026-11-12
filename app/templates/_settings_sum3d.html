@@ -1,0 +1,58 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Програма Sum3D (власник 12.11.26) ──────────────────────────────
+           Дві версії Sum3D в роботі одночасно; стратегії й диски в них спільні.
+           Лише адміністратор. CRM ці теки ЛИШЕ ЧИТАЄ
+           (`app/services/sum3d_install.py`): «Перевірити» показує вміст і
+           версію програми, нічого не зберігаючи й не змінюючи. #}
+        <section id="sum3d" class="wizard-step scon-sec stand-sec" data-sec="sum3d">
+            <div class="box">
+                {{ slab('Програма Sum3D', 'Де стоїть кожна версія Sum3D і спільні стратегії. Лише читання.', slabs['sum3d']) }}
+                <form method="post" action="/settings/sum3d" class="s3-form">
+                    <div class="stand-cells">
+                        <div class="stand-cell w6">
+                            <h3>Версії програми</h3>
+                            <div class="settings-help">По рядку на кожну версію: назва й тека, де встановлено Sum3D. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">У цеху дві версії Sum3D, і обидві в роботі. Вкажіть теку кожної (там, де лежить <span class="mono">Sum3D.exe</span>). «Перевірити» покаже версію програми й скільки в теці файлів — нічого не зберігаючи. CRM ці теки лише читає: не видаляє, не переносить і не змінює жодного файлу. Порожній рядок — щоб додати ще одну версію.</div></details></div>
+                            <div class="s3-list">
+                                {% for inst in (sum3d_installs or []) + [none] %}
+                                {% set i = loop.index0 %}
+                                <div class="s3-row">
+                                    <input class="login-input s3-name" name="name_{{ i }}" value="{{ inst.name if inst else '' }}"
+                                           maxlength="60" placeholder="{{ 'нова' if loop.first else ('ще одна версія' if loop.last else 'стара') }}" autocomplete="off"
+                                           aria-label="Назва версії Sum3D {{ i + 1 }}">
+                                    <input class="login-input mono s3-path" name="path_{{ i }}" value="{{ inst.path if inst else '' }}"
+                                           maxlength="400" placeholder="C:\Program Files\Sum3D" autocomplete="off"
+                                           aria-label="Тека версії Sum3D {{ i + 1 }}">
+                                    <button type="button" class="settings-secondary-button"
+                                            hx-post="/settings/sum3d/check" hx-vals='{"field": "path_{{ i }}"}'
+                                            hx-include="closest form" hx-target="next .s3-out" hx-swap="innerHTML"
+                                            data-kload="self">Перевірити</button>
+                                    <span class="s3-out pf-out" aria-live="polite"></span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="stand-cell w6">
+                            <h3>Спільні теки</h3>
+                            <div class="settings-help">Стратегії й диски однакові для обох версій. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Стратегії лежать у теці однієї з версій, і нею користуються обидві — вкажіть її тут. Тека дисків і тека проєктів (Cam-work) уже задані в інших розділах: тут вони лише для звірки.</div></details></div>
+                            <div class="s3-row">
+                                <span class="s3-label">Стратегії</span>
+                                <input class="login-input mono s3-path" name="strategies" value="{{ sum3d_strategies_path }}"
+                                       maxlength="400" placeholder="тека стратегій Sum3D" autocomplete="off" aria-label="Тека стратегій Sum3D">
+                                <button type="button" class="settings-secondary-button"
+                                        hx-post="/settings/sum3d/check" hx-vals='{"field": "strategies"}'
+                                        hx-include="closest form" hx-target="next .s3-out" hx-swap="innerHTML"
+                                        data-kload="self">Перевірити</button>
+                                <span class="s3-out pf-out" aria-live="polite"></span>
+                            </div>
+                            <dl class="s3-shared">
+                                <dt>Диски</dt><dd class="mono">{{ sum3d_blanks_path or 'не задано' }} <a href="/discs">змінити в «Нових дисках»</a></dd>
+                                <dt>Проєкти</dt><dd class="mono">{{ sum3d_projects_path or 'не задано' }} <a href="/settings#paths">змінити в «Теках»</a></dd>
+                            </dl>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                    </div>
+                </form>
+            </div>
+        </section>

@@ -1,0 +1,23 @@
+{# Рядок підказки диска (варіант A, власник 12.11.26). Іконка — справжній диск
+   з вирізами (ті самі обриси, що на табло). Чому така висота й запасні диски —
+   у підказці при наведенні. Порожній результат — тихий рядок, не помилка. #}
+{% if hint.best %}
+{% set p = hint.best %}
+<div class="mdh" title="{{ hint.why }}{% if hint.alts %} · інші: {% for a in hint.alts %}{{ a.name }} ({{ a.free_pct }} % вільно){% if not loop.last %}, {% endif %}{% endfor %}{% endif %} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
+    <svg class="mdh-disc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="rim"/>{% for d in p.paths %}<path d="{{ d }}" class="cut"/>{% endfor %}</svg>
+    <span class="mdh-text">
+        <span class="mdh-name mono">{{ p.height }} мм · {{ p.name }}</span>
+        <span class="mdh-free mono">вільно {{ p.free_pct }} % · {% if p.started %}влазить{% else %}новий у теці{% endif %}</span>
+    </span>
+</div>
+{% elif hint.heights %}
+<div class="mdh is-new" title="{{ hint.why }}">
+    <svg class="mdh-disc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="rim"/></svg>
+    <span class="mdh-text">
+        <span class="mdh-name mono">{{ hint.new_disc }}</span>
+        <span class="mdh-free">початого диска з місцем немає</span>
+    </span>
+</div>
+{% elif hint.note or hint.why %}
+<div class="mdh is-quiet">{{ hint.note or hint.why }}</div>
+{% endif %}
