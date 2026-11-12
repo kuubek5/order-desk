@@ -91,7 +91,8 @@ def test_tile_gets_the_real_disc(tmp_path, monkeypatch):
     from app.routers.deps import templates
 
     html = templates.env.get_template("_shop_board_cards.html").render(view=_view([card]), token="t")
-    assert html.count('<path class="rc"') == 2 and "вільно ≈" in html and 'class="crown' not in html
+    assert html.count('<path class="rc"') == 2 and 'class="crown' not in html
+    assert "вільно" not in html, "відсоток вільного не пишемо (власник 12.11.26)"
     idle = _view([_card("B", "idle", iso_name="pmma18_18-a3-5-x41_2026-11-12_00-47-30.iso")]).machines[0]
     assert idle.disc is None, "верстат стоїть — диска не показуємо"
     done_card = _card("C", "done", word="завершено", iso_name="pmma18_18-a3-5-x41_2026-11-12_00-47-30.iso")
