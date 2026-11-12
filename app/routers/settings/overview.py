@@ -19,7 +19,7 @@ from app.changelog import load_changelog
 from app.services.handout_qc import qc_checklist_enabled
 from app.services.mail_link_fetch import autofetch_enabled
 from app.services.mail_merge import merge_enabled
-from app.services import disc_suggest, sum3d_install
+from app.services import disc_suggest, queue_fx, sum3d_install
 from app.services.health_snapshot import last_report
 from app.config import DB_PATH
 from app.mail_inbox import in_inbox
@@ -271,6 +271,7 @@ def get_settings(
         # у теки тут не ходимо (перевірка — кнопкою).
         "sum3d_installs": sum3d_install.read_installs(db),
         # Підказка диска при прийнятті листа: вимикач і кому показувати.
+        "queue_fx": queue_fx.flags(db),
         "disc_suggest_enabled": disc_suggest.globally_enabled(db),
         "disc_suggest_users": sorted(disc_suggest.allowed_user_ids(db)),
         "sum3d_strategies_path": get_setting(db, sum3d_install.STRATEGIES_KEY) or "",

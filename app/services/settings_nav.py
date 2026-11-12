@@ -250,6 +250,13 @@ NAV: tuple = (
                 edit_roles=None,
                 keywords=("07:30", "межа дня", "нічна зміна", "доба"),
             ),
+            NavItem(
+                key="queue-fx",
+                title="Вигляд черги",
+                href="/settings#queue-fx",
+                roles=ADMIN_ONLY,
+                keywords=("анімація", "прогрес", "верстат у рядку", "переходи", "рух", "черга"),
+            ),
         ),
     ),
     NavGroup(

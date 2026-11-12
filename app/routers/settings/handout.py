@@ -97,3 +97,17 @@ async def save_disc_suggest(request: Request, db: Session = Depends(get_db)):
                     else "Підказку диска вимкнено для всіх."),
     }
     return RedirectResponse("/settings?saved=1#mail-disc", status_code=303)
+
+
+@router.post("/settings/queue-fx")
+async def save_queue_fx(request: Request, db: Session = Depends(get_db)):
+    """Вигляд черги: смужка прогресу верстата й плавні переходи (власник
+    12.11.26). Одна форма з двома галочками: відсутня = вимкнено."""
+    from app.services import queue_fx
+
+    require_settings_admin(request, db)
+    form = await request.form()
+    queue_fx.save(db, live=bool(form.get("live")), motion=bool(form.get("motion")))
+    db.commit()
+    request.session["settings_flash"] = {"kind": "success", "message": "Вигляд черги збережено."}
+    return RedirectResponse("/settings?saved=1#queue-fx", status_code=303)

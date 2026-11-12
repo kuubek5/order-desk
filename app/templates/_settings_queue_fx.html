@@ -1,0 +1,33 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Вигляд черги (власник 12.11.26) ────────────────────────────────
+           Два вимикачі адміністратора (`app/services/queue_fx.py`). Лише
+           вигляд: порядок рядків, дані й дії черги від них не залежать.
+           Одна форма шле обидві галочки: незазначена = вимкнено. #}
+        <section id="queue-fx" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="queue-fx">
+            <div class="box">
+                {{ slab('Вигляд черги', 'Прогрес верстата в рядку і плавні переходи. Лише вигляд.', slabs['queue-fx']) }}
+                <form method="post" action="/settings/queue-fx">
+                    <div class="stand-cells">
+                        <div class="stand-cell w3">
+                            <h3>Прогрес верстата в рядку</h3>
+                            <div class="settings-help">Робота, що зараз фрезерується, має внизу рядка смужку з відсотком верстата. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Той самий відсоток, що в чіпі верстата й на табло цеху. Смужка росте разом із програмою; коли верстат стоїть понад 5 хвилин — сіріє. Програма закінчилась або зв'язку немає — смужка зникає: застаріле число гірше за порожнє.</div></details></div>
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="live" value="1" {{ 'checked' if queue_fx.live else '' }}>
+                                Показувати смужку прогресу
+                            </label>
+                        </div>
+                        <div class="stand-cell w3">
+                            <h3>Плавні переходи</h3>
+                            <div class="settings-help">Новий рядок в'їжджає й один раз підсвічується, зниклий — згасає, лічильники змінюються плавно. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Рух триває до пів секунди й лише як відповідь на подію — нічого не крутиться постійно. Порядок рядків не змінюється. Якщо в Windows увімкнено «зменшити рух», анімацій не буде незалежно від цієї галочки.</div></details></div>
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="motion" value="1" {{ 'checked' if queue_fx.motion else '' }}>
+                                Плавні переходи в черзі
+                            </label>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                    </div>
+                </form>
+            </div>
+        </section>

@@ -289,6 +289,7 @@ NAV_SNAPSHOT = {
     "sum3d": ("equipment", "адмін", "адмін"),
     "handout": ("workflow", "адмін", "адмін"),
     "workday": ("workflow", "усі", "усі"),
+    "queue-fx": ("workflow", "адмін", "адмін"),
     "feedback": ("contact", "адмін", "адмін"),
     "operators": ("people", "адмін", "адмін"),
     "sections": ("people", "адмін", "адмін"),

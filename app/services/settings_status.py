@@ -682,6 +682,14 @@ def _slab_sum3d(ctx: dict) -> Slab:
     )
 
 
+def _slab_queue_fx(ctx: dict) -> Slab:
+    fx = ctx.get("queue_fx") or {}
+    on = [name for key, name in (("live", "прогрес верстата"), ("motion", "плавні переходи")) if fx.get(key)]
+    return Slab(tone=TONE_NONE, label=" · ".join(on) if on else "усе вимкнено",
+                meters=[Meter(k="Прогрес верстата в рядку", v="увімкнено" if fx.get("live") else "вимкнено"),
+                        Meter(k="Плавні переходи", v="увімкнено" if fx.get("motion") else "вимкнено")])
+
+
 def _slab_mail_disc(ctx: dict) -> Slab:
     on = bool(ctx.get("disc_suggest_enabled"))
     people = len(ctx.get("disc_suggest_users") or [])
@@ -717,6 +725,7 @@ _SLAB_BUILDERS = {
     "mail-conveyor": lambda db, ctx: _slab_mail_conveyor(ctx),
     "sum3d": lambda db, ctx: _slab_sum3d(ctx),
     "mail-disc": lambda db, ctx: _slab_mail_disc(ctx),
+    "queue-fx": lambda db, ctx: _slab_queue_fx(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
     "mcp": lambda db, ctx: _slab_mcp(ctx),
 }

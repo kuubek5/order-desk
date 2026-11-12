@@ -32,7 +32,7 @@
    черзі висить «ще не в таблиці» (queue.js). Не `refresh-queue from:body`
    навмисно: той слухає й смуга групового Sum3D, і автоматичний перепит
    перемальовував би її під пальцями оператора, що саме друкує груповий ID. #}
-<div id="queue-rows"
+<div id="queue-rows"{% if queue_fx is defined and queue_fx and queue_fx.motion %} data-fx-motion="1"{% endif %}
      hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
      hx-trigger="{% if not rows_partial %}load, {% endif %}every {{ poll_seconds|default(sync_screen_seconds|default(15)) }}s[!document.hidden], refresh-queue from:body, sheet-recheck"
      hx-target="this"

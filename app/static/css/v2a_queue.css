@@ -1468,3 +1468,29 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
 @media (max-width:1400px){
   .q2 .material-cell .stl-thick{display:none}
 }
+
+/* ── Живий верстат у рядку й плавні переходи (власник 12.11.26) ──────────
+   Вмикає адміністратор: Налаштування → Робочий процес → «Вигляд черги».
+   Канали рядка не чіпаємо: фон — стани, лівий край — матеріал, контур —
+   «мої зараз»; прогрес верстата живе на НИЖНЬОМУ краї рядка. Рух — лише як
+   відповідь на подію й один раз; масштабуємо через transform, не ширину. */
+.q2 table.qtable tbody tr.queue-row-live{position:relative}
+.q2 .q-live{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;z-index:var(--z-base,1);background:rgba(var(--accent-rgb), .14)}
+.q2 .q-live i{display:block;width:100%;height:100%;transform-origin:0 50%;transform:scaleX(var(--p,0));background:linear-gradient(90deg,rgba(var(--accent-rgb), .5),rgb(var(--accent-rgb)));box-shadow:0 0 10px rgba(var(--accent-rgb), .65);transition:transform 1.2s cubic-bezier(.2,.7,.2,1)}
+/* Верстат стоїть (відсоток не рухається понад 5 хв) — смужка без світіння. */
+.q2 .q-live.is-stalled i{background:var(--ink-3);box-shadow:none}
+/* Новий рядок після оновлення черги: в'їжджає й один раз підсвічується. */
+.q2 table.qtable tbody tr.row-new>td{animation:q2row-new .55s cubic-bezier(.2,.8,.2,1) both,q2row-new-glow 1.6s ease-out .1s both}
+@keyframes q2row-new{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+@keyframes q2row-new-glow{from{box-shadow:inset 0 0 0 999px rgba(var(--accent-rgb), .20)}to{box-shadow:inset 0 0 0 999px rgba(var(--accent-rgb), 0)}}
+/* Рядок, що зник із черги: коротко згасає на своєму місці. */
+.q2 table.qtable tbody tr.row-leave{pointer-events:none}
+.q2 table.qtable tbody tr.row-leave>td{animation:q2row-leave .4s cubic-bezier(.5,0,.8,.4) both}
+@keyframes q2row-leave{to{opacity:0;transform:translateX(22px)}}
+/* Лічильник вкладки змінився — нове число в'їжджає знизу. */
+.q2 .n.n-tick,.q2 #queue-meta.n-tick{display:inline-block;animation:q2n-tick .45s cubic-bezier(.2,.8,.2,1) both}
+@keyframes q2n-tick{from{opacity:0;transform:translateY(55%)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){
+  .q2 .q-live i{transition:none}
+  .q2 table.qtable tbody tr.row-new>td,.q2 table.qtable tbody tr.row-leave>td,.q2 .n.n-tick,.q2 #queue-meta.n-tick{animation:none}
+}

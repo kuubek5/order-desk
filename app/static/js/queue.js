@@ -1635,3 +1635,97 @@ document.addEventListener("click", (event) => {
     })
     .catch(failed);
 });
+
+// ── Живий верстат у рядку й плавні переходи (власник 12.11.26) ─────────────
+// Вмикає адміністратор (Налаштування → «Вигляд черги»): сервер ставить на
+// #queue-rows `data-fx-motion`, а в рядок, що фрезерується, — `.q-live`.
+// Полл міняє #queue-rows цілком, тож «що змінилось» рахуємо самі: знімок до
+// свапу (номери рядків, відсотки, лічильники) і порівняння після.
+//   • смужка прогресу росте від старого відсотка до нового, а не з нуля;
+//   • рядок, якого не було, в'їжджає й один раз підсвічується;
+//   • рядок, що зник, коротко згасає на своєму місці;
+//   • лічильник вкладки, що змінився, «прокручується».
+// Лише коли адреса запиту та сама (той самий фільтр): зміна фільтра — не
+// «нові роботи». Порядок рядків не чіпаємо. Будь-яка помилка тут не має
+// зачепити саме оновлення черги — тому все в try.
+(function () {
+  let before = null;
+
+  function rowId(tr) { return tr.id || ""; }
+  function countTexts() {
+    return Array.prototype.map.call(document.querySelectorAll(".q2 a .n, #queue-meta"), (n) => n.textContent.trim());
+  }
+  function snapshot(root) {
+    const rows = Array.prototype.slice.call(root.querySelectorAll("tr.queue-row[id]"));
+    const pct = new Map();
+    root.querySelectorAll("tr.queue-row[id] .q-live").forEach((bar) => {
+      const tr = bar.closest("tr");
+      if (tr) pct.set(rowId(tr), bar.getAttribute("data-p"));
+    });
+    return { url: root.getAttribute("hx-get"), rows, ids: new Set(rows.map(rowId)), pct, counts: countTexts() };
+  }
+  function tick(el, cls, ms) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    window.setTimeout(() => el.classList.remove(cls), ms);
+  }
+
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    const target = event.detail && event.detail.target;
+    if (!target || target.id !== "queue-rows" || event.detail.shouldSwap === false) return;
+    try { before = snapshot(target); } catch (_e) { before = null; }
+  });
+
+  document.addEventListener("htmx:afterSettle", (event) => {
+    const el = event.detail && event.detail.elt;
+    if (!el || el.id !== "queue-rows" || !before) return;
+    const prev = before;
+    before = null;
+    try {
+      // Смужка: від попереднього відсотка до нового.
+      el.querySelectorAll("tr.queue-row[id] .q-live").forEach((bar) => {
+        const tr = bar.closest("tr");
+        const old = tr ? prev.pct.get(rowId(tr)) : null;
+        const now = bar.getAttribute("data-p");
+        if (old == null || old === now) return;
+        const target = bar.style.getPropertyValue("--p");
+        bar.style.setProperty("--p", String(Number(old) / 100));
+        void bar.offsetWidth;
+        bar.style.setProperty("--p", target);
+      });
+      if (!el.hasAttribute("data-fx-motion")) return;
+      // Лічильники вкладок.
+      const counts = document.querySelectorAll(".q2 a .n, #queue-meta");
+      if (counts.length === prev.counts.length) {
+        counts.forEach((n, i) => { if (n.textContent.trim() !== prev.counts[i]) tick(n, "n-tick", 500); });
+      }
+      if (prev.url !== el.getAttribute("hx-get") || !prev.ids.size) return;
+      const rows = Array.prototype.slice.call(el.querySelectorAll("tr.queue-row[id]"));
+      const ids = new Set(rows.map(rowId));
+      // Нові рядки (небагато: день, що перекотився, — не привід для феєрверка).
+      const fresh = rows.filter((tr) => !prev.ids.has(rowId(tr)));
+      if (fresh.length && fresh.length <= 6) fresh.forEach((tr) => tick(tr, "row-new", 1900));
+      // Рядки, що зникли: привид на старому місці, який згасає й прибирається.
+      const gone = prev.rows.filter((tr) => !ids.has(rowId(tr)));
+      const tbody = el.querySelector("table.qtable tbody");
+      if (tbody && gone.length && gone.length <= 3) {
+        gone.forEach((ghost) => {
+          let anchor = ghost.previousElementSibling;
+          while (anchor && !ids.has(rowId(anchor))) anchor = anchor.previousElementSibling;
+          const live = anchor ? document.getElementById(rowId(anchor)) : null;
+          ghost.removeAttribute("id");
+          ghost.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+          ghost.classList.remove("is-sum3d-pending");
+          ghost.querySelectorAll(".is-sum3d-pending").forEach((n) => n.classList.remove("is-sum3d-pending"));
+          ghost.querySelectorAll(".q-live").forEach((n) => n.remove());
+          ghost.inert = true;
+          ghost.classList.add("row-leave");
+          if (live && live.parentNode === tbody) tbody.insertBefore(ghost, live.nextSibling);
+          else tbody.insertBefore(ghost, tbody.firstChild);
+          window.setTimeout(() => ghost.remove(), 420);
+        });
+      }
+    } catch (_e) { /* вигляд не має ламати оновлення черги */ }
+  });
+})();

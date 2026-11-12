@@ -52,6 +52,9 @@
    переноситься комірка наряду. `milling is defined` — рядок рендериться і з
    місць без цього набору (пошук, картка): там просто None. #}
 {% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
+{# Смужка прогресу — лише коли її ввімкнув адміністратор (`queue_fx`) і
+   відсоток прочитано: порожнє поле краще за вигадане. #}
+{% set _live = (_mill and _mill.percent is not none and queue_fx is defined and queue_fx and queue_fx.live) %}
 {# Чи є в комірці наряду бейдж-сигнал (переробка / змінено / фрезерується / на
    швидку / погодження / проблема). Є → .oid переноситься на новий рядок; нема →
    лишається в один рядок, а ім'я вкорочується трикрапкою. Раніше це вирішували
@@ -59,12 +62,16 @@
    таблиці; тепер прапорець ставить сервер класом .wrap (перф-аудит 16.09.26).
    Той самий набір сигналів, що й у знятих :has() — звіряти при зміні бейджів. #}
 {% set _oid_wrap = _rework or _changed or _mill or _hold or _remark or is_rush_comment(order.cam_comment) or order.status in ('проблема', 'переробка') %}
-<tr{% if _matrow %} data-mat="{{ _matrow.cls }}"{% endif %} class="queue-row{% if _focused %} queue-row-focus{% endif %}{% if _taken %} queue-row-taken{% endif %} {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
+<tr{% if _matrow %} data-mat="{{ _matrow.cls }}"{% endif %} class="queue-row{% if _live %} queue-row-live{% endif %}{% if _focused %} queue-row-focus{% endif %}{% if _taken %} queue-row-taken{% endif %} {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
        колонки нема (рядок лишається 9-колонковим). #}
     {% if show_source %}<td class="src-tab"><a class="src-tab-link mono" href="/?date={{ order.sheet_tab }}" title="Відкрити чергу за цей день">{{ order.sheet_tab or '—' }}</a></td>{% endif %}
     <td class="order-id">
+        {# Смужка прогресу верстата на нижньому краї рядка (власник 12.11.26).
+           Тягнеться на весь рядок: <tr> має position:relative, як у «мої
+           зараз». Число — те саме, що в чіпі верстата нижче. #}
+        {% if _live %}<span class="q-live{% if _mill.stalled %} is-stalled{% endif %}" style="--p:{{ '%.3f'|format(_mill.percent / 100) }}" data-p="{{ _mill.percent }}" aria-hidden="true"><i></i></span>{% endif %}
         {# Власний блок, а не flex на самій <td>. `display:flex` знімає з
            комірки роль table-cell, і вона перестає слухатись ширини
            стовпця: при збережених ширинах (перетягування колонок вмикає

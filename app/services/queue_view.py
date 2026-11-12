@@ -57,6 +57,7 @@ from app.services.furnace import (
     strip_cards as furnace_cards,
     strip_summary as furnace_summary,
 )
+from app.services import queue_fx
 from app.services.machines import machine_side_context, milling_now, sisma_context
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.queue import (
@@ -601,6 +602,9 @@ def build_queue_view(
             # в ОБОХ гілках — сторінці й partial=rows, — інакше підсвітка
             # зникала б на першому тіку полла (той самий урок, що focused_ids).
             "milling": milling_now(),
+            # Вимикачі вигляду черги (смужка прогресу, плавні переходи) — теж
+            # в обох гілках, інакше смужка зникала б на тіку полла.
+            "queue_fx": queue_fx.flags(db),
             # Найновіший захоплений Sum3D ID — для «привида» в пришпиленому
             # рядку. В ОБОХ гілках (сторінка й partial=rows), інакше підказка
             # зникала б на першому тіку полла.

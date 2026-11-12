@@ -277,6 +277,7 @@ SETTINGS_SECTIONS = [
     # «Заготовки» прибрано 10.09.26 — окремий екран «Нові диски» (/discs).
     "_settings_handout.html",
     "_settings_workday.html",
+    "_settings_queue_fx.html",
     "_settings_about.html",
     "_settings_mcp.html",
 ]
