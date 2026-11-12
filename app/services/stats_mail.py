@@ -118,7 +118,9 @@ def letters_in_cell(db: Session, days: list[date], weekday: int, hour: int, clie
         for r in rows
         if not client or st.client_key(r[2]) == client
     ]
-    out.sort(key=lambda r: r["at"], reverse=True)
+    # Ключ — сам час листа (тип відомий), а не значення словника змішаного типу:
+    # новіший mypy (2.4) не приймає такий ключ сортування.
+    out.sort(key=lambda r: r["at"] if isinstance(r["at"], datetime) else datetime.min, reverse=True)
     return out[: data.LIST_LIMIT]
 
 

@@ -249,7 +249,8 @@ def client_letters(db: Session, client: Client, orders: Sequence[Order]) -> list
     for row in rows:
         letter = Letter(*row)
         # Спільна скринька: адреса одна, клієнти різні. Такий лист рахується лише за ключем.
-        if letter.id in ids or sender_key_for(letter) in keys:  # type: ignore[arg-type]
+        key = sender_key_for(letter)  # type: ignore[arg-type]
+        if letter.id in ids or (key is not None and key in keys):
             letters.append(letter)
     return letters
 
