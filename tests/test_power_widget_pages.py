@@ -255,8 +255,9 @@ def test_board_warns_half_an_hour_before_the_cut(app_db, monkeypatch):  # noqa: 
     html = board.get(f"/t/{token}/shop/cards")[2]
     strip = html.split('class="pw-strip', 1)[1].split('class="mgrid"', 1)[0]
     assert "is-soon" in html.split('class="pw-strip', 1)[1].split('"', 1)[0]
-    assert "Скоро вимкнуть" in strip and 'class="pw-alert"' in strip and "вимкнуть світло" in strip
+    assert "Скоро вимкнуть" in strip
+    assert "pw-alert" not in html, "окремої смуги-попередження немає (власник 12.11.26)"
     # `business_now()` — із поясом; відлік на табло йде без нього, як у печей.
     iso = (now.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0) + timedelta(minutes=cut)).isoformat()
-    assert strip.count(f'data-left-to="{iso}"') == 2, "відлік тікає і в смузі, і в попередженні"
+    assert strip.count(f'data-left-to="{iso}"') == 1, "відлік тікає в смузі"
     assert "до вимкнення" in strip

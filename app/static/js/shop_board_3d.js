@@ -177,7 +177,9 @@ function makeView(list, tone){
   // межу видно по самій моделі — знизу тверда, згори сітка.
   scene.add(cap);
   var mark = null;
-  if (rows){ mark = new THREE.Mesh(new THREE.RingGeometry(1.22, 1.42, 40), basic(0xffc56b, 0.95)); stage.add(mark); }
+  // Поточна мала — маленький трикутник-вказівник під нею (власник 12.11.26:
+  // кільце навколо моделі прибрати, замінити маленькою позначкою).
+  if (rows){ mark = new THREE.Mesh(new THREE.CircleGeometry(0.24, 3), basic(0xffc56b, 0.95)); stage.add(mark); }
   var L = {heroY:0, heroH:2.0, sK:0, rowY:[]};
   return {
     scene:scene, cam:cam,
@@ -205,7 +207,10 @@ function makeView(list, tone){
       var cur = Math.min(n - 1, Math.floor(local / step)), u = Math.min(1, (local - cur * step) / fill);
       for (j = 0; j < slots.length; j++){ slots[j].solid.visible = j < cur; slots[j].wire.visible = j >= cur; }
       for (j = 0; j < heroes.length; j++) heroes[j].group.visible = false;
-      if (mark){ mark.position.copy(slots[cur].g.position); mark.quaternion.copy(cam.quaternion); }
+      if (mark){
+        mark.position.copy(slots[cur].g.position); mark.position.y -= 1.3;
+        mark.quaternion.copy(cam.quaternion); mark.rotateZ(Math.PI / 2);   // вершиною вгору, до моделі
+      }
       var o = heroes[cur];
       cap.visible = false;
       if (!o) return;

@@ -12,8 +12,8 @@
   {# Світло (власник 11.11.26): смуга доби в шапці, ліворуч від годинника.
      Шапка стоїть поза живим шматком, тому смуга лежить ТУТ і піднята в шапку
      стилем (`.pw-strip` у shop_board.html) — інакше вона не оновлювалась би.
-     Відлік тікає сам (`data-left-to`, як у печей). За пів години до
-     вимкнення додається смуга попередження на всю ширину. #}
+     Відлік тікає сам (`data-left-to`, як у печей). Окремого попередження
+     на всю ширину немає (прибрано 12.11.26). #}
   {% if view.power %}{% set pw = view.power %}
   <div class="pw-strip {{ pw.tone }}">
     <svg class="pw-ico{% if pw.lit %} is-lit{% endif %}" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.5 5 13.6h6.1l-1 7.9 8.9-11.6h-6.3z"/></svg>
@@ -32,13 +32,9 @@
       <div class="pw-hours">{% for c in pw.today_cells %}<span{% if pw.has_bar and c.now %} class="is-now"{% elif pw.has_bar and c.past %} class="is-past"{% endif %}>{{ '%02d' % loop.index0 }}</span>{% endfor %}</div>
     </div>
   </div>
-  {% if pw.kind == 'soon' %}
-  <div class="pw-alert">
-    <svg class="pw-ico is-lit" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 2.5 5 13.6h6.1l-1 7.9 8.9-11.6h-6.3z"/></svg>
-    <b>Через <span data-left-to="{{ pw.change_iso }}">{{ pw.left }}</span> вимкнуть світло</b>
-    <span>о {{ pw.at }} · {{ pw.back }}</span>
-  </div>
-  {% endif %}
+  {# Окремої смуги-попередження «через N хв вимкнуть світло» немає (власник
+     12.11.26: не підлаштовувалась під висоту смуги й тягнула увагу). Про
+     близьке вимкнення каже сама смуга: тон `is-soon` і відлік у ній. #}
   {% endif %}
 
   <div class="mgrid">
