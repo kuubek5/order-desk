@@ -577,7 +577,7 @@ def test_settings_page_shows_the_shop_link(app_db):  # noqa: F811
     token = _enable(factory)
     client = MiniClient(app)
     client.login(*ADMIN)
-    status, _, html = client.get("/settings/feedback")
+    status, _, html = client.get("/settings/board")
     assert status == 200, "сторінка налаштувань не відрендерилась"
     # Рахувати кнопки «Скопіювати» не можна: на цій сторінці є ще й
     # запрошення в Telegram, і тест проходив би навіть із невідрендереним
@@ -1004,7 +1004,7 @@ def test_admin_sets_the_sisma_style_operator_cannot(app_db):  # noqa: F811
     admin.post("/settings/feedback/board/sisma-style", {"style": "neon"})
     with factory() as db:
         assert sb.read_sisma_style(db) == "tower"
-    status, _, html = admin.get("/settings/feedback")
+    status, _, html = admin.get("/settings/board")
     assert status == 200 and 'id="sisma-style"' in html
     assert 'value="tower" checked' in html and "Розпечена ванна" in html and "Вежа" in html
     assert "Розріз камери (як зараз)" in html

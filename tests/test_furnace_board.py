@@ -114,7 +114,7 @@ def test_settings_toggle_creates_a_link_and_regenerate_kills_the_old(app_db):  #
     client.post("/settings/feedback/board/regenerate", {})
     with factory() as db:
         assert fb.board_token(db) not in (None, first)
-    status, _, html = client.get("/settings/feedback")
+    status, _, html = client.get("/settings/board")
     assert status == 200 and 'id="furnace-board"' in html and "Вимкнути табло" in html
 
 

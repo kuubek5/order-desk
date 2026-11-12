@@ -533,7 +533,10 @@ def test_bot_settings_no_longer_offer_a_logistics_chat(app_db):  # noqa: F811
     """Звіт по пічках у чат логістів прибрано (власник 14.09.26): логісти
     дивляться живе табло (порт 8010), тож поля чату в налаштуваннях немає."""
     app, _factory = app_db
-    status, _, html = _client(app, ADMIN).get("/settings/feedback")
+    client = _client(app, ADMIN)
+    status, _, html = client.get("/settings/feedback")
     assert status == 200
     assert 'id="bot-logistics"' not in html and "/settings/feedback/logistics" not in html
-    assert "Табло пічок для логістів" in html, "живе табло лишається"
+    # Живе табло лишається — з 12.11.26 на своїй сторінці «Табло цеху».
+    status, _, board = client.get("/settings/board")
+    assert status == 200 and "табло печей для логістів" in board, "живе табло лишається"

@@ -149,7 +149,7 @@ def test_gear_hides_the_widget_for_this_account_only_and_keeps_the_poll(app_db):
 def test_settings_save_queue_number_and_board_switch(app_db):  # noqa: F811
     app, factory = app_db
     client = _login(app)
-    status, _, page = client.get("/settings/feedback")
+    status, _, page = client.get("/settings/board")
     assert status == 200 and 'action="/settings/feedback/board/power"' in page
 
     client.post("/settings/feedback/board/power", {"group": " 4,1 ", "board": "1"})
@@ -157,7 +157,7 @@ def test_settings_save_queue_number_and_board_switch(app_db):  # noqa: F811
         assert get_setting(db, ps.GROUP_KEY) == "4.1" and get_setting(db, ps.BOARD_KEY) == "1"
     assert ps.configured_group() == "4.1" and ps.board_enabled() is True
     assert ps.wake.is_set(), "нова черга будить фоновий прохід, а не чекає 10 хв"
-    _, _, page = client.get("/settings/feedback")
+    _, _, page = client.get("/settings/board")
     assert 'value="4.1"' in page and 'name="board" value="1" checked' in page
 
     # Той самий «Зберегти» без прапорця — вимкнути смугу; черга лишається.
