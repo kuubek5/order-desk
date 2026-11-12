@@ -8,8 +8,11 @@
        відсотком; на зрізі залита товща стінки (трафарет, лише на замкненій
        моделі); решта одиниць малими рядами під нею (готові тверді, наступні
        сіткою, поточна в кільці) і «готово N з M».
-   «Поточна одиниця» — оцінка рівними частками відсотка за одиницями моделей:
-   верстат сам не каже, яку коронку ріже.
+   Велика модель — СИМУЛЯЦІЯ, не правда про фрезу (власник 12.11.26: верстат
+   не каже, яку коронку ріже, тож краще гарний цикл): кожна конструкція
+   програми по черзі «фрезерується» за `sim` секунд, тримається мить готовою
+   і поступається наступній; малі в ряду йдуть за тим самим циклом. Лічильник
+   «готово N з M» — оцінка за СПРАВЖНІМ відсотком верстата (одиниці моделей).
 
    Одна WebGL-сцена на все табло: кадр плитки малюється у спільне полотно й
    копіюється в її 2D-полотно (браузер обмежує число WebGL-контекстів).
@@ -17,7 +20,8 @@
 
    Розміри підбираються біля телевізора без релізу — параметри адреси, які
    сторінка запам'ятовує: ?big=1.2 (велика), ?small=0.8 (малі), ?zone=1.3
-   (висота зони вгору), ?reset3d=1 — повернути типові. Живий шматок табло
+   (висота зони вгору), ?sim=6 (секунд на одну конструкцію), ?reset3d=1 —
+   повернути типові. Живий шматок табло
    замінюється раз на 30 с; `KM3D.apply` повертає полотна на нові плитки. */
 (function(){
 "use strict";
@@ -25,7 +29,7 @@ if (typeof THREE === "undefined") return;
 
 var BUF = 1024, FRAME_MS = 33;
 var Q = new URLSearchParams(location.search);
-var SIZE = {big:1, small:1, zone:1}, STORE = window.KMStore, SIZE_KEY = "board-3d-size";
+var SIZE = {big:1, small:1, zone:1, sim:5}, STORE = window.KMStore, SIZE_KEY = "board-3d-size";
 try {
   if (STORE && Q.get("reset3d") === "1") STORE.remove(SIZE_KEY);
   var saved = JSON.parse((STORE && STORE.get(SIZE_KEY)) || "{}");
@@ -34,7 +38,8 @@ try {
 var changed = false;
 Object.keys(SIZE).forEach(function(k){
   var v = parseFloat(Q.get(k));
-  if (isFinite(v) && v > 0.2 && v < 4){ SIZE[k] = v; changed = true; }
+  var hi = k === "sim" ? 60 : 4;
+  if (isFinite(v) && v > 0.2 && v < hi){ SIZE[k] = v; changed = true; }
 });
 if (changed && STORE) STORE.set(SIZE_KEY, JSON.stringify(SIZE));
 
@@ -127,7 +132,7 @@ function basic(color, opacity, extra){
   return new THREE.MeshBasicMaterial(mix({color:color, transparent:true, opacity:opacity, side:THREE.DoubleSide, depthWrite:false, toneMapped:false}, extra || {}));
 }
 
-var VIEW_H = 2.68;
+var VIEW_H = 2.68, HOLD = 1.2;            // секунди, коли готова конструкція стоїть цілою
 function makeView(list, tone){
   var scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xfff1dc, 0x2a1c0e, 0.2));
@@ -157,9 +162,9 @@ function makeView(list, tone){
     stencilZFail:THREE.ReplaceStencilOp, stencilZPass:THREE.ReplaceStencilOp}));
   cap.rotation.x = -Math.PI / 2; cap.renderOrder = 1.1;
   cap.onAfterRender = function(r){ r.clearStencil(); };
-  var scan = new THREE.Mesh(new THREE.CircleGeometry(1, 64), basic(0xffb454, 0.1, {blending:THREE.AdditiveBlending}));
-  var edge = new THREE.Mesh(new THREE.RingGeometry(0.965, 1, 96), basic(0xffc56b, 0.85));
-  scan.rotation.x = edge.rotation.x = -Math.PI / 2; scene.add(cap, scan, edge);
+  // Кільця площини зрізу немає (власник 12.11.26: «круг по центру прибрати»):
+  // межу видно по самій моделі — знизу тверда, згори сітка.
+  scene.add(cap);
   var mark = null;
   if (rows){ mark = new THREE.Mesh(new THREE.RingGeometry(1.22, 1.42, 40), basic(0xffc56b, 0.95)); stage.add(mark); }
   var L = {heroY:0, heroH:2.0, sK:0, rowY:[]};
@@ -184,10 +189,11 @@ function makeView(list, tone){
         slots[j].g.position.set((c - (inRow - 1) / 2) * 2.3, L.rowY[r] / L.sK, 0);
       }
     },
-    update:function(pct, t){
-      var f = Math.min(0.99999, Math.max(0, pct / 100)), cur = 0, j;
-      while (cur < n - 1 && f >= bounds[cur + 1]) cur++;
-      var u = (f - bounds[cur]) / Math.max(1e-6, bounds[cur + 1] - bounds[cur]);
+    update:function(pct, t, phase){
+      var f = Math.min(0.99999, Math.max(0, pct / 100)), j;
+      // Цикл симуляції: на конструкцію `sim` с заповнення + пауза готовою.
+      var fill = SIZE.sim, step = fill + HOLD, local = ((t + phase) % (n * step) + n * step) % (n * step);
+      var cur = Math.min(n - 1, Math.floor(local / step)), u = Math.min(1, (local - cur * step) / fill);
       for (j = 0; j < slots.length; j++){ slots[j].solid.visible = j < cur; slots[j].wire.visible = j >= cur; }
       for (j = 0; j < heroes.length; j++) heroes[j].group.visible = false;
       var o = heroes[cur];
@@ -198,10 +204,8 @@ function makeView(list, tone){
       var a0 = L.heroY - o.h / 2 * ws, a1 = L.heroY + o.h / 2 * ws;
       var level = a0 - 0.01 + smooth(0, 1, u) * (a1 - a0 + 0.02);
       o.below.constant = level; o.above.constant = -level;
-      var er = o.R * ws * 1.18;
       cap.visible = o.closed;
-      scan.scale.setScalar(er); edge.scale.setScalar(er);
-      cap.position.set(0, level, 0); scan.position.copy(cap.position); edge.position.copy(cap.position);
+      cap.position.set(0, level, 0);
       return Math.round(f * total * 1000) / 1000;
     }
   };
@@ -242,7 +246,9 @@ function apply(root){
     if (it && it.canvas.parentNode) it.canvas.parentNode.removeChild(it.canvas);
     var canvas = document.createElement("canvas"); canvas.className = "g3";
     var unit = document.createElement("span"); unit.className = "unit3";
-    it = VIEWS[keyName] = {sig:sig + tone, canvas:canvas, ctx:canvas.getContext("2d"), unit:unit, view:null, w:0, h:0, done:-1};
+    // Зсув фази з ключа верстата: плитки не «фрезерують» синхронно.
+    var phase = 0; for (var c = 0; c < keyName.length; c++) phase = (phase * 31 + keyName.charCodeAt(c)) % 997;
+    it = VIEWS[keyName] = {sig:sig + tone, phase:phase / 7, canvas:canvas, ctx:canvas.getContext("2d"), unit:unit, view:null, w:0, h:0, done:-1};
     attach(it, el);
     var mine = it;
     Promise.all(list.map(function(m){ return model(m.url); })).then(function(models){
@@ -275,7 +281,7 @@ function frame(now){
     }
     // Відсоток приходить раз на 30 с — межа зрізу доганяє його плавно.
     it.shown += (it.target - it.shown) * 0.02;
-    var done = it.view.update(it.shown, t);
+    var done = it.view.update(it.shown, t, it.phase);
     renderer.setViewport(0, 0, w, h); renderer.setScissor(0, 0, w, h); renderer.setScissorTest(true);
     renderer.clear(); renderer.render(it.view.scene, it.view.cam);
     it.ctx.clearRect(0, 0, w, h);
