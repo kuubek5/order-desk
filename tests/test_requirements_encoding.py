@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-REQUIREMENTS = sorted(ROOT.glob("requirements*.txt"))
+# constraints.txt pip читає тим самим способом (`-c` з requirements.txt).
+REQUIREMENTS = sorted(ROOT.glob("requirements*.txt")) + sorted(ROOT.glob("constraints*.txt"))
 
 
 def test_requirements_files_exist():

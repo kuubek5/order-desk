@@ -1,4 +1,4 @@
-# Точні версії всіх залежностей — constraints.txt (12.11.26).
+# Exact versions of every dependency live in constraints.txt (12.11.26).
 -c constraints.txt
 
 # Upper bound is deliberate. gspread 6 renamed Worksheet.update's arguments

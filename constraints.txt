@@ -1,18 +1,21 @@
-# Точні версії ВСІХ залежностей (і транзитивних) — 12.11.26.
+# Exact versions of ALL dependencies, transitive ones included (12.11.26).
 #
-# Навіщо. У requirements*.txt лише нижні межі (`fastapi>=0.100`), тож GitHub
-# при кожній збірці ставив НАЙСВІЖІШЕ: 12.11.26 mypy 2.4 + SQLAlchemy 2.1
-# завалили перевірку на старому коді, а інсталятор міг так само тихо отримати
-# нову версію бібліотеки з помилкою. Тепер тести, CI й інсталятор беруть ті
-# самі версії, на яких пройшов повний прогін.
+# Why: requirements*.txt only carry lower bounds, so CI and the installer build
+# used to pick up whatever was newest. On 12.11.26 mypy 2.4 + SQLAlchemy 2.1
+# broke the type gate on untouched code, and the installer could just as well
+# have shipped a library release with a bug. Tests, CI and the installer now
+# all use the versions the full test suite passed on.
 #
-# Підключено через `-c constraints.txt` у requirements.txt — працює для
-# requirements-dev.txt і requirements-build.txt автоматично.
+# Wired in with "-c constraints.txt" at the top of requirements.txt, so
+# requirements-dev.txt and requirements-build.txt follow it automatically.
 #
-# Оновити свідомо: свіже середовище (`python -m venv x`), `pip install -r
-# requirements-dev.txt -r requirements-build.txt` БЕЗ цього файлу (тимчасово
-# закоментувати рядок -c), повний pytest + mypy, далі
-# `pip freeze --all --exclude pip --exclude setuptools --exclude wheel`.
+# ASCII only: pip reads this file in the machine's locale encoding (cp1252 on
+# the CI runner) -- see tests/test_requirements_encoding.py.
+#
+# To update on purpose: fresh venv, comment out the "-c" line, then
+# pip install -r requirements-dev.txt -r requirements-build.txt, run the full
+# pytest + mypy, and
+# pip freeze --all --exclude pip --exclude setuptools --exclude wheel
 alembic==1.20.1
 altgraph==0.17.5
 annotated-doc==0.0.6
