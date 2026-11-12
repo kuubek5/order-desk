@@ -25,6 +25,8 @@ GET /shift/images/{image_id}
 POST /discs/rescan
 GET /settings/report.txt
 POST /settings/machines/{machine_id}/move
+POST /settings/machines/{machine_id}/program-folder
+POST /settings/machines/{machine_id}/program-folder/check
 GET /machines/calibration.zip
 GET /mail
 POST /mail/{email_id}/fetch-link

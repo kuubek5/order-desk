@@ -172,6 +172,33 @@
                 </div>
                 </div>
 
+                {# Теки програм фрезерування (власник 12.11.26): куди Sum3D кладе
+                   `.iso` кожного верстата. CRM їх ЛИШЕ ЧИТАЄ — звіряє диск
+                   програми з замовленням (`app/services/program_folders.py`).
+                   «Перевірити» дивиться введений шлях, ще не зберігаючи. #}
+                {% if machines and user and user.role == 'адмін' %}
+                <div class="stand-cell w6" id="program-folders">
+                <h3>Теки програм фрезерування</h3>
+                <div class="settings-help">Куди Sum3D кладе програму кожного верстата. CRM ці теки лише читає. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Старі верстати забирають програму скриптом із розшареної теки на цьому ПК — вкажіть її. Нові — Sum3D пише одразу в розшарену теку верстата (<span class="mono">\\ПК-верстата\тека</span>). За назвою програми CRM бачить диск (матеріал, висоту, колір) і звіряє його з замовленням. Файли в цих теках CRM не видаляє, не переносить і не змінює.</div></details></div>
+                <div class="pf-list">
+                    {% for machine in machines %}
+                    <form method="post" action="/settings/machines/{{ machine.id }}/program-folder" class="pf-row">
+                        <span class="pf-name">{{ machine.name }}</span>
+                        <input class="login-input mono pf-path" name="path" value="{{ machine.program_folder or '' }}"
+                               maxlength="400" placeholder="\\ПК\тека або D:\Share\верстат" autocomplete="off"
+                               aria-label="Тека програм верстата {{ machine.name }}">
+                        <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        <button type="button" class="settings-secondary-button"
+                                hx-post="/settings/machines/{{ machine.id }}/program-folder/check"
+                                hx-include="closest form" hx-target="next .pf-out" hx-swap="innerHTML"
+                                data-kload="self">Перевірити</button>
+                        <span class="pf-out" aria-live="polite"></span>
+                    </form>
+                    {% endfor %}
+                </div>
+                </div>
+                {% endif %}
+
                 {# Тека калібрувальних кадрів. Стоїть поруч із галкою «Калібр.»
                    у таблиці навмисно: вмикач збору і місце, куди він пише —
                    одне рішення оператора, розведене по різних екранах воно

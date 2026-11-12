@@ -424,6 +424,61 @@ def update_machine(
     return RedirectResponse("/settings#machines", status_code=303)
 
 
+def _require_admin_machines(request: Request, db: Session):
+    """Теки програм — лише адмін (власник 12.11.26: «в адміністраторському
+    меню»): шлях веде на мережеву шару верстата, хоч CRM її лише читає."""
+    user = require_settings_edit(request, db, "machines")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="теки програм задає адміністратор")
+    return user
+
+
+@router.post("/settings/machines/{machine_id}/program-folder")
+def save_machine_program_folder(
+    request: Request, machine_id: int, path: str = Form(""), db: Session = Depends(get_db)
+):
+    """Тека, куди Sum3D кладе програми цього верстата. CRM її лише читає."""
+    user = _require_admin_machines(request, db)
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+    clean = path.strip().strip('"')[:400]
+    machine.program_folder = clean
+    log_action(
+        db, order=None, operator=user, action_type="settings",
+        field="machine_program_folder",
+        note=f"тека програм «{machine.name}»: {clean or 'не задано'}",
+    )
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (f"Теку програм «{machine.name}» збережено." if clean
+                    else f"Теку програм «{machine.name}» прибрано."),
+    }
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/{machine_id}/program-folder/check")
+def check_machine_program_folder(
+    request: Request, machine_id: int, path: str = Form(""), db: Session = Depends(get_db)
+):
+    """Перевірити шлях, ще не зберігаючи: що в теці лежить. Лише читання."""
+    from html import escape
+
+    from app.services import program_folders
+
+    _require_admin_machines(request, db)
+    if db.get(Machine, machine_id) is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+    scanned = program_folders.scan(path.strip().strip('"'))
+    tone = ("none" if not scanned.path else "ok" if scanned.ok and scanned.files
+            else "warn" if scanned.ok else "bad")
+    return Response(
+        f'<span class="pf-result pf-{tone}">{escape(scanned.summary())}</span>',
+        media_type="text/html",
+    )
+
+
 @router.post("/settings/machines/{machine_id}/move")
 def move_machine(
     request: Request,

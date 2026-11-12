@@ -1228,6 +1228,18 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
   border-radius: 0 6px 6px 0; background: rgba(255, 255, 255, .025); color: var(--ink-2);
   font-size: var(--fs-1); line-height: 1.5; }
 .b-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+/* Теки програм фрезерування (Верстати): рядок на верстат — назва, шлях,
+   дві кнопки й відповідь перевірки під шляхом. */
+.pf-list { display: grid; gap: 8px; margin-top: 10px; }
+.pf-row { display: grid; grid-template-columns: minmax(90px, 140px) minmax(0, 1fr) auto auto; gap: 6px 8px; align-items: center; }
+.pf-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-path { min-width: 0; width: 100%; }
+.pf-out { grid-column: 2 / -1; font-size: var(--fs-1); }
+.pf-out:empty { display: none; }
+.pf-result { color: var(--ink-2); }
+.pf-result.pf-ok { color: var(--ok); }
+.pf-result.pf-warn { color: var(--warn); }
+.pf-result.pf-bad { color: var(--alarm); }
 .b-label { width: 100%; font-size: var(--fs-1); color: var(--ink-3); }
 .b-short { max-width: 120px; }
 .b-form .schip, #sisma-style .schip { font-size: var(--fs-2); }
