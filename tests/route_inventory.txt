@@ -286,6 +286,9 @@ POST /mail/filters
 POST /sync/pause
 POST /settings/test-imap
 POST /license
+GET /settings/feedback/board/3d/preview
+GET /settings/feedback/board/3d/model/{key}.json
+POST /settings/feedback/board/3d
 POST /settings/feedback/board/sisma-style
 POST /account/queue-empty-bg
 POST /settings/users/initials

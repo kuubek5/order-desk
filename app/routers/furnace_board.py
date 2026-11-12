@@ -39,8 +39,7 @@ _IMAGES = {
 _JS = {"shop_board_slm.js", "shop_board_slm_melt.js", "shop_board_slm_tower.js",
        "shop_board_prog.js",
        # 3D-робота на плитці верстата (`board_models` на сервері).
-       # `storage.js` — KMStore: розміри 3D, підібрані біля телевізора.
-       "three-0.128.0.min.js", "shop_board_3d.js", "storage.js"}
+       "three-0.128.0.min.js", "shop_board_3d.js"}
 
 
 # Стилі й скрипти табло браузер не зберігає: після оновлення програми сторінка

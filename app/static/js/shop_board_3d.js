@@ -2,46 +2,55 @@
    «велика й малі»; мокап design/tv-board-concept.js).
 
    Плитка, що фрезерує, несе `data-models` (адреси моделей за секретом табло,
-   `board_models` на сервері) і `data-pct` (відсоток верстата). Скрипт:
+   `board_models` на сервері). Скрипт:
      • вантажить моделі один раз (кеш за адресою),
      • малює поточну одиницю крупно: знизу тверда, згори сітка, межа йде з
        відсотком; на зрізі залита товща стінки (трафарет, лише на замкненій
        моделі); решта одиниць малими рядами під нею (готові тверді, наступні
-       сіткою, поточна в кільці) і «готово N з M».
+       сіткою, поточна в кільці).
    Велика модель — СИМУЛЯЦІЯ, не правда про фрезу (власник 12.11.26: верстат
    не каже, яку коронку ріже, тож краще гарний цикл): кожна конструкція
    програми по черзі «фрезерується» за `sim` секунд, тримається мить готовою
-   і поступається наступній; малі в ряду йдуть за тим самим циклом. Лічильник
-   «готово N з M» — оцінка за СПРАВЖНІМ відсотком верстата (одиниці моделей).
+   і поступається наступній; малі в ряду йдуть за тим самим циклом.
+   Лічильника «готово N з M» немає свідомо (власник 12.11.26): роботи
+   програми фрезеруються одночасно, не по одній, і число брехало б.
 
    Одна WebGL-сцена на все табло: кадр плитки малюється у спільне полотно й
    копіюється в її 2D-полотно (браузер обмежує число WebGL-контекстів).
    До 30 кадрів/с — замір на ПК телевізора 11.11.26.
 
-   Розміри підбираються біля телевізора без релізу — параметри адреси, які
-   сторінка запам'ятовує: ?big=1.2 (велика), ?small=0.8 (малі), ?zone=1.3
-   (висота зони вгору), ?sim=6 (секунд на одну конструкцію), ?reset3d=1 —
-   повернути типові. Живий шматок табло
-   замінюється раз на 30 с; `KM3D.apply` повертає полотна на нові плитки. */
+   Що показувати й якого розміру — Налаштування → Табло → «3D на телевізорі»
+   (`board_models.THREE_D_FIELDS`). Значення їдуть у живий шматок
+   (`#shop-live[data-3d]`), тож телевізор бере їх за ≤30 с без
+   перезавантаження. Параметри адреси (?big=1.2&sim=6 …) перекривають їх лише
+   на цьому екрані й до перезавантаження — щоб спробувати, не зберігаючи.
+   Прев'ю в Налаштуваннях кличе `KM3D.setConfig(...)` на кожен рух повзунка.
+   Живий шматок табло замінюється раз на 30 с; `KM3D.apply` повертає полотна
+   на нові плитки. */
 (function(){
 "use strict";
 if (typeof THREE === "undefined") return;
 
 var BUF = 1024, FRAME_MS = 33;
 var Q = new URLSearchParams(location.search);
-var SIZE = {big:1, small:1, zone:1, sim:5}, STORE = window.KMStore, SIZE_KEY = "board-3d-size";
-try {
-  if (STORE && Q.get("reset3d") === "1") STORE.remove(SIZE_KEY);
-  var saved = JSON.parse((STORE && STORE.get(SIZE_KEY)) || "{}");
-  Object.keys(SIZE).forEach(function(k){ if (typeof saved[k] === "number") SIZE[k] = saved[k]; });
-} catch (_e) { /* зіпсований запис — типові розміри */ }
-var changed = false;
-Object.keys(SIZE).forEach(function(k){
-  var v = parseFloat(Q.get(k));
-  var hi = k === "sim" ? 60 : 4;
-  if (isFinite(v) && v > 0.2 && v < hi){ SIZE[k] = v; changed = true; }
-});
-if (changed && STORE) STORE.set(SIZE_KEY, JSON.stringify(SIZE));
+var CFG = {on:true, hero:true, small:true, mesh:true, spin:true,
+           big:1, smallk:1, zone:1, sim:5, hold:1.2, spin_s:12, bright:1};
+var OVERRIDE = null;                     // прев'ю в Налаштуваннях: значення форми до збереження
+function readConfig(){
+  var live = document.getElementById("shop-live"), raw = live && live.getAttribute("data-3d"), got = {};
+  try { got = JSON.parse(raw || "{}") || {}; } catch (_e) { got = {}; }
+  Object.keys(CFG).forEach(function(k){
+    if (typeof got[k] === typeof CFG[k]) CFG[k] = got[k];
+    var v = Q.get(k);
+    if (v === null) return;
+    if (typeof CFG[k] === "boolean") CFG[k] = v === "1" || v === "true";
+    else if (isFinite(parseFloat(v)) && parseFloat(v) > 0) CFG[k] = parseFloat(v);
+  });
+  if (OVERRIDE) Object.keys(CFG).forEach(function(k){
+    if (typeof OVERRIDE[k] === typeof CFG[k]) CFG[k] = OVERRIDE[k];
+  });
+  return JSON.stringify(CFG);
+}
 
 function smooth(a, b, x){ var t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 function mix(a, b){ var o = {}, k; for (k in a) o[k] = a[k]; for (k in b) o[k] = b[k]; return o; }
@@ -76,7 +85,8 @@ try { renderer = new THREE.WebGLRenderer({antialias:true, alpha:true, preserveDr
 if (!renderer) return;
 renderer.setPixelRatio(1); renderer.setSize(BUF, BUF, false);
 renderer.localClippingEnabled = true; renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.86;
+var EXPOSURE = 0.86;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = EXPOSURE;
 renderer.setClearColor(0x000000, 0);
 try {
   var es = new THREE.Scene();
@@ -117,7 +127,8 @@ function makeHero(M, tone){
   var solidMat = new THREE.MeshPhysicalMaterial(mix({side:THREE.DoubleSide, envMap:ENV, envMapIntensity:0.5, clippingPlanes:[below]}, TONES[tone]));
   var wireMat = new THREE.LineBasicMaterial({color:0xffb454, transparent:true, opacity:0.5, clippingPlanes:[above], toneMapped:false});
   var n = norm(M), inner = new THREE.Group(), group = new THREE.Group(); group.add(inner);
-  inner.add(new THREE.Mesh(M.geo, solidMat), new THREE.LineSegments(M.mesh, wireMat));
+  var wire = new THREE.LineSegments(M.mesh, wireMat);
+  inner.add(new THREE.Mesh(M.geo, solidMat), wire);
   if (M.closed){
     // Трафарет товщі стінки — лише на замкненій моделі; на відкритій він
     // залив би весь зріз суцільним диском.
@@ -126,13 +137,13 @@ function makeHero(M, tone){
     back.renderOrder = front.renderOrder = 1; inner.add(back, front);
   }
   inner.scale.setScalar(n.k);
-  return {group:group, below:below, above:above, R:n.R * n.k, h:n.H * n.k, closed:M.closed};
+  return {group:group, wire:wire, below:below, above:above, R:n.R * n.k, h:n.H * n.k, closed:M.closed};
 }
 function basic(color, opacity, extra){
   return new THREE.MeshBasicMaterial(mix({color:color, transparent:true, opacity:opacity, side:THREE.DoubleSide, depthWrite:false, toneMapped:false}, extra || {}));
 }
 
-var VIEW_H = 2.68, HOLD = 1.2;            // секунди, коли готова конструкція стоїть цілою
+var VIEW_H = 2.68;
 function makeView(list, tone){
   var scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xfff1dc, 0x2a1c0e, 0.2));
@@ -140,14 +151,14 @@ function makeView(list, tone){
   var rim = new THREE.DirectionalLight(0xffb454, 0.45); rim.position.set(-3, 1.6, -2.6); scene.add(rim);
   var cam = new THREE.PerspectiveCamera(24, 2, 0.3, 60);
   cam.position.set(0, 1.6, 6.1); cam.lookAt(0, 0, 0);
-  var n = list.length, rows = n > 1 ? (n > 8 ? 2 : 1) : 0, cols = rows ? Math.ceil(n / rows) : 0;
+  var n = list.length, rows = CFG.small && n > 1 ? (n > 8 ? 2 : 1) : 0, cols = rows ? Math.ceil(n / rows) : 0;
+  var withHero = CFG.hero || !rows;
   var solidMat = new THREE.MeshPhysicalMaterial(mix({side:THREE.DoubleSide, envMap:ENV, envMapIntensity:0.5}, TONES[tone]));
   var ghostMat = new THREE.LineBasicMaterial({color:0xffb454, transparent:true, opacity:0.4, toneMapped:false});
   var stage = new THREE.Group(); scene.add(stage);
-  var slots = [], heroes = [], total = 0, i;
+  var slots = [], heroes = [], i;
   for (i = 0; i < n; i++){
     var M = list[i], q = norm(M);
-    total += M.units;
     if (rows){
       var g = new THREE.Group(); g.rotation.y = i * 1.9; stage.add(g);
       var solid = new THREE.Mesh(M.lo, solidMat), wire = new THREE.LineSegments(M.small, ghostMat);
@@ -155,7 +166,7 @@ function makeView(list, tone){
       g.add(solid, wire);
       slots.push({g:g, solid:solid, wire:wire});
     }
-    var hero = makeHero(M, tone); hero.group.visible = false; scene.add(hero.group); heroes.push(hero);
+    if (withHero){ var hero = makeHero(M, tone); hero.group.visible = false; scene.add(hero.group); heroes.push(hero); }
   }
   var cap = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshStandardMaterial({color:CUT[tone], roughness:0.75,
     stencilWrite:true, stencilRef:0, stencilFunc:THREE.NotEqualStencilFunc, stencilFail:THREE.ReplaceStencilOp,
@@ -168,18 +179,16 @@ function makeView(list, tone){
   var mark = null;
   if (rows){ mark = new THREE.Mesh(new THREE.RingGeometry(1.22, 1.42, 40), basic(0xffc56b, 0.95)); stage.add(mark); }
   var L = {heroY:0, heroH:2.0, sK:0, rowY:[]};
-  // Межі одиниць у частках роботи: міст на 3 зуби займає 3 частки, не одну.
-  var bounds = [0], acc = 0;
-  for (i = 0; i < n; i++){ acc += list[i].units; bounds.push(acc / total); }
   return {
-    scene:scene, cam:cam, total:total,
+    scene:scene, cam:cam,
     fit:function(aspect){
       var visW = VIEW_H * aspect;
       if (!rows){ L.heroY = 0.02; L.heroH = 1.95; return; }
-      L.sK = Math.min(0.26 * SIZE.small, visW * 0.9 / (cols * 2.3));
+      // Без великої малі займають усю зону й стають більшими.
+      L.sK = Math.min(0.26 * CFG.smallk * (withHero ? 1 : 1.8), visW * 0.9 / (cols * 2.3));
       stage.scale.setScalar(L.sK);
       var smallH = 1.7 * L.sK, gap = Math.max(0.36, smallH * 1.12);
-      var bottom = -VIEW_H / 2 + 0.12 + smallH / 2;
+      var bottom = withHero ? -VIEW_H / 2 + 0.12 + smallH / 2 : (rows === 2 ? -gap / 2 : 0);
       L.rowY = rows === 2 ? [bottom + gap, bottom] : [bottom];
       var rowsTop = L.rowY[0] + smallH / 2 + 0.16;
       L.heroH = VIEW_H / 2 - 0.1 - rowsTop;
@@ -189,24 +198,26 @@ function makeView(list, tone){
         slots[j].g.position.set((c - (inRow - 1) / 2) * 2.3, L.rowY[r] / L.sK, 0);
       }
     },
-    update:function(pct, t, phase){
-      var f = Math.min(0.99999, Math.max(0, pct / 100)), j;
+    update:function(t, phase){
+      var j;
       // Цикл симуляції: на конструкцію `sim` с заповнення + пауза готовою.
-      var fill = SIZE.sim, step = fill + HOLD, local = ((t + phase) % (n * step) + n * step) % (n * step);
+      var fill = CFG.sim, step = fill + CFG.hold, local = ((t + phase) % (n * step) + n * step) % (n * step);
       var cur = Math.min(n - 1, Math.floor(local / step)), u = Math.min(1, (local - cur * step) / fill);
       for (j = 0; j < slots.length; j++){ slots[j].solid.visible = j < cur; slots[j].wire.visible = j >= cur; }
       for (j = 0; j < heroes.length; j++) heroes[j].group.visible = false;
-      var o = heroes[cur];
-      var ws = Math.min(L.heroH / o.h, VIEW_H * cam.aspect * 0.42 / o.R / 2, 1.9) * SIZE.big;
-      o.group.visible = true; o.group.scale.setScalar(ws); o.group.position.set(0, L.heroY, 0);
-      o.group.rotation.y = t * 2 * Math.PI / 12 + cur * 1.9;
       if (mark){ mark.position.copy(slots[cur].g.position); mark.quaternion.copy(cam.quaternion); }
+      var o = heroes[cur];
+      cap.visible = false;
+      if (!o) return;
+      var ws = Math.min(L.heroH / o.h, VIEW_H * cam.aspect * 0.42 / o.R / 2, 1.9) * CFG.big;
+      o.group.visible = true; o.group.scale.setScalar(ws); o.group.position.set(0, L.heroY, 0);
+      o.group.rotation.y = (CFG.spin ? t * 2 * Math.PI / Math.max(1, CFG.spin_s) : 0.6) + cur * 1.9;
+      o.wire.visible = CFG.mesh;
       var a0 = L.heroY - o.h / 2 * ws, a1 = L.heroY + o.h / 2 * ws;
       var level = a0 - 0.01 + smooth(0, 1, u) * (a1 - a0 + 0.02);
       o.below.constant = level; o.above.constant = -level;
       cap.visible = o.closed;
       cap.position.set(0, level, 0);
-      return Math.round(f * total * 1000) / 1000;
     }
   };
 }
@@ -218,7 +229,9 @@ function place(it){
   var label = id && (id.querySelector("em") || id);
   var bottom = (label ? label.getBoundingClientRect().top : box.top + box.height * 0.62) - box.top - 4;
   var top = (work ? work.getBoundingClientRect().bottom : box.top + box.height * 0.3) - box.top + 2;
-  var h = Math.max(40, bottom - top) * SIZE.zone;
+  // Плитка без роботи чи без рядка програми дає вузьку смужку — тоді середина.
+  if (bottom - top < box.height * 0.25){ top = box.height * 0.28; bottom = box.height * 0.78; }
+  var h = Math.max(40, bottom - top) * CFG.zone;
   var minTop = el.querySelector(".mc-top") ? el.querySelector(".mc-top").getBoundingClientRect().bottom - box.top : 0;
   top = Math.max(minTop, bottom - h);
   it.canvas.style.top = top + "px"; it.canvas.style.height = Math.max(40, bottom - top) + "px";
@@ -227,28 +240,23 @@ function attach(it, el){
   it.el = el;
   if (it.canvas.parentNode !== el) el.insertBefore(it.canvas, el.querySelector(".mc-top"));
   el.classList.add("has-3d");
-  var bot = el.querySelector(".mc-bot");
-  if (bot && it.unit.parentNode !== bot) bot.appendChild(it.unit);
-  it.target = Number(el.getAttribute("data-pct")) || 0;
-  if (it.shown == null || it.target < it.shown - 1) it.shown = it.target;  // нова програма — одразу
   it.w = 0;                                                              // переміряти місце
 }
 function apply(root){
-  var seen = {};
+  var seen = {}, cfgSig = readConfig();
   (root || document).querySelectorAll(".mc[data-models]").forEach(function(el){
     var keyName = el.getAttribute("data-key") || "", raw = el.getAttribute("data-models") || "[]", list;
     try { list = JSON.parse(raw); } catch (_e) { return; }
     if (!list.length) return;
-    var sig = list.map(function(m){ return m.url; }).join("|"), tone = toneOf(el.getAttribute("data-mat"));
+    var sig = list.map(function(m){ return m.url; }).join("|") + cfgSig, tone = toneOf(el.getAttribute("data-mat"));
     seen[keyName] = true;
     var it = VIEWS[keyName];
     if (it && it.sig === sig + tone){ attach(it, el); return; }
     if (it && it.canvas.parentNode) it.canvas.parentNode.removeChild(it.canvas);
     var canvas = document.createElement("canvas"); canvas.className = "g3";
-    var unit = document.createElement("span"); unit.className = "unit3";
     // Зсув фази з ключа верстата: плитки не «фрезерують» синхронно.
     var phase = 0; for (var c = 0; c < keyName.length; c++) phase = (phase * 31 + keyName.charCodeAt(c)) % 997;
-    it = VIEWS[keyName] = {sig:sig + tone, phase:phase / 7, canvas:canvas, ctx:canvas.getContext("2d"), unit:unit, view:null, w:0, h:0, done:-1};
+    it = VIEWS[keyName] = {sig:sig + tone, phase:phase / 7, canvas:canvas, ctx:canvas.getContext("2d"), view:null, w:0, h:0};
     attach(it, el);
     var mine = it;
     Promise.all(list.map(function(m){ return model(m.url); })).then(function(models){
@@ -262,7 +270,6 @@ function apply(root){
     if (seen[k]) return;
     var it = VIEWS[k];
     if (it.canvas.parentNode) it.canvas.parentNode.removeChild(it.canvas);
-    if (it.unit.parentNode) it.unit.parentNode.removeChild(it.unit);
     delete VIEWS[k];
   });
 }
@@ -279,22 +286,21 @@ function frame(now){
       it.canvas.width = it.w = w; it.canvas.height = it.h = h;
       it.view.cam.aspect = w / h; it.view.cam.updateProjectionMatrix(); it.view.fit(w / h);
     }
-    // Відсоток приходить раз на 30 с — межа зрізу доганяє його плавно.
-    it.shown += (it.target - it.shown) * 0.02;
-    var done = it.view.update(it.shown, t, it.phase);
+    it.view.update(t, it.phase);
+    // «Яскравість 3D» з Налаштувань; степінь — бо ACES стискає світлі тони,
+    // і лінійна експозиція ледь помітна на кремовій коронці.
+    renderer.toneMappingExposure = EXPOSURE * Math.pow(CFG.bright, 1.6);
     renderer.setViewport(0, 0, w, h); renderer.setScissor(0, 0, w, h); renderer.setScissorTest(true);
     renderer.clear(); renderer.render(it.view.scene, it.view.cam);
     it.ctx.clearRect(0, 0, w, h);
     it.ctx.drawImage(renderer.domElement, 0, BUF - h, w, h, 0, 0, w, h);
-    var whole = Math.floor(done);
-    if (whole !== it.done){
-      it.done = whole;
-      it.unit.innerHTML = it.view.total > 1 ? "готово <b>" + whole + "</b> з " + it.view.total : "";
-    }
   });
 }
 
-window.KM3D = {apply:apply, size:SIZE};
+// Прев'ю: значення з форми Налаштувань ще до збереження. `null` — назад до
+// збережених (`#shop-live[data-3d]`). Будь-яка зміна перебудовує вигляди.
+function setConfig(values){ OVERRIDE = values || null; apply(document); }
+window.KM3D = {apply:apply, setConfig:setConfig, config:CFG};
 var last = 0;
 function tick(now){
   if (now - last >= FRAME_MS){ last = now; try { frame(now); } catch (_e) { /* кадр пропускаємо, табло живе */ } }

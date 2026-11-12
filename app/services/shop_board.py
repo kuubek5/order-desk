@@ -420,6 +420,9 @@ class ShopView:
     # Смуга «Світло» в шапці (`power_schedule.PowerView`); None — вимкнено в
     # налаштуваннях або черга відключень не задана.
     power: Optional[object] = None
+    # 3D на плитках (`board_models.read_3d`): перемикачі й розміри з
+    # Налаштувань, їдуть у живий шматок — телевізор бере їх без перезавантаження.
+    three_d: dict = field(default_factory=dict)
 
     @property
     def columns(self) -> int:
@@ -571,7 +574,7 @@ def program_line(iso_name) -> tuple[str, str]:
     return match.group("head"), match.group("tail")
 
 
-def _machine(card, token: str) -> ShopMachine:
+def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
     state = card.state_key
     item = ShopMachine(
         key=card.key,
@@ -594,8 +597,9 @@ def _machine(card, token: str) -> ShopMachine:
     item.prog_head, item.prog_tail = program_line(getattr(card, "iso_name", None))
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
-    if token:
-        # Без токена (картинка бота) адреси моделей нікому не потрібні.
+    if token and with_3d:
+        # Без токена (картинка бота) адреси моделей нікому не потрібні; 3D
+        # вимкнене в Налаштуваннях — теж.
         from app.services import board_models
 
         item.models = board_models.models_for(getattr(card, "orders", None) or [], token)
@@ -673,6 +677,9 @@ def shop_view(
     from app.services import power_schedule
 
     view.power = power_schedule.board_view(now)
+    from app.services import board_models
+
+    view.three_d = board_models.read_3d(db)
 
     for card in source:
         # Верстат, прибраний із табло в Налаштуваннях, сюди не потрапляє —
@@ -685,7 +692,7 @@ def shop_view(
             # саме тоді він найпотрібніший (та сама причина, що у віджеті).
             view.sisma = _sisma(card, token)
         else:
-            view.machines.append(_machine(card, token))
+            view.machines.append(_machine(card, token, view.three_d.get("on", True)))
 
     fv = furnace_board.board_view(db, now=now) if furnace_view is None else furnace_view
     for fc in fv.cards:

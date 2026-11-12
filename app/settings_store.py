@@ -291,6 +291,9 @@ PREFERENCE_KEYS = {
     # Що малює плитка SISMA на табло цеху: "classic" | "melt" | "tower"
     # (`shop_board.SISMA_STYLES`); не задано — "classic", як до вибору.
     "shop_board_sisma_style",
+    # 3D-роботи на плитках табло цеху (`board_models.THREE_D_FIELDS`): JSON з
+    # перемикачами й розмірами; не задано — усе ввімкнено з типовими розмірами.
+    "shop_board_3d",
     # Графік відключень світла (`app/services/power_schedule.py`): номер черги
     # ("4.1"; порожньо — віджета немає ніде) і смуга на табло цеху ("1").
     "power_group",

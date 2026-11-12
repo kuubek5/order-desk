@@ -1205,7 +1205,8 @@ def _board_models_worker(stop_event: Event) -> None:
     while not stop_event.is_set():
         try:
             with SessionLocal() as db:
-                if furnace_board.board_enabled(db):
+                # 3D вимкнене в Налаштуваннях — моделі не готуємо зовсім.
+                if furnace_board.board_enabled(db) and board_models.read_3d(db)["on"]:
                     export_root = (get_export_folder_path(db) or "").strip()
                     board_models.warm_once(
                         db, get_technician_files_path(db),

@@ -10,6 +10,7 @@
 * малювання впало — бот показує старий текстовий список, а не мовчить.
 """
 
+import zlib
 from datetime import datetime
 from io import BytesIO
 from types import SimpleNamespace
@@ -35,7 +36,9 @@ def _order(id_, client=None, number=None, material=None, quantity=None):
 def _card(name, state_key, *, percent=None, orders=(), last_orders=(), word="", note="",
           iso_name=None, sum3d=None, sisma=False):
     return SimpleNamespace(
-        key=f"10.0.0.{abs(hash(name)) % 200}",
+        # Сталий ключ: `hash(name)` у Python щоразу інший, і двоє верстатів
+        # іноді діставали ту саму адресу — тест падав навмання (CI 0.21.116).
+        key=f"10.0.0.{zlib.crc32(name.encode()) % 250}",
         target=SimpleNamespace(name=name, machine_id=None, portrait_model="", show_on_board=True),
         state_key=state_key, state_word=word, state_note=note, percent=percent,
         sum3d_id=sum3d, orders=list(orders), last_orders=list(last_orders),

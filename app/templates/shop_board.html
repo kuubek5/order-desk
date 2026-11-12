@@ -28,7 +28,9 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 /* Зі смугою «Світло» шапка має сталу висоту з повітрям знизу: смуга стоїть
    у ній по центру годинника й не впирається в плитки верстатів. Без смуги
    шапка та сама, що й була. */
-.board:has(.pw-strip){--bh-h:calc(var(--bh-clock) * 1.1 + 4vh)}
+/* `--pw-k` — висота смуги з Налаштувань (1 = як було); шапка росте разом. */
+.board:has(.pw-strip){--bh-h:max(calc(var(--bh-clock) * 1.1 + 4vh),
+  calc((clamp(18px,1.6vw,44px) + clamp(10px,.9vw,28px) * 1.3 + .6vh) * var(--pw-k,1) + 2vh))}
 .board:has(.pw-strip) .bh{height:var(--bh-h);padding:0 1.4vw}
 .bh .sp{flex:1}
 .bh b{font:600 clamp(28px,3.4vw,58px)/1.1 var(--font-mono);font-variant-numeric:tabular-nums;
@@ -366,9 +368,6 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
    має position:relative і перебив би клас полотна — тому селектор із класом. */
 .mc.has-3d>*:not(.mc-port):not(.g3){position:relative;z-index:1}
 .mc.has-3d>canvas.g3{display:block;position:absolute;z-index:0;left:0;width:100%;pointer-events:none}
-.mc.has-3d .mc-bot>.unit3{position:absolute;right:0;top:-.2vh;text-align:right;
-  font:500 clamp(10px,.8vw,24px)/1.2 var(--font-mono);color:var(--ink-2);white-space:nowrap}
-.unit3 b{font-weight:600;font-size:1.35em;color:var(--accent-c)}
 #shop-live{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
 
 /* ── Світло (власник 11.11.26): смуга доби в шапці ліворуч від годинника ──
@@ -402,7 +401,7 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
      головні на табло — верстати, смуга лише підказує. */
   --pw-on:color-mix(in srgb,var(--pw-lit) 42%,var(--pw-dark))}
 .pw-cells,.pw-hours{display:grid;grid-template-columns:repeat(24,1fr);gap:var(--pw-gap)}
-.pw-cells{height:clamp(18px,1.6vw,44px)}
+.pw-cells{height:calc(clamp(18px,1.6vw,44px) * var(--pw-k,1))}
 .pw-cells i{position:relative;border-radius:3px;background:var(--pw-dark);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
 .pw-cells i.is-on{background:var(--pw-on);box-shadow:none}
 .pw-cells i.is-first{background:linear-gradient(90deg,var(--pw-dark) 0 50%,var(--pw-on) 50%)}
@@ -416,7 +415,7 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .pw-cells i.is-now::after{content:"";position:absolute;top:-12%;bottom:-12%;
   left:calc(var(--pw-min,.5) * 100%);width:clamp(3px,.2vw,7px);transform:translateX(-50%);
   background:rgba(255,248,236,.9);border-radius:2px;box-shadow:0 0 0 clamp(1px,.08vw,3px) #0d0a06}
-.pw-hours{margin-top:.6vh;font:500 clamp(10px,.9vw,28px)/1.3 var(--font-mono);color:var(--ink-3);text-align:center}
+.pw-hours{margin-top:calc(.6vh * var(--pw-k,1));font:500 calc(clamp(10px,.9vw,28px) * var(--pw-k,1))/1.3 var(--font-mono);color:var(--ink-3);text-align:center}
 .pw-hours span{border-radius:4px}
 .pw-hours .is-past{opacity:.55}
 .pw-hours .is-now{background:rgba(255,248,236,.82);color:#0d0a06;font-weight:700;
@@ -460,7 +459,7 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 </style>
 </head>
 <body>
-<main class="board">
+<main class="board" style="--pw-k:{{ view.three_d.pw_k|default(1) }}">
   <header class="bh"><span class="sp"></span><b id="shop-clock">{{ view.now.strftime('%H:%M') }}</b></header>
 
   <p class="lost" id="shop-lost" role="alert" hidden>Немає звʼязку з KuubMill — числа нижче можуть бути застарілими.</p>
@@ -635,6 +634,11 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
       phaseLock(document);
       // Рядок програми: поміряти нові рамки, фаза руху — від годинника.
       if (window.KMProg) window.KMProg.apply(document);
+      // Висота смуги «Світло» з Налаштувань: шапка поза живим шматком,
+      // тож значення переносимо на `.board` вручну.
+      const freshLive = document.getElementById("shop-live");
+      const board = document.querySelector(".board");
+      if (freshLive && board && freshLive.dataset.pwK) board.style.setProperty("--pw-k", freshLive.dataset.pwK);
       // 3D-роботи: повернути живі полотна на свіжі плитки (як котиків).
       if (window.KM3D) window.KM3D.apply(document);
       animateChanges(seen);
@@ -652,7 +656,7 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   // Щосекунди — заради відліку печей; годинник і решта міняють текст лише
   // тоді, коли він справді змінився.
   setInterval(tick, 1000);
-  setInterval(refresh, REFRESH);
+  {% if not preview %}setInterval(refresh, REFRESH);{% endif %}
   // Котики по черзі: один танець (~12 с) — один котик, далі інший. Міняємо
   // саму картинку (у картці вона одна), однаково на всіх картках; новий
   // котик зі свіжого шматка одразу отримує поточного (applyCat у refresh).
@@ -663,7 +667,6 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 </script>
 <script src="/static/js/shop_board_slm.js" defer></script>
 <script src="/static/js/shop_board_prog.js" defer></script>
-<script src="/static/js/storage.js" defer></script>
 <script src="/static/js/three-0.128.0.min.js" defer></script>
 <script src="/static/js/shop_board_3d.js" defer></script>
 </body>

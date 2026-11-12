@@ -23,7 +23,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     if isinstance(user, RedirectResponse):
         return user
 
-    from app.services import furnace_board, shop_board, telegram_bot
+    from app.services import board_models, furnace_board, shop_board, telegram_bot
 
     flash = request.session.pop("feedback_settings_flash", None)
     # Лише з пам'яті: відкриття сторінки не має ходити в Telegram.
@@ -57,6 +57,8 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "board_port": furnace_board.BOARD_PORT,
             "sisma_styles": shop_board.SISMA_STYLES,
             "sisma_style": shop_board.read_sisma_style(db),
+            "three_d": board_models.read_3d(db),
+            "three_d_fields": board_models.THREE_D_FIELDS,
             "power_group": get_setting(db, "power_group") or "",
             "power_board": (get_setting(db, "power_board_enabled") or "") == "1",
             "flash": flash,
@@ -330,6 +332,92 @@ def save_sisma_style(request: Request, style: str = Form(...), db: Session = Dep
         request, "success",
         f"SISMA на табло: «{names[style]}». Телевізор підхопить з наступним оновленням (до 30 с).",
     )
+
+
+PREVIEW_MODEL_BASE = "/settings/feedback/board/3d/model/"
+
+
+@router.get("/settings/feedback/board/3d/preview", response_class=HTMLResponse)
+def board_3d_preview(request: Request, db: Session = Depends(get_db)):
+    """Справжнє табло цеху для прев'ю 3D у Налаштуваннях (власник 12.11.26).
+
+    Той самий шаблон і ті самі дані, що на телевізорі, лише без живого
+    оновлення; моделі — через адмінський маршрут нижче. Жоден верстат не
+    фрезерує — першій плитці підставляємо найбільшу підготовлену роботу,
+    щоб було що налаштовувати. Форма шле значення прямо в
+    `KM3D.setConfig` цієї сторінки (той самий origin)."""
+    require_settings_admin(request, db)
+    from app.services import board_models, shop_board
+
+    view = shop_board.shop_view(db, token="preview")
+    for m in view.machines:
+        for model in m.models:
+            model["url"] = model["url"].replace("/t/preview/model/", PREVIEW_MODEL_BASE)
+        if m.portrait.startswith("/t/preview/portrait/"):
+            m.portrait = m.portrait.replace("/t/preview/portrait/", "/machines/portrait/")
+    if not any(m.models and m.tone == "run" for m in view.machines):
+        demo = board_models.preview_models(PREVIEW_MODEL_BASE)
+        if demo:
+            if not view.machines:
+                # Верстатів не налаштовано (новий ПК, dev): сітка як на ТВ,
+                # інакше одна плитка на весь екран і пропорції не ті.
+                for i in range(8):
+                    view.machines.append(shop_board.ShopMachine(
+                        key=f"preview-{i}", name=f"Верстат {i + 1}", state="idle", tone="calm", word="стоїть"))
+            target = view.machines[0]
+            target.state, target.tone, target.word, target.note = "run", "run", "фрезерує", ""
+            target.percent = target.percent or 40
+            target.action, target.works_are_last = "", False
+            if not target.works:
+                target.works = [shop_board.ShopWork(name="Прев'ю", material="mono a2 · 3")]
+            if not target.has_prog:
+                target.prog_head, target.prog_tail = "Monolith-a2-x12_", "09-47-12"
+            target.models = demo
+    return templates.TemplateResponse(request, "shop_board.html", {
+        "view": view, "token": "preview", "refresh": 30, "build": "", "preview": True,
+    })
+
+
+@router.get("/settings/feedback/board/3d/model/{key}.json")
+def board_3d_preview_model(request: Request, key: str, db: Session = Depends(get_db)):
+    """Модель для прев'ю — той самий кеш, що табло на 8010 віддає за секретом."""
+    require_settings_admin(request, db)
+    from fastapi.responses import FileResponse, PlainTextResponse
+
+    from app.services import board_models
+
+    path = board_models.cached_file(key)
+    if path is None:
+        return PlainTextResponse("Не знайдено", status_code=404)
+    return FileResponse(path, media_type="application/json", headers={"Content-Encoding": "gzip"})
+
+
+@router.post("/settings/feedback/board/3d")
+async def save_board_3d(request: Request, db: Session = Depends(get_db)):
+    """3D на плитках табло цеху: перемикачі й розміри (власник 12.11.26).
+    Форма шле УСІ поля разом, тож відсутня галочка = вимкнено. «Типові» —
+    кнопка `reset`. Телевізор бере значення з живого шматка за ≤30 с."""
+    require_settings_admin(request, db)
+    import json
+
+    from app.services import board_models
+
+    form = await request.form()
+    if form.get("reset"):
+        values = board_models.clean_3d({})
+    else:
+        raw: dict = {}
+        for f in board_models.THREE_D_FIELDS:
+            raw[f.key] = bool(form.get(f.key)) if f.is_switch else form.get(f.key)
+        values = board_models.clean_3d(raw)
+    set_setting(db, board_models.THREE_D_KEY, json.dumps(values, ensure_ascii=False))
+    db.commit()
+    tail = "Телевізор підхопить з наступним оновленням (до 30 с)."
+    if form.get("reset"):
+        return _board_flash(request, "success", "3D на табло: повернуто типові. " + tail)
+    if not values["on"]:
+        return _board_flash(request, "success", "3D на табло вимкнено, моделі у фоні не готуються. " + tail)
+    return _board_flash(request, "success", "3D на табло збережено. " + tail)
 
 
 @router.post("/settings/feedback/member/{member_id}/warehouse")

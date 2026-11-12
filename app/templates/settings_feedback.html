@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
 <link rel="stylesheet" href="/static/css/settings_console.css?v={{ static_ver('css/settings_console.css') }}">
 <link rel="stylesheet" href="/static/css/settings_stand.css?v={{ static_ver('css/settings_stand.css') }}">
+<script src="/static/js/settings_board3d.js?v={{ static_ver('js/settings_board3d.js') }}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -262,6 +263,63 @@
                                    inputmode="decimal" autocomplete="off" maxlength="5" placeholder="4.1">
                             <label class="schip"><input type="checkbox" name="board" value="1" {% if power_board %}checked{% endif %}> Показувати смугу на табло цеху</label>
                             <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        </form>
+                        {# 3D-роботи на плитках табло (власник 12.11.26): що показувати
+                           й якого розміру, з ЖИВИМ прев'ю справжнього табло (iframe
+                           `/settings/feedback/board/3d/preview`). Поля — реєстр
+                           `board_models.THREE_D_FIELDS`. Рух повзунка одразу йде в
+                           прев'ю (`settings_board3d.js` → `KM3D.setConfig`), у базу —
+                           лише кнопкою «Зберегти»; телевізор бере збережене за ≤30 с.
+                           Форма шле всі поля разом: знята галочка = вимкнено. #}
+                        <form method="post" action="/settings/feedback/board/3d" class="b3d" id="board-3d" data-b3d>
+                            <div class="b3d-head">
+                                <div>
+                                    <b class="b3d-title">3D на телевізорі</b>
+                                    <p class="settings-help">Модель роботи на плитці верстата, що фрезерує. Велика — симуляція по черзі: верстат не каже, яку коронку ріже, а фрезерує роботи програми разом.</p>
+                                </div>
+                                <div class="b3d-zoom" role="group" aria-label="Масштаб прев'ю">
+                                    <button type="button" class="b3d-seg is-on" data-b3d-zoom="board">Усе табло</button>
+                                    <button type="button" class="b3d-seg" data-b3d-zoom="tile">Плитка крупно</button>
+                                </div>
+                            </div>
+                            <div class="b3d-stage" data-b3d-stage>
+                                <iframe class="b3d-frame" src="/settings/feedback/board/3d/preview" title="Прев'ю табло цеху" loading="lazy" tabindex="-1"></iframe>
+                                <span class="b3d-badge" data-b3d-dirty hidden>прев'ю · ще не збережено</span>
+                                <p class="b3d-empty" data-b3d-empty hidden>Моделей ще немає: прев'ю оживе, щойно табло підготує першу роботу з Sum3D (до хвилини після ввімкнення табло).</p>
+                            </div>
+                            <div class="b3d-switches" role="group" aria-label="Що показувати">
+                                {% for f in three_d_fields if f.is_switch %}
+                                <label class="b3d-switch" title="{{ f.hint }}">
+                                    <input type="checkbox" name="{{ f.key }}" value="1" data-default="{{ '1' if f.default else '' }}" {% if three_d[f.key] %}checked{% endif %}>
+                                    <span class="b3d-knob" aria-hidden="true"></span>
+                                    <span><b>{{ f.label }}</b><small>{{ f.hint }}</small></span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div class="b3d-grid">
+                                {% for f in three_d_fields if not f.is_switch and f.group == "3d" %}
+                                <label class="b3d-row"{% if f.hint %} title="{{ f.hint }}"{% endif %}>
+                                    <span class="b3d-name">{{ f.label }}</span>
+                                    <input type="range" name="{{ f.key }}" min="{{ f.low }}" max="{{ f.high }}" step="{{ f.step }}" value="{{ three_d[f.key] }}" data-default="{{ f.default }}" data-unit="{{ f.unit }}">
+                                    <output class="b3d-val">{{ three_d[f.key] }}{{ f.unit }}</output>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div class="b3d-sub">Смуга «Світло» в шапці</div>
+                            <div class="b3d-grid">
+                                {% for f in three_d_fields if f.group == "power" %}
+                                <label class="b3d-row" title="{{ f.hint }}">
+                                    <span class="b3d-name">{{ f.label }}</span>
+                                    <input type="range" name="{{ f.key }}" min="{{ f.low }}" max="{{ f.high }}" step="{{ f.step }}" value="{{ three_d[f.key] }}" data-default="{{ f.default }}" data-unit="{{ f.unit }}">
+                                    <output class="b3d-val">{{ three_d[f.key] }}{{ f.unit }}</output>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div class="sbtnrow">
+                                <button type="submit" class="settings-secondary-button b3d-save">Зберегти</button>
+                                <button type="button" class="settings-secondary-button" data-b3d-revert>Скасувати зміни</button>
+                                <button type="button" class="settings-secondary-button" data-b3d-defaults>Типові</button>
+                            </div>
                         </form>
                         {# Ряд кнопок — не рядок реєстру: `.stand-drow` малює межу
                            згори й розтягує вміст, наче це запис у переліку. #}

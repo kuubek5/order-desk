@@ -218,11 +218,110 @@ def test_running_tile_carries_its_models_and_others_do_not(monkeypatch):
     html = templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
     assert html.count("data-models=") == 1
     assert '&#34;url&#34;: &#34;/t/t/model/' in html and 'data-models="[{&#34;' in html, "лапки JSON не рвуть атрибут"
-    assert 'data-pct="40"' in html and 'data-mat="mono a2 · 3"' in html
+    assert 'data-mat="mono a2 · 3">' in html, "відсоток плитці 3D більше не потрібен"
     assert sb.board_machine(_card("C", "run", percent=1)).models == [], "картинка бота адрес не має"
 
 
 def test_board_serves_the_3d_scripts():
     from app.routers import furnace_board as fbr
 
-    assert {"three-0.128.0.min.js", "shop_board_3d.js", "storage.js"} <= fbr._JS
+    assert {"three-0.128.0.min.js", "shop_board_3d.js"} <= fbr._JS
+
+
+def test_3d_settings_are_clamped_and_broken_record_falls_back():
+    clean = bm.clean_3d({"big": "9", "sim": "abc", "hero": False, "spin": "on", "zone": "nan"})
+    assert clean["big"] == 2.0 and clean["sim"] == 5.0 and clean["zone"] == 1.0
+    assert clean["hero"] is False and clean["spin"] is True and clean["on"] is True
+    assert bm.read_3d(None) == bm.clean_3d({})
+
+
+def test_3d_settings_form_saves_and_switches_tiles_off(app_db, monkeypatch):  # noqa: F811
+    import json as _json
+
+    from app.settings_store import get_setting
+    from tests.asgi_client import MiniClient
+    from tests.test_settings_slabs_render import ADMIN
+    from app.web import app
+
+    _, factory = app_db
+    client = MiniClient(app)
+    client.login(*ADMIN)
+    form = {"on": "1", "hero": "1", "mesh": "1", "big": "1.4", "smallk": "0.7", "zone": "1.2",
+            "sim": "7", "hold": "1", "spin_s": "20"}  # без small і spin
+    status, headers, _ = client.post("/settings/feedback/board/3d", form)
+    assert status == 303 and headers["location"].endswith("#furnace-board")
+    with factory() as db:
+        saved = _json.loads(get_setting(db, bm.THREE_D_KEY))
+        assert saved["big"] == 1.4 and saved["sim"] == 7.0
+        assert saved["small"] is False and saved["spin"] is False and saved["hero"] is True
+    status, _, page = client.get("/settings/feedback")
+    assert status == 200 and 'id="board-3d"' in page and 'name="big"' in page
+
+    client.post("/settings/feedback/board/3d", {"big": "1"})  # «on» знято
+    with factory() as db:
+        assert bm.read_3d(db)["on"] is False
+    client.post("/settings/feedback/board/3d", {"reset": "1"})
+    with factory() as db:
+        assert bm.read_3d(db) == bm.clean_3d({})
+
+
+def test_3d_off_hides_models_and_config_reaches_the_live_fragment(monkeypatch):
+    from app.routers.deps import templates
+    from tests.test_shop_board import _card, _order
+
+    from app.services import shop_board as sb
+    from types import SimpleNamespace as NS
+
+    monkeypatch.setattr(bm, "models_for", lambda orders, token: [{"url": "u", "units": 1, "closed": True}])
+    furnace = NS(cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso="")
+    cards = [_card("A", "run", percent=10, sum3d="1", orders=[_order("K", "mono a2", "1")])]
+    off = dict(bm.clean_3d({}), on=False)
+    monkeypatch.setattr(bm, "read_3d", lambda db: off)
+    view = sb.shop_view(None, token="t", cards=cards, furnace_view=furnace)
+    html = templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
+    assert "data-models=" not in html and 'data-3d="{&#34;' in html
+    monkeypatch.setattr(bm, "read_3d", lambda db: bm.clean_3d({}))
+    view = sb.shop_view(None, token="t", cards=cards, furnace_view=furnace)
+    assert "data-models=" in templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
+
+
+def test_settings_preview_shows_the_board_with_a_demo_work(app_db, tmp_path):  # noqa: F811
+    """Прев'ю в Налаштуваннях — справжнє табло без живого оновлення; коли
+    жоден верстат не фрезерує, першій плитці підставляється підготовлена
+    робота, а моделі йдуть адмінським маршрутом."""
+    from tests.asgi_client import MiniClient
+    from tests.test_settings_slabs_render import ADMIN
+
+    app, _ = app_db
+    path = tmp_path / "x-36-crown_cad.stl"
+    _write_binary(path, _CUBE)
+    key, meta = bm.ensure_model(path)
+    bm._index[999] = bm.WorkModels("sig", [{"key": key, **meta}], time.monotonic())
+    client = MiniClient(app)
+    client.login(*ADMIN)
+    status, _, page = client.get("/settings/feedback/board/3d/preview")
+    assert status == 200 and 'id="shop-live"' in page
+    assert "setInterval(refresh, REFRESH)" not in page, "прев'ю не ходить по живі шматки"
+    assert f"/settings/feedback/board/3d/model/{key}.json" in page and "shop_board_3d.js" in page
+    status, headers, _ = client.get(f"/settings/feedback/board/3d/model/{key}.json")
+    assert status == 200 and headers.get("content-encoding") == "gzip"
+    assert client.get("/settings/feedback/board/3d/model/zzz.json")[0] == 404
+    status, _, settings = client.get("/settings/feedback")
+    assert 'src="/settings/feedback/board/3d/preview"' in settings and "settings_board3d.js" in settings
+
+
+def test_power_strip_height_rides_with_the_3d_settings(monkeypatch):
+    """Висота смуги «Світло» — у тому ж записі; дійде і в сторінку (`.board`),
+    і в живий шматок (`data-pw-k`), бо шапка поза ним."""
+    from types import SimpleNamespace as NS
+
+    from app.routers.deps import templates
+    from app.services import shop_board as sb
+
+    assert bm.clean_3d({"pw_k": "5"})["pw_k"] == 2.0 and bm.clean_3d({})["pw_k"] == 1.0
+    assert bm.clean_3d({"bright": "0.1"})["bright"] == 0.4 and bm.clean_3d({})["bright"] == 1.0
+    monkeypatch.setattr(bm, "read_3d", lambda db: dict(bm.clean_3d({}), pw_k=1.4))
+    furnace = NS(cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso="")
+    view = sb.shop_view(None, token="t", cards=[], furnace_view=furnace)
+    page = templates.env.get_template("shop_board.html").render(view=view, token="t", refresh=30)
+    assert '<main class="board" style="--pw-k:1.4">' in page and 'data-pw-k="1.4"' in page

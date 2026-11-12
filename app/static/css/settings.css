@@ -1181,6 +1181,46 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 /* Вибір вигляду SISMA на табло (Зворотний зв'язок → табло). */
 .sisma-style { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 4px 0 10px; }
 .sisma-style-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 3D на табло (власник 12.11.26): живе прев'ю справжнього табло + перемикачі
+   й повзунки. Префікс b3d- — свій, ні з чим не перетинається (Grep 12.11.26). */
+.b3d { display: flex; flex-direction: column; gap: 14px; width: 100%; margin: 10px 0 14px;
+  padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.015); }
+.b3d-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.b3d-title { font: 700 16px/1.2 var(--font-head); color: var(--ink); }
+.b3d-head .settings-help { margin: 4px 0 0; max-width: 62ch; }
+.b3d-zoom { display: inline-flex; flex: none; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
+.b3d-seg { border: 0; background: none; color: var(--ink-2); font: 600 12px/1 var(--font-body); padding: 7px 12px;
+  border-radius: 999px; cursor: pointer; transition: background .15s, color .15s; }
+.b3d-seg.is-on { background: rgba(var(--accent-rgb), .18); color: var(--ink); }
+.b3d-stage { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line);
+  background: #0d0a06; height: var(--b3d-h, 360px); transition: height .25s ease; }
+.b3d-frame { position: absolute; left: 0; top: 0; width: 1920px; height: 1003px; border: 0;
+  transform-origin: 0 0; transform: var(--b3d-t, scale(.5)); transition: transform .25s ease; pointer-events: none; }
+.b3d-badge { position: absolute; right: 10px; top: 10px; padding: 4px 10px; border-radius: 999px;
+  font: 600 11px/1.2 var(--font-body); color: #0d0a06; background: var(--accent-c, #ffc56b); }
+.b3d-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 46ch; margin: 0;
+  padding: 10px 14px; border-radius: 10px; background: rgba(13,10,6,.86); color: var(--ink-2); text-align: center; font-size: 13px; }
+.b3d-switches { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.b3d-switch { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s; }
+.b3d-switch:hover { border-color: var(--line-2); }
+.b3d-switch:has(input:checked) { border-color: rgba(var(--accent-rgb), .45); background: rgba(var(--accent-rgb), .06); }
+.b3d-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.b3d-switch:focus-within { outline: 2px solid rgba(var(--accent-rgb), .5); outline-offset: 1px; }
+.b3d-knob { flex: none; position: relative; width: 34px; height: 20px; margin-top: 1px; border-radius: 999px;
+  background: var(--line-2); transition: background .15s; }
+.b3d-knob::after { content: ""; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--ink-2); transition: transform .15s, background .15s; }
+.b3d-switch input:checked + .b3d-knob { background: rgba(var(--accent-rgb), .55); }
+.b3d-switch input:checked + .b3d-knob::after { transform: translateX(14px); background: var(--ink); }
+.b3d-switch b { display: block; font: 600 13px/1.25 var(--font-body); color: var(--ink); }
+.b3d-switch small { display: block; margin-top: 2px; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+.b3d-sub { font: 600 12px/1.2 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); margin-top: 2px; }
+.b3d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px 22px; }
+.b3d-row { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.b3d-row input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.b3d-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); text-align: right; }
+@media (prefers-reduced-motion: reduce) { .b3d-stage, .b3d-frame, .b3d-knob, .b3d-knob::after { transition: none; } }
 
 @media (max-width: 860px) {
   .secmgr-head { display: none; }

@@ -85,6 +85,82 @@ CACHE_KEEP_DAYS = 10
 CACHE_MAX_BYTES = 600 * 1_048_576
 _KEY = re.compile(r"[0-9a-f]{24}")
 
+# ── Налаштування показу (власник 12.11.26: «меню, що тонко налаштовує
+# відображення, швидкість і вмикає/вимикає об'єкти») ──────────────────────
+THREE_D_KEY = "shop_board_3d"
+
+
+@dataclass(frozen=True)
+class Field3D:
+    key: str
+    label: str
+    hint: str
+    default: float | bool
+    low: float = 0.0
+    high: float = 0.0
+    step: float = 0.0
+    unit: str = ""
+    group: str = "3d"  # "power" — смуга «Світло», а не 3D (окремий ряд у формі)
+
+    @property
+    def is_switch(self) -> bool:
+        return isinstance(self.default, bool)
+
+
+THREE_D_FIELDS: tuple[Field3D, ...] = (
+    Field3D("on", "3D на плитках", "Вимкнено — плитки як до 3D, моделі у фоні не готуються.", True),
+    Field3D("hero", "Велика модель", "Конструкція, що «фрезерується» зараз, крупно.", True),
+    Field3D("small", "Малі моделі", "Усі конструкції програми рядами під великою.", True),
+    Field3D("mesh", "Сітка над зрізом", "Ще не вирізана частина великої моделі — сіткою.", True),
+    Field3D("spin", "Обертання", "Велика модель повільно обертається.", True),
+    Field3D("big", "Розмір великої", "", 1.0, 0.5, 2.0, 0.05, "×"),
+    Field3D("smallk", "Розмір малих", "", 1.0, 0.5, 2.0, 0.05, "×"),
+    Field3D("zone", "Висота зони 3D", "Більше — зона росте вгору плитки.", 1.0, 0.6, 2.5, 0.05, "×"),
+    Field3D("sim", "Секунд на конструкцію", "Скільки триває «фрезерування» однієї.", 5.0, 2.0, 30.0, 0.5, "с"),
+    Field3D("hold", "Пауза готовою", "Скільки готова конструкція стоїть цілою.", 1.2, 0.0, 10.0, 0.1, "с"),
+    Field3D("spin_s", "Секунд на один оберт", "", 12.0, 4.0, 60.0, 1.0, "с"),
+    Field3D("bright", "Яскравість 3D", "Експозиція моделей: менше — темніші, більше — світліші.",
+            1.0, 0.4, 2.0, 0.05, "×"),
+    # Висота смуги «Світло» в шапці табло (власник 12.11.26): клітинки, цифри
+    # годин і сама шапка разом. Не 3D, але той самий запис і те саме прев'ю.
+    Field3D("pw_k", "Висота смуги «Світло»", "Клітинки, цифри годин і шапка табло разом.",
+            1.0, 0.6, 2.0, 0.05, "×", "power"),
+)
+
+
+def clean_3d(raw: dict[str, Any]) -> dict[str, Any]:
+    """Значення з форми чи бази → повний набір у межах. Невідоме — типове.
+    Перемикач у формі: присутній = увімкнено (`clean_3d` з форми кличуть із
+    `form_keys`, де відсутні галочки вже False)."""
+    out: dict[str, Any] = {}
+    for f in THREE_D_FIELDS:
+        value = raw.get(f.key, f.default)
+        if f.is_switch:
+            out[f.key] = value if isinstance(value, bool) else str(value).lower() in ("1", "true", "on")
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = float(f.default)
+        if number != number:  # NaN
+            number = float(f.default)
+        out[f.key] = round(min(f.high, max(f.low, number)), 3)
+    return out
+
+
+def read_3d(db) -> dict[str, Any]:
+    """Налаштування 3D з бази; зіпсований запис — типові, а не помилка табло."""
+    from app.settings_store import get_setting
+
+    text = get_setting(db, THREE_D_KEY) if db is not None else None
+    try:
+        stored = json.loads(text) if text else {}
+    except ValueError:
+        logger.warning("3D табло: налаштування не читаються, беру типові")
+        stored = {}
+    return clean_3d(stored if isinstance(stored, dict) else {})
+
+
 AS_FILE = np.array([[1.0, 0, 0], [0, 0, 1.0], [0, -1.0, 0]])
 """Z угору (CAD) → Y угору (табло). Той самий, що `stl_shapes.AS_FILE`."""
 
@@ -379,7 +455,7 @@ _index: dict[int, WorkModels] = {}
 _index_lock = threading.Lock()
 
 
-def models_for(orders: Iterable[Any], token: str) -> list[dict[str, Any]]:
+def models_for(orders: Iterable[Any], token: str, base: str | None = None) -> list[dict[str, Any]]:
     """Моделі робіт для плитки — ЛИШЕ з пам'яті, без жодного файлу.
 
     Порядок фіксований (за id роботи, далі як лежать файли), повтор ключа
@@ -398,11 +474,23 @@ def models_for(orders: Iterable[Any], token: str) -> list[dict[str, Any]]:
                 continue
             seen.add(model["key"])
             out.append({
-                "url": f"/t/{token}/model/{model['key']}.json",
+                "url": f"{base or f'/t/{token}/model/'}{model['key']}.json",
                 "units": model.get("units") or 1,
                 "closed": bool(model.get("closed")),
             })
     return out
+
+
+def preview_models(base: str, limit: int = 26) -> list[dict[str, Any]]:
+    """Моделі для прев'ю в Налаштуваннях, коли жоден верстат зараз не
+    фрезерує: робота з найбільшою кількістю готових моделей (з пам'яті)."""
+    with _index_lock:
+        works = [w for w in _index.values() if w.models]
+    if not works:
+        return []
+    best = max(works, key=lambda w: len(w.models))
+    return [{"url": f"{base}{m['key']}.json", "units": m.get("units") or 1,
+             "closed": bool(m.get("closed"))} for m in best.models[:limit]]
 
 
 def _prepare(order, tech_root: str | None, export_root: Path | None, deadline: float,
