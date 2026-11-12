@@ -1205,6 +1205,16 @@ def _board_models_worker(stop_event: Event) -> None:
     while not stop_event.is_set():
         try:
             with SessionLocal() as db:
+                # Тека проєктів Sum3D — для повної назви програм CORiTEC.
+                from app.services import sum3d_names
+                from app.settings_store import get_sum3d_projects_path
+
+                sum3d_names.configure(get_sum3d_projects_path(db))
+                # Тека дисків — для справжнього диска на плитці (`sum3d_disc`).
+                from app.services import sum3d_disc
+                from app.settings_store import get_setting
+
+                sum3d_disc.configure(get_setting(db, "cam_blanks_path"))
                 # 3D вимкнене в Налаштуваннях — моделі не готуємо зовсім.
                 if furnace_board.board_enabled(db) and board_models.read_3d(db)["on"]:
                     export_root = (get_export_folder_path(db) or "").strip()

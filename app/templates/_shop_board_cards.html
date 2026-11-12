@@ -151,11 +151,16 @@
             <svg class="disc" viewBox="0 0 100 100" aria-hidden="true"
                  data-pct="{{ m.percent }}" data-cut="{{ m.cut_count }}">
               <circle class="disc-body" cx="50" cy="50" r="42"></circle>
-              {% for c in m.crowns %}<circle class="crown{% if c.cut %} is-cut{% endif %}" cx="{{ c.x }}" cy="{{ c.y }}" r="{{ c.r }}"></circle>{% endfor %}
+              {# Справжній диск (власник 12.11.26): обриси робіт із файлу диска
+                 Sum3D, як в CAM. Що з них уже вирізано, файл не каже, тому всі
+                 одним кольором. Диска не знайдено — лунки, як раніше. #}
+              {% if m.disc %}{% for d in m.disc.paths %}<path class="rc" d="{{ d }}"></path>{% endfor %}
+              {% else %}{% for c in m.crowns %}<circle class="crown{% if c.cut %} is-cut{% endif %}" cx="{{ c.x }}" cy="{{ c.y }}" r="{{ c.r }}"></circle>{% endfor %}{% endif %}
               <circle class="disc-track" cx="50" cy="50" r="47"></circle>
               <circle class="disc-arc" cx="50" cy="50" r="47" transform="rotate(-90 50 50)"
                       stroke-dasharray="{{ m.arc_dash }}" style="stroke-dashoffset:{{ m.arc_offset }}"></circle>
             </svg>
+            {% if m.disc %}<span class="disc-free" title="{{ m.disc.name }}">вільно ≈{{ m.disc.free_pct }}%</span>{% endif %}
             <span class="pc">{{ m.percent }}<small>%</small>{% if cat_on %}{{ _cat }}{% endif %}</span>
           {% elif has_work and m.note %}
             <span class="nd">{{ m.note }}</span>

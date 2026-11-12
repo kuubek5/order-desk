@@ -242,6 +242,9 @@ class ShopMachine:
     # секретом табло, скільки одиниць несе модель, чи вона замкнена. Порожньо —
     # моделей ще немає (не зібрані, немає STL), і плитка лишається як була.
     models: list = field(default_factory=list)
+    # Справжній диск з файлу Sum3D (`sum3d_disc.TileDisc`): обриси розставлених
+    # робіт і вільна частка. None — диск не знайдено, малюємо як раніше.
+    disc: Optional[object] = None
 
     @property
     def has_prog(self) -> bool:
@@ -594,7 +597,20 @@ def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
     # картки — SimpleNamespace без цього поля. У стані `done` назва, якщо
     # екран її ще тримає, лишається (вона називає диск, який треба зняти);
     # зникла — картка показує звичайний рядок sum3d.
-    item.prog_head, item.prog_tail = program_line(getattr(card, "iso_name", None))
+    # CORiTEC (250i/150i) дає з екрана лише `дата_час.iso`: повну назву (з
+    # диском) беремо з проєкту Sum3D, щойно фоновий пошук її знайде
+    # (`sum3d_names`, власник 12.11.26). Не знайшли — лишається дата.
+    from app.services import sum3d_names
+
+    iso = getattr(card, "iso_name", None)
+    program = sum3d_names.full_name(iso) or iso
+    item.prog_head, item.prog_tail = program_line(program)
+    # Диск програми — за назвою (`sum3d_disc`), лише поки є відсоток (тобто
+    # програма на шпинделі).
+    if card.percent is not None and program:
+        from app.services import sum3d_disc
+
+        item.disc = sum3d_disc.disc_for_program(program)
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
     if token and with_3d:
