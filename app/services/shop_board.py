@@ -611,6 +611,11 @@ def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
         from app.services import sum3d_disc
 
         item.disc = sum3d_disc.disc_for_program(program)
+        # Назви програми в проєкті немає (Tolik 13.11.26: `дата_час.iso`), але
+        # проєкт може називати файл диска — тоді диск за ним (`disc_stem`).
+        stem = sum3d_names.disc_stem(iso) if item.disc is None else None
+        if stem:
+            item.disc = sum3d_disc.disc_for_program(stem)
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
     if token and with_3d:

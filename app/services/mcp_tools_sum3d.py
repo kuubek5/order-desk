@@ -132,6 +132,14 @@ def _sum3d_board_disc(db: Session, blanks_root: str, projects_root: str) -> dict
             elif how == "екран/заголовок":
                 how = "у проєкті назви не знайдено"
         path = sum3d_disc.find_blank(blanks_root, program)
+        disc_how = "з назви програми" if path else None
+        if path is None and parts and projects_root and how == "у проєкті назви не знайдено":
+            try:
+                stem = sum3d_names.find_blank_in_project(Path(projects_root) / f"{parts[0]}_{parts[1]}.cam")
+            except OSError:
+                stem = None
+            path = sum3d_disc.find_blank(blanks_root, stem) if stem else None
+            disc_how = "з проєкту Sum3D (файл диска)" if path else "у проєкті диска не знайдено"
         shape = sum3d_disc.shape_of(path) if path else None
         row: dict[str, Any] = {
             "верстат": card.target.name,
@@ -140,6 +148,7 @@ def _sum3d_board_disc(db: Session, blanks_root: str, projects_root: str) -> dict
             "звідки_назва": how,
             "ключ_диска": sum3d_disc.disc_key(program),
             "файл_диска": path.name if path else None,
+            "звідки_диск": disc_how,
         }
         if shape is not None:
             row.update({

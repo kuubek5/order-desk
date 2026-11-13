@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 MAX_BLANK_BYTES = 4 * 1024 * 1024
 _TAG = re.compile(rb"<(\d{1,9})>\r\n")
 _DATE_TAIL = re.compile(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:\.iso)?$", re.I)
+_COUNT_DASHES = re.compile(r"^\d+-+(\d{1,2}-\S+)$")
 _LIST_TTL = 60.0
 DEFAULT_RADIUS = 47.0
 
@@ -128,7 +129,10 @@ def disc_key(program: Optional[str]) -> Optional[str]:
         return None  # гола `дата_час` — диска в назві немає
     head = _DATE_TAIL.sub("", text)
     if "_" not in head:
-        return None
+        # `3--14-Emotions-A3-x861PRO` (250-New, 13.11.26): оператор поставив
+        # лічильник через «--» без «_». Лише ця форма: число, дефіси, висота.
+        bare = _COUNT_DASHES.match(head)
+        return bare.group(1).strip().lower() if bare else None
     key = head.split("_", 1)[1].strip().lower()
     return key if re.match(r"\d{1,2}-", key) else None
 

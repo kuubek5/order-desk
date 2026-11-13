@@ -123,9 +123,62 @@ def test_board_shows_the_full_name_once_found(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sum3d_names, "_root", str(tmp_path))
     monkeypatch.setattr(sum3d_names, "_found", {})
+    monkeypatch.setattr(sum3d_names, "_stems", {})
     (tmp_path / "2026-11-12_01-20-12.cam").write_bytes(b"\x01pmma16_14-a4-x81_2026-11-12_01-20-12.iso\x00")
     card = _card("A", "run", percent=10, iso_name="2026-11-12_01-20-12.iso")
     sum3d_names._search_into_cache("2026-11-12_01-20-12", ("2026-11-12", "01-20-12"), str(tmp_path))
     machine = _view([card]).machines[0]
     assert (machine.prog_head, machine.prog_tail) == ("pmma16_14-a4-x81_2026-11-12_", "01-20-12")
     assert sb.program_line("2026-11-12_01-20-12.iso") == ("2026-11-12_", "01-20-12")
+
+
+def test_disc_key_reads_a_counter_with_dashes_and_no_underscore():
+    """250-New 13.11.26: `3--14-Emotions-A3-x861PRO_…` — лічильник через «--» без «_»."""
+    assert sum3d_disc.disc_key("3--14-Emotions-A3-x861PRO_2026-11-13_11-15-01.iso") == "14-emotions-a3-x861pro"
+    assert sum3d_disc.disc_key("1-16-Monolith-A2-x61_2026-11-13_16-47-11.iso") == "16-monolith-a2-x61"
+    assert sum3d_disc.disc_key("3--_20-Monolith-A3-x55_2026-11-13_16-35-13.iso") == "20-monolith-a3-x55", \
+        "форма з «_» — як і була"
+    assert sum3d_disc.disc_key("DDD.ISO") is None
+    assert sum3d_disc.disc_key("14-Emotions-A3-x861PRO_2026-11-13_11-15-01.iso") is None, \
+        "без лічильника — не вгадуємо"
+    assert sum3d_disc.disc_key("Remote-abc_2026-11-13_11-15-01.iso") is None
+
+
+def test_blank_named_in_the_project_when_the_program_name_is_bare(tmp_path):
+    """Tolik 13.11.26: з екрана лише `дата_час.iso`, назви програми в проєкті
+    немає — але проєкт називає файл диска; кілька різних дисків — не вгадуємо."""
+    cam = tmp_path / "2026-11-13_14-53-52.cam"
+    path = "C:\sum\DENTAL\CAM-blanks\zr\14\zr14_14-1000-X37.blk"
+    cam.write_bytes(b"TECN 2.0\0" + path.encode("utf-16-le") + b"\0\0" + b"\x07" * 50
+                    + b"zr14_14-1000-x37.blk\0")
+    assert sum3d_names.find_blank_in_project(cam) == "zr14_14-1000-x37"
+    two = tmp_path / "two.cam"
+    two.write_bytes(b"\0zr14_14-1000-x37.blk\0pmma16_16-a4-x01.blk\0")
+    assert sum3d_names.find_blank_in_project(two) is None, "два різні диски — None"
+    junk = tmp_path / "junk.cam"
+    junk.write_bytes(b"\0default.blk\0x.blk\0")
+    assert sum3d_names.find_blank_in_project(junk) is None, "не ім'я диска Sum3D"
+
+
+def test_board_takes_the_disc_from_the_project_when_the_name_is_bare(tmp_path, monkeypatch):
+    from tests.test_shop_board import _card, _view
+
+    blanks = tmp_path / "blanks"
+    f = blanks / "zr" / "14" / "zr14_14-1000-x37.blk"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(_blank([_square(10, 5, 6)]))
+    projects = tmp_path / "cam"
+    projects.mkdir()
+    (projects / "2026-11-13_14-53-52.cam").write_bytes(b"\0C:\b\zr14_14-1000-x37.blk\0")
+    sum3d_disc._list_cache.clear()
+    monkeypatch.setattr(sum3d_disc, "_root", str(blanks))
+    monkeypatch.setattr(sum3d_names, "_root", str(projects))
+    monkeypatch.setattr(sum3d_names, "_found", {})
+    monkeypatch.setattr(sum3d_names, "_stems", {})
+    card = _card("T", "run", percent=31, iso_name="2026-11-13_14-53-52.iso")
+    assert _view([card]).machines[0].disc is None, "до фонового пошуку — нічого"
+    sum3d_names._search_into_cache("2026-11-13_14-53-52", ("2026-11-13", "14-53-52"), str(projects))
+    machine = _view([card]).machines[0]
+    assert machine.disc is not None and machine.disc.name == "zr14_14-1000-x37"
+    assert (machine.prog_head, machine.prog_tail) == ("2026-11-13_", "14-53-52"), \
+        "назву програми не вигадуємо — лишається дата"

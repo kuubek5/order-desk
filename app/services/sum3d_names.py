@@ -32,6 +32,9 @@ _HEAD_MAX = 80
 _BARE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})_(?P<id>\d{2}-\d{2}-\d{2})(?:\.iso)?$", re.I)
 
 _found: dict[str, Optional[str]] = {}      # "дата_id" → повна назва або None (не знайшли)
+_stems: dict[str, Optional[str]] = {}      # "дата_id" → файл диска з проєкту, коли назви немає
+_BLK = ".blk"
+_STEM = re.compile(r"^[A-Za-z]*\d{1,2}_\d{1,2}-[A-Za-z0-9.\-]+$")
 _running: set[str] = set()
 _lock = threading.Lock()
 _root: Optional[str] = None
@@ -67,16 +70,34 @@ def full_name(iso_name: Optional[str]) -> Optional[str]:
     return None
 
 
+def disc_stem(iso_name: Optional[str]) -> Optional[str]:
+    """Файл диска (`zr14_14-1000-x37`), названий у проєкті Sum3D, для голої
+    `дата_час.iso`, у якої назви програми в проєкті не знайшлось. Лише з
+    кешу: пошук запускає `full_name` тим самим фоновим проходом."""
+    parts = bare_parts(iso_name)
+    if parts is None:
+        return None
+    with _lock:
+        return _stems.get(f"{parts[0]}_{parts[1]}")
+
+
 def _search_into_cache(key: str, parts: tuple[str, str], root: str) -> None:
+    path = Path(root) / f"{key}.cam"
+    stem: Optional[str] = None
     try:
-        name = find_in_project(Path(root) / f"{key}.cam", *parts)
+        name = find_in_project(path, *parts)
+        if name is None:
+            stem = find_blank_in_project(path)
     except OSError as exc:
         logger.info("Назва програми: проєкт %s не прочитано: %s", key, exc)
         name = None
     with _lock:
         _running.discard(key)
         _found[key] = name
+        _stems[key] = stem
     logger.info("Назва програми для %s: %s", key, name or "у проєкті не знайдено")
+    if name is None:
+        logger.info("Диск для %s з проєкту: %s", key, stem or "не знайдено")
 
 
 def find_in_project(path: Path, date: str, sum3d_id: str) -> Optional[str]:
@@ -104,6 +125,53 @@ def find_in_project(path: Path, date: str, sum3d_id: str) -> Optional[str]:
                     start = at + 1
             previous = data[-_OVERLAP:]
     return None
+
+
+def find_blank_in_project(path: Path) -> Optional[str]:
+    """Ім'я файлу диска (`zr14_14-1000-x37`), яке проєкт згадує як `….blk`
+    (ASCII або UTF-16), або None. Кілька РІЗНИХ дисків — теж None: хибний
+    диск на табло гірший за жодний (CLAUDE.md §14, печі/верстати)."""
+    needles = [(_BLK.encode("ascii"), 1), (_BLK.encode("utf-16-le"), 2)]
+    stems: set[str] = set()
+    read = 0
+    previous = b""
+    with open(path, "rb") as handle:
+        while read < MAX_SCAN_BYTES:
+            chunk = handle.read(_CHUNK)
+            if not chunk:
+                break
+            read += len(chunk)
+            data = previous + chunk
+            for needle, width in needles:
+                start = 0
+                while True:
+                    at = data.find(needle, start)
+                    if at < 0:
+                        break
+                    stem = _stem_before(data, at, width)
+                    if stem:
+                        stems.add(stem.lower())
+                    start = at + 1
+            previous = data[-_OVERLAP:]
+    return stems.pop() if len(stems) == 1 else None
+
+
+def _stem_before(data: bytes, at: int, width: int) -> str:
+    """Ім'я файлу перед `.blk` до першого `\\`, `/`, `:` чи пробілу; лише
+    форма диска Sum3D (`<матеріал><висота>_<висота>-…`), інакше порожньо."""
+    chars: list[str] = []
+    pos = at - width
+    while pos >= 0 and len(chars) < _HEAD_MAX:
+        unit = data[pos:pos + width]
+        if width == 2 and unit[1:] != b"\x00":
+            break
+        ch = chr(unit[0])
+        if not (_HEAD_CHARS.match(ch) or ch == "_"):
+            break
+        chars.append(ch)
+        pos -= width
+    stem = "".join(reversed(chars))
+    return stem if _STEM.match(stem) else ""
 
 
 def _head_before(data: bytes, at: int, width: int) -> str:
