@@ -130,8 +130,9 @@ def test_all_except_family(app_db):  # noqa: F811
     assert str(ids["3"]) not in _rows(page)
     assert {str(ids[k]) for k in ("1", "2", "4")} <= _rows(page)
     assert re.search(r'famchip mat-pmma is-off', page)
-    # ↺ повертає PMMA (порожній вибір = усі), ✕ біля Zr додає другий виняток.
-    assert re.search(r'href="/mail\?view=pending"\s+class="famchip-x"', page)
+    # ↺ повертає PMMA — явне «усі» (`fam=all`, 14.11.26: без слова порожня
+    # адреса підставила б збережений вибір акаунта), ✕ біля Zr — другий виняток.
+    assert re.search(r'href="/mail\?view=pending&amp;fam=all"\s+class="famchip-x"', page)
     assert 'href="/mail?view=pending&amp;fam=-zr,-pmma"' in page
 
 

@@ -249,6 +249,43 @@ def _fam_value(include: list[str], exclude: list[str]) -> str:
     return ",".join(include) if include else ",".join(f"-{k}" for k in exclude)
 
 
+# Памʼять вибору родин (власник 14.11.26: «натискаєш циркон, обробив лист —
+# фільтр збивається»). Прийняття листа веде на голий `/mail`, тож без памʼяті
+# вибір губився. Тепер останній вибір лежить в акаунті (`User.mail_fam`) і
+# підставляється, коли `fam` в адресі НЕМАЄ. «Усі» мусить мати власне слово:
+# порожнє значення = «поля не було» (CLAUDE.md §14), і клік «Усі» інакше
+# повертав би збережений вибір.
+FAM_ALL = "all"
+# Лише вкладки, де видно ярлики родин: прихований фільтр там, де його не можна
+# зняти, гірший за відсутній.
+_FAM_MEMORY_VIEWS = ("pending", "auto")
+
+
+def remembered_fam(request: Request, db: Session, user, view: str, fam: str,
+                   partial: str | None) -> str:
+    """`fam` для цього запиту з урахуванням памʼяті акаунта.
+
+    У адресі є `fam` і це повна сторінка (клік по ярлику) — запамʼятати. Полл і
+    фрагменти (`partial`) не пишуть: вони несуть уже обрізаний до наявних родин
+    вибір і затерли б справжній. `fam` в адресі немає — взяти збережений."""
+    if view not in _FAM_MEMORY_VIEWS:
+        return "" if (fam or "").strip().lower() == FAM_ALL else fam
+    raw = (fam or "").strip().lower()
+    # Підроблені запити тестів і внутрішні виклики можуть не мати адреси —
+    # тоді вирішує саме значення `fam`, як до памʼяті.
+    params = getattr(request, "query_params", None)
+    saved = getattr(user, "mail_fam", None)
+    if params is None or saved is None:
+        return "" if raw == FAM_ALL else fam
+    if "fam" in params:
+        wanted = "" if raw == FAM_ALL else _fam_value(*_parse_fam(raw))
+        if partial is None and saved != wanted:
+            user.mail_fam = wanted
+            db.commit()
+        return wanted
+    return saved
+
+
 def _family_chips(emails, include: list[str], exclude: list[str]) -> list[dict]:
     """Ярлики з лічильниками — лише коли в списку щонайменше дві родини (або
     вибір уже є, щоб його можна було зняти).
@@ -472,6 +509,7 @@ def get_mail(
         service = "all"
     if view not in _MAIL_VIEWS:
         view = "pending"
+    fam = remembered_fam(request, db, user, view, fam, partial)
     # Pop the flash only on a full-page render — the 15s poll (partial="list")
     # would otherwise consume it before the real navigation shows it.
     toast_flash = request.session.pop("toast_flash", None) if partial not in ("list", "batch") else None

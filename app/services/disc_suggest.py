@@ -27,12 +27,13 @@ import struct
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from app import material_match
 from app.material_classifier import PMMA, ZIRCON, classify_material
-from app.services import sum3d_disc
+from app.services import disc_fit, sum3d_disc
 from app.services.cam_blanks import parse_blank_name, scan_blanks
 from app.services.stl_height import MAX_PLAUSIBLE_MM, _cached_z_extent, is_rotated_export, thickness_mm
 
@@ -41,6 +42,8 @@ MARGIN_MM = 1.0
 NEARLY_USED = 0.15
 # Основи конструкцій не лягають щільно: проміжки, конектори, краї.
 PACKING = 1.8
+# Скільки дисків перевіряти справжньою розстановкою за одну підказку.
+MAX_FIT_TRIES = 12
 # Лінійки виробника: слово з назви диска → (назва для людей, мультиколор?).
 LINES = {
     "monolith": ("Monolith", True),
@@ -60,6 +63,13 @@ _LINE_WORDS = {
     "doceram": ("doceram", "доцерам"),
 }
 STEP_UP_LINES = {"monolith"}
+# Опак Doceram кодом замість кольору (CLAUDE.md §3: 500 = A1, 800 = A2, 1000 = A3).
+# Це ОКРЕМІ диски: «1000» — це не будь-який A3 (14.11.26: робота «1000» отримала
+# підказку Monolith A3, а цех у всіх чотирьох таких роботах узяв диск «1000»).
+OPAQUE_CODES = ("500", "800", "1000")
+# Диск, який за ці дні був у верстаті (назва програми), — «активний»: цех кладе
+# кілька робіт на диск, що вже стоїть (14.11.26: 51 збіг висоти, диск — 1 раз).
+ACTIVE_DAYS = 3
 SETTINGS_ENABLED_KEY = "disc_suggest_enabled"
 SETTINGS_USERS_KEY = "disc_suggest_users"
 _SCAN_TTL = 60.0
@@ -101,6 +111,7 @@ class Want:
     family: Optional[str]
     line: Optional[str]
     shades: frozenset[str]
+    code: Optional[str] = None
 
     @property
     def multilayer(self) -> bool:
@@ -108,6 +119,8 @@ class Want:
 
     def label(self) -> str:
         name = LINES[self.line][0] if self.line else (self.family or "")
+        if self.code:
+            return f"{name} {self.code}".strip()
         shade = "/".join(sorted(s.upper() for s in self.shades))
         return f"{name} {shade}".strip()
 
@@ -119,8 +132,10 @@ def want_of(material_text: Optional[str]) -> Want:
     family = classify_material(material_text) if material_text else None
     if line and family is None:
         family = ZIRCON
+    found = material_match.shades(material_text)
     return Want(family=family, line=line,
-                shades=frozenset(_norm(s) for s in material_match.shades(material_text)))
+                shades=frozenset(_norm(s) for s in found),
+                code=next((c for c in OPAQUE_CODES if c in found), None))
 
 
 def _norm(shade: str) -> str:
@@ -140,6 +155,13 @@ class DiscFile:
     family: Optional[str]
     line: Optional[str]
     shades: frozenset[str]
+    code: Optional[str] = None
+
+    @property
+    def key(self) -> str:
+        """Як диск зветься в назві програми без позначки верстата —
+        `14-monolith-a2-x47` (той самий ключ, що `disc_check.program_disc`)."""
+        return _key_of(self.stem)
 
 
 _scan_cache: dict[str, tuple[float, list[DiscFile]]] = {}
@@ -175,6 +197,7 @@ def disc_files(root: Optional[str]) -> list[DiscFile]:
             path=Path(root) / item.rel_path, stem=stem, height=parsed.height,
             family=family, line=line,
             shades=frozenset(_norm(s) for s in material_match.shades(shade_text)),
+            code=(parsed.shade or "") if (parsed.shade or "") in OPAQUE_CODES else None,
         ))
     with _scan_lock:
         _scan_cache[root] = (now, out)
@@ -188,6 +211,8 @@ def _matches(disc: DiscFile, want: Want) -> bool:
         return False
     if want.shades and not (disc.shades & want.shades):
         return False
+    if want.code != disc.code:
+        return False  # опак кодом — лише свої диски, і навпаки
     return disc.height is not None
 
 
@@ -284,6 +309,24 @@ def letter_footprint(attachments: Iterable[Any], family: Optional[str]) -> Optio
     return total if found else None
 
 
+def letter_scale(family: Optional[str]) -> float:
+    """Усадка в площині диска (та сама, що для висоти)."""
+    return thickness_mm(1.0, family) or 1.0
+
+
+def letter_pieces(attachments: Iterable[Any]) -> list[Any]:
+    """Точки силуету кожної конструкції листа (STL exocad), без усадки."""
+    out = []
+    for att in attachments or []:
+        name = getattr(att, "filename", None) or ""
+        path = getattr(att, "saved_path", None) or ""
+        if path and (is_rotated_export(name) or is_rotated_export(path)):
+            points = disc_fit.stl_points(path)
+            if points is not None and len(points) >= 3:
+                out.append(points)
+    return out
+
+
 # ── Підказка ────────────────────────────────────────────────────────────────
 
 
@@ -294,6 +337,7 @@ class Pick:
     free_pct: int
     started: bool
     paths: list[str]
+    on_machine: bool = False
 
 
 @dataclass
@@ -306,10 +350,38 @@ class Suggestion:
     alts: list[Pick] = field(default_factory=list)
     new_disc: str = ""
     note: str = ""
+    # Скільки дисків пройшли суму площ, але розстановка конструкцій на них не
+    # вдалась (клаптики між вирізами).
+    rejected: int = 0
+
+
+def active_discs(db, *, until: Optional[datetime] = None,
+                 days: int = ACTIVE_DAYS) -> dict[str, datetime]:
+    """Диски з назв програм на верстатах за `days` днів до `until`: ключ → коли
+    востаннє. Лише читання `MachineReading`."""
+    from sqlalchemy import func, select
+
+    from app.models import MachineReading
+    from app.services.disc_check import program_disc
+
+    end = until or datetime.now()
+    rows = db.execute(
+        select(MachineReading.iso_name, func.max(MachineReading.captured_at))
+        .where(MachineReading.iso_name.is_not(None),
+               MachineReading.captured_at >= end - timedelta(days=days),
+               MachineReading.captured_at <= end)
+        .group_by(MachineReading.iso_name)
+    ).all()
+    out: dict[str, datetime] = {}
+    for iso, seen in rows:
+        disc = program_disc(iso)
+        if disc is not None and seen is not None and (disc.key not in out or seen > out[disc.key]):
+            out[disc.key] = seen
+    return out
 
 
 def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: Optional[str],
-            *, max_reads: int = 60) -> Suggestion:
+            *, max_reads: int = 60, active: Optional[dict[str, datetime]] = None) -> Suggestion:
     want = want_of(material_text)
     result = Suggestion(want=want)
     if not want.family or not want.shades and want.family == ZIRCON:
@@ -329,10 +401,27 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     if not result.heights:
         return result
     need_area = letter_footprint(attachments, want.family)
+    pieces = letter_pieces(attachments)
+    shapes: dict[str, Any] = {}
     picks: list[Pick] = []
     reads = 0
-    for disc in sorted((d for d in discs if d.height in result.heights),
-                       key=lambda d: (result.heights.index(d.height or 0), d.stem)):
+    active = active or {}
+    heights = result.heights
+
+    def rank(height: int) -> int:
+        return heights.index(height) if height in heights else len(heights) + height
+
+    # Диск, що стоїть у верстаті, — і ВИЩИЙ за правило висоти, якщо робота
+    # влазить (власник 14.11.26: цех кладе роботу на диск, що вже стоїть; ПММА
+    # 7 мм на 18). Нижчий за правило — ні: правило Monolith +1 крок лишається.
+    def allowed(disc: DiscFile) -> bool:
+        h = disc.height or 0
+        return h in heights or (disc.key in active and h > max(heights))
+
+    # Диск із верстата — першим і в читанні: інакше межа `max_reads` могла б
+    # його не дочитати.
+    for disc in sorted((d for d in discs if allowed(d)),
+                       key=lambda d: (d.key not in active, rank(d.height or 0), d.stem)):
         if reads >= max_reads:
             break
         reads += 1
@@ -347,27 +436,46 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
             if free_area < need_area * PACKING:
                 continue
         picks.append(Pick(name=disc.stem, height=disc.height or 0, free_pct=round(free * 100),
-                          started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape)))
-    # Початий першим (власник), серед початих — де менше вільного: добити диск.
-    picks.sort(key=lambda p: (result.heights.index(p.height), not p.started,
+                          started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape),
+                          on_machine=disc.key in active))
+        shapes[disc.stem] = shape
+    # Найперше — диск, що вже стоїть у верстаті (найсвіжіший). Далі як було:
+    # початий першим (власник), серед початих — де менше вільного: добити диск.
+    on_machine = sorted((p for p in picks if p.on_machine),
+                        key=lambda p: active.get(_key_of(p.name), datetime.min), reverse=True)
+    picks.sort(key=lambda p: (rank(p.height), not p.started,
                               p.free_pct if p.started else 100))
-    started = [p for p in picks if p.started]
-    if started:
-        result.best = started[0]
-        result.alts = [p for p in picks if p is not result.best][:2]
-    elif picks:
-        result.best = picks[0]
-        result.alts = picks[1:3]
+    ordered = on_machine + [p for p in picks if p.started and not p.on_machine] +         [p for p in picks if not p.started and not p.on_machine]
+    # Сума площ лише відсіяла явно замалі. Тепер — справжня розстановка
+    # конструкцій (власник 14.11.26), у порядку пріоритету й лише поки не
+    # знайдеться найкращий і два запасні: кожна перевірка — десятки мс.
+    accepted: list[Pick] = []
+    tries = 0
+    for pick in ordered:
+        if len(accepted) >= 3 or tries >= MAX_FIT_TRIES:
+            break
+        if pieces:
+            tries += 1
+            shape = shapes[pick.name]
+            if not disc_fit.fits(shape.radius, shape.contours, pieces, letter_scale(want.family)):
+                result.rejected += 1
+                continue
+        accepted.append(pick)
+    if accepted:
+        result.best = accepted[0]
+        result.alts = accepted[1:3]
     result.new_disc = f"новий диск {result.heights[0]} мм {want.label()}"
     return result
+
+
+def _key_of(stem: str) -> str:
+    return stem.split("_", 1)[1].lower() if "_" in stem else stem.lower()
 
 
 def audit(db, days: int, limit: int = 30) -> dict[str, Any]:
     """Прогін на прийнятих листах: що запропонувала б підказка проти диска,
     який реально взяли (назва програми на верстаті з тим самим Sum3D).
     Назв STL не віддає. Лише читання."""
-    from datetime import datetime, timedelta
-
     from sqlalchemy import select
 
     from app.models import EmailMessage, MachineReading, Order
@@ -384,13 +492,29 @@ def audit(db, days: int, limit: int = 30) -> dict[str, Any]:
     ).all()
     counts: dict[str, int] = {}
     rows: list[dict[str, Any]] = []
+    # Диски з верстатів — на момент ПРИЙНЯТТЯ кожної роботи, без майбутнього:
+    # інакше аудит «вгадував» би диск, на якому ця сама робота й фрезерувалась.
+    readings = sorted(
+        (seen, disc.key)
+        for iso, seen in db.execute(
+            select(MachineReading.iso_name, MachineReading.captured_at).where(
+                MachineReading.iso_name.is_not(None),
+                MachineReading.captured_at >= since - timedelta(days=ACTIVE_DAYS)))
+        if seen is not None and (disc := program_disc(iso)) is not None
+    )
     started = time.monotonic()
     for order in orders:
         if time.monotonic() - started > 50:
             counts["не_встигли"] = counts.get("не_встигли", 0) + 1
             continue
         email = db.get(EmailMessage, order.source_email_id)
-        hint = suggest(order.material_color, list(email.attachments or []) if email else [], root)
+        accepted = order.created_at or datetime.now()
+        active: dict[str, datetime] = {}
+        for seen, key in readings:
+            if accepted - timedelta(days=ACTIVE_DAYS) <= seen <= accepted:
+                active[key] = seen
+        hint = suggest(order.material_color, list(email.attachments or []) if email else [], root,
+                       active=active)
         actual = None
         tail = (order.sum3d_id or "").strip()[-8:]
         if tail:
@@ -408,6 +532,9 @@ def audit(db, days: int, limit: int = 30) -> dict[str, Any]:
         if actual is not None and actual.height and hint.heights:
             key = "висота_як_у_цеху" if actual.height in hint.heights else "висота_інша_ніж_у_цеху"
             counts[key] = counts.get(key, 0) + 1
+        if actual is not None and hint.best is not None:
+            key = "диск_як_у_цеху" if _key_of(hint.best.name) == actual.key else "диск_інший"
+            counts[key] = counts.get(key, 0) + 1
         if len(rows) < limit:
             rows.append({
                 "робота": order.id, "клієнт": order.client_name, "матеріал": order.material_color,
@@ -415,6 +542,7 @@ def audit(db, days: int, limit: int = 30) -> dict[str, Any]:
                 "підказка_висоти": hint.heights, "чому": hint.why or hint.note,
                 "підказка_диска": hint.best.name if hint.best else (hint.new_disc or None),
                 "вільно_%": hint.best.free_pct if hint.best else None,
+                "на_верстаті": bool(hint.best and hint.best.on_machine),
                 "диск_у_програмі": actual.head if actual else None,
             })
     return {"днів": days, "робіт": len(orders), **counts, "приклади": rows,

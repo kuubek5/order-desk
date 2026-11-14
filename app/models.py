@@ -129,6 +129,14 @@ class User(Base):
     # док пошти; за замовчуванням вимкнено (видно все).
     queue_hide_hold: Mapped[bool] = mapped_column(default=False, server_default="0")
     mail_dock_hide_hold: Mapped[bool] = mapped_column(default=False, server_default="0")
+    # Памʼять акаунта (власник 14.11.26: «фільтр збивається … щоб при повторній
+    # авторизації все зберігалось»). `mail_fam` — останній вибір родин матеріалу
+    # у «Вхідних» (`fam` у /mail; порожньо = «Усі»). `ui_store` — JSON дрібних
+    # налаштувань вигляду, які раніше жили лише в браузері (KMStore): рейка,
+    # бокові панелі, ширини стовпців, STL-перегляд… Перелік дозволених ключів —
+    # `app/services/account_store.py`.
+    mail_fam: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    ui_store: Mapped[str] = mapped_column(Text, default="", server_default="")
     # НЕ ВИКОРИСТОВУЮТЬСЯ (власник 12.10.26 прибрав вікна «Що нового» і ранкового
     # привітання): колонки лишено, щоб не робити міграцію (0087/0088).
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

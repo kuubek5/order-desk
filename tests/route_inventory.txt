@@ -234,6 +234,7 @@ GET /discs/work
 POST /mail/{email_id}/open-folder
 POST /settings/sheet-weight
 POST /account/look
+POST /account/ui-store
 POST /shift/images/{image_id}/delete
 GET /diag/perf
 POST /settings/feedback/bind

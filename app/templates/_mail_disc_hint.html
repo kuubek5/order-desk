@@ -7,7 +7,7 @@
     <svg class="mdh-disc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="rim"/>{% for d in p.paths %}<path d="{{ d }}" class="cut"/>{% endfor %}</svg>
     <span class="mdh-text">
         <span class="mdh-name mono">{{ p.height }} мм · {{ p.name }}</span>
-        <span class="mdh-free mono">вільно {{ p.free_pct }} % · {% if p.started %}влазить{% else %}новий у теці{% endif %}</span>
+        <span class="mdh-free mono">{% if p.on_machine %}на верстаті · {% endif %}вільно {{ p.free_pct }} % · {% if p.started %}влазить{% else %}новий у теці{% endif %}</span>
     </span>
 </div>
 {% elif hint.heights %}

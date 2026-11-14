@@ -72,6 +72,7 @@
   }
 
   function set(name, value) {
+    queueSync(name, String(value));
     var ls = storage();
     if (!ls) return;
     try {
@@ -82,6 +83,7 @@
   }
 
   function remove(name) {
+    queueSync(name, null);
     var ls = storage();
     if (!ls) return;
     try {
@@ -136,6 +138,95 @@
   }
 
   migrate();
+
+  // ── Памʼять акаунта (власник 14.11.26) ─────────────────────────────────
+  // Ці ключі — налаштування оператора, не браузера: сервер віддає їх у
+  // `window.KM_ACCOUNT_STORE` (base.html, ДО цього файлу), і значення акаунта
+  // перемагає локальне — на іншому ПК оператор бачить своє. Перелік мусить
+  // збігатися з `app/services/account_store.py::SYNCED_KEYS` (сторож —
+  // tests/test_account_store.py).
+  var SYNCED = [
+    "railCollapsed",
+    "sismaOpen",
+    "queueColWidths",
+    "furnaceSideOpen",
+    "machineSideOpen",
+    "qsideCollapsed",
+    "statsDayView",
+    "accTab",
+    "discsTab",
+    "mail.attlistWide",
+    "mailMirrorCollapsed",
+    "mail.showAll",
+    "stl-preview-max",
+    "stl-preview-light",
+    "stl-preview-spin-speed",
+    "stl-gallery-max",
+  ];
+  var account = window.KM_ACCOUNT_STORE;
+  var signedIn = !!account && typeof account === "object";
+  var pending = {};
+  var timer = null;
+
+  function isSynced(name) {
+    return SYNCED.indexOf(name.indexOf(PREFIX) === 0 ? name.slice(PREFIX.length) : name) !== -1;
+  }
+
+  function flush() {
+    timer = null;
+    var batch = pending;
+    pending = {};
+    Object.keys(batch).forEach(function (name) {
+      var body = new URLSearchParams();
+      body.set("key", name);
+      if (batch[name] === null) body.set("clear", "1");
+      else body.set("value", batch[name]);
+      try {
+        fetch("/account/ui-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+          credentials: "same-origin",
+          keepalive: true,
+        }).catch(function () {
+          /* мережа впала — локально значення вже є, акаунт наздожене наступна зміна */
+        });
+      } catch (e) {
+        /* fetch недоступний — лишається локальне значення, як до 14.11.26 */
+      }
+    });
+  }
+
+  function queueSync(name, value) {
+    if (!signedIn || !isSynced(name)) return;
+    var bare = name.indexOf(PREFIX) === 0 ? name.slice(PREFIX.length) : name;
+    pending[bare] = value;
+    // Перетягування межі стовпця пише ширини на кожен рух — шлемо одне в кінці.
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(flush, 600);
+  }
+
+  // Акаунт → браузер: значення акаунта перемагає. Ключ, якого в акаунті ще
+  // немає, але є в цьому браузері (налаштовано до 14.11.26), — один раз
+  // відвантажити в акаунт, щоб після оновлення оператор не побачив усе скинутим.
+  function adoptAccount() {
+    var ls = storage();
+    if (!ls || !signedIn) return;
+    SYNCED.forEach(function (name) {
+      try {
+        if (Object.prototype.hasOwnProperty.call(account, name)) {
+          ls.setItem(key(name), String(account[name]));
+        } else {
+          var local = ls.getItem(key(name));
+          if (local !== null) queueSync(name, local);
+        }
+      } catch (e) {
+        /* один ключ не вдався — решта не зупиняється */
+      }
+    });
+  }
+
+  adoptAccount();
 
   window.KMStore = {
     PREFIX: PREFIX,

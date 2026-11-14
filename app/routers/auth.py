@@ -547,6 +547,31 @@ async def post_account_layout(
     return Response(status_code=204)
 
 
+@router.post("/account/ui-store", status_code=204)
+def post_account_ui_store(
+    request: Request,
+    key: str = Form(...),
+    value: str | None = Form(None),
+    clear: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Один ключ налаштувань вигляду з браузера (`KMStore`) — в акаунт.
+
+    `clear=1` прибирає ключ (у браузері `KMStore.remove`). Порожнє `value` без
+    `clear` — це значення «порожній рядок», а не «поля не було» (CLAUDE.md §14).
+    Недозволений ключ — 422, акаунт не змінюється."""
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    from app.services import account_store
+
+    new = None if clear == "1" else (value or "")
+    if not account_store.put(user, key, new):
+        return Response(status_code=422)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post("/account/look", status_code=204)
 async def post_account_look(
     request: Request,

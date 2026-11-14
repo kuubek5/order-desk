@@ -31,5 +31,6 @@ def get_disc_hint(request: Request, email_id: int, material_color: str = "",
     if email is None:
         raise HTTPException(status_code=404, detail="лист не знайдено")
     hint = disc_suggest.suggest(material_color, list(email.attachments or []),
-                                get_setting(db, "cam_blanks_path"))
+                                get_setting(db, "cam_blanks_path"),
+                                active=disc_suggest.active_discs(db))
     return templates.TemplateResponse(request, "_mail_disc_hint.html", {"hint": hint})

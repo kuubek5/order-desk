@@ -681,6 +681,34 @@ def ui_prefs(request: Request) -> dict:
     return prefs
 
 
+def account_store_of(request: Request) -> dict | None:
+    """Налаштування вигляду акаунта для `KMStore` (див. `account_store`).
+
+    None — не увійшов або БД мовчить: тоді браузер лишає своє, нічого не
+    затираючи. У сесію НЕ дзеркалиться (на відміну від `ui_prefs`): JSON ширин
+    стовпців роздув би підписану куку."""
+    try:
+        user_id = request.session.get("user_id")
+    except Exception:  # noqa: BLE001 — фейковий request тестів без сесії
+        logger.debug("account_store_of: no session", exc_info=True)
+        return None
+    if user_id is None:
+        return None
+    from app.services import account_store
+
+    db = SessionLocal()
+    try:
+        user = db.get(User, user_id)
+        if user is None or not user.is_active:
+            return None
+        return account_store.load(user)
+    except Exception:  # noqa: BLE001 — налаштування вигляду не варті зламаної сторінки
+        logger.debug("account_store_of fell back to browser values", exc_info=True)
+        return None
+    finally:
+        db.close()
+
+
 class _TimedTemplates(Jinja2Templates):
     """Jinja2Templates, що рахує час рендера в розкладку запиту.
 
@@ -1009,4 +1037,5 @@ templates.env.globals["queue_can_take_count"] = _timed_global("queue_can_take_co
 templates.env.globals["busy_operators"] = _timed_global("busy_operators", busy_operators)
 templates.env.globals["sync_state"] = _timed_global("sync_state", sync_state)
 templates.env.globals["ui_prefs"] = _timed_global("ui_prefs", ui_prefs)
+templates.env.globals["account_store_of"] = _timed_global("account_store_of", account_store_of)
 templates.env.filters["night_label"] = night_label
