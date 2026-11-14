@@ -305,3 +305,5 @@ POST /settings/sum3d/check
 POST /settings/disc-suggest
 GET /mail/{email_id}/disc-hint
 POST /settings/queue-fx
+GET /settings/login-scene/preview
+POST /settings/login-scene

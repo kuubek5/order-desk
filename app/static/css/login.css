@@ -798,3 +798,82 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .reg-panel, .reg-bar .reg-dot, .reg-submit { transition: none; animation: none; }
 }
+
+/* ── Сцени входу на вибір адміна (14.11.26, login_scenes.js) ───────────────
+   `.login-scene.ls-live` — полотно або розмітка «Пульта» на весь екран за
+   карткою. Затемнення `::after` тут вимкнене: воно зроблене під відео, а
+   сцени темні самі. Кольори від сцени, не з токенів теми (як у відео).
+   Клас `ls-` уже є в цьому файлі (ls-video, ls-disc, ls-dust) — нові імена
+   з ним не перетинаються: ls-live, ls-canvas, ls-gl, ls-nogl, ls-pult, lsp-*. */
+.login-scene.ls-live { background: #09080a; }
+.login-scene.ls-live::after { display: none; }
+.login-scene.ls-live canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.login-scene.ls-nogl {
+  background:
+    radial-gradient(90% 70% at 25% 30%, #4a3478 0, transparent 55%),
+    radial-gradient(80% 70% at 78% 65%, #8a4f42 0, transparent 60%),
+    #09080a;
+}
+/* Радар і сітка спільного тла сперечались би зі сценою. */
+body:has(.login-scene.ls-live) .app-backdrop { display: none; }
+
+.ls-pult {
+  position: absolute;
+  left: clamp(24px, 6vw, 110px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(calc(50vw - 200px - 8vw), 470px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--font-mono);
+}
+.login-scene[data-scene="pult"] {
+  background:
+    linear-gradient(rgba(242, 184, 174, 0.05) 1px, transparent 1px) 0 0 / 100% 24px,
+    linear-gradient(90deg, rgba(242, 184, 174, 0.05) 1px, transparent 1px) 0 0 / 24px 100%,
+    #09080a;
+}
+.lsp-row { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-0); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #857a76; }
+.lsp-row em { font-style: normal; color: #9be3b4; white-space: nowrap; }
+.lsp-name { margin: 4px 0 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(34px, 4.6vw, 64px); letter-spacing: -0.03em; line-height: 1; color: #f4ece8; white-space: nowrap; }
+.lsp-name span { display: inline-block; }
+.lsp-name span.x { color: #ffb066; min-width: 0.62em; text-align: center; }
+.ls-pult svg { display: block; width: 100%; height: auto; }
+.lsp-ln { fill: none; stroke: #f2b8ae; stroke-width: 1.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.lsp-ln.dim { stroke: #40383b; }
+.lsp-ln.hot { stroke: #ffb066; stroke-width: 1.6; }
+.lsp-tele { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lsp-tele div { border: 1px solid #2b2629; border-radius: 4px; padding: 8px 10px; background: rgba(18, 16, 19, 0.8); min-width: 0; }
+.lsp-tele small { display: block; font-size: var(--fs-0); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #857a76; }
+.lsp-tele b { font-size: var(--fs-5); font-weight: 600; color: #f4ece8; font-variant-numeric: tabular-nums; }
+.lsp-tele b u { text-decoration: none; font-size: var(--fs-0); color: #857a76; margin-left: 4px; }
+.lsp-bar { display: flex; gap: 3px; }
+.lsp-bar i { flex: 1; height: 6px; border-radius: 1px; background: #2b2629; transition: background 0.15s; }
+.lsp-bar i.on { background: #ffb066; }
+@media (max-width: 899px) {
+  /* На вузькому екрані картка закриває центр: пульт іде вгору й тьмяніє. */
+  .ls-pult { left: 16px; right: 16px; top: 16px; width: auto; transform: none; opacity: 0.4; }
+  .ls-pult .lsp-tele, .ls-pult .lsp-bar { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lsp-ln { stroke-dashoffset: 0; }
+  .lsp-bar i { transition: none; }
+}
+
+/* Перегляд сцени з Налаштувань: смужка-посилання назад. */
+.ls-preview-back {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-2);
+  font-size: var(--fs-2, 13px);
+  text-decoration: none;
+}
+.ls-preview-back:hover { color: var(--ink); }

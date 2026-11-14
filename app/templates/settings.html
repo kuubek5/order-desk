@@ -77,6 +77,7 @@
         {% if can_see(user, 'handout') %}{% include "_settings_handout.html" %}{% endif %}
         {% if can_see(user, 'workday') %}{% include "_settings_workday.html" %}{% endif %}
         {% if can_see(user, 'queue-fx') %}{% include "_settings_queue_fx.html" %}{% endif %}
+        {% if can_see(user, 'login-scene') %}{% include "_settings_login_scene.html" %}{% endif %}
         {% if can_see(user, 'update') %}{% include "_settings_about.html" %}{% endif %}
         {% if can_see(user, 'mcp') %}{% include "_settings_mcp.html" %}{% endif %}
     </div>

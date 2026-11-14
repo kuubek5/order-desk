@@ -32,7 +32,7 @@ from app.services.widget_order import (
     clean_strip_order,
 )
 from app.services.settings_status import build_slab
-from app.services import queue_empty_bg
+from app.services import login_scene, queue_empty_bg
 from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, is_loopback_request, login_redirect, templates
 from app.services.look_prefs import (
     LookError,
@@ -154,13 +154,19 @@ async def license_submit(
     return RedirectResponse(destination, status_code=303)
 
 
+def _login_look(db: Session) -> dict[str, str]:
+    """Сцена за карткою входу (`login_scene`) — у КОЖЕН рендер login.html,
+    інакше після невірного пароля екран мовчки повертався б до відео."""
+    return {"login_scene": login_scene.current(db)}
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, db: Session = Depends(get_db)):
     if user_count(db) == 0:
         return RedirectResponse("/setup", status_code=303)
     if get_current_user(request, db) is not None:
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(request, "login.html", {})
+    return templates.TemplateResponse(request, "login.html", _login_look(db))
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -234,7 +240,7 @@ async def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"error": block_message(wait), "username": username.strip()},
+            {**_login_look(db), "error": block_message(wait), "username": username.strip()},
             status_code=429,
         )
 
@@ -247,7 +253,7 @@ async def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {
+            {**_login_look(db), 
                 "error": block_message(blocked) if blocked else "Невірний логін або пароль",
                 "username": username.strip(),
             },
@@ -296,7 +302,7 @@ async def register_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"register_error": block_message(wait), "register_open": True},
+            {**_login_look(db), "register_error": block_message(wait), "register_open": True},
             status_code=429,
         )
 
@@ -308,7 +314,7 @@ async def register_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {
+            {**_login_look(db), 
                 "register_error": error,
                 "register_open": True,
                 "register_username": username.strip(),
@@ -335,7 +341,7 @@ async def register_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {
+            {**_login_look(db), 
                 "register_error": "Цей логін не підходить — оберіть інший",
                 "register_open": True,
                 "register_full_name": full_name.strip(),

@@ -257,6 +257,13 @@ NAV: tuple = (
                 roles=ADMIN_ONLY,
                 keywords=("анімація", "прогрес", "верстат у рядку", "переходи", "рух", "черга"),
             ),
+            NavItem(
+                key="login-scene",
+                title="Екран входу",
+                href="/settings#login-scene",
+                roles=ADMIN_ONLY,
+                keywords=("вхід", "логін", "сцена", "анімація", "фон", "відео", "заставка"),
+            ),
         ),
     ),
     NavGroup(

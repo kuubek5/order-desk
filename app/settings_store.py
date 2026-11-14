@@ -252,6 +252,9 @@ PREFERENCE_KEYS = {
     # не задано = увімкнено. Смужка прогресу верстата в рядку і плавні переходи.
     "queue_fx_live",
     "queue_fx_motion",
+    # Сцена екрана входу (Робочий процес → «Екран входу», 14.11.26): video (типово),
+    # freza, tochky, svitlo або pult — `app/services/login_scene.py`.
+    "login_scene",
     # Картки бота в стилі CRM (Telegram-бот, 12.11.26): "0" — старий текстовий
     # бот, не задано = нові картки.
     "telegram_bot_pictures",

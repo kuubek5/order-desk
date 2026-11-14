@@ -2,11 +2,11 @@
 Конвеєра в один рядок (той рядок і є рядком видачі)."""
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app.routers.deps import get_db
+from app.routers.deps import get_db, templates
 from app.services.handout_qc import set_qc_checklist
 from app.services.mail_merge import set_merge_enabled
 
@@ -111,3 +111,34 @@ async def save_queue_fx(request: Request, db: Session = Depends(get_db)):
     db.commit()
     request.session["settings_flash"] = {"kind": "success", "message": "Вигляд черги збережено."}
     return RedirectResponse("/settings?saved=1#queue-fx", status_code=303)
+
+
+@router.post("/settings/login-scene")
+async def save_login_scene(request: Request, db: Session = Depends(get_db)):
+    """Сцена екрана входу (власник 14.11.26): одна з п'яти, типово відео."""
+    from app.services import login_scene
+
+    require_settings_admin(request, db)
+    form = await request.form()
+    try:
+        chosen = login_scene.save(db, form.get("scene"))
+    except ValueError:
+        request.session["settings_flash"] = {"kind": "error", "message": "Такої сцени входу немає."}
+        return RedirectResponse("/settings#login-scene", status_code=303)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success", "message": f"Екран входу: «{login_scene.title_of(chosen)}»."}
+    return RedirectResponse("/settings?saved=1#login-scene", status_code=303)
+
+
+@router.get("/settings/login-scene/preview", response_class=HTMLResponse)
+def preview_login_scene(request: Request, scene: str = "", db: Session = Depends(get_db)):
+    """Перегляд сцени без виходу з програми: той самий login.html, але форма
+    нікуди не шле (`scene_preview`), а збережене налаштування не змінюється."""
+    from app.services import login_scene
+
+    require_settings_admin(request, db)
+    return templates.TemplateResponse(
+        request, "login.html",
+        {"login_scene": login_scene.normalize(scene), "scene_preview": True},
+    )

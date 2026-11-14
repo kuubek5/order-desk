@@ -278,6 +278,7 @@ SETTINGS_SECTIONS = [
     "_settings_handout.html",
     "_settings_workday.html",
     "_settings_queue_fx.html",
+    "_settings_login_scene.html",
     "_settings_about.html",
     "_settings_mcp.html",
 ]

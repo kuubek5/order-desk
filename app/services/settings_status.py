@@ -690,6 +690,13 @@ def _slab_queue_fx(ctx: dict) -> Slab:
                         Meter(k="Плавні переходи", v="увімкнено" if fx.get("motion") else "вимкнено")])
 
 
+def _slab_login_scene(ctx: dict) -> Slab:
+    from app.services import login_scene
+
+    title = login_scene.title_of(login_scene.normalize(ctx.get("login_scene")))
+    return Slab(tone=TONE_NONE, label=title, meters=[Meter(k="Сцена за карткою входу", v=title)])
+
+
 def _slab_mail_disc(ctx: dict) -> Slab:
     on = bool(ctx.get("disc_suggest_enabled"))
     people = len(ctx.get("disc_suggest_users") or [])
@@ -726,6 +733,7 @@ _SLAB_BUILDERS = {
     "sum3d": lambda db, ctx: _slab_sum3d(ctx),
     "mail-disc": lambda db, ctx: _slab_mail_disc(ctx),
     "queue-fx": lambda db, ctx: _slab_queue_fx(ctx),
+    "login-scene": lambda db, ctx: _slab_login_scene(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
     "mcp": lambda db, ctx: _slab_mcp(ctx),
 }

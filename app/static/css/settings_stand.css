@@ -658,3 +658,6 @@
    на всю ширину, а «Скасувати» лишається праворуч від усього запису. */
 .scon .stand-drow-invite { align-items: flex-start; }
 .scon .stand-drow-invite .stand-dtext .scmd { margin-top: 6px; }
+
+/* Посилання «Переглянути» в розділі «Екран входу». */
+.lgs-preview { display: inline-block; margin-top: 8px; color: var(--accent); font-size: var(--fs-2, 13px); }

@@ -1,0 +1,31 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Екран входу (власник 14.11.26) ─────────────────────────────────
+           Адміністратор обирає ОДНУ сцену за карткою входу
+           (`app/services/login_scene.py`). Типово — відео, тобто як було.
+           Лише вигляд: форма входу й перевірка пароля від сцени не залежать.
+           «Переглянути» відкриває сцену в новій вкладці без виходу з програми
+           й нічого не зберігає. #}
+        <section id="login-scene" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="login-scene">
+            <div class="box">
+                {{ slab('Екран входу', 'Що рухається за карткою входу. Лише вигляд.', slabs['login-scene']) }}
+                <form method="post" action="/settings/login-scene">
+                    <div class="stand-cells">
+                        {% for key, title, hint in login_scenes %}
+                        <div class="stand-cell w3">
+                            <h3>{{ title }}</h3>
+                            <div class="settings-help">{{ hint }}</div>
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="radio" name="scene" value="{{ key }}" {{ 'checked' if login_scene == key else '' }}>
+                                {{ 'Увімкнено зараз' if login_scene == key else 'Увімкнути' }}
+                            </label>
+                            <a class="lgs-preview" href="/settings/login-scene/preview?scene={{ key }}" target="_blank" rel="noopener">Переглянути</a>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="settings-help">Сцена діє одразу після збереження, для всіх, хто відкриває екран входу. Якщо у Windows увімкнено «зменшити рух», сцена стоїть нерухомо.</div>
+                    <div class="settings-actions">
+                        <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                    </div>
+                </form>
+            </div>
+        </section>
