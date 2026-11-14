@@ -148,7 +148,7 @@ def test_blank_named_in_the_project_when_the_program_name_is_bare(tmp_path):
     """Tolik 13.11.26: з екрана лише `дата_час.iso`, назви програми в проєкті
     немає — але проєкт називає файл диска; кілька різних дисків — не вгадуємо."""
     cam = tmp_path / "2026-11-13_14-53-52.cam"
-    path = "C:\sum\DENTAL\CAM-blanks\zr\14\zr14_14-1000-X37.blk"
+    path = r"C:\sum\DENTAL\CAM-blanks\zr\14\zr14_14-1000-X37.blk"
     cam.write_bytes(b"TECN 2.0\0" + path.encode("utf-16-le") + b"\0\0" + b"\x07" * 50
                     + b"zr14_14-1000-x37.blk\0")
     assert sum3d_names.find_blank_in_project(cam) == "zr14_14-1000-x37"
@@ -169,7 +169,7 @@ def test_board_takes_the_disc_from_the_project_when_the_name_is_bare(tmp_path, m
     f.write_bytes(_blank([_square(10, 5, 6)]))
     projects = tmp_path / "cam"
     projects.mkdir()
-    (projects / "2026-11-13_14-53-52.cam").write_bytes(b"\0C:\b\zr14_14-1000-x37.blk\0")
+    (projects / "2026-11-13_14-53-52.cam").write_bytes(b"\0C:\\b\\zr14_14-1000-x37.blk\0")
     sum3d_disc._list_cache.clear()
     monkeypatch.setattr(sum3d_disc, "_root", str(blanks))
     monkeypatch.setattr(sum3d_names, "_root", str(projects))

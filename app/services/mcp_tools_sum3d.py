@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -23,9 +24,9 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
     from app.settings_store import get_setting, get_sum3d_projects_path
 
     kind = str(args.get("kind") or "both").strip().lower()
-    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare", "blk_shape", "board_disc"):
+    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare", "blk_shape", "board_disc", "disc_link"):
         raise ToolError(
-            "`kind` — blk, cam, both, settings, cam_deep, cam_compare, blk_shape або board_disc (типово both)"
+            "`kind` — blk, cam, both, settings, cam_deep, cam_compare, blk_shape, board_disc або disc_link (типово both)"
         )
     limit = _int_arg(args, "limit", default=2, low=1, high=5)
     blanks_root = (get_setting(db, "cam_blanks_path") or "").strip()
@@ -39,6 +40,8 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
         return _sum3d_blank_shape(blanks_root, str(args.get("brand") or ""), args)
     if kind == "board_disc":
         return _sum3d_board_disc(db, blanks_root, projects_root)
+    if kind == "disc_link":
+        return _sum3d_disc_link(db, blanks_root, projects_root, args)
     if kind in ("cam_deep", "cam_compare") and not projects_root:
         raise ToolError("тека проєктів Sum3D не задана (Налаштування → Шляхи)")
     if kind == "cam_deep":
@@ -106,11 +109,10 @@ def _sum3d_board_disc(db: Session, blanks_root: str, projects_root: str) -> dict
     """Що табло покаже як диск кожного верстата (`sum3d_disc`, `sum3d_names`):
     повна назва програми (для CORiTEC — з проєкту Sum3D, синхронно), файл
     диска, обриси, вільна частка і малюнок дисків — звірити з Sum3D оком."""
-    from pathlib import Path
 
     from PIL import Image, ImageDraw
 
-    from app.services import sum3d_disc, sum3d_names
+    from app.services import sum3d_disc
     from app.services.device_diag import _encode
     from app.services.machines import snapshot
 
@@ -119,27 +121,7 @@ def _sum3d_board_disc(db: Session, blanks_root: str, projects_root: str) -> dict
     for card in snapshot(db):
         if card.is_sisma_machine:
             continue
-        iso = getattr(card, "iso_name", None)
-        program, how = iso, "екран/заголовок"
-        parts = sum3d_names.bare_parts(iso)
-        if parts and projects_root:
-            try:
-                found = sum3d_names.find_in_project(Path(projects_root) / f"{parts[0]}_{parts[1]}.cam", *parts)
-            except OSError as exc:
-                found, how = None, f"проєкт не прочитано: {exc.__class__.__name__}"
-            if found:
-                program, how = found, "з проєкту Sum3D"
-            elif how == "екран/заголовок":
-                how = "у проєкті назви не знайдено"
-        path = sum3d_disc.find_blank(blanks_root, program)
-        disc_how = "з назви програми" if path else None
-        if path is None and parts and projects_root and how == "у проєкті назви не знайдено":
-            try:
-                stem = sum3d_names.find_blank_in_project(Path(projects_root) / f"{parts[0]}_{parts[1]}.cam")
-            except OSError:
-                stem = None
-            path = sum3d_disc.find_blank(blanks_root, stem) if stem else None
-            disc_how = "з проєкту Sum3D (файл диска)" if path else "у проєкті диска не знайдено"
+        iso, program, how, path, disc_how = _machine_disc(card, blanks_root, projects_root)
         shape = sum3d_disc.shape_of(path) if path else None
         row: dict[str, Any] = {
             "верстат": card.target.name,
@@ -176,6 +158,124 @@ def _sum3d_board_disc(db: Session, blanks_root: str, projects_root: str) -> dict
         note: list[str] = []
         result["_image"] = _encode(sheet, note)
     return result
+
+
+def _machine_disc(
+    card: Any, blanks_root: str, projects_root: str
+) -> tuple[Optional[str], Optional[str], str, Optional[Path], Optional[str]]:
+    """(програма з екрана, програма для табло, звідки назва, файл диска,
+    звідки диск) — так само, як табло (`shop_board`), але синхронно."""
+    from app.services import sum3d_disc, sum3d_names
+
+    iso = getattr(card, "iso_name", None)
+    program, how = iso, "екран/заголовок"
+    parts = sum3d_names.bare_parts(iso)
+    if parts and projects_root:
+        try:
+            found = sum3d_names.find_in_project(Path(projects_root) / f"{parts[0]}_{parts[1]}.cam", *parts)
+        except OSError as exc:
+            found, how = None, f"проєкт не прочитано: {exc.__class__.__name__}"
+        if found:
+            program, how = found, "з проєкту Sum3D"
+        elif how == "екран/заголовок":
+            how = "у проєкті назви не знайдено"
+    path = sum3d_disc.find_blank(blanks_root, program)
+    disc_how = "з назви програми" if path else None
+    if path is None and parts and projects_root and how == "у проєкті назви не знайдено":
+        try:
+            stem = sum3d_names.find_blank_in_project(Path(projects_root) / f"{parts[0]}_{parts[1]}.cam")
+        except OSError:
+            stem = None
+        path = sum3d_disc.find_blank(blanks_root, stem) if stem else None
+        disc_how = "з проєкту Sum3D (файл диска)" if path else "у проєкті диска не знайдено"
+    return iso, program, how, path, disc_how
+
+
+_PROGRAM_TAIL = re.compile(r"(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})(?:\.iso)?$", re.I)
+
+
+def _sum3d_disc_link(
+    db: Session, blanks_root: str, projects_root: str, args: dict
+) -> dict[str, Any]:
+    """Чи видно в проєкті програми, ЯКІ обриси диска її (`sum3d_disc_link`):
+    точки обрисів і зсуви матриць. Кадр: обриси зі слідом — яскраві, решта —
+    тьмяні; звірити з Sum3D, що підсвітилась саме ця робота."""
+    from PIL import Image, ImageDraw
+
+    from app.services import sum3d_disc, sum3d_disc_link
+    from app.services.device_diag import _encode
+    from app.services.machines import snapshot
+
+    if not projects_root:
+        raise ToolError("тека проєктів Sum3D не задана (Налаштування → Шляхи)")
+    wanted = str(args.get("machine") or "").strip().lower()
+    rows: list[dict[str, Any]] = []
+    tiles: list[Any] = []
+    for card in snapshot(db):
+        if card.is_sisma_machine or (wanted and wanted not in card.target.name.lower()):
+            continue
+        iso, program, _how, path, _disc_how = _machine_disc(card, blanks_root, projects_root)
+        tail = _PROGRAM_TAIL.search(program or "")
+        row: dict[str, Any] = {"верстат": card.target.name, "програма": program,
+                               "файл_диска": path.name if path else None}
+        rows.append(row)
+        if tail is None or path is None:
+            row["пропущено"] = "немає дати/Sum3D у назві" if tail is None else "диска не знайдено"
+            continue
+        day, sum3d_id = tail.group(1), tail.group(2)
+        row["одиниць_у_черзі"] = _units_for(db, day, sum3d_id)
+        shape = sum3d_disc.shape_of(path)
+        project = Path(projects_root) / f"{day}_{sum3d_id}.cam"
+        try:
+            with open(project, "rb") as handle:
+                data = handle.read(sum3d_files.MAX_READ_BYTES)
+        except OSError as exc:
+            row["пропущено"] = f"проєкт не прочитано: {exc.__class__.__name__}"
+            continue
+        if shape is None:
+            row["пропущено"] = "диск не розібрано"
+            continue
+        row["проєкт_змінено"] = datetime.fromtimestamp(project.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        row["диск_змінено"] = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        report = sum3d_disc_link.link_report(data, shape)
+        row.update(report)
+        row["кадр"] = f"д{len(tiles) + 1}"
+        traced = set(report["обриси_зі_слідом"])
+        img = Image.new("RGB", (300, 300), (24, 20, 14))
+        draw = ImageDraw.Draw(img)
+        k = 130 / shape.radius
+        draw.ellipse([20, 20, 280, 280], outline=(255, 60, 220), width=2)
+        for i, contour in enumerate(shape.contours):
+            pts = [(150 + x * k, 150 - y * k) for x, y in contour]
+            if i + 1 in traced:
+                draw.polygon(pts, outline=(120, 255, 160), fill=(40, 110, 60))
+            else:
+                draw.polygon(pts, outline=(110, 95, 70))
+        draw.text((8, 6), f"{row['кадр']} {card.target.name}", fill=(240, 220, 160))
+        tiles.append(img)
+    result: dict[str, Any] = {"верстати": rows}
+    if tiles:
+        cols = min(3, len(tiles))
+        sheet = Image.new("RGB", (cols * 300, ((len(tiles) + cols - 1) // cols) * 300), (12, 13, 18))
+        for i, tile in enumerate(tiles):
+            sheet.paste(tile, ((i % cols) * 300, (i // cols) * 300))
+        note: list[str] = []
+        result["_image"] = _encode(sheet, note)
+    return result
+
+
+def _units_for(db: Session, day: str, sum3d_id: str) -> dict[str, int]:
+    """Робіт і одиниць у черзі з цим Sum3D у день проєкту (±1) — лише числа."""
+    when = _cam_day(day)
+    works = units = 0
+    for order in db.scalars(select(Order).where(Order.sum3d_id.like(f"%{sum3d_id}%"))).all():
+        tab = parse_sheet_tab(order.sheet_tab)
+        if when is None or tab is None or abs((tab - when).days) > 1:
+            continue
+        works += 1
+        digits = re.match(r"\s*(\d+)", order.quantity or "")
+        units += int(digits.group(1)) if digits else 0
+    return {"робіт": works, "одиниць": units}
 
 
 def _sum3d_cam_deep(db: Session, root: str, args: dict, limit: int) -> dict[str, Any]:
@@ -294,14 +394,16 @@ SUM3D_TOOLS: tuple[Tool, ...] = (
             "між ними шістнадцятково, літери затерто; щоб розібрати, де на диску "
             "вже вирізано. kind=board_disc — що табло покаже як диск кожного "
             "верстата: повна назва програми (CORiTEC — з проєкту Sum3D), файл "
-            "диска, обриси, вільно %, малюнок дисків. Лише читання; текстових значень і назв STL "
+            "диска, обриси, вільно %, малюнок дисків. kind=disc_link (machine — підрядок назви верстата) — чи видно в проєкті Sum3D програми, ЯКІ обриси диска її: точки обрисів (double/float) і зсуви матриць усередині обрису, одиниць у черзі з цим Sum3D, малюнок (обриси зі слідом зелені). Лише читання; текстових значень і назв STL "
             "(імена пацієнтів) не віддає."
         ),
         schema={
             "type": "object",
             "properties": {
                 "kind": {"type": "string",
-                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare, blk_shape, board_disc."},
+                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare, blk_shape, board_disc, disc_link."},
+                "machine": {"type": "string",
+                            "description": "Для disc_link: підрядок назви верстата (boris) — лише він."},
                 "value": {"type": "number",
                           "description": "Для cam_deep: очікуваний коефіцієнт (1.25) — точний пошук і вершини STL × value."},
                 "brand": {"type": "string",
