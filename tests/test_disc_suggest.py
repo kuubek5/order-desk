@@ -23,12 +23,14 @@ HEIGHTS = [10, 12, 14, 16, 18, 20, 22, 25]
 
 
 @pytest.mark.parametrize("material, thickness, expected", [
-    ("пмма A2", 14.7, [16]),  # 14,7 + 1 = 15,7 → 16, бо 15 немає
+    ("пмма A2", 14.7, [16]),  # 14,7 + 0,5 = 15,2 → 16, бо 15 немає
     ("пмма A2", 11.0, [12]),
     ("емо A2", 12.5, [14, 16]),  # мультиколор: ця або ще одна вище
-    ("моно A2", 12.5, [16]),  # влазить у 14 → Monolith на крок вище
-    ("моно A2", 23.5, [25]),  # вищого за 25 немає
-    ("пмма A2", 24.5, []),  # 25,5 — такого диска немає
+    ("моно A2", 12.5, [16]),  # 14 впритул (1,5 мм < 2) → Monolith на крок вище
+    ("моно A2", 11.6, [14, 16]),  # до 14 запас 2,4 мм — кроку немає, як мультиколор
+    ("моно A2", 23.5, [25]),  # впритул, а вищого за 25 немає
+    ("пмма A2", 24.5, [25]),  # 25,0 — запас 0,5 мм (власник 14.11.26; було 1 мм)
+    ("пмма A2", 24.6, []),  # 25,1 — такого диска немає
 ])
 def test_target_height_rules(material, thickness, expected):
     heights, why = disc_suggest.target_heights(thickness, HEIGHTS, disc_suggest.want_of(material))
@@ -227,3 +229,82 @@ def test_disc_on_machine_may_be_higher_than_the_rule(shop):
     # ПММА: правило «найменша висота» (12), але на верстаті стоїть 18 — його.
     pmma = disc_suggest.suggest("пмма A2", atts, str(root), active={"18-a2-x283": seen})
     assert pmma.best is not None and pmma.best.name == "pmma18_18-a2-x283"
+
+
+def test_disc_on_machine_in_rule_beats_higher_one_on_machine(shop):
+    """Два диски в верстатах: 16 мм (за правилом) і 18 мм (вищий, але
+    свіжіший) — першим за правилом (14.11.26, прод: робота 9 мм → «18 мм»)."""
+    root, atts = shop
+    _disc(root, "zr", 18, "zr18_18-Monolith-A2-x53", [])
+    disc_suggest._scan_cache.clear()
+    active = {"16-monolith-a2-x37": datetime(2026, 11, 14, 8),
+              "18-monolith-a2-x53": datetime(2026, 11, 14, 9)}
+    hint = disc_suggest.suggest("моно A2", atts, str(root), active=active)
+    assert hint.best is not None and hint.best.name == "zr16_16-Monolith-A2-x37"
+    assert "zr18_18-Monolith-A2-x53" in {a.name for a in hint.alts}
+
+
+def test_hint_row_shows_work_height(app_db, shop):  # noqa: F811
+    from app.services.disc_suggest import Pick, Suggestion, Want
+    from app.routers.deps import templates
+
+    hint = Suggestion(want=Want(family="Цирконій", line="monolith", shades=frozenset({"a2"})),
+                      thickness=9.06, heights=[14], why="…",
+                      best=Pick(name="zr18_18-Monolith-A2-x53", height=18, free_pct=51,
+                                started=True, paths=[], on_machine=True))
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert "робота ≈9.1 мм → 14 мм (диск вищий)" in html and "на верстаті" in html
+
+
+def test_active_discs_name_the_machine(app_db):  # noqa: F811
+    from app.models import Machine, MachineReading
+
+    _app, factory = app_db
+    with factory() as db:
+        db.add(Machine(name="250i-Tolik", host="192.168.1.58", created_at=datetime(2026, 11, 1)))
+        db.add(MachineReading(host="192.168.1.58", captured_at=datetime(2026, 11, 14, 8),
+                              iso_name="1zr14_14-Monolith-A2-x47_2026-11-14_08-01-02.iso"))
+        db.commit()
+        machines: dict[str, str] = {}
+        disc_suggest.active_discs(db, until=datetime(2026, 11, 14, 12), machines=machines)
+    assert machines == {"14-monolith-a2-x47": "250i-Tolik"}
+
+
+def test_hint_row_names_machine_and_warns_when_no_place_found():
+    from app.routers.deps import templates
+    from app.services.disc_suggest import Pick, Suggestion, Want
+
+    pick = Pick(name="zr14_14-Monolith-A2-x47", height=14, free_pct=30, started=True,
+                paths=[], on_machine=True, machine="250i-Tolik", fit=False)
+    hint = Suggestion(want=Want(family="Цирконій", line="monolith", shades=frozenset({"a2"})),
+                      thickness=9.0, heights=[14], why="…", best=pick)
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert "стоїть у 250i-Tolik" in html and "на верстаті" not in html
+    assert "перевір у Sum3D" in html
+
+
+def test_disc_without_place_is_kept_as_doubtful(shop, monkeypatch):
+    """Розстановка наближена — диск, де вона не знайшла місця, не ховається,
+    а йде після тих, де знайшла (власник 14.11.26)."""
+    root, atts = shop
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits", lambda *a, **k: False)
+    hint = disc_suggest.suggest("моно A2", atts, str(root))
+    assert hint.best is not None and hint.best.fit is False and hint.rejected >= 1
+
+
+def test_hint_deck_shows_up_to_three_candidates():
+    """Власник 14.11.26: кандидати гортаються стрілкою, до 3; видно першого."""
+    from app.routers.deps import templates
+    from app.services.disc_suggest import Pick, Suggestion, Want
+
+    def pick(n):
+        return Pick(name=f"zr14_14-Monolith-A2-x{n}", height=14, free_pct=30, started=True, paths=[])
+
+    hint = Suggestion(want=Want(family="Цирконій", line="monolith", shades=frozenset({"a2"})),
+                      thickness=11.0, heights=[14], why="…", best=pick(1), alts=[pick(2), pick(3)])
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert html.count('class="mdh" data-i=') == 3
+    assert html.count(" hidden title=") == 2, "видно лише першого"
+    assert "mdh-next" in html and "/3" in html
+    single = Suggestion(want=hint.want, thickness=11.0, heights=[14], why="…", best=pick(1))
+    assert "mdh-next" not in templates.get_template("_mail_disc_hint.html").render(hint=single)

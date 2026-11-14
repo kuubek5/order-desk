@@ -1186,6 +1186,39 @@ def _stl_height_worker(stop_event: Event) -> None:
             return
 
 
+# Слід різання програм (`app/services/program_tracks.py`, власник 14.11.26).
+# Локальні теки — часто: старий верстат ЗАБИРАЄ `.iso` з `C:\\CAM-out\\…` до
+# себе, і слід треба зняти раніше. Мережеві (теки нових верстатів) — окремим
+# потоком і рідше: вимкнений ПК верстата висить на таймаутах і не має
+# затримувати локальні.
+PROGRAM_TRACKS_LOCAL_INTERVAL_SECONDS = 8.0
+PROGRAM_TRACKS_NETWORK_INTERVAL_SECONDS = 45.0
+PROGRAM_TRACKS_INITIAL_DELAY_SECONDS = 40.0
+
+
+def _program_tracks_loop(stop_event: Event, *, network: bool, interval: float) -> None:
+    from app.services import program_tracks
+
+    if stop_event.wait(PROGRAM_TRACKS_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                program_tracks.collect_once(db, network=network)
+        except Exception:  # noqa: BLE001 — фоновий збирач не валить застосунок
+            logger.exception("Збирач сліду програм не відпрацював (мережеві теки: %s)", network)
+        if stop_event.wait(interval):
+            return
+
+
+def _program_tracks_worker(stop_event: Event) -> None:
+    _program_tracks_loop(stop_event, network=False, interval=PROGRAM_TRACKS_LOCAL_INTERVAL_SECONDS)
+
+
+def _program_tracks_net_worker(stop_event: Event) -> None:
+    _program_tracks_loop(stop_event, network=True, interval=PROGRAM_TRACKS_NETWORK_INTERVAL_SECONDS)
+
+
 BOARD_MODELS_INTERVAL_SECONDS = 30.0
 BOARD_MODELS_INITIAL_DELAY_SECONDS = 90.0
 
@@ -1404,6 +1437,8 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-desktop-popup", _desktop_popup_worker),
         _BackgroundWorker("kuubmill-stl-height", _stl_height_worker),
         _BackgroundWorker("kuubmill-board-models", _board_models_worker),
+        _BackgroundWorker("kuubmill-program-tracks", _program_tracks_worker),
+        _BackgroundWorker("kuubmill-program-tracks-net", _program_tracks_net_worker),
         _BackgroundWorker("kuubmill-mail-links", _mail_links_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
         _BackgroundWorker("kuubmill-power-schedule", _power_schedule_worker),

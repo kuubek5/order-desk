@@ -35,9 +35,10 @@ import numpy as np
 GRID_MM = 0.5
 # Проміжок навколо кожної нової конструкції: фреза 2,5 мм іде між роботами,
 # плюс тримачі. Менше — «влазить» там, де Sum3D уже не поставить.
-CLEARANCE_MM = 2.0
-# Край диска, куди роботи не ставлять (уступ кріплення).
-RIM_MM = 2.0
+CLEARANCE_MM = 2.8  # власник 14.11.26, бліц (було 2 мм)
+# Край диска, куди роботи не ставлять. Коло у `.blk` — уже робоча зона Sum3D
+# (r 47 на диску 98), тож запас малий (14.11.26: 2 мм відсіювали забагато).
+RIM_MM = 1.0
 ANGLES = (0, 90, 45, 135, 30, 60, 120, 150)
 _MAX_POINTS = 400_000
 
@@ -109,13 +110,32 @@ def piece_mask(points: np.ndarray, angle: float, scale: float = 1.0) -> np.ndarr
     h, w = int(cells[:, 1].max()) + 1, int(cells[:, 0].max()) + 1
     mask = np.zeros((h, w), dtype=bool)
     mask[cells[:, 1], cells[:, 0]] = True
-    # Силует без дірок: ще й заповнити між крайніми клітинками кожного рядка
-    # (вершини сітки рідшають на пологих стінках коронки).
-    rows = np.where(mask.any(axis=1))[0]
-    for row in rows:
-        cols = np.where(mask[row])[0]
-        mask[row, cols[0]: cols[-1] + 1] = True
-    return _dilate(mask, math.ceil(CLEARANCE_MM / GRID_MM))
+    # Проміжки між вершинами закриває роздування на CLEARANCE; замкнені дірки
+    # всередині силуету — заливка. Рядки цілком НЕ заливаємо: дугу мосту це
+    # роздувало до суцільного прямокутника (14.11.26: «майже не знайшов дисків»).
+    return _fill_holes(_dilate(mask, math.ceil(CLEARANCE_MM / GRID_MM)))
+
+
+def _fill_holes(mask: np.ndarray) -> np.ndarray:
+    """Залити порожнини, до яких не дістатись ззовні (вгнутість лишається)."""
+    outside = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=bool)
+    open_ = np.ones_like(outside)
+    open_[1:-1, 1:-1] = ~mask
+    outside[0, :] = True
+    outside[-1, :] = True
+    outside[:, 0] = True
+    outside[:, -1] = True
+    while True:
+        grown = outside.copy()
+        grown[1:, :] |= outside[:-1, :]
+        grown[:-1, :] |= outside[1:, :]
+        grown[:, 1:] |= outside[:, :-1]
+        grown[:, :-1] |= outside[:, 1:]
+        grown &= open_
+        if (grown == outside).all():
+            break
+        outside = grown
+    return ~outside[1:-1, 1:-1]
 
 
 # ── Диск ────────────────────────────────────────────────────────────────────

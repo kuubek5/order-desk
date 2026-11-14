@@ -247,3 +247,19 @@ class TestRealFolderNames2026_09_11:
         assert materials_match("hipc a2", "hips a2")
         assert not materials_match("hips a3", "Hipc колір A2")
         assert not materials_match("hips a3", "pmma a3")
+
+
+def test_shade_between_asterisks_is_read():
+    """14.11.26: тема «Multilayer Monolith *A3*» давала матеріал без кольору."""
+    from app import material_match
+
+    assert material_match.shades("Лунин - Multilayer Monolith *A3*") == {"a3"}
+    assert material_match.shades("mono #A2") == {"a2"}
+    assert material_match.words("Multilayer Monolith *A3*") == {"multilayer", "monolith"}
+
+
+def test_guess_takes_colour_after_asterisk():
+    from app.mail_parser import guess_material_color_family
+
+    assert guess_material_color_family("Лунин - Multilayer Monolith *A3*") == "Monolith A3"
+    assert guess_material_color_family("Monolith #a3.5") == "Monolith a3.5"

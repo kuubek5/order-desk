@@ -73,3 +73,31 @@ def _area(points):
     for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):
         s += x1 * y2 - x2 * y1
     return s / 2
+
+
+def _arch(radius: float = 22.0, width: float = 8.0, step: float = 0.3) -> np.ndarray:
+    """Дуга мосту (підкова): кільце радіусом `radius`, нижня половина відкрита."""
+    pts = []
+    for r in np.arange(radius - width / 2, radius + width / 2 + 1e-9, step):
+        for a in np.arange(0, math.pi + 1e-9, step / r):
+            pts.append((r * math.cos(a), r * math.sin(a)))
+    return np.array(pts)
+
+
+def test_arch_bridge_stays_open_inside():
+    """Підкова не заливається суцільно: усередині дуги лишається місце (14.11.26:
+    заливка рядків роздувала міст до прямокутника й відсіювала диски)."""
+    mask = disc_fit.piece_mask(_arch(), 0)
+    h, w = mask.shape
+    assert not mask[h // 4, w // 2], "середина під дугою вільна"
+    assert mask.mean() < 0.6
+
+
+def test_closed_hole_inside_silhouette_is_filled():
+    ring = []
+    for r in np.arange(8, 10.01, 0.3):
+        for a in np.arange(0, 2 * math.pi, 0.3 / r):
+            ring.append((r * math.cos(a), r * math.sin(a)))
+    mask = disc_fit.piece_mask(np.array(ring), 0)
+    h, w = mask.shape
+    assert mask[h // 2, w // 2], "замкнена порожнина — частина силуету"

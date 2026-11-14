@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -24,9 +25,9 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
     from app.settings_store import get_setting, get_sum3d_projects_path
 
     kind = str(args.get("kind") or "both").strip().lower()
-    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare", "blk_shape", "board_disc", "disc_link"):
+    if kind not in ("both", "blk", "cam", "settings", "cam_deep", "cam_compare", "blk_shape", "board_disc", "disc_link", "iso_link"):
         raise ToolError(
-            "`kind` — blk, cam, both, settings, cam_deep, cam_compare, blk_shape, board_disc або disc_link (типово both)"
+            "`kind` — blk, cam, both, settings, cam_deep, cam_compare, blk_shape, board_disc, disc_link або iso_link (типово both)"
         )
     limit = _int_arg(args, "limit", default=2, low=1, high=5)
     blanks_root = (get_setting(db, "cam_blanks_path") or "").strip()
@@ -42,6 +43,8 @@ def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
         return _sum3d_board_disc(db, blanks_root, projects_root)
     if kind == "disc_link":
         return _sum3d_disc_link(db, blanks_root, projects_root, args)
+    if kind == "iso_link":
+        return _sum3d_iso_link(db, blanks_root, projects_root, args)
     if kind in ("cam_deep", "cam_compare") and not projects_root:
         raise ToolError("тека проєктів Sum3D не задана (Налаштування → Шляхи)")
     if kind == "cam_deep":
@@ -264,6 +267,104 @@ def _sum3d_disc_link(
     return result
 
 
+def _sum3d_iso_link(
+    db: Session, blanks_root: str, projects_root: str, args: dict
+) -> dict[str, Any]:
+    """Слід різання програми (`program_tracks`) проти обрисів диска: теки
+    програм із Sum3D, що вже знято, і для кожного верстата — які обриси його
+    програма ріже й наскільки слід ліг на обриси. Кадр: свої обриси зелені,
+    клітинки сліду — жовті точки (як вони лягли після підбору знака осей)."""
+    from PIL import Image, ImageDraw
+
+    from app.services import program_tracks, sum3d_disc
+    from app.services.device_diag import _encode
+    from app.services.machines import snapshot
+
+    wanted = str(args.get("machine") or "").strip().lower()
+    status = program_tracks.folder_status()
+    folders: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in program_tracks.known_folders(db):
+        key = item.path.lower()
+        if key in seen:
+            for entry in folders:
+                if entry["тека"].lower() == key and item.machine not in entry["верстати_sum3d"]:
+                    entry["верстати_sum3d"].append(item.machine)
+            continue
+        seen.add(key)
+        state = status.get(item.path)
+        if state is None and not item.is_network:
+            state = {"є": os.path.isdir(item.path)}
+        folders.append({"тека": item.path, "верстати_sum3d": [item.machine], "стан": state or "ще не перевірено"})
+    # Спершу теки, де щось є; порожні заводські `C:\iCAM V5\CAM-out\…` — у кінець.
+    folders.sort(key=lambda r: not (isinstance(r["стан"], dict) and (r["стан"].get("програм") or r["стан"].get("є"))))
+    try:
+        cached = sorted(program_tracks.cache_dir().glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        cached = []
+    recent = []
+    for cache_file in cached[:8]:
+        saved = program_tracks._load(cache_file)
+        if saved is not None:
+            recent.append({"програма": saved.name, "знято": saved.captured_at, "звідки": saved.source,
+                           "клітинок": saved.cells, "об'єктів_у_шапці": saved.objects,
+                           "диск_у_шапці": saved.blank or None, "нахилених_пропущено": saved.skipped_tilted})
+    rows: list[dict[str, Any]] = []
+    tiles: list[Any] = []
+    for card in snapshot(db):
+        if card.is_sisma_machine or (wanted and wanted not in card.target.name.lower()):
+            continue
+        iso, program, _how, path, _disc_how = _machine_disc(card, blanks_root, projects_root)
+        row: dict[str, Any] = {"верстат": card.target.name, "програма": program,
+                               "файл_диска": path.name if path else None}
+        rows.append(row)
+        track = program_tracks.find_track(program) or program_tracks.find_track(iso)
+        if track is None:
+            row["пропущено"] = "сліду програми ще не знято"
+            continue
+        row["слід"] = {"знято": track.captured_at, "звідки": track.source, "клітинок": track.cells,
+                       "диск_у_шапці": track.blank or None, "об'єктів_у_шапці": track.objects}
+        if path is None and track.blank:
+            path = sum3d_disc.find_blank(blanks_root, track.blank)
+            row["файл_диска"] = path.name if path else None
+        shape = sum3d_disc.shape_of(path) if path else None
+        if shape is None:
+            row["пропущено"] = "диска не знайдено або не розібрано"
+            continue
+        report = program_tracks.match(track, shape.radius, shape.contours)
+        row.update(report)
+        row["кадр"] = f"д{len(tiles) + 1}"
+        own = set(report["свої_обриси"])
+        img = Image.new("RGB", (300, 300), (24, 20, 14))
+        draw = ImageDraw.Draw(img)
+        k = 130 / shape.radius
+        draw.ellipse([20, 20, 280, 280], outline=(255, 60, 220), width=2)
+        for i, contour in enumerate(shape.contours):
+            pts = [(150 + x * k, 150 - y * k) for x, y in contour]
+            if i + 1 in own:
+                draw.polygon(pts, outline=(120, 255, 160), fill=(40, 110, 60))
+            else:
+                draw.polygon(pts, outline=(110, 95, 70))
+        for side, cells in track.sides.items():
+            sx, sy = report["боки"][side]["знак_xy"]
+            colour = (255, 220, 90) if side == "0" else (255, 150, 60)
+            for cx, cy in cells[:: max(1, len(cells) // 1500)]:
+                px, py = 150 + cx * program_tracks.CELL_MM * sx * k, 150 - cy * program_tracks.CELL_MM * sy * k
+                draw.point((px, py), fill=colour)
+        draw.text((8, 6), f"{row['кадр']} {card.target.name}", fill=(240, 220, 160))
+        tiles.append(img)
+    result: dict[str, Any] = {"теки_програм": folders, "знято_останні": recent, "знято_всього": len(cached),
+                              "верстати": rows}
+    if tiles:
+        cols = min(3, len(tiles))
+        sheet = Image.new("RGB", (cols * 300, ((len(tiles) + cols - 1) // cols) * 300), (12, 13, 18))
+        for i, tile in enumerate(tiles):
+            sheet.paste(tile, ((i % cols) * 300, (i // cols) * 300))
+        note: list[str] = []
+        result["_image"] = _encode(sheet, note)
+    return result
+
+
 def _units_for(db: Session, day: str, sum3d_id: str) -> dict[str, int]:
     """Робіт і одиниць у черзі з цим Sum3D у день проєкту (±1) — лише числа."""
     when = _cam_day(day)
@@ -394,16 +495,16 @@ SUM3D_TOOLS: tuple[Tool, ...] = (
             "між ними шістнадцятково, літери затерто; щоб розібрати, де на диску "
             "вже вирізано. kind=board_disc — що табло покаже як диск кожного "
             "верстата: повна назва програми (CORiTEC — з проєкту Sum3D), файл "
-            "диска, обриси, вільно %, малюнок дисків. kind=disc_link (machine — підрядок назви верстата) — чи видно в проєкті Sum3D програми, ЯКІ обриси диска її: точки обрисів (double/float) і зсуви матриць усередині обрису, одиниць у черзі з цим Sum3D, малюнок (обриси зі слідом зелені). Лише читання; текстових значень і назв STL "
+            "диска, обриси, вільно %, малюнок дисків. kind=disc_link (machine — підрядок назви верстата) — чи видно в проєкті Sum3D програми, ЯКІ обриси диска її: точки обрисів (double/float) і зсуви матриць усередині обрису, одиниць у черзі з цим Sum3D, малюнок (обриси зі слідом зелені). kind=iso_link (machine) — слід різання з самої програми `.iso` проти обрисів диска: теки програм із Machines.arl Sum3D, що вже знято, свої обриси програми, частка сліду на обрисах, малюнок (свої обриси зелені, слід — точки). Лише читання; текстових значень і назв STL "
             "(імена пацієнтів) не віддає."
         ),
         schema={
             "type": "object",
             "properties": {
                 "kind": {"type": "string",
-                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare, blk_shape, board_disc, disc_link."},
+                         "description": "blk, cam, both (типово), settings, cam_deep, cam_compare, blk_shape, board_disc, disc_link, iso_link."},
                 "machine": {"type": "string",
-                            "description": "Для disc_link: підрядок назви верстата (boris) — лише він."},
+                            "description": "Для disc_link та iso_link: підрядок назви верстата (boris) — лише він."},
                 "value": {"type": "number",
                           "description": "Для cam_deep: очікуваний коефіцієнт (1.25) — точний пошук і вершини STL × value."},
                 "brand": {"type": "string",

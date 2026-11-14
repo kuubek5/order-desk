@@ -559,6 +559,22 @@ window.addEventListener("pageshow", (event) => {
   if (!event.persisted) return;
   document.querySelectorAll(".famchips a.is-going").forEach((link) => link.classList.remove("is-going"));
 });
+// Кандидати диска в картці листа (_mail_disc_hint.html, 14.11.26): «›» показує
+// наступну картку колоди по колу. Лише клієнтське перемикання, без запиту.
+document.addEventListener("click", (event) => {
+  const next = event.target.closest(".mdh-next");
+  if (!next) return;
+  event.preventDefault();
+  const deck = next.closest(".mdh-deck");
+  if (!deck) return;
+  const cards = Array.from(deck.querySelectorAll(".mdh[data-i]"));
+  if (cards.length < 2) return;
+  const shown = cards.findIndex((card) => !card.hidden);
+  const to = (shown + 1) % cards.length;
+  cards.forEach((card, i) => { card.hidden = i !== to; });
+  const pos = next.querySelector(".mdh-pos");
+  if (pos) pos.textContent = String(to + 1);
+});
 document.addEventListener("click", (event) => {
   if (event.target.closest(".mailrow") && !event.target.closest(".mailcb-wrap")) {
     mailRowOpenedAt = Date.now();

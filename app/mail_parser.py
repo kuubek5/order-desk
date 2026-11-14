@@ -60,7 +60,9 @@ _MAT_FAMILY = (
 # BL1–BL4 (відбілені): без них «Monolith BL3» читалось як голе «Monolith».
 _MAT_COLOR = r"(?:[аa]\s?[1-4](?:[.,]5)?|(?:bl|бл)\s?[1-4]|[58]00|коре[яйю]\w*|korea)"
 _MATERIAL_FAMILY_RE = re.compile(
-    r"\b" + _MAT_FAMILY + r"(?:[\s:._–-]*" + _MAT_COLOR + r")?",
+    # `*` і `#` між назвою й кольором — теж роздільник: «Multilayer Monolith *A3*»
+    # давало голе «Monolith» без кольору (14.11.26).
+    r"\b" + _MAT_FAMILY + r"(?:[\s:._–*#-]*" + _MAT_COLOR + r")?",
     re.IGNORECASE,
 )
 
@@ -97,7 +99,7 @@ def guess_material_color_family(text: str | None) -> str | None:
     match = _MATERIAL_FAMILY_RE.search(text)
     if not match:
         return None
-    return re.sub(r"\s+", " ", match.group(0)).strip() or None
+    return re.sub(r"\s+", " ", re.sub(r"[*#]", " ", match.group(0))).strip() or None
 
 
 # Ознаки пересланого листа: тема з Fwd/Пересл або службовий роздільник, який

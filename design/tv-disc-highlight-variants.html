@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Підсвітка обрисів на табло</title>
+<style>
+  :root{--bg:#0d0a06;--cell:#171008;--ink:#f3e9da;--ink-2:#c9b79c;--ink-3:#8c7a62;
+    --accent:#ffb347;--accent-rgb:255,179,71;--green:#4fd18b;--green-rgb:79,209,139}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px 16px 40px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .lead{color:var(--ink-2);margin:0 0 18px;max-width:900px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;max-width:1300px}
+  .var{border:1px solid rgba(255,255,255,.09);border-radius:10px;background:#120c06;padding:14px}
+  .var h2{font-size:17px;margin:0 0 2px}
+  .var p{margin:0 0 12px;color:var(--ink-2);font-size:13.5px}
+  /* Плитка верстата — як на табло (shop_board.html), спрощено. */
+  .mc{display:flex;flex-direction:column;gap:10px;border:1px solid rgba(var(--accent-rgb),.34);border-radius:6px;background:var(--cell);padding:12px 14px}
+  .mc-top{display:flex;align-items:center;gap:8px}
+  .mc-top b{font-weight:700;font-size:20px;letter-spacing:-.02em}
+  .mc-top .sub{color:var(--ink-3);font-size:13px}
+  .mc-top em{margin-left:auto;font-style:normal;color:var(--accent);font-size:13px}
+  .mc-mid{color:var(--ink-2);font-size:13px;font-family:ui-monospace,Consolas,monospace}
+  .mc-bot{display:flex;align-items:flex-end;gap:12px}
+  .pc{margin-left:auto;font:700 34px/1 ui-monospace,Consolas,monospace;color:var(--ink)}
+  .pc small{font-size:16px;color:var(--ink-3)}
+  svg.disc{width:84px;height:84px;display:block;overflow:visible}
+  .zoom{display:flex;justify-content:center;margin-top:12px}
+  .zoom svg.disc{width:220px;height:220px}
+  .zoom-cap{text-align:center;color:var(--ink-3);font-size:12px;margin-top:4px}
+  /* Спільне: тіло диска, доріжка й дуга відсотка — як на табло. */
+  .disc-body{fill:#1d150c;stroke:rgba(255,212,137,.22);stroke-width:1.5}
+  .disc-track{fill:none;stroke:rgba(255,255,255,.08);stroke-width:4}
+  .disc-arc{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round}
+  /* Як зараз: усі обриси одним кольором. */
+  .rc{fill:rgba(255,212,137,.10);stroke:rgba(255,212,137,.62);stroke-width:.9;stroke-linejoin:round}
+
+  /* A · Бурштин: поточні — суцільний акцент, решта приглушена. */
+  .v-a .rc{fill:rgba(255,212,137,.05);stroke:rgba(255,212,137,.28)}
+  .v-a .rc.now{fill:rgba(var(--accent-rgb),.85);stroke:#ffd9a0;stroke-width:1.1}
+
+  /* B · Зелений, як у Sum3D: поточні зелені, решта бурштинові контури. */
+  .v-b .rc{fill:none;stroke:rgba(255,212,137,.35)}
+  .v-b .rc.now{fill:rgba(var(--green-rgb),.55);stroke:var(--green);stroke-width:1.2}
+
+  /* C · Сяйво: поточні з м'яким пульсом обведення, решта приглушена. */
+  .v-c .rc{fill:rgba(255,212,137,.05);stroke:rgba(255,212,137,.28)}
+  .v-c .rc.now{fill:rgba(var(--accent-rgb),.22);stroke:#ffd9a0;stroke-width:1.6;
+    filter:drop-shadow(0 0 2px rgba(var(--accent-rgb),.9));animation:glow 2.4s ease-in-out infinite}
+  @keyframes glow{0%,100%{stroke-opacity:1;fill-opacity:.22}50%{stroke-opacity:.45;fill-opacity:.06}}
+
+  /* D · Прогрес по обрисах: вирізані — заповнені, наступна в черзі — контур
+     з пунктиром, решта диска приглушена. Кількість заповнених = відсоток. */
+  .v-d .rc{fill:rgba(255,212,137,.04);stroke:rgba(255,212,137,.22)}
+  .v-d .rc.now{fill:rgba(var(--accent-rgb),.85);stroke:#ffd9a0;stroke-width:1.1}
+  .v-d .rc.next{fill:rgba(var(--accent-rgb),.10);stroke:var(--accent);stroke-width:1.3;stroke-dasharray:2.2 1.6;
+    animation:march 1.6s linear infinite}
+  @keyframes march{to{stroke-dashoffset:-7.6}}
+
+  @media (prefers-reduced-motion:reduce){.v-c .rc.now,.v-d .rc.next{animation:none}}
+
+  .note{margin-top:20px;color:var(--ink-3);font-size:13px;max-width:900px}
+  .note b{color:var(--ink-2)}
+</style>
+</head>
+<body>
+<h1>Підсвітка обрисів, що фрезеруються — варіанти</h1>
+<p class="lead">Та сама плитка верстата 350i-Boris: диск Monolith A4 16 мм, 9 розставлених робіт, з них зараз ріжуться 2 (програма 16-07-15, 62 %). Угорі плитка в натуральному розмірі, як на ТВ, нижче — збільшений диск.</p>
+
+<div class="grid">
+  <section class="var v-a">
+    <h2>A · Бурштин</h2>
+    <p>Поточні роботи — суцільний бурштин, решта ледь видна. Найспокійніший і найчитабельніший з відстані.</p>
+    <div class="tile"></div>
+  </section>
+  <section class="var v-b">
+    <h2>B · Зелений, як у Sum3D</h2>
+    <p>Поточні — зелені, як оператор бачить у CAM; решта — бурштинові контури. Зелений вибивається з теми табло, зате одразу «той самий, що в Sum3D».</p>
+    <div class="tile"></div>
+  </section>
+  <section class="var v-c">
+    <h2>C · Сяйво</h2>
+    <p>Поточні обведені й повільно «дихають» (2,4 с). Рух притягує око, але на 9 плитках одночасно може втомлювати.</p>
+    <div class="tile"></div>
+  </section>
+  <section class="var v-d">
+    <h2>D · Прогрес по роботах</h2>
+    <p>Із 3 робіт програми 2 вже вирізані (суцільні), наступна — пунктиром, що біжить. Найбільше інформації, але «яка вже вирізана» — оцінка з відсотка, не з верстата.</p>
+    <div class="tile"></div>
+  </section>
+</div>
+
+<p class="note"><b>Спільне для всіх:</b> дуга відсотка й число лишаються як зараз; на плитці «зняти» підсвітка зникає (усе вирізано). Якщо KuubMill не впевнений, які обриси поточні, — диск малюється як зараз, одним кольором, без вгадування.</p>
+
+<script>
+// Обриси-«коронки»: коло з легкими хвилями по краю, у координатах диска 0–100.
+const blobs = [
+  {x:44,y:50,r:8.2,s:1},{x:58,y:30,r:7.4,s:2},{x:60,y:77,r:8.0,s:3},{x:73,y:22,r:6.4,s:4},
+  {x:62,y:54,r:9.0,s:5},{x:80,y:40,r:7.2,s:6},{x:77,y:66,r:8.6,s:7},{x:44,y:70,r:7.0,s:8},{x:40,y:30,r:7.0,s:9}
+];
+const nowIdx = [0, 6];          // ріжуться зараз (A–C)
+const progress = {done:[0, 6], next:4}; // D: вирізано 2, наступна
+function path(b){
+  const n = 28; let d = "";
+  for (let i = 0; i <= n; i++){
+    const a = i / n * Math.PI * 2;
+    const k = 1 + 0.045 * Math.sin(a * 4 + b.s) + 0.035 * Math.sin(a * 2 + b.s * 2);
+    const px = (b.x + Math.cos(a) * b.r * k).toFixed(2), py = (b.y + Math.sin(a) * b.r * k).toFixed(2);
+    d += (i ? "L" : "M") + px + " " + py;
+  }
+  return d + "Z";
+}
+function disc(kind, size){
+  const pct = 62, c = 2 * Math.PI * 47;
+  let rc = "";
+  blobs.forEach((b, i) => {
+    let cls = "rc";
+    if (kind === "d"){ if (progress.done.includes(i)) cls += " now"; else if (i === progress.next) cls += " next"; }
+    else if (nowIdx.includes(i)) cls += " now";
+    rc += `<path class="${cls}" d="${path(b)}"></path>`;
+  });
+  return `<svg class="disc" viewBox="0 0 100 100" aria-hidden="true">
+    <circle class="disc-body" cx="50" cy="50" r="42"></circle>${rc}
+    <circle class="disc-track" cx="50" cy="50" r="47"></circle>
+    <circle class="disc-arc" cx="50" cy="50" r="47" transform="rotate(-90 50 50)"
+      stroke-dasharray="${c.toFixed(1)}" style="stroke-dashoffset:${(c * (1 - pct / 100)).toFixed(1)}"></circle></svg>`;
+}
+document.querySelectorAll(".var").forEach(v => {
+  const kind = v.className.match(/v-(\w)/)[1];
+  v.querySelector(".tile").innerHTML = `
+    <div class="mc">
+      <div class="mc-top"><b>350i-Boris</b><span class="sub">ZR</span><em>фрезерує</em></div>
+      <div class="mc-mid">2_16-Monolith-A4-x05 · 16-07-15</div>
+      <div class="mc-bot">${disc(kind)}<span class="pc">62<small>%</small></span></div>
+    </div>
+    <div class="zoom">${disc(kind)}</div>
+    <div class="zoom-cap">збільшено</div>`;
+});
+</script>
+</body>
+</html>

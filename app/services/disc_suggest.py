@@ -37,9 +37,17 @@ from app.services import disc_fit, sum3d_disc
 from app.services.cam_blanks import parse_blank_name, scan_blanks
 from app.services.stl_height import MAX_PLAUSIBLE_MM, _cached_z_extent, is_rotated_export, thickness_mm
 
-MARGIN_MM = 1.0
-# Майже вирізаний диск — найімовірніше вже викинуто.
-NEARLY_USED = 0.15
+# Мінімальний запас між висотою роботи й диска (власник 14.11.26, бліц: 0,5;
+# було 1 мм — цех ставить 13,4 мм на диск 14).
+MARGIN_MM = 0.5
+# Monolith іде на крок вище лише ВПРИТУЛ: коли до базової висоти лишається
+# менше цього (власник 14.11.26, бліц; було «завжди» — у 15 з 32 розбіжних
+# робіт цех узяв базову висоту: 9,4 мм на диск 12).
+STEP_UP_WITHIN_MM = 2.0
+# Майже вирізаний диск — найімовірніше вже викинуто. Було 15 %, але «влазить
+# чи ні» тепер вирішує розстановка (disc_fit), а 15 % відкидали робочі диски:
+# x51 (Monolith A3.5 14) 14.11.26 Sum3D узяв, підказка — ні.
+NEARLY_USED = 0.05
 # Основи конструкцій не лягають щільно: проміжки, конектори, краї.
 PACKING = 1.8
 # Скільки дисків перевіряти справжньою розстановкою за одну підказку.
@@ -240,10 +248,11 @@ def target_heights(thickness: float, available: list[int], want: Want) -> tuple[
     base = fitting[0]
     above = fitting[1] if len(fitting) > 1 else None
     why = f"≈{thickness:.1f} + запас {MARGIN_MM:g} → {base} мм"
-    if want.line in STEP_UP_LINES:
+    if want.line in STEP_UP_LINES and base - thickness < STEP_UP_WITHIN_MM:
         if above is None:
-            return [base], why + f"; {LINES[want.line][0]} +1 крок — вищого немає"
-        return [above], why + f"; {LINES[want.line][0]} — завжди на крок вище → {above} мм"
+            return [base], why + f"; {LINES[want.line][0]} впритул, +1 крок — вищого немає"
+        return [above], why + (f"; {LINES[want.line][0]} впритул (запас < {STEP_UP_WITHIN_MM:g} мм)"
+                               f" → на крок вище, {above} мм")
     if want.multilayer and above is not None:
         return [base, above], why + f" (мультиколор: {base} або {above})"
     return [base], why
@@ -338,6 +347,12 @@ class Pick:
     started: bool
     paths: list[str]
     on_machine: bool = False
+    # На якому верстаті стоїть (назва з Налаштувань), коли відомо.
+    machine: str = ""
+    # Розстановка конструкцій: True — знайшла місце, False — не знайшла (диск
+    # лишається підказкою з попередженням: розстановка наближена), None — не
+    # перевірялась (немає STL з exocad).
+    fit: Optional[bool] = None
 
 
 @dataclass
@@ -355,33 +370,39 @@ class Suggestion:
     rejected: int = 0
 
 
-def active_discs(db, *, until: Optional[datetime] = None,
-                 days: int = ACTIVE_DAYS) -> dict[str, datetime]:
+def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAYS,
+                 machines: Optional[dict[str, str]] = None) -> dict[str, datetime]:
     """Диски з назв програм на верстатах за `days` днів до `until`: ключ → коли
-    востаннє. Лише читання `MachineReading`."""
+    востаннє. `machines` (якщо передано) наповнюється ключ → назва верстата,
+    на якому диск був востаннє (власник 14.11.26: писати, НА ЯКОМУ верстаті).
+    Лише читання `MachineReading` і `Machine`."""
     from sqlalchemy import func, select
 
-    from app.models import MachineReading
+    from app.models import Machine, MachineReading
     from app.services.disc_check import program_disc
 
     end = until or datetime.now()
     rows = db.execute(
-        select(MachineReading.iso_name, func.max(MachineReading.captured_at))
+        select(MachineReading.iso_name, MachineReading.host, func.max(MachineReading.captured_at))
         .where(MachineReading.iso_name.is_not(None),
                MachineReading.captured_at >= end - timedelta(days=days),
                MachineReading.captured_at <= end)
-        .group_by(MachineReading.iso_name)
+        .group_by(MachineReading.iso_name, MachineReading.host)
     ).all()
+    names = {host: name for host, name in db.execute(select(Machine.host, Machine.name)).all()}
     out: dict[str, datetime] = {}
-    for iso, seen in rows:
+    for iso, host, seen in rows:
         disc = program_disc(iso)
         if disc is not None and seen is not None and (disc.key not in out or seen > out[disc.key]):
             out[disc.key] = seen
+            if machines is not None:
+                machines[disc.key] = names.get(host, "")
     return out
 
 
 def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: Optional[str],
-            *, max_reads: int = 60, active: Optional[dict[str, datetime]] = None) -> Suggestion:
+            *, max_reads: int = 60, active: Optional[dict[str, datetime]] = None,
+            machines: Optional[dict[str, str]] = None) -> Suggestion:
     want = want_of(material_text)
     result = Suggestion(want=want)
     if not want.family or not want.shades and want.family == ZIRCON:
@@ -437,33 +458,48 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
                 continue
         picks.append(Pick(name=disc.stem, height=disc.height or 0, free_pct=round(free * 100),
                           started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape),
-                          on_machine=disc.key in active))
+                          on_machine=disc.key in active,
+                          machine=(machines or {}).get(disc.key, "")))
         shapes[disc.stem] = shape
     # Найперше — диск, що вже стоїть у верстаті (найсвіжіший). Далі як було:
     # початий першим (власник), серед початих — де менше вільного: добити диск.
+    # Серед дисків із верстата — спершу ті, що за правилом висоти, і лише
+    # потім вищі (14.11.26: робота 9 мм отримувала «18 мм» лише тому, що той
+    # верстат працював останнім, хоч у сусідньому стояв диск 14 мм).
     on_machine = sorted((p for p in picks if p.on_machine),
-                        key=lambda p: active.get(_key_of(p.name), datetime.min), reverse=True)
+                        key=lambda p: (rank(p.height),
+                                       -active[_key_of(p.name)].timestamp()
+                                       if _key_of(p.name) in active else 0.0))
     picks.sort(key=lambda p: (rank(p.height), not p.started,
                               p.free_pct if p.started else 100))
     ordered = on_machine + [p for p in picks if p.started and not p.on_machine] +         [p for p in picks if not p.started and not p.on_machine]
     # Сума площ лише відсіяла явно замалі. Тепер — справжня розстановка
     # конструкцій (власник 14.11.26), у порядку пріоритету й лише поки не
     # знайдеться найкращий і два запасні: кожна перевірка — десятки мс.
+    # Розстановка — наближення (власник 14.11.26: «теоретично може помилятися»),
+    # тож диск, де вона місця не знайшла, не ховаємо: він іде після тих, де
+    # знайшла, і підписаний «перевір у Sum3D» — коли кращого немає.
     accepted: list[Pick] = []
+    doubtful: list[Pick] = []
     tries = 0
     for pick in ordered:
-        if len(accepted) >= 3 or tries >= MAX_FIT_TRIES:
+        if len(accepted) >= 3:
             break
-        if pieces:
+        if pieces and tries < MAX_FIT_TRIES:
             tries += 1
             shape = shapes[pick.name]
-            if not disc_fit.fits(shape.radius, shape.contours, pieces, letter_scale(want.family)):
+            pick.fit = disc_fit.fits(shape.radius, shape.contours, pieces, letter_scale(want.family))
+            if not pick.fit:
                 result.rejected += 1
+                doubtful.append(pick)
                 continue
         accepted.append(pick)
-    if accepted:
-        result.best = accepted[0]
-        result.alts = accepted[1:3]
+    # Диск «місця не знайдено» — лише коли жоден не влазить: поруч із дисками,
+    # де місце є, він тільки заважав би.
+    ranked = accepted or doubtful
+    if ranked:
+        result.best = ranked[0]
+        result.alts = ranked[1:3]
     result.new_disc = f"новий диск {result.heights[0]} мм {want.label()}"
     return result
 

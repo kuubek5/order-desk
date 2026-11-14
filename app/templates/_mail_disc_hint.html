@@ -1,21 +1,38 @@
 {# Рядок підказки диска (варіант A, власник 12.11.26). Іконка — справжній диск
-   з вирізами (ті самі обриси, що на табло). Чому така висота й запасні диски —
-   у підказці при наведенні. Порожній результат — тихий рядок, не помилка. #}
+   з вирізами (ті самі обриси, що на табло). Чому така висота — у підказці при
+   наведенні. Порожній результат — тихий рядок, не помилка.
+
+   Кандидати (власник 14.11.26, бліц: до 3): найкращий і запасні — картки однієї
+   колоди, видно одну, «›» гортає по колу (mail.js, `.mdh-next`, без запиту на
+   сервер). Порядок для будь-якої роботи: диск у верстаті, далі початий із
+   найменшим вільним місцем, куди робота влазить, далі новий. #}
 {% if hint.best %}
-{% set p = hint.best %}
-<div class="mdh" title="{{ hint.why }}{% if hint.alts %} · інші: {% for a in hint.alts %}{{ a.name }} ({{ a.free_pct }} % вільно){% if not loop.last %}, {% endif %}{% endfor %}{% endif %} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
-    <svg class="mdh-disc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="rim"/>{% for d in p.paths %}<path d="{{ d }}" class="cut"/>{% endfor %}</svg>
-    <span class="mdh-text">
-        <span class="mdh-name mono">{{ p.height }} мм · {{ p.name }}</span>
-        <span class="mdh-free mono">{% if p.on_machine %}на верстаті · {% endif %}вільно {{ p.free_pct }} % · {% if p.started %}влазить{% else %}новий у теці{% endif %}</span>
-    </span>
+{% set cands = [hint.best] + hint.alts %}
+<div class="mdh-deck" data-count="{{ cands|length }}">
+    {% for p in cands %}
+    <div class="mdh" data-i="{{ loop.index0 }}"{% if not loop.first %} hidden{% endif %} title="{{ hint.why }} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
+        <svg class="mdh-disc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="rim"/>{% for d in p.paths %}<path d="{{ d }}" class="cut"/>{% endfor %}</svg>
+        <span class="mdh-text">
+            <span class="mdh-name mono">{{ p.height }} мм · {{ p.name }}</span>
+            {# Висота самої роботи й висота за правилом — завжди на виду (власник
+               14.11.26: «чому висоту конструкцій тепер не підказує»): диск із
+               верстата буває вищим за правило. #}
+            <span class="mdh-free mono">{% if hint.thickness %}робота ≈{{ '%.1f'|format(hint.thickness) }} мм → {{ hint.heights|join(' / ') }} мм{% if p.height not in hint.heights %} (диск вищий){% endif %} · {% endif %}{% if p.on_machine %}{% if p.machine %}стоїть у {{ p.machine }}{% else %}на верстаті{% endif %} · {% endif %}вільно {{ p.free_pct }} % · {% if p.fit is sameas false %}місця не знайдено — перевір у Sum3D{% elif p.started %}влазить{% else %}новий у теці{% endif %}</span>
+        </span>
+    </div>
+    {% endfor %}
+    {% if cands|length > 1 %}
+    <button type="button" class="mdh-next mono" aria-label="Наступний диск-кандидат" title="Наступний кандидат">
+        <span class="mdh-pos">1</span>/{{ cands|length }} ›
+    </button>
+    {% endif %}
 </div>
 {% elif hint.heights %}
 <div class="mdh is-new" title="{{ hint.why }}">
     <svg class="mdh-disc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="rim"/></svg>
     <span class="mdh-text">
         <span class="mdh-name mono">{{ hint.new_disc }}</span>
-        <span class="mdh-free">початого диска з місцем немає</span>
+        <span class="mdh-free">{% if hint.thickness %}робота ≈{{ '%.1f'|format(hint.thickness) }} мм · {% endif %}початого диска з місцем немає</span>
     </span>
 </div>
 {% elif hint.note or hint.why %}
