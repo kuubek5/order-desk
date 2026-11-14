@@ -29,8 +29,8 @@
         {% if _scene == 'svitlo' %}
         <canvas class="ls-gl"></canvas>
         {% elif _scene == 'pult' %}
-        <div class="ls-pult">
-            <div class="lsp-row"><span>фрезерний центр</span><em class="lsp-state">очікує оператора</em></div>
+        <div class="ls-pult"><div class="lsp-box">
+            <div class="lsp-row"><i></i><em class="lsp-state">очікує оператора</em></div>
             <p class="lsp-name">KuubMill</p>
             <svg viewBox="0 0 300 150">
                 <ellipse class="lsp-ln dim" pathLength="1" cx="150" cy="92" rx="132" ry="46"/>
@@ -44,10 +44,10 @@
             </svg>
             <div class="lsp-tele">
                 <div><small>шпиндель</small><b><span class="lsp-rpm">0</span><u>об/хв</u></b></div>
-                <div><small>ключ оператора</small><b class="lsp-key">—</b></div>
+                <div><small>ключ</small><b class="lsp-key">—</b></div>
             </div>
             <div class="lsp-bar"></div>
-        </div>
+        </div></div>
         {% else %}
         <canvas class="ls-canvas"></canvas>
         {% endif %}

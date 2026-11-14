@@ -817,26 +817,33 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
 /* Радар і сітка спільного тла сперечались би зі сценою. */
 body:has(.login-scene.ls-live) .app-backdrop { display: none; }
 
+/* «Пульт» стоїть по центру вільного місця ліворуч від картки й на її висоті.
+   Ширину місця (--ls-room), висоту центру картки (--ls-cy) і вільне місце над
+   репліками (--ls-free) міряє login_scenes.js; без нього діють запасні
+   значення: картка 22rem по центру екрана. */
 .ls-pult {
   position: absolute;
-  left: clamp(24px, 6vw, 110px);
-  top: 50%;
+  left: 0;
+  top: var(--ls-cy, 50%);
   transform: translateY(-50%);
-  width: min(calc(50vw - 200px - 8vw), 470px);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  width: var(--ls-room, calc(50vw - 11rem));
+  box-sizing: border-box;
+  padding-inline: 48px;
+  display: grid;
+  place-items: center;
   font-family: var(--font-mono);
 }
+.lsp-box { width: min(100%, 520px); display: flex; flex-direction: column; gap: 14px; }
 .login-scene[data-scene="pult"] {
   background:
     linear-gradient(rgba(242, 184, 174, 0.05) 1px, transparent 1px) 0 0 / 100% 24px,
     linear-gradient(90deg, rgba(242, 184, 174, 0.05) 1px, transparent 1px) 0 0 / 24px 100%,
     #09080a;
 }
-.lsp-row { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-0); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #857a76; }
+.lsp-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-0); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.lsp-row i { width: 7px; height: 7px; border-radius: 50%; background: #9be3b4; box-shadow: 0 0 10px rgba(155, 227, 180, 0.7); flex: none; }
 .lsp-row em { font-style: normal; color: #9be3b4; white-space: nowrap; }
-.lsp-name { margin: 4px 0 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(34px, 4.6vw, 64px); letter-spacing: -0.03em; line-height: 1; color: #f4ece8; white-space: nowrap; }
+.lsp-name { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(34px, 4.6vw, 64px); letter-spacing: -0.03em; line-height: 1; color: #f4ece8; white-space: nowrap; }
 .lsp-name span { display: inline-block; }
 .lsp-name span.x { color: #ffb066; min-width: 0.62em; text-align: center; }
 .ls-pult svg { display: block; width: 100%; height: auto; }
@@ -844,18 +851,24 @@ body:has(.login-scene.ls-live) .app-backdrop { display: none; }
 .lsp-ln.dim { stroke: #40383b; }
 .lsp-ln.hot { stroke: #ffb066; stroke-width: 1.6; }
 .lsp-tele { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.lsp-tele div { border: 1px solid #2b2629; border-radius: 4px; padding: 8px 10px; background: rgba(18, 16, 19, 0.8); min-width: 0; }
-.lsp-tele small { display: block; font-size: var(--fs-0); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #857a76; }
-.lsp-tele b { font-size: var(--fs-5); font-weight: 600; color: #f4ece8; font-variant-numeric: tabular-nums; }
+.lsp-tele div { border: 1px solid #2b2629; border-radius: 4px; padding: 10px 12px; background: rgba(18, 16, 19, 0.8); min-width: 0; }
+.lsp-tele small { display: block; margin-bottom: 4px; white-space: nowrap; font-size: var(--fs-0); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #857a76; }
+.lsp-tele b { font-size: var(--fs-5); font-weight: 600; color: #f4ece8; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.2; }
 .lsp-tele b u { text-decoration: none; font-size: var(--fs-0); color: #857a76; margin-left: 4px; }
 .lsp-bar { display: flex; gap: 3px; }
 .lsp-bar i { flex: 1; height: 6px; border-radius: 1px; background: #2b2629; transition: background 0.15s; }
 .lsp-bar i.on { background: #ffb066; }
-@media (max-width: 899px) {
-  /* На вузькому екрані картка закриває центр: пульт іде вгору й тьмяніє. */
-  .ls-pult { left: 16px; right: 16px; top: 16px; width: auto; transform: none; opacity: 0.4; }
-  .ls-pult .lsp-tele, .ls-pult .lsp-bar { display: none; }
-}
+/* Ліворуч тісно, згори є місце (ls-top): лише стан, назва й креслення, усе
+   вміщується у вільну смугу над репліками й не заходить під них. */
+.login-scene.ls-top .ls-pult { top: 10px; transform: none; width: 100%; height: var(--ls-free, 160px); padding-inline: 16px; place-items: start center; overflow: hidden; }
+.login-scene.ls-top .lsp-box { width: min(100%, 300px); gap: 6px; }
+.login-scene.ls-top .lsp-tele, .login-scene.ls-top .lsp-bar { display: none; }
+.login-scene.ls-top .lsp-name { font-size: var(--fs-7); }
+.login-scene.ls-top .ls-pult svg { max-height: calc(var(--ls-free, 160px) - 66px); }
+/* Місця немає ніде (ls-back): тьмяне креслення за карткою, без тексту. */
+.login-scene.ls-back .ls-pult { top: 50%; transform: translateY(-50%); width: 100%; padding-inline: 16px; opacity: 0.28; }
+.login-scene.ls-back .lsp-box { width: min(100%, 420px); }
+.login-scene.ls-back .lsp-row, .login-scene.ls-back .lsp-name, .login-scene.ls-back .lsp-tele, .login-scene.ls-back .lsp-bar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .lsp-ln { stroke-dashoffset: 0; }
   .lsp-bar i { transition: none; }

@@ -29,15 +29,33 @@
   var glc = host.querySelector(".ls-gl");
   var pass = document.getElementById("password");
 
-  /* Де на екрані живе сцена: на широкому — ліворуч від картки, на вузькому —
-     над нею. Картка стоїть по центру й має 22rem завширшки. */
-  function spot() {
-    if (W >= 900) {
-      var room = W / 2 - 200;
-      return { cx: room / 2 + 12, cy: H * 0.5, R: Math.min(H * 0.3, room * 0.4) };
+  /* Де на екрані живе сцена. Міряємо СПРАВЖНЮ картку й рядок реплік над нею,
+     а не вгадуємо: картка росте (панель реєстрації), репліки зсувають її вниз.
+       side — ліворуч від картки, по її вертикальному центру, з полем EDGE до
+              краю екрана й до картки (хрест осей ширший за диск — FAT);
+       top  — над репліками, коли ліворуч тісно, а згори є місце;
+       back — тьмяним тлом за карткою, коли місця немає ніде (малий телефон). */
+  var EDGE = 48, FAT = 1.18;
+  var cardEl = document.querySelector(".login-card"), quoteEl = document.querySelector(".dyn-text");
+  var place = { mode: "side", cx: 0, cy: 0, R: 1, a: 1 };
+  function measure() {
+    var c = cardEl ? cardEl.getBoundingClientRect() : { left: W / 2 - 176, top: H / 2 - 150, bottom: H / 2 + 150 };
+    var q = quoteEl ? quoteEl.getBoundingClientRect() : null;
+    var room = c.left, free = Math.min(c.top, q ? q.top : c.top) - 12;
+    if (room >= 300) {
+      place = { mode: "side", cx: room / 2, cy: (c.top + c.bottom) / 2, R: Math.min(H * 0.3, (room - EDGE * 2) / 2 / FAT), a: 1 };
+    } else if (free >= 150) {
+      place = { mode: "top", cx: W / 2, cy: 10 + free / 2, R: Math.min(W * 0.3, (free - 20) / 2 / FAT), a: 1 };
+    } else {
+      place = { mode: "back", cx: W / 2, cy: H / 2, R: Math.min(W, H) * 0.42, a: 0.3 };
     }
-    return { cx: W / 2, cy: Math.max(110, H * 0.17), R: Math.min(W * 0.3, H * 0.13) };
+    host.classList.toggle("ls-top", place.mode === "top");
+    host.classList.toggle("ls-back", place.mode === "back");
+    host.style.setProperty("--ls-room", Math.round(room) + "px");
+    host.style.setProperty("--ls-cy", Math.round(place.mode === "side" ? place.cy : H / 2) + "px");
+    host.style.setProperty("--ls-free", Math.round(Math.max(0, free)) + "px");
   }
+  function spot() { return place; }
 
   function backdrop(s) {
     var g = ctx.createRadialGradient(s.cx, s.cy, s.R * 0.2, s.cx, s.cy, Math.max(W, H) * 0.8);
@@ -78,11 +96,13 @@
       for (var gx = cx % 26; gx < W; gx += 26) { ctx.moveTo(gx, 0); ctx.lineTo(gx, H); }
       for (var gy = cy % 26; gy < H; gy += 26) { ctx.moveTo(0, gy); ctx.lineTo(W, gy); }
       ctx.stroke();
+      ctx.globalAlpha = s.a;
       ctx.save(); ctx.translate(cx, cy);
       ctx.strokeStyle = "rgba(242,184,174,.22)";
+      var rim = R * 1.07, tick = Math.max(3, R * 0.03);
       for (k = 0; k < 72; k++) {
-        var a = k / 72 * TAU + T * 0.05, l = k % 6 ? 5 : 11;
-        ctx.beginPath(); ctx.moveTo(Math.cos(a) * (R * 1.1), Math.sin(a) * (R * 1.1)); ctx.lineTo(Math.cos(a) * (R * 1.1 + l), Math.sin(a) * (R * 1.1 + l)); ctx.stroke();
+        var a = k / 72 * TAU + T * 0.05, l = k % 6 ? tick : tick * 2.2;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * rim, Math.sin(a) * rim); ctx.lineTo(Math.cos(a) * (rim + l), Math.sin(a) * (rim + l)); ctx.stroke();
       }
       var dg = ctx.createRadialGradient(-R * 0.3, -R * 0.35, R * 0.1, 0, 0, R);
       dg.addColorStop(0, "#3a302e"); dg.addColorStop(1, "#1a1415");
@@ -108,7 +128,7 @@
       }
       if (tool) {
         ctx.strokeStyle = "rgba(255,176,102,.28)"; ctx.lineWidth = 1; ctx.beginPath();
-        ctx.moveTo(tool[0], cy - R * 1.25); ctx.lineTo(tool[0], cy + R * 1.25); ctx.moveTo(cx - R * 1.25, tool[1]); ctx.lineTo(cx + R * 1.25, tool[1]); ctx.stroke();
+        ctx.moveTo(tool[0], cy - R * FAT); ctx.lineTo(tool[0], cy + R * FAT); ctx.moveTo(cx - R * FAT, tool[1]); ctx.lineTo(cx + R * FAT, tool[1]); ctx.stroke();
         var n = RM ? 0 : (busy >= 0 ? 5 : 1 + Math.round(energy * 4));
         for (k = 0; k < n; k++) sparks.push({ x: tool[0], y: tool[1], vx: rnd(-90, 90), vy: rnd(-150, -20), l: rnd(0.25, 0.6), a: 1 });
         ctx.globalCompositeOperation = "lighter";
@@ -116,8 +136,11 @@
         hg.addColorStop(0, "rgba(255,240,225,1)"); hg.addColorStop(0.25, "rgba(255,176,102,.6)"); hg.addColorStop(1, "rgba(255,176,102,0)");
         ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(tool[0], tool[1], 22, 0, TAU); ctx.fill();
         ctx.globalCompositeOperation = "source-over";
-        ctx.font = "11px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(242,184,174,.7)";
-        ctx.fillText("X " + ((tool[0] - cx) / R * 49).toFixed(2) + "   Y " + ((cy - tool[1]) / R * 49).toFixed(2), cx, cy + R * 1.25 + 22);
+        if (s.mode === "side") {
+          // Координати — під диском, на відстані одного рядка від хреста осей.
+          ctx.font = "12px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = "rgba(242,184,174,.72)";
+          ctx.fillText("X " + ((tool[0] - cx) / R * 49).toFixed(2) + "    Y " + ((cy - tool[1]) / R * 49).toFixed(2), cx, cy + R * FAT + 14);
+        }
       }
       ctx.globalCompositeOperation = "lighter";
       sparks = sparks.filter(function (q) { return (q.a -= dt / q.l) > 0; });
@@ -125,7 +148,7 @@
         var q = sparks[i]; q.vy += 420 * dt; q.x += q.vx * dt; q.y += q.vy * dt;
         ctx.fillStyle = "rgba(255,190,130," + q.a.toFixed(2) + ")"; ctx.fillRect(q.x, q.y, 1.6, 1.6);
       }
-      ctx.globalCompositeOperation = "source-over";
+      ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1;
     }
     build();
     return { frame: frame };
@@ -187,7 +210,7 @@
         var j = i * 3, e = 1 - Math.exp(-dt * K[i]);
         P[j] += (tgt[j] - P[j]) * e + rnd(-jit, jit); P[j + 1] += (tgt[j + 1] - P[j + 1]) * e + rnd(-jit, jit); P[j + 2] += (tgt[j + 2] - P[j + 2]) * e + rnd(-jit, jit);
         var x = P[j] * ca + P[j + 2] * sa, z0 = -P[j] * sa + P[j + 2] * ca, y = P[j + 1] * ct - z0 * st, z = P[j + 1] * st + z0 * ct;
-        var f = 3 / (3 + z), al = clamp(0.2 + (1 - z) * 0.34, 0.08, 0.95), size = f * 1.5 + (i % 9 === 0 ? 1.1 : 0);
+        var f = 3 / (3 + z), al = clamp(0.2 + (1 - z) * 0.34, 0.08, 0.95) * s.a, size = f * 1.5 + (i % 9 === 0 ? 1.1 : 0);
         ctx.fillStyle = "rgba(242,184,174," + al.toFixed(2) + ")";
         ctx.fillRect(s.cx + x * f * sc, s.cy - y * f * sc, size, size);
       }
@@ -297,6 +320,7 @@
     W = window.innerWidth; H = window.innerHeight; D = Math.min(window.devicePixelRatio || 1, 2);
     if (cv) { cv.width = W * D; cv.height = H * D; ctx.setTransform(D, 0, 0, D, 0, 0); }
     if (scene === "svitlo") svitlo.size();
+    measure();
   }
   function loop(ts) {
     var dt = Math.min(0.05, (ts - last) / 1000 || 0); last = ts;
@@ -321,5 +345,9 @@
   window.addEventListener("pointermove", function (e) { ptr.x = e.clientX / Math.max(1, W); ptr.y = e.clientY / Math.max(1, H); ptr.moved = T; });
   window.addEventListener("resize", function () { resize(); active.frame(0); });
   resize();
+  // Картка росте (панель реєстрації, рядок помилки), шрифти довантажуються —
+  // місце сцени перераховується, інакше диск опинявся б під карткою.
+  if (window.ResizeObserver && cardEl) new ResizeObserver(function () { measure(); if (RM) active.frame(0); }).observe(cardEl);
+  window.addEventListener("load", function () { measure(); if (RM) active.frame(0); });
   if (RM) { T = 3; active.frame(0.016); } else window.requestAnimationFrame(loop);
 })();
