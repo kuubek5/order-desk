@@ -57,6 +57,7 @@ from app.services.mcp_common import (  # noqa: F401 — реекспорт: mcp.
     _int_arg,
 )
 from app.services.mcp_tools_shop import SHOP_TOOLS
+from app.services.mcp_tools_machine_files import MACHINE_FILE_TOOLS
 from app.services.mcp_tools_sum3d import SUM3D_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -1032,6 +1033,7 @@ TOOLS = TOOLS + (
         run=tool_mail_units,
     ),
     *SUM3D_TOOLS,
+    *MACHINE_FILE_TOOLS,
 )
 
 TOOLS = TOOLS + (

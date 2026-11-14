@@ -21,6 +21,9 @@
 //   GET /healthz                 -> "ok"                (liveness, no auth)
 //   GET /status                  -> JSON {name,hostname,displays,version,time}
 //   GET /capture[?display=N]     -> image/png            (a full display frame)
+//   GET /titles                  -> JSON {titles}        (visible window titles)
+//   GET /discover[?tops=1]       -> JSON file listing of machine-software folders
+//   GET /peek?path=...           -> JSON head of one text file (read-only, see discover.go)
 //
 // Auth: header `X-Agent-Token: <token>` or `?token=<token>` (constant-time).
 package main
@@ -383,6 +386,9 @@ func runServe(cfgPath string) {
 		}
 		writeJSON(w, map[string]interface{}{"titles": visibleWindowTitles()})
 	}))
+	// Розвідка файлів програми верстата — лише читання (discover.go).
+	mux.HandleFunc("/discover", authed(handleDiscover))
+	mux.HandleFunc("/peek", authed(handlePeek))
 
 	// Also serve the settings menu on loopback 8766 so 127.0.0.1:8766 ALWAYS
 	// works while the agent runs — no separate shortcut needed, and Save runs

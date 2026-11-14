@@ -33,6 +33,12 @@ jobs:
       - name: Resolve dependencies
         run: go mod tidy
 
+      # Розвідка файлів (discover.go) — єдине місце агента, що ходить по диску
+      # верстата; її межі (лише теки програми, без виходу через «..») стережуть
+      # тести.
+      - name: Test (file discovery limits)
+        run: go test ./...
+
       - name: Build (windows/amd64, Win7-11)
         env:
           GOOS: windows
