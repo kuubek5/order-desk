@@ -98,7 +98,7 @@ def test_collect_reads_new_finished_programs_only(tmp_path):
     name = "2_16-Monolith-A4-x05_2026-11-14_16-07-15.iso"
     (src / name).write_bytes(_program(10, 20))
     (src / "half_2026-11-14_16-09-00.iso").write_bytes(_program(0, 0).replace(b"M30", b""))  # ще пишеться
-    (src / "note.txt").write_text("не програма")
+    (src / "note.txt").write_text("не програма", encoding="utf-8")
     old = time.time() - 60
     for f in src.iterdir():
         os.utime(f, (old, old))
