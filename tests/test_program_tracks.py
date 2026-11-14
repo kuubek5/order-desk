@@ -161,3 +161,45 @@ def test_iso_link_tool_reports_folders_from_sum3d(tmp_path, monkeypatch):
     assert report["теки_програм"][0]["тека"] == str(out)
     assert report["теки_програм"][0]["верстати_sum3d"] == ["350i_Boris"]
     assert report["верстати"] == [] and report["знято_всього"] == 0
+
+
+def test_watcher_keeps_program_that_machine_took_away(tmp_path):
+    """Власник 14.11.26: старий верстат забирає `.iso` з теки. Сторож відкриває
+    файл одразу (ще недописаний) і дочитує його вже ПІСЛЯ того, як файл зник."""
+    src, cache = tmp_path / "CAM-out", tmp_path / "cache"
+    src.mkdir()
+    name = "2_16-Monolith-A4-x05_2026-11-14_16-07-15.iso"
+    full = src / name
+    body = _program(10, 20)
+    try:
+        with open(full, "wb") as writer:               # Sum3D ще пише
+            writer.write(body[: len(body) // 2])
+            writer.flush()
+            assert pt.watch_folder(str(src), target=cache) == 0
+            assert pt.folder_status()[str(src)]["тримаємо_відкритими"] == 1
+            writer.write(body[len(body) // 2:])        # дописав — наш дозвіл на запис не заважає
+        os.remove(full)                                # верстат забрав до наступного перегляду
+        assert not full.exists()
+        assert pt.watch_folder(str(src), target=cache) == 1
+    finally:
+        pt.release_all()
+    track = pt.find_track(name, cache)
+    assert track is not None and track.file_size == len(body) and set(track.sides) == {"0", "180"}
+    state = pt.folder_status()[str(src)]
+    assert state["останній_забраний"] == name and state["тримаємо_відкритими"] == 0
+    assert list(src.iterdir()) == [], "у теці верстата нічого не лишилось і не з'явилось"
+
+
+def test_watcher_takes_finished_program_and_lets_it_be_moved(tmp_path):
+    src, cache, away = tmp_path / "CAM-out", tmp_path / "cache", tmp_path / "machine"
+    src.mkdir()
+    away.mkdir()
+    name = "5pmma16_16-a3-x137_2026-11-14_15-48-58.iso"
+    (src / name).write_bytes(_program(-15, 5))
+    try:
+        assert pt.watch_folder(str(src), target=cache) == 1, "дописана програма знімається з першого перегляду"
+        assert pt.watch_folder(str(src), target=cache) == 0
+        os.replace(src / name, away / name)            # верстат переносить — ми не тримаємо
+    finally:
+        pt.release_all()
+    assert (away / name).read_bytes() == _program(-15, 5)

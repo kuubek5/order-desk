@@ -394,10 +394,10 @@ def collect_folder(path: str, *, target: Optional[Path] = None, now: Optional[fl
 
 
 def collect_once(db, *, network: bool) -> int:
-    """Прохід збирача по локальних АБО мережевих теках (окремі потоки: мертва
-    мережева тека висить на таймаутах і не має затримувати локальні, звідки
-    верстат забирає файл)."""
-    global _last_prune
+    """Прохід опитуванням по мережевих (або, у тестах, локальних) теках.
+    Мережеві теки — окремим потоком: мертва висить на таймаутах і не має
+    затримувати локальні, звідки верстат забирає файл. Локальні в роботі веде
+    швидкий сторож (`watch_once`)."""
     taken = 0
     seen: set[str] = set()
     for item in known_folders(db):
@@ -410,7 +410,196 @@ def collect_once(db, *, network: bool) -> int:
         if time.monotonic() < wait:
             continue
         taken += collect_folder(item.path)
-    if not network and time.monotonic() - _last_prune > 3600:
+    return taken
+
+
+# ── Швидкий сторож локальних тек ───────────────────────────────────────────
+#
+# Власник 14.11.26: «система може не встигати зчитати програму до того, як
+# верстат перенесе файл». Тому локальні теки не опитуються раз на кілька
+# секунд, а переглядаються двічі на секунду, і нова програма ОДРАЗУ
+# відкривається на читання (ще недописана). Відкритий файл лишається
+# читабельним і після того, як верстат його забрав: Windows прибирає ім'я з
+# теки, а вміст живе, доки ми не закриємо. `open_shared` дозволяє іншим
+# писати, перейменовувати й видаляти — верстату ми не заважаємо. Тримаємо
+# рівно доки програма не дописана (M30) або не зникла з теки.
+
+WATCH_MAX_HELD = 6
+WATCH_GIVE_UP_SECONDS = 900.0
+LOCAL_BACKOFF_SECONDS = 60.0
+
+
+@dataclass
+class _Held:
+    handle: Any
+    folder: str
+    name: str
+    first_seen: float
+    mtime: float
+
+
+_held: dict[str, _Held] = {}
+
+
+def _read_fd(fd: int, start: int, size: int) -> bytes:
+    os.lseek(fd, start, os.SEEK_SET)
+    chunks: list[bytes] = []
+    left = size
+    while left > 0:
+        chunk = os.read(fd, min(left, 1 << 20))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        left -= len(chunk)
+    return b"".join(chunks)
+
+
+def _finish(held: _Held, target: Path, *, gone: bool, moment: float) -> bool:
+    """Дочитати з відкритого файлу, зберегти слід, закрити. False — порожньо."""
+    fd = held.handle.fileno()
+    try:
+        size = min(os.fstat(fd).st_size, MAX_FILE_BYTES)
+        data = _read_fd(fd, 0, size)
+    except OSError as exc:
+        logger.warning("Слід програми: %s не дочитано (%s)", held.name, exc.__class__.__name__)
+        data = b""
+    finally:
+        held.handle.close()
+    if not data:
+        return False
+    track = parse_program(data, held.name)
+    track.source = held.folder
+    track.file_mtime, track.file_size = held.mtime, len(data)
+    track.captured_at = datetime.fromtimestamp(moment).strftime("%Y-%m-%d %H:%M:%S")
+    save_track(track, target)
+    logger.info("Слід програми: %s → %d клітинок%s", held.name, track.cells,
+                f" (файл уже забрали з теки, прожив ≈{moment - held.first_seen:.1f} с)" if gone else "")
+    return True
+
+
+def watch_folder(path: str, *, target: Optional[Path] = None, now: Optional[float] = None) -> int:
+    """Один перегляд локальної теки (кличеться двічі на секунду). Нові програми
+    відкриває одразу; дописані або вже забрані — дочитує з відкритого файлу.
+    Повертає, скільки слідів знято. Теку лише читає."""
+    target = target or cache_dir()
+    moment = now or time.time()
+    state: dict[str, Any] = {"перевірено": datetime.fromtimestamp(moment).strftime("%Y-%m-%d %H:%M:%S"),
+                             "режим": "швидкий сторож"}
+    present: dict[str, float] = {}
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.name.lower().endswith(PROGRAM_EXTS):
+                    try:
+                        present[entry.name] = entry.stat().st_mtime
+                    except OSError:
+                        continue  # файл зник між переліком і запитом — це і є «забрали»
+    except OSError as exc:
+        state["помилка"] = exc.__class__.__name__
+        with _lock:
+            previous = _folder_state.get(path) or {}
+            state.update({k: v for k, v in previous.items() if k.startswith("останній_")})
+            _folder_state[path] = state
+            _backoff_until[path] = time.monotonic() + LOCAL_BACKOFF_SECONDS
+        return 0
+    state["програм"] = len(present)
+    # 1. Спершу відкрити ВСЕ нове — це і є гонка з верстатом; розбір потім.
+    for name, mtime in sorted(present.items(), key=lambda kv: kv[1], reverse=True):
+        full = os.path.join(path, name)
+        if full in _held or len(_held) >= WATCH_MAX_HELD or moment - mtime > RECENT_DAYS * 86400:
+            continue
+        cached = target / f"{track_key(name)}.json"
+        try:
+            if cached.is_file() and cached.stat().st_mtime >= mtime:
+                continue
+        except OSError:
+            pass
+        try:
+            _held[full] = _Held(open_shared(full), path, name, moment, mtime)
+        except OSError:
+            continue  # зник або ще зайнятий — наступний перегляд за пів секунди
+    # 2. Дочитати дописані й забрані.
+    taken = 0
+    for full, held in [(k, v) for k, v in _held.items() if v.folder == path]:
+        gone = held.name not in present
+        if not gone:
+            try:
+                os.stat(full)
+            except OSError:
+                gone = True  # видалення вже триває: ім'я ще в переліку, файл недоступний
+        done = False
+        if not gone:
+            fd = held.handle.fileno()
+            try:
+                size = os.fstat(fd).st_size
+                done = size > 0 and b"M30" in _read_fd(fd, max(0, size - 400), 400).upper()
+            except OSError:
+                gone = True
+        if done or gone:
+            del _held[full]
+            if _finish(held, target, gone=gone, moment=moment):
+                taken += 1
+            if gone:
+                state["останній_забраний_прожив_с"] = round(moment - held.first_seen, 1)
+                state["останній_забраний"] = held.name
+        elif moment - held.first_seen > WATCH_GIVE_UP_SECONDS:
+            del _held[full]
+            held.handle.close()
+            logger.warning("Слід програми: %s не дописано за %d хв — відпущено", held.name,
+                           int(WATCH_GIVE_UP_SECONDS // 60))
+    state["тримаємо_відкритими"] = sum(1 for v in _held.values() if v.folder == path)
+    with _lock:
+        previous = _folder_state.get(path) or {}
+        for key, value in previous.items():
+            if key.startswith("останній_") and key not in state:
+                state[key] = value
+        state["знято_всього"] = int(previous.get("знято_всього") or 0) + taken
+        _folder_state[path] = state
+    return taken
+
+
+def release_all() -> None:
+    """Закрити все, що тримаємо (зупинка застосунку, тести)."""
+    for full in list(_held):
+        held = _held.pop(full)
+        try:
+            held.handle.close()
+        except OSError:
+            logger.debug("Слід програми: %s уже закрито", held.name)
+
+
+_local_cache: tuple[float, list[str]] = (0.0, [])
+
+
+def local_folders(db_factory) -> list[str]:
+    """Локальні теки для сторожа; у базу ходимо раз на 5 хв, не двічі на секунду."""
+    global _local_cache
+    now = time.monotonic()
+    stamp, cached = _local_cache
+    if stamp and now - stamp < FOLDERS_TTL_SECONDS:
+        return cached
+    with db_factory() as db:
+        found = known_folders(db)
+    seen: set[str] = set()
+    paths = []
+    for item in found:
+        if not item.is_network and item.path.lower() not in seen:
+            seen.add(item.path.lower())
+            paths.append(item.path)
+    _local_cache = (now, paths)
+    return paths
+
+
+def watch_once(db_factory) -> int:
+    """Один перегляд усіх локальних тек (раз на пів секунди)."""
+    global _last_prune
+    taken = 0
+    for path in local_folders(db_factory):
+        with _lock:
+            wait = _backoff_until.get(path, 0.0)
+        if time.monotonic() >= wait:
+            taken += watch_folder(path)
+    if time.monotonic() - _last_prune > 3600:
         _last_prune = time.monotonic()
         prune()
     return taken

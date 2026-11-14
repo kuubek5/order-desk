@@ -1187,28 +1187,43 @@ def _stl_height_worker(stop_event: Event) -> None:
 
 
 # Слід різання програм (`app/services/program_tracks.py`, власник 14.11.26).
-# Локальні теки — часто: старий верстат ЗАБИРАЄ `.iso` з `C:\\CAM-out\\…` до
+# Локальні теки — двічі на секунду, швидким сторожем: старий верстат ЗАБИРАЄ `.iso` з `C:\\CAM-out\\…` до
 # себе, і слід треба зняти раніше. Мережеві (теки нових верстатів) — окремим
 # потоком і рідше: вимкнений ПК верстата висить на таймаутах і не має
 # затримувати локальні.
-PROGRAM_TRACKS_LOCAL_INTERVAL_SECONDS = 8.0
+PROGRAM_TRACKS_LOCAL_INTERVAL_SECONDS = 0.25
 PROGRAM_TRACKS_NETWORK_INTERVAL_SECONDS = 45.0
 PROGRAM_TRACKS_INITIAL_DELAY_SECONDS = 40.0
 
 
 def _program_tracks_loop(stop_event: Event, *, network: bool, interval: float) -> None:
+    from app import log_throttle
     from app.services import program_tracks
 
     if stop_event.wait(PROGRAM_TRACKS_INITIAL_DELAY_SECONDS):
         return
-    while not stop_event.is_set():
-        try:
-            with SessionLocal() as db:
-                program_tracks.collect_once(db, network=network)
-        except Exception:  # noqa: BLE001 — фоновий збирач не валить застосунок
-            logger.exception("Збирач сліду програм не відпрацював (мережеві теки: %s)", network)
-        if stop_event.wait(interval):
-            return
+    try:
+        while not stop_event.is_set():
+            try:
+                if network:
+                    with SessionLocal() as db:
+                        program_tracks.collect_once(db, network=True)
+                else:
+                    # Двічі на секунду: нову програму треба ВІДКРИТИ раніше, ніж
+                    # верстат її забере (власник 14.11.26). У базу сторож ходить
+                    # раз на 5 хв, сам перегляд — лише перелік кількох тек.
+                    program_tracks.watch_once(SessionLocal)
+            except Exception:  # noqa: BLE001 — фоновий збирач не валить застосунок
+                # Сторож крутиться двічі на секунду — помилку пишемо не частіше разу на годину.
+                skipped = log_throttle.due(f"program-tracks-loop:{network}")
+                if skipped is not None:
+                    logger.exception("Збирач сліду програм не відпрацював (мережеві теки: %s; ще %d разів відтоді)",
+                                     network, skipped)
+            if stop_event.wait(interval):
+                return
+    finally:
+        if not network:
+            program_tracks.release_all()
 
 
 def _program_tracks_worker(stop_event: Event) -> None:
