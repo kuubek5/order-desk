@@ -24,13 +24,18 @@
 обох боків без нахилу.
 
 Звірка з диском (`match`) сама себе перевіряє: частка клітинок сліду, що
-лягла на обриси `.blk`. Знак осей для кожного боку підбирається з чотирьох
-варіантів — який ліг найкраще. Мало лягло — «ненадійно», і табло тоді нічого
-не підсвічує: хибна підсвітка гірша за жодну.
+лягла на обриси `.blk`. Знак осей підбирається з чотирьох варіантів на бік,
+але для обох боків РАЗОМ: роботу ріжуть згори й знизу в одному місці диска,
+тож правильна пара знаків кладе обидва боки на ті самі обриси й накриває їх
+цілком. Окремо кожен бік вибирати не можна (350i Loader 15.11.26): на щільному
+диску задній бік «лягав на обриси» за будь-якого знака й лишався на чужій
+роботі. Мало лягло або боки розійшлись — «ненадійно», і табло тоді нічого не
+підсвічує: хибна підсвітка гірша за жодну.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import math
@@ -669,37 +674,65 @@ def match(track: Track, radius: float, contours: list[list[tuple[float, float]]]
     pad = (grown.shape[0] - n) // 2
     near = grown[pad: pad + n, pad: pad + n]
 
-    counts = np.zeros(len(contours) + 1, dtype=np.int64)
-    total = on_disc = close = 0
-    report_sides: dict[str, Any] = {}
+    # Кожен бік — чотири варіанти знака осей; для кожного рахуємо, скільки
+    # клітинок лягло біля обрисів і в який саме обрис.
+    slots = len(contours) + 1
+    options: dict[str, list[tuple[tuple[int, int], int, np.ndarray]]] = {}
     for side, cells in track.sides.items():
         pts = np.array(cells, dtype=np.float64) * CELL_MM
-        best: Optional[tuple[float, int, int, np.ndarray, tuple[int, int]]] = None
+        found = []
         for sx, sy in _FLIPS:
             col = np.floor((pts[:, 0] * sx - origin) / CELL_MM).astype(np.int64)
             row = np.floor((pts[:, 1] * sy - origin) / CELL_MM).astype(np.int64)
             ok = (col >= 0) & (col < n) & (row >= 0) & (row < n)
             hits = int(near[row[ok], col[ok]].sum())
-            share = hits / len(cells) if cells else 0.0
-            if best is None or share > best[0]:
-                best = (share, hits, int(ok.sum()), label[row[ok], col[ok]], (sx, sy))
-        assert best is not None
-        share, hits, inside, labels, flip = best
-        total += len(cells)
-        on_disc += inside
+            found.append(((sx, sy), hits, np.bincount(label[row[ok], col[ok]], minlength=slots)))
+        options[side] = found
+    # Пара знаків обирається РАЗОМ: найкраща та, де всі боки накривають ті самі
+    # обриси й накривають їх повно (клітинки² / площа обрису — часткове
+    # зачеплення кількох чужих обрисів дає мало). За рівності — де більше лягло.
+    area = np.array([1.0] + [float(a) or 1.0 for a in areas])
+    sides = list(options)
+    chosen: tuple[tuple[tuple[int, int], int, np.ndarray], ...] = ()
+    best_score: Optional[tuple[float, int]] = None
+    for combo in itertools.product(*(options[side] for side in sides)):
+        if not combo:
+            continue
+        shared = np.minimum.reduce([c[2] for c in combo]).astype(np.float64)
+        shared[0] = 0.0
+        score = (round(float((shared * shared / area).sum()), 6), sum(c[1] for c in combo))
+        if best_score is None or score > best_score:
+            best_score, chosen = score, combo
+    counts = np.zeros(slots, dtype=np.int64)
+    total = close = 0
+    report_sides: dict[str, Any] = {}
+    for side, (flip, hits, by_contour) in zip(sides, chosen):
+        cells_n = len(track.sides[side])
+        total += cells_n
         close += hits
-        counts += np.bincount(labels, minlength=len(contours) + 1)
-        report_sides[side] = {"клітинок": len(cells), "знак_xy": list(flip), "лягло_на_обриси": round(share, 3)}
-    own = [i + 1 for i, area in enumerate(areas)
-           if counts[i + 1] >= max(OWN_MIN_CELLS, OWN_SHARE * area)]
+        counts += by_contour
+        report_sides[side] = {"клітинок": cells_n, "знак_xy": list(flip),
+                              "лягло_на_обриси": round(hits / cells_n, 3) if cells_n else 0.0}
+    # «Свій» обрис — накритий КОЖНИМ боком. Обрис, який зачепив лише один бік,
+    # спірний: боки розійшлись, і такому сліду не віримо.
+    own: list[int] = []
+    disputed: list[int] = []
+    for i, contour_area in enumerate(areas):
+        need = max(OWN_MIN_CELLS, OWN_SHARE * contour_area)
+        covered = [c[2][i + 1] >= need for c in chosen]
+        if covered and all(covered):
+            own.append(i + 1)
+        elif any(covered):
+            disputed.append(i + 1)
     share_all = close / total if total else 0.0
     return {
         "обрисів": len(contours),
         "свої_обриси": own,
+        "спірні_обриси": disputed,
         "покриття_обрисів": {str(i + 1): round(float(counts[i + 1]) / a, 2) for i, a in enumerate(areas)
                              if a and counts[i + 1]},
         "клітинок_сліду": total,
         "лягло_на_обриси": round(share_all, 3),
-        "надійно": bool(own) and share_all >= TRUST_SHARE,
+        "надійно": bool(own) and not disputed and share_all >= TRUST_SHARE,
         "боки": report_sides,
     }

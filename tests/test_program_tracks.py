@@ -224,3 +224,31 @@ def test_program_of_does_not_guess_between_two_tracks(tmp_path, monkeypatch):
     for head in ("1_16-Monolith-A3-x01", "2_18-Monolith-A2-x02"):
         pt.save_track(pt.parse_program(_program(1, 1), f"{head}_2026-11-15_09-39-27.iso"), tmp_path)
     assert pt.program_of("2026-11-15_09-39-27.iso", tmp_path) is None
+
+
+def test_match_puts_both_sides_on_the_same_contour_on_a_crowded_disc():
+    """350i Loader 15.11.26: диск щільний, тож задній бік «лягав на обриси» за
+    будь-якого знака осей і лишався там, де чужа робота. Одна робота в програмі
+    давала два «свої» обриси, і звірка казала «надійно»."""
+    own, neighbour = _square(10, 16, 4.5), _square(10, -16, 9)
+    track = pt.parse_program(_program(10, 16, mirror_back=True), "p.iso")
+    report = pt.match(track, 47.0, [own, neighbour, _square(-25, 10, 6)])
+    assert report["боки"]["0"]["знак_xy"] == [1, 1]
+    assert report["боки"]["180"]["знак_xy"] == [1, -1], "задній бік дзеркалиться до свого обрису"
+    assert report["свої_обриси"] == [1] and report["спірні_обриси"] == [] and report["надійно"]
+
+
+def test_match_does_not_trust_sides_that_land_on_different_contours():
+    """Боки, які жодним дзеркалом не зводяться на один обрис, — не підсвічуємо."""
+    top = [(int(x * 2), int(y * 2)) for x in range(6, 15) for y in range(16, 25)]
+    back = [(int(x * 2), int(y * 2)) for x in range(-34, -25) for y in range(-4, 5)]
+    track = pt.Track(name="p.iso", sides={"0": top, "180": back})
+    report = pt.match(track, 47.0, [_square(10, 20, 4.5), _square(-30, 0, 4.5)])
+    assert report["свої_обриси"] == [] and report["спірні_обриси"] == [1, 2]
+    assert not report["надійно"]
+
+
+def test_match_with_one_side_only_still_finds_its_contour():
+    cells = [(int(x * 2), int(y * 2)) for x in range(6, 15) for y in range(16, 25)]
+    report = pt.match(pt.Track(name="p.iso", sides={"0": cells}), 47.0, [_square(10, 20, 4.5), _square(-30, 0, 4.5)])
+    assert report["свої_обриси"] == [1] and report["спірні_обриси"] == [] and report["надійно"]

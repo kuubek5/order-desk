@@ -348,6 +348,7 @@ def _sum3d_iso_link(
         row.update(report)
         row["кадр"] = f"д{len(tiles) + 1}"
         own = set(report["свої_обриси"])
+        disputed = set(report["спірні_обриси"])
         img = Image.new("RGB", (300, 300), (24, 20, 14))
         draw = ImageDraw.Draw(img)
         k = 130 / shape.radius
@@ -356,6 +357,8 @@ def _sum3d_iso_link(
             pts = [(150 + x * k, 150 - y * k) for x, y in contour]
             if i + 1 in own:
                 draw.polygon(pts, outline=(120, 255, 160), fill=(40, 110, 60))
+            elif i + 1 in disputed:  # зачепив лише один бік — боки розійшлись
+                draw.polygon(pts, outline=(255, 80, 80), fill=(90, 30, 30))
             else:
                 draw.polygon(pts, outline=(110, 95, 70))
         for side, cells in track.sides.items():
