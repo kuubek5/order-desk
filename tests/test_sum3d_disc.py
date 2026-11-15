@@ -182,3 +182,34 @@ def test_board_takes_the_disc_from_the_project_when_the_name_is_bare(tmp_path, m
     assert machine.disc is not None and machine.disc.name == "zr14_14-1000-x37"
     assert (machine.prog_head, machine.prog_tail) == ("2026-11-13_", "14-53-52"), \
         "назву програми не вигадуємо — лишається дата"
+
+
+def test_board_takes_name_and_disc_from_the_program_track(tmp_path, monkeypatch):
+    """250i-Tolik 15.11.26: екран дав лише `дата_час.iso` (літеру не впізнано),
+    у проєкті ні назви, ні диска. Слід програми знає і назву, і диск."""
+    from app.services import program_tracks as pt
+    from tests.test_shop_board import _card, _view
+
+    blanks, tracks = tmp_path / "blanks", tmp_path / "tracks"
+    f = blanks / "zr" / "20" / "zr20_20-Monolith-A3-x55.blk"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(_blank([_square(10, 5, 6)]))
+    sum3d_disc._list_cache.clear()
+    monkeypatch.setattr(sum3d_disc, "_root", str(blanks))
+    monkeypatch.setattr(sum3d_names, "_root", None)
+    monkeypatch.setattr(pt, "cache_dir", lambda: tracks)
+    monkeypatch.setattr(pt, "_names", {})
+    card = _card("T", "run", percent=27, iso_name="2026-11-15_09-39-27.iso")
+    machine = _view([card]).machines[0]
+    assert machine.disc is None and machine.prog_head == "2026-11-15_", "сліду немає — як і було"
+    track = pt.parse_program(b";Blank: zr20_20-Monolith-A3-x55\r\nG0 A0.0 B0.0\r\nG1 X1 Y1 Z1\r\nM30\r\n",
+                             "5--20-Monolith-A3-x55_2026-11-15_09-39-27.iso")
+    pt.save_track(track, tracks)
+    monkeypatch.setattr(pt, "_names", {})
+    machine = _view([card]).machines[0]
+    assert (machine.prog_head, machine.prog_tail) == ("5--20-Monolith-A3-x55_2026-11-15_", "09-39-27")
+    assert machine.disc is not None and machine.disc.name == "zr20_20-Monolith-A3-x55"
+    # Повна назва з екрана — слід не питаємо взагалі.
+    monkeypatch.setattr(pt, "program_of", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("не мав питати")))
+    full = _card("S", "run", percent=5, iso_name="4--16-MONOLITH-A4-X06_2026-11-15_09-49-01.iso")
+    assert _view([full]).machines[0].prog_tail == "09-49-01"

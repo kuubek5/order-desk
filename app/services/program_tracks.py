@@ -249,16 +249,13 @@ def _load(path: Path) -> Optional[Track]:
     )
 
 
-def find_track(program: Optional[str], folder: Optional[Path] = None) -> Optional[Track]:
-    """Слід програми за назвою з екрана верстата. Точна назва, інакше — єдиний
-    файл із тим самим хвостом «дата_час» (екран нового верстата ріже початок)."""
-    folder = folder or cache_dir()
+def _track_path(program: Optional[str], folder: Path) -> Optional[Path]:
     key = track_key(program)
     if not key:
         return None
     exact = folder / f"{key}.json"
     if exact.is_file():
-        return _load(exact)
+        return exact
     tail = _TAIL.search(key.rstrip("_"))
     if tail is None:
         return None
@@ -266,7 +263,54 @@ def find_track(program: Optional[str], folder: Optional[Path] = None) -> Optiona
         same = [p for p in folder.glob(f"*{tail.group(1)}*.json")]
     except OSError:
         return None
-    return _load(same[0]) if len(same) == 1 else None
+    return same[0] if len(same) == 1 else None
+
+
+def find_track(program: Optional[str], folder: Optional[Path] = None) -> Optional[Track]:
+    """Слід програми за назвою з екрана верстата. Точна назва, інакше — єдиний
+    файл із тим самим хвостом «дата_час» (екран нового верстата ріже початок)."""
+    path = _track_path(program, folder or cache_dir())
+    return _load(path) if path is not None else None
+
+
+# Назва й диск програми за голою `дата_час.iso` (250i-Tolik 15.11.26: літеру
+# назви на екрані не впізнано, у проєкті Sum3D ні назви, ні диска — табло диск
+# не малювало). Слід знято із САМОГО файлу програми: ім'я файлу і є повна
+# назва, шапка `;Blank:` називає диск. Табло питає це на кожен рендер, тому
+# відповідь тримаємо в пам'яті: знайдене — довго, «ще немає» — коротко (слід
+# з'являється за секунди після того, як Sum3D дописав програму).
+NAME_HIT_TTL_SECONDS = 600.0
+NAME_MISS_TTL_SECONDS = 20.0
+_names: dict[str, tuple[float, Optional[tuple[str, str]]]] = {}
+
+
+def program_of(iso_name: Optional[str], folder: Optional[Path] = None) -> Optional[tuple[str, str]]:
+    """(повна назва програми, диск із шапки) для назви з екрана, якщо слід цієї
+    програми знято; інакше None. Кілька слідів з тим самим «дата_час» — None."""
+    key = track_key(iso_name)
+    if not key:
+        return None
+    folder = folder or cache_dir()
+    slot = f"{folder}|{key}"
+    now = time.monotonic()
+    with _lock:
+        cached = _names.get(slot)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    found: Optional[tuple[str, str]] = None
+    path = _track_path(iso_name, folder)
+    if path is not None:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = None
+        if isinstance(raw, dict) and str(raw.get("name") or "").strip():
+            found = (str(raw["name"]).strip(), str(raw.get("blank") or "").strip())
+    with _lock:
+        if len(_names) > 300:
+            _names.clear()
+        _names[slot] = (now + (NAME_HIT_TTL_SECONDS if found else NAME_MISS_TTL_SECONDS), found)
+    return found
 
 
 def prune(folder: Optional[Path] = None, *, now: Optional[float] = None) -> int:

@@ -191,6 +191,19 @@ def _machine_disc(
             stem = None
         path = sum3d_disc.find_blank(blanks_root, stem) if stem else None
         disc_how = "з проєкту Sum3D (файл диска)" if path else "у проєкті диска не знайдено"
+    if parts and program == iso:
+        # Третє джерело, як на табло: слід програми (ім'я файлу .iso і шапка).
+        from app.services import program_tracks
+
+        traced = program_tracks.program_of(iso)
+        if traced is not None:
+            program, how = traced[0], "зі сліду програми (.iso)"
+            if path is None:
+                path = sum3d_disc.find_blank(blanks_root, program) or (
+                    sum3d_disc.find_blank(blanks_root, traced[1]) if traced[1] else None)
+                disc_how = "зі сліду програми (.iso)" if path else "диска зі сліду в теці немає"
+        elif path is None:
+            disc_how = (disc_how or "диска не знайдено") + "; сліду програми ще не знято"
     return iso, program, how, path, disc_how
 
 

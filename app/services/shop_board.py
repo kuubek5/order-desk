@@ -604,6 +604,16 @@ def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
 
     iso = getattr(card, "iso_name", None)
     program = sum3d_names.full_name(iso) or iso
+    # Ні екран, ні проєкт повної назви не дали (250i-Tolik 15.11.26) — беремо
+    # її зі сліду програми: він знятий із самого файлу `.iso`, і шапка файлу
+    # називає диск (`program_tracks.program_of`).
+    track_blank = ""
+    if program == iso and sum3d_names.bare_parts(iso):
+        from app.services import program_tracks
+
+        traced = program_tracks.program_of(iso)
+        if traced is not None:
+            program, track_blank = traced
     item.prog_head, item.prog_tail = program_line(program)
     # Диск програми — за назвою (`sum3d_disc`): поки програма на шпинделі
     # (є відсоток) і на завершеному верстаті — поруч зі «зняти» (власник 12.11.26).
@@ -616,6 +626,8 @@ def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
         stem = sum3d_names.disc_stem(iso) if item.disc is None else None
         if stem:
             item.disc = sum3d_disc.disc_for_program(stem)
+        if item.disc is None and track_blank:
+            item.disc = sum3d_disc.disc_for_program(track_blank)
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
     if token and with_3d:

@@ -203,3 +203,24 @@ def test_watcher_takes_finished_program_and_lets_it_be_moved(tmp_path):
     finally:
         pt.release_all()
     assert (away / name).read_bytes() == _program(-15, 5)
+
+
+def test_program_of_gives_full_name_and_blank_for_a_bare_screen_name(tmp_path, monkeypatch):
+    """250i-Tolik 15.11.26: з екрана лише `дата_час.iso`. Слід знято з файлу
+    програми — його ім'я є повною назвою, шапка називає диск."""
+    monkeypatch.setattr(pt, "_names", {})
+    name = "5--20-Monolith-A3-x55_2026-11-15_09-39-27.iso"
+    assert pt.program_of("2026-11-15_09-39-27.iso", tmp_path) is None, "сліду ще немає"
+    pt.save_track(pt.parse_program(_program(10, 20), name), tmp_path)
+    assert pt.program_of("2026-11-15_09-39-27.iso", tmp_path) is None, "«немає» тримається кілька секунд"
+    monkeypatch.setattr(pt, "_names", {})
+    assert pt.program_of("2026-11-15_09-39-27.iso", tmp_path) == (name, "zr16_16-Monolith-A4-x05")
+    assert pt.program_of("2026-11-15_10-00-00.iso", tmp_path) is None
+    assert pt.program_of(None, tmp_path) is None
+
+
+def test_program_of_does_not_guess_between_two_tracks(tmp_path, monkeypatch):
+    monkeypatch.setattr(pt, "_names", {})
+    for head in ("1_16-Monolith-A3-x01", "2_18-Monolith-A2-x02"):
+        pt.save_track(pt.parse_program(_program(1, 1), f"{head}_2026-11-15_09-39-27.iso"), tmp_path)
+    assert pt.program_of("2026-11-15_09-39-27.iso", tmp_path) is None
