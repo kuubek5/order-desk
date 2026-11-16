@@ -49,6 +49,12 @@ def tool_sum3d_layout(db: Session, args: dict) -> dict[str, Any]:
     return sum3d_layout.report(_int_arg(args, "limit", default=60, low=1, high=400))
 
 
+def tool_sum3d_probe(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import sum3d_probe_report
+
+    return sum3d_probe_report.report(_int_arg(args, "limit", default=3, low=1, high=20))
+
+
 SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
     Tool(
         name="kmill_sum3d_explore",
@@ -99,5 +105,24 @@ SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_sum3d_layout,
+    ),
+    Tool(
+        name="kmill_sum3d_probe",
+        description=(
+            "Звіти набору розвідки Sum3D (tools/sum3d-probe), який власник запускає РУКАМИ на ПК з "
+            "ліцензією: чи відповідає API Sum3dDll_x64.dll (кроки load, init, machines, strategy, "
+            "space, curves з кодами й значеннями), які теки Sum3D знайдено, ліміт сесій, що "
+            "змінилось у теці й реєстрі Sum3D за час проби, чи ті самі вікна. Також де лежить набір. "
+            "KuubMill набір не запускає — інструмент лише читає готові report.json; шляху й назви "
+            "проєкту .cam у звіті немає, літери поза латиницею затерто."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Скільки останніх звітів (типово 3)."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_sum3d_probe,
     ),
 )

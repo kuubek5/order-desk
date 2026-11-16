@@ -40,6 +40,9 @@ datas = [
     # Помічник відкриття тек на ПК операторів (протокол kmill-folder://) —
     # роздається з Налаштувань як .zip (resource_path("tools/kmill-folder")).
     ("tools/kmill-folder", "tools/kmill-folder"),
+    # Набір розвідки Sum3D (лише читання). Застосунок його НЕ запускає — власник
+    # запускає руками; KuubMill лише читає готовий звіт (MCP kmill_sum3d_probe).
+    ("tools/sum3d-probe", "tools/sum3d-probe"),
 ]
 datas += collect_data_files("tzdata")
 
