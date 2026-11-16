@@ -63,3 +63,43 @@ def test_place_skips_programs_it_cannot_judge(tmp_path, monkeypatch):
     sum3d_disc._list_cache.clear()
     out = rp.place(SimpleNamespace(), str(tmp_path / "none"))
     assert out.get("звірено") is None and out["диска_вже_немає_або_порожній"] == 1
+
+
+def _crowded_disc(tmp_path, monkeypatch, other_hour):
+    """Диск r=20: обрис роботи (0, 0) і чотири обриси інших програм довкола.
+    Програма роботи о 12:00, інші — о `other_hour`."""
+    blanks, tracks = tmp_path / "b", tmp_path / "t"
+    disc = blanks / "zr" / "16" / "zr16_16-Monolith-A4-x05.blk"
+    disc.parent.mkdir(parents=True)
+    others = [(10, 0), (-10, 0), (0, 10), (0, -10)]
+    disc.write_bytes(_blank([_ring(0, 0, 4.8)] + [_ring(x, y, 5) for x, y in others], radius=20.0))
+    sum3d_disc._list_cache.clear()
+    monkeypatch.setattr(program_tracks, "cache_dir", lambda: tracks)
+    own = "2_16-Monolith-A4-x05_2026-11-16_12-00-00.iso"
+    program_tracks.save_track(program_tracks.parse_program(_program(0, 0), own), tracks)
+    # Та сама програма під другою назвою (`+_…`, той самий час) — дубль.
+    program_tracks.save_track(program_tracks.parse_program(_program(0, 0), "+" + own[1:]), tracks)
+    for i, (x, y) in enumerate(others):
+        name = f"{i + 3}_16-Monolith-A4-x05_2026-11-16_{other_hour}-0{i}-00.iso"
+        program_tracks.save_track(program_tracks.parse_program(_program(x, y), name), tracks)
+    order = SimpleNamespace(id=77, source_email_id=5, material_color="mono a4")
+    monkeypatch.setattr(rp, "_orders_of", lambda db, program: [order] if "12-00-00" in program else [])
+    monkeypatch.setattr(disc_suggest, "letter_pieces", lambda atts: [_crown(3.0)])
+    db = SimpleNamespace(get=lambda model, key: SimpleNamespace(attachments=[]))
+    return rp.place(db, str(blanks))
+
+
+def test_place_removes_contours_of_later_programs_on_the_same_disc(tmp_path, monkeypatch):
+    out = _crowded_disc(tmp_path, monkeypatch, other_hour="13")
+    assert out["звірено"] == 1 and out["дубль_сліду"] == 1
+    assert out["наше_влазить"] == 1 and out["не_влазило_лише_через_пізніші"] == 1
+    row = out["приклади"][0]
+    assert row["прибрано_пізніших_обрисів"] == 4 and row["невідомих_обрисів_на_диску"] == 0
+    assert row["наше_влазить"] is True and row["наше_влазило_б_з_пізнішими"] is False
+
+
+def test_place_keeps_contours_of_earlier_programs(tmp_path, monkeypatch):
+    out = _crowded_disc(tmp_path, monkeypatch, other_hour="11")
+    assert out["звірено"] == 1 and out["наше_не_влазить"] == 1
+    row = out["приклади"][0]
+    assert row["прибрано_пізніших_обрисів"] == 0 and row["наше_влазить"] is False

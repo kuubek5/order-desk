@@ -8,9 +8,10 @@
   (силует + його тримачі й проміжок). Порівнюємо з нашим силуетом STL, роздутим
   на `disc_fit.CLEARANCE_MM`: який запас насправді, і чи сказала б наша
   розстановка «влазить» на диску, яким він був ДО цієї роботи. Диск «до» — це
-  нинішній `.blk` без своїх обрисів; обриси, що лягли ПІЗНІШЕ, теж лишаються,
-  тож перепрогін суворіший за реальність: «не влазить» тут — привід
-  розібратись, а не вирок.
+  нинішній `.blk` без своїх обрисів і без обрисів програм, знятих на ньому
+  пізніше. Обриси без жодного знятого сліду лишаються (коли лягли — невідомо),
+  тож перепрогін усе ще може бути суворішим за реальність: «не влазить» з
+  невідомими обрисами — привід розібратись, а не вирок.
 * **Висота.** Робота з листа (товщина з STL × усадка, як у підказці) проти
   висоти диска з назви програми на верстаті: на скільки нижчий за наш мінімум
   диск цех уже брав. Якщо брав — наш мінімум ховав придатний диск.
@@ -85,8 +86,26 @@ def _orders_of(db, program: str) -> list[Any]:
     return [o for o in rows if (o.sum3d_id or "").strip().endswith(clock)]
 
 
+def _program_moment(name: Optional[str]) -> Optional[datetime]:
+    """Час програми з хвоста назви (`…_2026-11-16_13-03-34`); None — без часу."""
+    from app.services.program_tracks import _TAIL, track_key
+
+    tail = _TAIL.search(track_key(name).rstrip("_"))
+    if tail is None:
+        return None
+    try:
+        return datetime.strptime(tail.group(1), "%Y-%m-%d_%H-%M-%S")
+    except ValueError:
+        return None
+
+
 def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
-    """Слід кожної знятої програми проти наших силуетів і розстановки."""
+    """Слід кожної знятої програми проти наших силуетів і розстановки.
+
+    Диск «до роботи» — нинішній `.blk` без її обрисів І без обрисів програм,
+    знятих на тому самому диску ПІЗНІШЕ (16.11.26: 5 із 22 «не влазить» могли
+    бути лише через них). Обриси, яких не ріже жоден знятий слід
+    («невідомі»), лишаються: коли вони лягли — не знаємо."""
     from app.models import EmailMessage
     from app.services import disc_fit, disc_suggest, program_tracks, sum3d_disc
 
@@ -103,6 +122,11 @@ def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
     def skip(reason: str) -> None:
         counts[reason] = counts.get(reason, 0) + 1
 
+    # Прохід 1: який диск і які обриси ріже кожна програма.
+    blank_paths: dict[str, Any] = {}
+    shapes: dict[str, Any] = {}
+    entries: list[dict[str, Any]] = []
+    seen: set[tuple[str, Any, frozenset[int]]] = set()
     for cache_file in files:
         if time.monotonic() - started > BUDGET_SECONDS:
             skip("не_встигли")
@@ -111,8 +135,12 @@ def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
         if track is None or not track.sides:
             skip("слід_порожній")
             continue
-        blank = sum3d_disc.find_blank(blanks_root, track.blank) if track.blank else None
-        shape = sum3d_disc.shape_of(blank) if blank else None
+        if track.blank and track.blank not in blank_paths:
+            blank_paths[track.blank] = sum3d_disc.find_blank(blanks_root, track.blank)
+        blank = blank_paths.get(track.blank) if track.blank else None
+        if blank is not None and str(blank) not in shapes:
+            shapes[str(blank)] = sum3d_disc.shape_of(blank)
+        shape = shapes.get(str(blank)) if blank is not None else None
         if shape is None or not shape.contours:
             skip("диска_вже_немає_або_порожній")
             continue
@@ -120,6 +148,28 @@ def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
         if not report["надійно"]:
             skip("слід_ненадійний")
             continue
+        own = frozenset(i - 1 for i in report["свої_обриси"])
+        moment = _program_moment(track.name)
+        # Та сама програма під двома назвами (`1_18-…` і `+_18-…`, той самий
+        # час і ті самі обриси) — одна програма, не дві.
+        key = (str(blank), moment, own)
+        if key in seen:
+            skip("дубль_сліду")
+            continue
+        seen.add(key)
+        entries.append({"track": track, "disc": str(blank), "shape": shape, "own": own,
+                        "moment": moment})
+
+    known: dict[str, set[int]] = {}
+    for entry in entries:
+        known.setdefault(entry["disc"], set()).update(entry["own"])
+
+    # Прохід 2: розстановка на диску, яким він був до програми.
+    for entry in entries:
+        if time.monotonic() - started > BUDGET_SECONDS:
+            skip("не_встигли")
+            continue
+        track, shape, own = entry["track"], entry["shape"], entry["own"]
         orders = _orders_of(db, track.name)
         if not orders:
             skip("немає_роботи_з_листа")
@@ -131,17 +181,29 @@ def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
         if not pieces:
             skip("немає_STL_exocad")
             continue
+        later: set[int] = set()
+        if entry["moment"] is not None:
+            for other in entries:
+                if (other is not entry and other["disc"] == entry["disc"] and other["moment"] is not None
+                        and other["moment"] > entry["moment"]):
+                    later |= other["own"]
+        later -= own
+        unknown = len(shape.contours) - len(known.get(entry["disc"], set()))
         scale = disc_suggest.letter_scale(disc_suggest.want_of(orders[0].material_color).family)
-        own = [i - 1 for i in report["свої_обриси"]]
         own_area = sum(_polygon_area(shape.contours[i]) for i in own)
         areas = _silhouette_areas(pieces, scale)
         margin = min(MARGINS_MM, key=lambda m: abs(areas[m] - own_area))
         best_margins.append(margin)
-        before = [c for i, c in enumerate(shape.contours) if i not in set(own)]
+        strict = [c for i, c in enumerate(shape.contours) if i not in own]
+        before = [c for i, c in enumerate(shape.contours) if i not in own and i not in later]
         fits = disc_fit.fits(shape.radius, before, pieces, scale)
+        fits_strict = fits if not later else disc_fit.fits(shape.radius, strict, pieces, scale)
         counts["звірено"] = counts.get("звірено", 0) + 1
-        counts["наше_влазить" if fits else "наше_не_влазить"] = counts.get(
-            "наше_влазить" if fits else "наше_не_влазить", 0) + 1
+        skip("наше_влазить" if fits else "наше_не_влазить")
+        if fits and not fits_strict:
+            skip("не_влазило_лише_через_пізніші")
+        if not fits and unknown:
+            skip("не_влазить_є_невідомі_обриси")
         if len(rows) < limit:
             rows.append({
                 "програма": track.name, "роботи": [o.id for o in orders],
@@ -152,7 +214,10 @@ def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
                 "запас_як_у_sum3d_мм": margin,
                 "вільно_до_роботи_%": round(100 * (1 - sum(_polygon_area(c) for c in before)
                                                     / (math.pi * shape.radius ** 2))),
+                "прибрано_пізніших_обрисів": len(later),
+                "невідомих_обрисів_на_диску": unknown,
                 "наше_влазить": fits,
+                "наше_влазило_б_з_пізнішими": fits_strict,
             })
     out: dict[str, Any] = {"програм_знято": len(files), **counts, "приклади": rows}
     if best_margins:
@@ -230,8 +295,10 @@ def replay(db, days: int = 30, limit: int = 30) -> dict[str, Any]:
         "пояснення": (
             "«місце»: знята програма .iso → свій обрис на диску (як поставив Sum3D) проти нашого "
             "силуету STL. «запас_як_у_sum3d_мм» — за якого запасу наша площа дорівнює площі "
-            "обрису Sum3D; «наше_влазить» — наша розстановка на диску без цієї роботи (суворіше "
-            "за реальність: обриси, що лягли пізніше, лишаються). «висота»: товщина з STL × "
+            "обрису Sum3D; «наше_влазить» — наша розстановка на диску без цієї роботи й без обрисів "
+            "програм, знятих на ньому пізніше («наше_влазило_б_з_пізнішими» — як рахували до "
+            "16.11.26). Обриси без знятого сліду («невідомих_обрисів_на_диску») лишаються — коли "
+            "лягли, невідомо. «висота»: товщина з STL × "
             "усадка проти висоти диска з назви програми. Нічого не змінює."
         ),
     }
