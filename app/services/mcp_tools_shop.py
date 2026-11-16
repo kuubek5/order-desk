@@ -292,3 +292,26 @@ SHOP_TOOLS = SHOP_TOOLS + (
         run=tool_disc_suggest_audit,
     ),
 )
+
+
+def tool_disc_fit_replay(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import disc_fit_replay
+
+    return disc_fit_replay.replay(db, _int_arg(args, "days", default=30, low=1, high=90),
+                                  _int_arg(args, "limit", default=30, low=1, high=200))
+
+
+SHOP_TOOLS = SHOP_TOOLS + (
+    Tool(
+        name="kmill_disc_fit_replay",
+        description=(
+            "Звірка підказки диска з тим, що реально зробив цех. «місце»: для кожної знятої програми "
+            ".iso — обрис, який Sum3D відвів роботі, проти нашого силуету STL: за якого запасу площі "
+            "збігаються (наш запас зараз 2,8 мм) і чи наша розстановка сказала б «влазить» на диску "
+            "без цієї роботи. «висота»: товщина роботи з STL × усадка проти висоти диска з назви "
+            "програми — чи брав цех диск, нижчий за наш мінімум. Назв STL і клієнтів не віддає. Лише читання."
+        ),
+        schema=_days_limit_schema(30, 90),
+        run=tool_disc_fit_replay,
+    ),
+)
