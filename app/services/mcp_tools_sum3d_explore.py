@@ -43,6 +43,12 @@ def tool_sum3d_explore(db: Session, args: dict) -> dict[str, Any]:
         raise ToolError(str(exc)) from None
 
 
+def tool_sum3d_layout(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import sum3d_layout
+
+    return sum3d_layout.report(_int_arg(args, "limit", default=60, low=1, high=400))
+
+
 SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
     Tool(
         name="kmill_sum3d_explore",
@@ -75,5 +81,23 @@ SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_sum3d_explore,
+    ),
+    Tool(
+        name="kmill_sum3d_layout",
+        description=(
+            "Розкладка іконок Sum3D (панелі інструментів у CAMWINC.INI кожного встановлення з "
+            "Налаштувань): які розкладки бували і скільки разів, яка зараз, і події — коли розкладка "
+            "змінилась, при якій роздільності, після закриття якої Sum3D (з якої теки) і скільки Sum3D "
+            "було відкрито водночас; запуски й закриття camwinc.exe. Щоб знайти, після чого іконки "
+            "«злітають». Назв проєктів не віддає. Лише читання."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 400, "description": "Скільки останніх подій (типово 60)."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_sum3d_layout,
     ),
 )

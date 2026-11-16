@@ -1234,6 +1234,37 @@ def _program_tracks_net_worker(stop_event: Event) -> None:
     _program_tracks_loop(stop_event, network=True, interval=PROGRAM_TRACKS_NETWORK_INTERVAL_SECONDS)
 
 
+# Розкладка іконок Sum3D (`app/services/sum3d_layout.py`, власник 16.11.26):
+# лише читання CAMWINC.INI і списку процесів camwinc.exe, щоб знайти, після
+# чого панелі «злітають». Раз на 5 с — час зміни файлу й перелік процесів.
+SUM3D_LAYOUT_INTERVAL_SECONDS = 5.0
+SUM3D_LAYOUT_INITIAL_DELAY_SECONDS = 30.0
+SUM3D_LAYOUT_INSTALLS_REFRESH_SECONDS = 300.0
+
+
+def _sum3d_layout_worker(stop_event: Event) -> None:
+    from app import log_throttle
+    from app.services import sum3d_install, sum3d_layout
+
+    if stop_event.wait(SUM3D_LAYOUT_INITIAL_DELAY_SECONDS):
+        return
+    paths: list[str] = []
+    refreshed = 0.0
+    while not stop_event.is_set():
+        try:
+            if time.monotonic() - refreshed > SUM3D_LAYOUT_INSTALLS_REFRESH_SECONDS:
+                with SessionLocal() as db:
+                    paths = [item.path for item in sum3d_install.read_installs(db)]
+                refreshed = time.monotonic()
+            sum3d_layout.watch_once(paths)
+        except Exception:  # noqa: BLE001 — сторож не валить застосунок
+            skipped = log_throttle.due("sum3d-layout-loop")
+            if skipped is not None:
+                logger.exception("Сторож розкладки Sum3D не відпрацював (ще %d разів відтоді)", skipped)
+        if stop_event.wait(SUM3D_LAYOUT_INTERVAL_SECONDS):
+            return
+
+
 BOARD_MODELS_INTERVAL_SECONDS = 30.0
 BOARD_MODELS_INITIAL_DELAY_SECONDS = 90.0
 
@@ -1454,6 +1485,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-board-models", _board_models_worker),
         _BackgroundWorker("kuubmill-program-tracks", _program_tracks_worker),
         _BackgroundWorker("kuubmill-program-tracks-net", _program_tracks_net_worker),
+        _BackgroundWorker("kuubmill-sum3d-layout", _sum3d_layout_worker),
         _BackgroundWorker("kuubmill-mail-links", _mail_links_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
         _BackgroundWorker("kuubmill-power-schedule", _power_schedule_worker),
