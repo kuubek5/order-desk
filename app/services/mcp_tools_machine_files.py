@@ -28,23 +28,34 @@ def tool_machine_files(db: Session, args: dict) -> dict[str, Any]:
         raise ToolError(f"`machine` має вказати рівно один верстат; є: {names}")
     target = target_of(found[0])
     mode = str(args.get("mode") or "list").strip().lower()
+    tail = bool(args.get("tail"))
+    grep = str(args.get("grep") or "")[:200]
+    width = _int_arg(args, "width", default=machine_files.MAX_LINE_CHARS, low=40,
+                     high=machine_files.WIDE_LINE_CHARS)
+    start = _int_arg(args, "start", default=0, low=0, high=1_000_000)
+    limit = _int_arg(args, "limit", default=80, low=1, high=400)
     try:
         if mode == "tops":
             return {"верстат": target.name, "теки_верхнього_рівня": machine_files.fetch_tops(target)}
         if mode == "list":
-            return {"верстат": target.name, **machine_files.discover(target)}
-        if mode == "peek":
-            raw = args.get("file")
-            if raw in (None, ""):
-                raise ToolError("для `peek` потрібен `file` — номер «№» з останнього переліку")
+            find = str(args.get("find") or "")[:120]
+            return {"верстат": target.name, **machine_files.discover(target, find=find)}
+        if mode in ("peek", "zip"):
+            if args.get("file") in (None, ""):
+                raise ToolError(f"для `{mode}` потрібен `file` — номер «№» з останнього переліку")
             number = _int_arg(args, "file", default=0, low=1, high=100_000)
-            start = _int_arg(args, "start", default=0, low=0, high=1_000_000)
-            limit = _int_arg(args, "limit", default=80, low=1, high=400)
             path = machine_files.path_by_number(target, number)
-            return {"верстат": target.name, **machine_files.peek(target, path, start=start, limit=limit)}
+            if mode == "peek":
+                return {"верстат": target.name, **machine_files.peek(
+                    target, path, start=start, limit=limit, tail=tail, grep=grep, width=width)}
+            if args.get("entry") in (None, ""):
+                return {"верстат": target.name, **machine_files.zip_entries(target, path)}
+            entry = _int_arg(args, "entry", default=0, low=1, high=100_000)
+            return {"верстат": target.name, **machine_files.zip_peek(
+                target, path, entry, start=start, limit=limit, tail=tail, grep=grep, width=width)}
     except machine_files.AgentError as exc:
         raise ToolError(f"{target.name}: {exc}") from None
-    raise ToolError("`mode` — tops, list або peek (типово list)")
+    raise ToolError("`mode` — tops, list, peek або zip (типово list)")
 
 
 MACHINE_FILE_TOOLS: tuple[Tool, ...] = (
@@ -57,8 +68,14 @@ MACHINE_FILE_TOOLS: tuple[Tool, ...] = (
             "(як зветься тека програми). mode=list (типово) — файли в теках програми "
             "верстата: кандидати за назвою (tool, spindle, runtime…) і свіжістю, "
             "лічильник за розширенням і ЩО ЗМІНИЛОСЬ з минулого переліку (викликати "
-            "двічі: до й після різання чи заміни фрези). mode=peek (file — номер «№» "
-            "з переліку, start, limit) — рядки файлу й числові ключі. Агент лише "
+            "двічі: до й після різання чи заміни фрези); find — підрядок шляху "
+            "(`.zip`, `logs`) — ще й усі такі файли з «№». mode=peek (file — «№» з "
+            "переліку, start, limit) — рядки файлу й числові ключі; tail=true — КІНЕЦЬ "
+            "файлу (свіже в журналі), start тоді рахується від кінця; grep — лише "
+            "рядки за регулярним виразом; width — ширина рядка до 1000 (типово 160). "
+            "mode=zip (file — «№» архіву) — перелік файлів архіву старих журналів; "
+            "з entry (номер з цього переліку) — рядки одного з них (tail, grep, width "
+            "так само). Кінець файлу й архіви — лише агент з 16.11.26. Агент лише "
             "читає, зі спільним доступом, не замикає файли верстата й не виходить "
             "за теки програми. Літери поза латиницею затерто (імена пацієнтів)."
         ),
@@ -66,9 +83,16 @@ MACHINE_FILE_TOOLS: tuple[Tool, ...] = (
             "type": "object",
             "properties": {
                 "machine": {"type": "string", "description": "Підрядок назви верстата (boris)."},
-                "mode": {"type": "string", "description": "tops, list (типово) або peek."},
+                "mode": {"type": "string", "description": "tops, list (типово), peek або zip."},
+                "find": {"type": "string", "description": "Для list: підрядок шляху — показати всі такі файли."},
+                "entry": {"type": "integer", "minimum": 1,
+                          "description": "Для zip: номер файлу з переліку архіву."},
+                "tail": {"type": "boolean", "description": "Для peek/zip: читати кінець файлу."},
+                "grep": {"type": "string", "description": "Для peek/zip: лише рядки за регулярним виразом."},
+                "width": {"type": "integer", "minimum": 40, "maximum": 1000,
+                          "description": "Для peek/zip: ширина рядка (типово 160)."},
                 "file": {"type": "integer", "minimum": 1,
-                         "description": "Для peek: номер «№» з останнього переліку цього верстата."},
+                         "description": "Для peek і zip: номер «№» з останнього переліку цього верстата."},
                 "start": {"type": "integer", "minimum": 0, "description": "Для peek: з якого рядка (типово 0)."},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 400,
                           "description": "Для peek: скільки рядків (типово 80)."},

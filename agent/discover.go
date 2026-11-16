@@ -9,6 +9,10 @@ package main
 //   GET /discover?tops=1   -> лише назви тек верхнього рівня (щоб побачити, як
 //                             тека програми зветься на цьому ПК)
 //   GET /peek?path=...     -> початок ОДНОГО текстового файлу з дозволеної теки
+//   GET /peek?...&tail=1   -> його кінець (свіже в журналі лежить там)
+//   GET /peek?path=x.zip   -> перелік файлів архіву старих журналів;
+//                             &entry=назва[&tail=1] — один текстовий файл з
+//                             архіву, розпакований лише в пам'ять
 //
 // Чого він НЕ робить і не вміє за конструкцією:
 //   * нічого не пише, не перейменовує й не видаляє — у цьому файлі немає
@@ -22,6 +26,7 @@ package main
 //     кількості файлів.
 
 import (
+	"archive/zip"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -41,6 +46,12 @@ const (
 	discoverPause      = 3 * time.Millisecond
 	peekMaxFileBytes   = 8 << 20
 	peekMaxBytes       = 256 << 10
+	// З кінця файлу читаємо ті самі peekMaxBytes, тож розмір самого журналу
+	// не важить — межа лише від явно чужих велетнів.
+	tailMaxFileBytes   = 4 << 30
+	zipMaxFileBytes    = 256 << 20
+	zipMaxEntryBytes   = 128 << 20
+	zipMaxEntries      = 2000
 )
 
 // Слова в назві теки, за якими впізнаємо програму верстата.
@@ -246,13 +257,16 @@ func handlePeek(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "спостереження призупинено на верстаті", http.StatusServiceUnavailable)
 		return
 	}
-	path := filepath.Clean(r.URL.Query().Get("path"))
+	q := r.URL.Query()
+	path := filepath.Clean(q.Get("path"))
 	own := exeDir()
 	if !within(path, allowedRoots(parentDirs(), listDir, own)) || (own != "" && within(path, []string{own})) {
 		http.Error(w, "поза теками програми верстата", http.StatusForbidden)
 		return
 	}
-	if !textExt[strings.ToLower(filepath.Ext(path))] {
+	ext := strings.ToLower(filepath.Ext(path))
+	isZip := ext == ".zip"
+	if !textExt[ext] && !isZip {
 		http.Error(w, "не текстовий файл налаштувань чи журналу", http.StatusForbidden)
 		return
 	}
@@ -261,7 +275,14 @@ func handlePeek(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "файлу немає", http.StatusNotFound)
 		return
 	}
-	if info.Size() > peekMaxFileBytes {
+	tail := q.Get("tail") != ""
+	limitSize := int64(peekMaxFileBytes)
+	if isZip {
+		limitSize = zipMaxFileBytes
+	} else if tail {
+		limitSize = tailMaxFileBytes
+	}
+	if info.Size() > limitSize {
 		http.Error(w, "файл завеликий", http.StatusRequestEntityTooLarge)
 		return
 	}
@@ -271,7 +292,11 @@ func handlePeek(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, peekMaxBytes))
+	if isZip {
+		peekZip(w, f, path, info, q.Get("entry"), tail)
+		return
+	}
+	data, offset, err := readPart(f, info.Size(), tail)
 	if err != nil {
 		http.Error(w, "не прочитався", http.StatusConflict)
 		return
@@ -281,6 +306,114 @@ func handlePeek(w http.ResponseWriter, r *http.Request) {
 		"size":      info.Size(),
 		"mtime":     info.ModTime().Format(time.RFC3339),
 		"truncated": info.Size() > int64(len(data)),
+		"tail":      tail,
+		"offset":    offset,
 		"data":      base64.StdEncoding.EncodeToString(data),
 	})
+}
+
+// readPart: початок файлу або, з tail, його ОСТАННІ peekMaxBytes — журнал
+// дописується в кінець, і свіже лежить саме там (власник 16.11.26: «потрібно
+// максимум»). Повертає зсув, з якого прочитано.
+func readPart(f io.ReadSeeker, size int64, tail bool) ([]byte, int64, error) {
+	var offset int64
+	if tail && size > peekMaxBytes {
+		offset = size - peekMaxBytes
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return nil, 0, err
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(f, peekMaxBytes))
+	return data, offset, err
+}
+
+// lastBytes читає потік до кінця (не більше max байт), лишаючи останні keep.
+func lastBytes(rd io.Reader, keep int, max int64) ([]byte, int64, error) {
+	buf := make([]byte, 0, keep)
+	chunk := make([]byte, 32<<10)
+	var total int64
+	limited := io.LimitReader(rd, max)
+	for {
+		n, err := limited.Read(chunk)
+		if n > 0 {
+			total += int64(n)
+			buf = append(buf, chunk[:n]...)
+			if len(buf) > keep {
+				buf = append(buf[:0], buf[len(buf)-keep:]...)
+			}
+		}
+		if err == io.EOF {
+			return buf, total, nil
+		}
+		if err != nil {
+			return nil, total, err
+		}
+	}
+}
+
+// peekZip: старі журнали програма верстата пакує в .zip поруч. Без entry —
+// перелік текстових файлів архіву; з entry — початок або кінець одного з
+// них. Розпаковується лише в пам'ять і не більше zipMaxEntryBytes: на диск
+// нічого не пишеться.
+func peekZip(w http.ResponseWriter, f *os.File, path string, info os.FileInfo, entry string, tail bool) {
+	archive, err := zip.NewReader(f, info.Size())
+	if err != nil {
+		http.Error(w, "архів не розібрався", http.StatusConflict)
+		return
+	}
+	if entry == "" {
+		items := []map[string]interface{}{}
+		for _, item := range archive.File {
+			if len(items) >= zipMaxEntries {
+				break
+			}
+			if item.FileInfo().IsDir() {
+				continue
+			}
+			items = append(items, map[string]interface{}{
+				"name":  item.Name,
+				"size":  int64(item.UncompressedSize64),
+				"mtime": item.Modified.Format(time.RFC3339),
+				"text":  textExt[strings.ToLower(filepath.Ext(item.Name))],
+			})
+		}
+		writeJSON(w, map[string]interface{}{
+			"path": path, "size": info.Size(), "mtime": info.ModTime().Format(time.RFC3339),
+			"entries": items, "entries_total": len(archive.File),
+		})
+		return
+	}
+	for _, item := range archive.File {
+		if item.Name != entry {
+			continue
+		}
+		if !textExt[strings.ToLower(filepath.Ext(item.Name))] {
+			http.Error(w, "у архіві не текстовий файл", http.StatusForbidden)
+			return
+		}
+		rc, err := item.Open()
+		if err != nil {
+			http.Error(w, "файл в архіві не відкрився", http.StatusConflict)
+			return
+		}
+		defer rc.Close()
+		var data []byte
+		if tail {
+			data, _, err = lastBytes(rc, peekMaxBytes, zipMaxEntryBytes)
+		} else {
+			data, err = io.ReadAll(io.LimitReader(rc, peekMaxBytes))
+		}
+		if err != nil {
+			http.Error(w, "файл в архіві не прочитався", http.StatusConflict)
+			return
+		}
+		size := int64(item.UncompressedSize64)
+		writeJSON(w, map[string]interface{}{
+			"path": path, "entry": item.Name, "size": size,
+			"mtime": item.Modified.Format(time.RFC3339), "truncated": size > int64(len(data)),
+			"tail": tail, "data": base64.StdEncoding.EncodeToString(data),
+		})
+		return
+	}
+	http.Error(w, "такого файлу в архіві немає", http.StatusNotFound)
 }

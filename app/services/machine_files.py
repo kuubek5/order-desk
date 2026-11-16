@@ -29,7 +29,10 @@ LIST_TIMEOUT = 45
 PEEK_TIMEOUT = 20
 MAX_CANDIDATES = 60
 MAX_CHANGED = 60
-MAX_LINE_CHARS = 160
+MAX_LINE_CHARS = 160      # типова ширина рядка; `width` — до WIDE_LINE_CHARS
+WIDE_LINE_CHARS = 1000
+MAX_FOUND = 200
+MAX_ZIP_ENTRIES = 300
 
 HINT_WORDS = (
     "tool", "tch", "spindle", "runtime", "life", "wear", "hour", "temp", "stat",
@@ -158,8 +161,10 @@ def summarize(
     return out
 
 
-def discover(target: Any, *, now: Optional[datetime] = None) -> dict[str, Any]:
-    """Перелік файлів верстата з кандидатами й змінами проти минулого виклику."""
+def discover(target: Any, *, now: Optional[datetime] = None, find: str = "") -> dict[str, Any]:
+    """Перелік файлів верстата з кандидатами й змінами проти минулого виклику.
+    `find` — підрядок шляху (`.zip`, `logs`): тоді ще й усі такі файли з «№»,
+    бо кандидати показують лише текстові з «підказковою» назвою."""
     data = _get(target, "/discover", {}, LIST_TIMEOUT)
     files = [f for f in (data.get("files") or []) if isinstance(f, dict)]
     key = int(getattr(target, "machine_id", 0) or 0)
@@ -170,7 +175,16 @@ def discover(target: Any, *, now: Optional[datetime] = None) -> dict[str, Any]:
     marks = {p: (int(f.get("size") or 0), str(f.get("mtime") or "")) for p, f in zip(paths, files)}
     with _lock:
         _last[key] = {"at": now or datetime.now(), "paths": paths, "marks": marks}
+    found: Optional[list[dict[str, Any]]] = None
+    hits: list[tuple[int, dict[str, Any]]] = []
+    needle = find.strip().lower()
+    if needle:
+        hits = [(n, f) for n, f in enumerate(files, start=1) if needle in str(f.get("path") or "").lower()]
+        hits.sort(key=lambda row: str(row[1].get("mtime") or ""), reverse=True)
+        found = [{"№": n, "файл": mask(str(f.get("path") or "")), "розмір": f.get("size"),
+                  "змінено": f.get("mtime")} for n, f in hits[:MAX_FOUND]]
     return {
+        **({"знайдено": found, "знайдено_усього": len(hits)} if found is not None else {}),
         "теки_програми": [mask(str(r)) for r in data.get("roots") or []],
         "тек_пройдено": data.get("dirs"),
         "не_все_влізло": bool(data.get("truncated")),
@@ -202,29 +216,132 @@ def decode(raw: bytes) -> str:
         return raw.decode("cp1251", errors="replace")
 
 
-def peek(target: Any, path: str, *, start: int = 0, limit: int = 80) -> dict[str, Any]:
-    """Початок файлу: рядки (літери поза латиницею затерто) і числові ключі."""
-    data = _get(target, "/peek", {"path": path}, PEEK_TIMEOUT)
-    try:
-        raw = base64.b64decode(str(data.get("data") or ""), validate=True)
-    except ValueError:
-        raise AgentError("агент віддав зіпсований вміст") from None
-    if b"\x00" in raw[:4096] and not raw.startswith(b"\xff\xfe"):
-        return {"файл": mask(path), "розмір": data.get("size"), "змінено": data.get("mtime"),
-                "двійковий": True}
+def _lines(raw: bytes, *, from_tail: bool, offset: int) -> list[str]:
     lines = decode(raw).splitlines()
+    if from_tail and offset and lines:
+        lines = lines[1:]   # перший рядок шматка з кінця — обрізаний посередині
+    return lines
+
+
+def _window(lines: list[str], *, start: int, limit: int, tail: bool, grep: str,
+            width: int) -> dict[str, Any]:
+    """Які рядки віддати: фільтр `grep` (регулярний вираз, без регістру), далі
+    `start`/`limit` — від початку, а з `tail` — від кінця (start=0 — останні)."""
+    picked = lines
+    if grep:
+        try:
+            pattern = re.compile(grep, re.IGNORECASE)
+        except re.error as exc:
+            raise AgentError(f"`grep` — не регулярний вираз: {exc}") from None
+        picked = [line for line in lines if pattern.search(line)]
+    if tail:
+        end = max(0, len(picked) - start)
+        window = picked[max(0, end - limit):end]
+    else:
+        window = picked[start:start + limit]
+    width = max(40, min(WIDE_LINE_CHARS, width))
+    out: dict[str, Any] = {
+        "рядків_прочитано": len(lines),
+        "з_рядка": start,
+        "рядки": [mask(line)[:width] for line in window],
+    }
+    if grep:
+        out["збігів"] = len(picked)
+    return out
+
+
+def _numeric(lines: list[str]) -> list[str]:
     numeric: list[str] = []
     for line in lines:
         match = _NUMERIC_VALUE.match(line)
         if match and len(numeric) < 200:
             numeric.append(f"{mask(match.group(1).strip())} = {match.group(2)}")
-    return {
+    return numeric
+
+
+def _raw(data: dict[str, Any]) -> bytes:
+    try:
+        return base64.b64decode(str(data.get("data") or ""), validate=True)
+    except ValueError:
+        raise AgentError("агент віддав зіпсований вміст") from None
+
+
+def peek(target: Any, path: str, *, start: int = 0, limit: int = 80, tail: bool = False,
+         grep: str = "", width: int = MAX_LINE_CHARS) -> dict[str, Any]:
+    """Рядки файлу (літери поза латиницею затерто) і числові ключі.
+
+    `tail` — кінець файлу (свіже в журналі там); старий агент кінця не вміє і
+    віддає початок — тоді так і пишемо. `grep` — лише рядки, що збігаються."""
+    if path.lower().endswith(".zip"):
+        raise AgentError("це архів — mode=zip (перелік) або mode=zip з `entry`")
+    params = {"path": path}
+    if tail:
+        params["tail"] = "1"
+    data = _get(target, "/peek", params, PEEK_TIMEOUT)
+    raw = _raw(data)
+    if b"\x00" in raw[:4096] and not raw.startswith(b"\xff\xfe"):
+        return {"файл": mask(path), "розмір": data.get("size"), "змінено": data.get("mtime"),
+                "двійковий": True}
+    got_tail = bool(data.get("tail"))
+    lines = _lines(raw, from_tail=got_tail, offset=int(data.get("offset") or 0))
+    out = {
         "файл": mask(path),
         "розмір": data.get("size"),
         "змінено": data.get("mtime"),
         "прочитано_не_весь": bool(data.get("truncated")),
-        "рядків_прочитано": len(lines),
-        "з_рядка": start,
-        "рядки": [mask(line)[:MAX_LINE_CHARS] for line in lines[start:start + limit]],
-        "числові_ключі": numeric,
+        **({"кінець_файлу": True} if got_tail else {}),
+        **({"агент_старий": "кінця файлу не вміє — показано початок"} if tail and not got_tail else {}),
+        **_window(lines, start=start, limit=limit, tail=got_tail, grep=grep, width=width),
+    }
+    out["числові_ключі"] = _numeric(lines) if not got_tail else []
+    return out
+
+
+_zips: dict[tuple[int, str], list[str]] = {}
+
+
+def zip_entries(target: Any, path: str) -> dict[str, Any]:
+    """Перелік файлів архіву старих журналів; «№» потім іде в `entry`."""
+    data = _get(target, "/peek", {"path": path}, PEEK_TIMEOUT)
+    if "entries" not in data:
+        raise AgentError("агент старий: архівів не читає — поставити нову версію агента")
+    items = [e for e in data.get("entries") or [] if isinstance(e, dict)]
+    items.sort(key=lambda e: str(e.get("mtime") or ""), reverse=True)
+    names = [str(e.get("name") or "") for e in items]
+    key = (int(getattr(target, "machine_id", 0) or 0), path.lower())
+    with _lock:
+        if len(_zips) > 50:
+            _zips.clear()
+        _zips[key] = names
+    return {
+        "архів": mask(path), "розмір": data.get("size"), "змінено": data.get("mtime"),
+        "файлів_в_архіві": data.get("entries_total"),
+        "файли": [{"№": i, "назва": mask(str(e.get("name") or "")), "розмір": e.get("size"),
+                   "змінено": e.get("mtime"), "текст": bool(e.get("text"))}
+                  for i, e in enumerate(items[:MAX_ZIP_ENTRIES], start=1)],
+    }
+
+
+def zip_peek(target: Any, path: str, entry: int, *, start: int = 0, limit: int = 80,
+             tail: bool = False, grep: str = "", width: int = MAX_LINE_CHARS) -> dict[str, Any]:
+    key = (int(getattr(target, "machine_id", 0) or 0), path.lower())
+    with _lock:
+        names = _zips.get(key)
+    if names is None:
+        raise AgentError("спершу перелік архіву (mode=zip без `entry`): номер береться з нього")
+    if not 1 <= entry <= len(names):
+        raise AgentError(f"номера {entry} в переліку архіву немає (1…{len(names)})")
+    name = names[entry - 1]
+    params = {"path": path, "entry": name}
+    if tail:
+        params["tail"] = "1"
+    data = _get(target, "/peek", params, PEEK_TIMEOUT)
+    raw = _raw(data)
+    got_tail = bool(data.get("tail"))
+    lines = _lines(raw, from_tail=got_tail and bool(data.get("truncated")), offset=1)
+    return {
+        "архів": mask(path), "файл": mask(name), "розмір": data.get("size"), "змінено": data.get("mtime"),
+        "прочитано_не_весь": bool(data.get("truncated")),
+        **({"кінець_файлу": True} if got_tail else {}),
+        **_window(lines, start=start, limit=limit, tail=got_tail, grep=grep, width=width),
     }
