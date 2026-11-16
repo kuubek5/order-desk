@@ -227,6 +227,11 @@ class TileDisc:
     paths: list[str]
     free_pct: int
     name: str
+    # Файл диска — для звірки зі слідом програми (`program_tracks`).
+    path: Optional[Path] = None
+    # Номери обрисів (індекси в `paths`), що ріже поточна програма; порожньо —
+    # не знаємо, і плитка малює всі обриси однаково.
+    hot: frozenset[int] = frozenset()
 
 
 def disc_for_program(program: Optional[str]) -> Optional[TileDisc]:
@@ -237,4 +242,4 @@ def disc_for_program(program: Optional[str]) -> Optional[TileDisc]:
     shape = shape_of(path)
     if shape is None:
         return None
-    return TileDisc(svg_paths(shape), round(shape.free_share * 100), path.stem)
+    return TileDisc(svg_paths(shape), round(shape.free_share * 100), path.stem, path=path)

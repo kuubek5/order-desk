@@ -136,9 +136,9 @@
             {# Справжній диск і поруч зі «зняти» (власник 12.11.26): що на ньому
                розставлено — саме тоді, коли диск знімають. Відсотка вільного не пишемо (власник). #}
             {% if m.disc %}
-            <svg class="disc is-done" viewBox="0 0 100 100" aria-hidden="true">
+            <svg class="disc is-done{% if m.disc.hot %} has-now{% endif %}" viewBox="0 0 100 100" aria-hidden="true">
               <circle class="disc-body" cx="50" cy="50" r="42"></circle>
-              {% for d in m.disc.paths %}<path class="rc" d="{{ d }}"></path>{% endfor %}
+              {% for d in m.disc.paths %}<path class="rc{% if loop.index0 in m.disc.hot %} now{% endif %}" d="{{ d }}"></path>{% endfor %}
               <circle class="disc-track" cx="50" cy="50" r="47"></circle>
             </svg>
             {% endif %}
@@ -153,13 +153,15 @@
                неї диск чесно порожній. Розміченої, але ще не вирізаної
                одиниці майже не видно; вирізана — темна лунка з бурштиновим
                краєм. `data-cut`/`data-pct` — для плавного переходу в скрипті. #}
-            <svg class="disc" viewBox="0 0 100 100" aria-hidden="true"
+            <svg class="disc{% if m.disc and m.disc.hot %} has-now{% endif %}" viewBox="0 0 100 100" aria-hidden="true"
                  data-pct="{{ m.percent }}" data-cut="{{ m.cut_count }}">
               <circle class="disc-body" cx="50" cy="50" r="42"></circle>
               {# Справжній диск (власник 12.11.26): обриси робіт із файлу диска
-                 Sum3D, як в CAM. Що з них уже вирізано, файл не каже, тому всі
-                 одним кольором. Диска не знайдено — лунки, як раніше. #}
-              {% if m.disc %}{% for d in m.disc.paths %}<path class="rc" d="{{ d }}"></path>{% endfor %}
+                 Sum3D, як в CAM. Ті, що ріже поточна програма (слід `.iso`,
+                 `program_tracks.cutting_contours`), — суцільним бурштином, решта
+                 приглушена (вигляд A, 14.11.26); слід ненадійний — усі однаково.
+                 Диска не знайдено — лунки, як раніше. #}
+              {% if m.disc %}{% for d in m.disc.paths %}<path class="rc{% if loop.index0 in m.disc.hot %} now{% endif %}" d="{{ d }}"></path>{% endfor %}
               {% else %}{% for c in m.crowns %}<circle class="crown{% if c.cut %} is-cut{% endif %}" cx="{{ c.x }}" cy="{{ c.y }}" r="{{ c.r }}"></circle>{% endfor %}{% endif %}
               <circle class="disc-track" cx="50" cy="50" r="47"></circle>
               <circle class="disc-arc" cx="50" cy="50" r="47" transform="rotate(-90 50 50)"

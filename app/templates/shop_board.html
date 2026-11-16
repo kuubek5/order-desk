@@ -183,6 +183,11 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .disc-arc{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round}
 /* Справжній диск (`sum3d_disc`): обриси розставлених робіт, як у Sum3D. */
 .disc .rc{fill:rgba(255,212,137,.10);stroke:rgba(255,212,137,.62);stroke-width:.9;stroke-linejoin:round}
+/* Підсвітка (вигляд A «Бурштин», власник 14.11.26): обриси, що ріже поточна
+   програма, — суцільний бурштин, решта ледь видна. Лише коли слід надійний
+   (`has-now`), інакше диск як вище. */
+.disc.has-now .rc{fill:rgba(255,212,137,.05);stroke:rgba(255,212,137,.28)}
+.disc.has-now .rc.now{fill:rgba(var(--accent-rgb),.85);stroke:#ffd9a0;stroke-width:1.1}
 /* Число лишається біля правого краю на всіх картках — як було зі смужкою. */
 .disc+.pc{margin-left:auto}
 /* На завершеній плитці диск стоїть праворуч від «зняти». */

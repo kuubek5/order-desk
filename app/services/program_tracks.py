@@ -254,20 +254,26 @@ def _load(path: Path) -> Optional[Track]:
     )
 
 
-def _track_path(program: Optional[str], folder: Path) -> Optional[Path]:
+def _track_paths(program: Optional[str], folder: Path) -> list[Path]:
+    """Точна назва — один файл; гола `дата_час` — усі сліди з тим самим хвостом
+    (250i-Tolik 16.11.26: той самий проєкт виведено двічі, `3_…` і `dd_…`)."""
     key = track_key(program)
     if not key:
-        return None
+        return []
     exact = folder / f"{key}.json"
     if exact.is_file():
-        return exact
+        return [exact]
     tail = _TAIL.search(key.rstrip("_"))
     if tail is None:
-        return None
+        return []
     try:
-        same = [p for p in folder.glob(f"*{tail.group(1)}*.json")]
+        return sorted(folder.glob(f"*{tail.group(1)}*.json"))
     except OSError:
-        return None
+        return []
+
+
+def _track_path(program: Optional[str], folder: Path) -> Optional[Path]:
+    same = _track_paths(program, folder)
     return same[0] if len(same) == 1 else None
 
 
@@ -303,19 +309,91 @@ def program_of(iso_name: Optional[str], folder: Optional[Path] = None) -> Option
     if cached is not None and now < cached[0]:
         return cached[1]
     found: Optional[tuple[str, str]] = None
-    path = _track_path(iso_name, folder)
-    if path is not None:
+    heads: list[tuple[str, str]] = []
+    for path in _track_paths(iso_name, folder)[:4]:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raw = None
         if isinstance(raw, dict) and str(raw.get("name") or "").strip():
-            found = (str(raw["name"]).strip(), str(raw.get("blank") or "").strip())
+            heads.append((str(raw["name"]).strip(), str(raw.get("blank") or "").strip()))
+    if len(heads) == 1:
+        found = heads[0]
+    elif len(heads) > 1 and heads[0][1] and all(h[1].lower() == heads[0][1].lower() for h in heads):
+        # Кілька слідів з тим самим «дата_час», але диск у шапці той самий
+        # (Tolik 16.11.26: проєкт виведено двічі з різною позначкою). Диск
+        # відомий; назву лишаємо голою — позначка на диску в них різна, і
+        # вгадана була б хибною.
+        found = (str(iso_name).strip(), heads[0][1])
     with _lock:
         if len(_names) > 300:
             _names.clear()
         _names[slot] = (now + (NAME_HIT_TTL_SECONDS if found else NAME_MISS_TTL_SECONDS), found)
     return found
+
+
+# Підсвітка на табло: які обриси диска ріже програма (власник 14.11.26, вигляд
+# A «Бурштин»). Звірка дорога (заливка обрисів у сітку), а табло питає на кожен
+# рендер — відповідь пам'ятаємо за файлами сліду й диска з часом зміни: Sum3D
+# зберіг диск або знято новий слід — рахуємо наново.
+_cuts: dict[tuple, frozenset[int]] = {}
+
+
+def cutting_contours(names: Iterable[Optional[str]], disc_path: Optional[Path],
+                     folder: Optional[Path] = None) -> frozenset[int]:
+    """Номери (з нуля, у порядку обрисів диска) обрисів, що ріже програма.
+
+    Порожньо — не знаємо, і табло нічого не підсвічує: сліду немає, шапка
+    програми називає ІНШИЙ диск, звірка ненадійна (`match`), або кілька слідів
+    із тим самим «дата_час» показують різні обриси. Хибна підсвітка гірша
+    за жодну."""
+    from app.services import sum3d_disc
+
+    if disc_path is None:
+        return frozenset()
+    folder = folder or cache_dir()
+    paths: list[Path] = []
+    for name in names:
+        paths = _track_paths(name, folder)[:4]
+        if paths:
+            break
+    if not paths:
+        return frozenset()
+    try:
+        marks = tuple((str(p), p.stat().st_mtime_ns) for p in paths) + (
+            (str(disc_path), disc_path.stat().st_mtime_ns),)
+    except OSError:
+        return frozenset()
+    with _lock:
+        cached = _cuts.get(marks)
+    if cached is not None:
+        return cached
+    result: frozenset[int] = frozenset()
+    shape = sum3d_disc.shape_of(disc_path)
+    if shape is not None and shape.contours:
+        disc_name = disc_path.stem.lower()
+        answers: list[frozenset[int]] = []
+        for path in paths:
+            track = _load(path)
+            if track is None or not track.sides:
+                answers = []
+                break
+            blank = re.sub(r"\.blk$", "", track.blank.strip(), flags=re.I).lower()
+            if blank and blank != disc_name:
+                answers = []
+                break
+            report = match(track, shape.radius, shape.contours)
+            if not report["надійно"]:
+                answers = []
+                break
+            answers.append(frozenset(i - 1 for i in report["свої_обриси"]))
+        if answers and all(a == answers[0] for a in answers):
+            result = answers[0]
+    with _lock:
+        if len(_cuts) > 200:
+            _cuts.clear()
+        _cuts[marks] = result
+    return result
 
 
 def prune(folder: Optional[Path] = None, *, now: Optional[float] = None) -> int:

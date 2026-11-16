@@ -628,6 +628,13 @@ def _machine(card, token: str, with_3d: bool = True) -> ShopMachine:
             item.disc = sum3d_disc.disc_for_program(stem)
         if item.disc is None and track_blank:
             item.disc = sum3d_disc.disc_for_program(track_blank)
+        # Обриси, що ріже ця програма (вигляд A «Бурштин», власник 14.11.26) —
+        # зі сліду самого файлу `.iso` (`program_tracks`). Не впевнені — пусто,
+        # і диск малюється як раніше.
+        if item.disc is not None:
+            from app.services import program_tracks
+
+            item.disc.hot = program_tracks.cutting_contours((program, iso), item.disc.path)
     # Лише роботи, що стоять на шпинделі ЗАРАЗ (`orders`), не щойно зняті.
     item.units = disc_units(getattr(card, "orders", None) or [])
     if token and with_3d:

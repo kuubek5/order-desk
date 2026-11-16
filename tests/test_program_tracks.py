@@ -221,8 +221,11 @@ def test_program_of_gives_full_name_and_blank_for_a_bare_screen_name(tmp_path, m
 
 def test_program_of_does_not_guess_between_two_tracks(tmp_path, monkeypatch):
     monkeypatch.setattr(pt, "_names", {})
-    for head in ("1_16-Monolith-A3-x01", "2_18-Monolith-A2-x02"):
-        pt.save_track(pt.parse_program(_program(1, 1), f"{head}_2026-11-15_09-39-27.iso"), tmp_path)
+    for head, blank in (("1_16-Monolith-A3-x01", "zr16_16-Monolith-A3-x01"),
+                        ("2_18-Monolith-A2-x02", "zr18_18-Monolith-A2-x02")):
+        track = pt.parse_program(_program(1, 1), f"{head}_2026-11-15_09-39-27.iso")
+        track.blank = blank  # різні програми — різні диски в шапці
+        pt.save_track(track, tmp_path)
     assert pt.program_of("2026-11-15_09-39-27.iso", tmp_path) is None
 
 

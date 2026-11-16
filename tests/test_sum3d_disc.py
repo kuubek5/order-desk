@@ -213,3 +213,77 @@ def test_board_takes_name_and_disc_from_the_program_track(tmp_path, monkeypatch)
     monkeypatch.setattr(pt, "program_of", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("не мав питати")))
     full = _card("S", "run", percent=5, iso_name="4--16-MONOLITH-A4-X06_2026-11-15_09-49-01.iso")
     assert _view([full]).machines[0].prog_tail == "09-49-01"
+
+
+def _lit_setup(tmp_path, monkeypatch, disc_name):
+    from app.services import program_tracks as pt
+
+    blanks, tracks = tmp_path / "blanks", tmp_path / "tracks"
+    f = blanks / "zr" / "16" / f"{disc_name}.blk"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(_blank([_square(-20, -10, 5), _square(10, 20, 5), _square(25, -25, 5)]))
+    sum3d_disc._list_cache.clear()
+    monkeypatch.setattr(sum3d_disc, "_root", str(blanks))
+    monkeypatch.setattr(sum3d_names, "_root", None)
+    monkeypatch.setattr(pt, "cache_dir", lambda: tracks)
+    monkeypatch.setattr(pt, "_names", {})
+    monkeypatch.setattr(pt, "_cuts", {})
+    return pt, tracks
+
+
+def test_board_lights_the_contours_the_program_cuts(tmp_path, monkeypatch):
+    """Вигляд A «Бурштин» (власник 14.11.26): обрис, що ріже поточна програма,
+    підсвічено за слідом самого `.iso`; решта приглушена."""
+    from app.routers.deps import templates
+    from tests.test_program_tracks import _program
+    from tests.test_shop_board import _card, _view
+
+    pt, tracks = _lit_setup(tmp_path, monkeypatch, "zr16_16-Monolith-A4-x05")
+    name = "2_16-Monolith-A4-x05_2026-11-16_13-03-34.iso"
+    card = _card("N", "run", percent=40, iso_name=name)
+    machine = _view([card]).machines[0]
+    assert machine.disc is not None and machine.disc.hot == frozenset(), "сліду немає — нічого не світимо"
+    pt.save_track(pt.parse_program(_program(10, 20), name), tracks)
+    machine = _view([card]).machines[0]
+    assert machine.disc.hot == frozenset({1}), "другий обрис диска — той, де ріже програма"
+    html = templates.env.get_template("_shop_board_cards.html").render(view=_view([card]), token="t")
+    assert 'class="disc has-now"' in html
+    assert html.count('<path class="rc now"') == 1 and html.count('<path class="rc"') == 2
+    done = _card("D", "done", word="завершено", iso_name=name)
+    done_html = templates.env.get_template("_shop_board_cards.html").render(view=_view([done]), token="t")
+    assert 'class="disc is-done has-now"' in done_html and done_html.count('<path class="rc now"') == 1
+
+
+def test_board_does_not_light_a_disc_the_program_header_does_not_name(tmp_path, monkeypatch):
+    """Шапка `.iso` називає інший диск (x05), ніж знайдено за назвою (x07) —
+    обриси чужі, нічого не підсвічуємо."""
+    from tests.test_program_tracks import _program
+    from tests.test_shop_board import _card, _view
+
+    pt, tracks = _lit_setup(tmp_path, monkeypatch, "zr16_16-Monolith-A4-x07")
+    name = "2_16-Monolith-A4-x07_2026-11-16_13-03-34.iso"
+    pt.save_track(pt.parse_program(_program(10, 20), name), tracks)
+    machine = _view([_card("N", "run", percent=40, iso_name=name)]).machines[0]
+    assert machine.disc is not None and machine.disc.hot == frozenset()
+
+
+def test_board_lights_nothing_when_two_tracks_of_a_bare_name_disagree(tmp_path, monkeypatch):
+    """250i-Tolik 16.11.26: проєкт виведено двічі (`3_…`, `dd_…`), екран дає
+    лише `дата_час.iso`. Диск той самий — його показуємо; обриси світимо, лише
+    коли обидва сліди кажуть те саме."""
+    from tests.test_program_tracks import _program
+    from tests.test_shop_board import _card, _view
+
+    pt, tracks = _lit_setup(tmp_path, monkeypatch, "zr16_16-Monolith-A4-x05")
+    tail = "2026-11-16_11-29-02.iso"
+    pt.save_track(pt.parse_program(_program(10, 20), f"3_16-Monolith-A4-x05_{tail}"), tracks)
+    pt.save_track(pt.parse_program(_program(10, 20), f"dd_16-Monolith-A4-x05_{tail}"), tracks)
+    card = _card("T", "run", percent=30, iso_name=tail)
+    machine = _view([card]).machines[0]
+    assert machine.disc is not None and machine.disc.name == "zr16_16-Monolith-A4-x05"
+    assert (machine.prog_head, machine.prog_tail) == ("2026-11-16_", "11-29-02"), "позначку не вгадуємо"
+    assert machine.disc.hot == frozenset({1}), "обидва сліди ріжуть той самий обрис"
+    pt.save_track(pt.parse_program(_program(25, -25), f"dd_16-Monolith-A4-x05_{tail}"), tracks)
+    monkeypatch.setattr(pt, "_names", {})
+    machine = _view([card]).machines[0]
+    assert machine.disc is not None and machine.disc.hot == frozenset(), "сліди розійшлись — не світимо"
