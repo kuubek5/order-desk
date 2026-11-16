@@ -79,6 +79,41 @@ def test_program_name_gives_the_disc(name, family, height, shades, sum3d):
     assert (disc.family, disc.height, set(disc.shades), disc.sum3d_id) == (family, height, shades, sum3d)
 
 
+# Позначка верстата через дефіс замість `_` (назви з проду, kmill_disc_fit_replay
+# 16.11.26): `14-pmma25_25` читалось як диск 14, `2-16-Monolith` — як диск 2,
+# а `1--pmma16_16` і `2--16-Monolith` не читались зовсім (`--` — роздільник
+# виробника з дефісом). Ключ — той самий, що в диска без позначки.
+@pytest.mark.parametrize("name, family, height, key", [
+    ("14-pmma25_25-pmmaProzrach-390_2026-10-29_11-25-21.iso", "ПММА", 25, "25-pmmaprozrach-390"),
+    ("1--pmma16_16-a3-x137_2026-11-15_15-17-07.iso", "ПММА", 16, "16-a3-x137"),
+    ("5--pmma16_16-a2-x188_2026-11-15_15-02-15.iso", "ПММА", 16, "16-a2-x188"),
+    ("2-16-Monolith-A4-x05_2026-11-15_10-08-14.iso", "Цирконій", 16, "16-monolith-a4-x05"),
+    ("2--16-Monolith-A4-x05_2026-11-15_09-54-53.iso", "Цирконій", 16, "16-monolith-a4-x05"),
+    ("+_18-Monolith-A3-5-x53_2026-11-16_09-55-17.iso", "Цирконій", 18, "18-monolith-a3-5-x53"),
+])
+def test_machine_mark_with_hyphen_is_not_the_disc(name, family, height, key):
+    disc = disc_check.program_disc(name)
+    assert disc is not None
+    assert (disc.family, disc.height, disc.key) == (family, height, key)
+
+
+@pytest.mark.parametrize("name, height, key", [
+    # Без позначки: голова сама висота (формат A) — нічого не зрізаємо.
+    ("14-MONOLITH-A3-X89_2026-10-12_10-00-00.iso", 14, "14-monolith-a3-x89"),
+    ("25-a3-x10_2026-10-12_10-00-00.iso", 25, "25-a3-x10"),
+    # 500/800/1000 — код кольору, не висота після позначки.
+    ("14-500-X02_2026-11-07_09-13-00.iso", 14, "14-500-x02"),
+    ("9_14-500-X02_2026-11-07_09-13-00.iso", 14, "14-500-x02"),
+    # Позначка з `_` — як і було.
+    ("14pmma25_25-pmmaProzrach-395_2026-11-16_10-20-02.iso", 25, "25-pmmaprozrach-395"),
+    ("3dd_18-Emotions-a3-x417_2026-10-22_18-38-39.iso", 18, "18-emotions-a3-x417"),
+])
+def test_names_without_hyphen_mark_keep_their_disc(name, height, key):
+    disc = disc_check.program_disc(name)
+    assert disc is not None
+    assert (disc.height, disc.key) == (height, key)
+
+
 @pytest.mark.parametrize("name", ["2026-11-12_01-20-12.iso", "DDD.ISO", "", None])
 def test_program_without_disc_in_the_name_is_none(name):
     assert disc_check.program_disc(name) is None

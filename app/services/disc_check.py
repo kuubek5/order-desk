@@ -75,6 +75,25 @@ def _norm_shades(found: Iterable[str]) -> frozenset[str]:
     return frozenset(CODE_SHADES.get(s, s) for s in found)
 
 
+# Позначка верстата через дефіс (`14-pmma25_25-…`, `2-16-Monolith-…`,
+# `1--pmma16_16-…`, `2--16-Monolith-…`) замість звичного `_` (`1_14-…`,
+# `4pmma25_25-…`). Без зрізання голова «14» або «2» читалась як висота диска,
+# а `--` — як роздільник виробника з дефісом, і назва не читалась зовсім
+# (kmill_disc_fit_replay 16.11.26). Зрізаємо, лише коли ПІСЛЯ позначки стоїть
+# голова з висотою (`pmma25_25` або саме число): `14-MONOLITH-A3-X89` і
+# `25-a3-x10` — це висота без позначки, їх не чіпаємо.
+_HYPHEN_MARK_RE = re.compile(r"^(?:\d+|\+)-{1,2}(?P<rest>(?P<first>[^-]+)-.+)$")
+# Число — лише двоцифрове: у `14-500-X02` 500 — код кольору Doceram, а не висота.
+_BLANK_HEAD_RE = re.compile(r"^(?:\d{2}|[A-Za-z]+\d*_\d{1,3})$")
+
+
+def _strip_hyphen_mark(head: str) -> str:
+    match = _HYPHEN_MARK_RE.match(head)
+    if match and _BLANK_HEAD_RE.match(match.group("first")):
+        return match.group("rest")
+    return head
+
+
 def program_disc(iso_name: Optional[str]) -> Optional[ProgramDisc]:
     """Назва програми → диск; None, коли в назві немає диска (`дата_час.iso`)."""
     text = (iso_name or "").strip()
@@ -82,6 +101,7 @@ def program_disc(iso_name: Optional[str]) -> Optional[ProgramDisc]:
         return None  # гола `дата_час.iso` — диска в назві немає
     tail = _TAIL_RE.search(text)
     head = text[: tail.start()] if tail else re.sub(r"\.iso$", "", text, flags=re.I)
+    head = _strip_hyphen_mark(head)
     if not head or "-" not in head:
         return None
     parsed = parse_blank_name(head)
