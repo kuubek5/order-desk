@@ -50,6 +50,7 @@ from app.services.manual_add import (
     normalize_work_type,
 )
 from app.services.queue import RETENTION_DAYS, order_is_archived
+from app.settings_store import get_sum3d_projects_path
 from app.manual_add_flag import manual_add_in_flight
 from app.services.sheet_writeback import (
     append_comment_background,
@@ -1305,7 +1306,57 @@ def get_order_detail(
             "sheet_failure_merged": sheet_failure_merged,
             "sheet_failure_link": sheet_failure_link,
             "can_rewrite_row": can_rewrite_row(order),
+            # Кнопка «Відкрити в Sum3D» — лише коли теку проєктів задано;
+            # сам файл шукається на кліку, щоб паспорт не обходив теку.
+            "sum3d_projects_on": bool((get_sum3d_projects_path(db) or "").strip()),
         },
+    )
+
+
+@router.post("/orders/{order_id}/open-sum3d")
+def open_sum3d_project(request: Request, order_id: int, db: Session = Depends(get_db)):
+    """«Відкрити в Sum3D» з паспорта (власник 16.11.26): файл проєкту
+    `<дата>_<Sum3D>.cam` з теки проєктів (Cam-work) відкривається так само, як
+    подвійним кліком у Провіднику — асоціацією Windows (`CAMWINC.EXE FILE`).
+    У файли Sum3D нічого не пишемо. Проєкт — це ДИСК: на одному Sum3D буває
+    кілька робіт. Гейт і відповідь — як у «Відкрити теку»: на цьому ПК
+    відкривається, з мережі — шлях для копіювання (`openFolderOrCopy`)."""
+    from app.platform_windows import open_with_default_app
+    from app.routers.deps import open_folder_response
+    from app.services.order_dates import parse_sheet_tab
+    from app.services.sum3d_capture import find_project_files
+
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+    if not (order.sum3d_id or "").strip():
+        raise HTTPException(status_code=404, detail="у роботи ще немає Sum3D ID")
+    root = (get_sum3d_projects_path(db) or "").strip()
+    if not root:
+        raise HTTPException(status_code=404, detail="теку проєктів Sum3D не задано в налаштуваннях")
+    day = parse_sheet_tab(order.sheet_tab)
+    if day is None and order.created_at is not None:
+        day = order.created_at.date()
+    files = find_project_files(root, order.sum3d_id, day)
+    if not files:
+        raise HTTPException(status_code=404, detail="проєкту Sum3D для цієї роботи немає в теці проєктів")
+
+    def _open(path) -> None:
+        # Своя причина замість «не вдалося відкрити папку» з open_folder_response.
+        try:
+            open_with_default_app(path)
+        except OSError as exc:
+            logger.warning("Sum3D: Windows не відкрив проєкт %s: %s", path, exc)
+            raise HTTPException(
+                status_code=500,
+                detail="Windows не відкрив проєкт: для файлів .cam не задано Sum3D або файл зайнятий",
+            ) from exc
+
+    return open_folder_response(
+        request, db, files[0], opener=_open, log_label=f"order {order_id} Sum3D project",
     )
 
 

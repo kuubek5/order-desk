@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date as date_type
+from datetime import timedelta
 from pathlib import Path
 from threading import Lock
 from time import monotonic
@@ -154,6 +156,56 @@ def cached_projects(path: str | None, *, limit: int = 12) -> list[CapturedProjec
     if hit and (monotonic() - hit[0]) < _CACHE_TTL_SECONDS:
         return hit[1][:limit]
     return None
+
+
+_SUM3D_TAIL_RE = re.compile(r"(?<!\d)(\d{2}-\d{2}-\d{2})(?!\d)")
+
+
+def project_days(work_day: date_type | None) -> list[date_type]:
+    """Дні, у які міг лягти проєкт роботи, від найімовірнішого.
+
+    Sum3D ID — лише час доби, тож проєкт шукаємо біля дня роботи: сам день,
+    наступний (нічна зміна рахує до ранку), попередній. Вкладка п'ятниці несе
+    й вихідні (CLAUDE.md §4) — для неї ще субота й неділя."""
+    if work_day is None:
+        return []
+    days = [work_day, work_day + timedelta(days=1), work_day - timedelta(days=1)]
+    if work_day.weekday() == 4:
+        days += [work_day + timedelta(days=2), work_day + timedelta(days=3)]
+    return days
+
+
+def find_project_files(path: str | None, sum3d_text: str | None,
+                       work_day: date_type | None) -> list[Path]:
+    """Файли проєктів Sum3D (`<дата>_<Sum3D>.cam`) для роботи, кращий першим.
+
+    Клітинка Sum3D буває з текстом і кількома ID через перенос — беремо всі
+    хвости `ГГ-ХХ-СС`. Копія Windows («— копия») того самого проєкту йде ПІСЛЯ
+    оригіналу: відкриваємо те, що Sum3D зберіг сам. Порядок: день (як у
+    `project_days`), далі оригінал, далі назва. Лише читання теки."""
+    value = (path or "").strip()
+    tails = list(dict.fromkeys(_SUM3D_TAIL_RE.findall(sum3d_text or "")))
+    days = project_days(work_day)
+    if not value or not tails or not days:
+        return []
+    wanted = {day.isoformat(): rank for rank, day in enumerate(days)}
+    try:
+        entries = list(Path(value).iterdir())
+    except (OSError, PermissionError):
+        return []
+    found: list[tuple[int, int, int, str, Path]] = []
+    for entry in entries:
+        label = _project_label(entry)
+        parsed = parse_project_name(label) if label else None
+        if parsed is None:
+            continue
+        day, sid = parsed
+        if sid not in tails or day not in wanted:
+            continue
+        exact = 0 if label == f"{day}_{sid}" else 1
+        found.append((tails.index(sid), wanted[day], exact, entry.name, entry))
+    found.sort(key=lambda item: item[:4])
+    return [item[4] for item in found]
 
 
 def warm_projects(path: str | None) -> int:

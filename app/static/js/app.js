@@ -79,7 +79,17 @@ window.copyTextToClipboard = async function copyTextToClipboard(value) {
 // куди його вставити. Повертає "opened" | "copied", кидає при відмові.
 window.openFolderOrCopy = async function openFolderOrCopy(url, body) {
   const response = await fetch(url, { method: "POST", body, credentials: "same-origin" });
-  if (!response.ok) throw new Error(String(response.status));
+  if (!response.ok) {
+    // Причина від сервера (`detail`) — для кнопок, що показують її самі
+    // («Відкрити в Sum3D»: «проєкту немає в теці»). Решта кнопок її не бере.
+    const error = new Error(String(response.status));
+    try {
+      error.detail = (await response.json()).detail || "";
+    } catch (_error) {
+      error.detail = "";
+    }
+    throw error;
+  }
   let payload = null;
   try {
     payload = await response.json();
@@ -262,17 +272,23 @@ document.addEventListener("click", (event) => {
   if (!url) return;
   const body = token ? new URLSearchParams({ token: token }) : new URLSearchParams();
 
+  // `data-open-kind="sum3d"` — та сама дорога, але відкривається файл проєкту
+  // в Sum3D, а не тека: свої слова в тості й причина від сервера при відмові.
+  const sum3d = button.dataset.openKind === "sum3d";
   button.classList.add("is-opening");
   window
     .openFolderOrCopy(url, body)
     .then((result) => {
       if (result === "opened" && button.dataset.openFolderUrl && window.showToast) {
-        window.showToast("Відкрито папку у Провіднику", "success");
+        window.showToast(sum3d ? "Відкриваю проєкт у Sum3D" : "Відкрито папку у Провіднику", "success");
       }
     })
-    .catch(() => {
+    .catch((error) => {
       if (window.showToast) {
-        window.showToast("Не вдалося відкрити папку — перевірте доступ до сховища", "error");
+        const fallback = sum3d
+          ? "Не вдалося відкрити проєкт у Sum3D"
+          : "Не вдалося відкрити папку — перевірте доступ до сховища";
+        window.showToast((sum3d && error && error.detail) || fallback, "error");
       }
     })
     .finally(() => {

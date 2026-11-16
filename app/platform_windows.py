@@ -415,6 +415,23 @@ def _open_rustdesk(url: str, remote_id: str, name: str) -> None:
     ).start()
 
 
+def _open_with_default_app(path: Path) -> None:
+    """Відкрити файл програмою, яку Windows для нього обрала, — те саме, що
+    подвійний клік у Провіднику (`.cam` → `CAMWINC.EXE FILE "%1"`, Sum3D).
+    Нічого не пише у файл; що робить сама програма з уже відкритим вікном —
+    її справа, як і при подвійному кліку."""
+    if os.name != "nt":
+        raise NotImplementedError
+    try:
+        import ctypes
+
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
+    except Exception:  # noqa: BLE001 — лише підказка
+        logger.debug("AllowSetForegroundWindow не вдалось", exc_info=True)
+    os.startfile(str(path))  # noqa: S606 — асоціація Windows, як подвійний клік
+
+
 # Публічне ім'я для HTTP-шару; внутрішня реалізація лишає бойові коментарі.
 open_folder_in_explorer = _open_folder_in_explorer
+open_with_default_app = _open_with_default_app
 open_rustdesk = _open_rustdesk

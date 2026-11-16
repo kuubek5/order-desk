@@ -182,6 +182,7 @@ POST /settings
 GET /clients
 GET /shift
 GET /machines/diag
+POST /orders/{order_id}/open-sum3d
 POST /orders/{order_id}/operator
 POST /clients/{client_id}/folder
 POST /clients/{client_id}/open-folder

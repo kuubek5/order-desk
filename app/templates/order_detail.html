@@ -99,6 +99,13 @@
             <button class="btn primary" type="submit">Зберегти</button>
         </form>
         {% endif %}
+        {% if order.sum3d_id and sum3d_projects_on %}
+        {# Проєкт — це диск: на одному Sum3D буває кілька робіт. Відкривається
+           так само, як подвійним кліком у Провіднику (POST /orders/<id>/open-sum3d). #}
+        <button type="button" class="btn sm accent-outline sum3d-open"
+                data-open-folder-url="/orders/{{ order.id }}/open-sum3d" data-open-kind="sum3d"
+                title="Відкрити проєкт Sum3D цього диска (файл .cam з теки проєктів)">Відкрити в Sum3D</button>
+        {% endif %}
     </div>
 
     <div class="dsec">

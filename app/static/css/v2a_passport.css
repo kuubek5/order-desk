@@ -44,6 +44,8 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .iconbtn:hover{background:rgba(var(--accent-base-rgb), .12);border-color:rgba(var(--accent-rgb), .35);color:var(--accent-c);opacity:1}
 .passport2 .iconbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .passport2 .sumrow{display:flex;gap:8px}
+/* «Відкрити в Sum3D» під полем Sum3D ID (16.11.26). */
+.passport2 .sum3d-open{margin-top:8px}
 .passport2 .suminput{
   flex:1;min-width:0;height:36px;padding:0 10px;border-radius:var(--r-ctl);background:var(--field);border:1px solid var(--line);
   color:var(--ink);font-family:var(--font-mono);font-size:var(--fs-2);outline:none;

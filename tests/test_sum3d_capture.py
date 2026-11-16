@@ -247,3 +247,48 @@ def test_warm_projects_empty_path_is_noop():
 
     assert s3.warm_projects("") == 0
     assert s3.warm_projects(None) == 0
+
+
+# ── проєкт роботи для «Відкрити в Sum3D» (16.11.26) ──────────────────────────
+
+def test_find_project_prefers_work_day_and_original(tmp_path):
+    from datetime import date
+
+    from app.services.sum3d_capture import find_project_files
+
+    for name in ("2026-11-16_12-01-45 — копия.cam", "2026-11-16_12-01-45.cam",
+                 "2026-11-15_12-01-45.cam", "2026-11-16_12-01-46.cam", "notes.txt"):
+        _touch(tmp_path / name)
+    found = find_project_files(str(tmp_path), "12-01-45", date(2026, 11, 16))
+    assert [p.name for p in found] == [
+        "2026-11-16_12-01-45.cam", "2026-11-16_12-01-45 — копия.cam", "2026-11-15_12-01-45.cam",
+    ]
+
+
+def test_find_project_night_shift_and_weekend_after_friday(tmp_path):
+    from datetime import date
+
+    from app.services.sum3d_capture import find_project_files
+
+    _touch(tmp_path / "2026-11-15_03-27-06.cam")   # неділя
+    _touch(tmp_path / "2026-11-10_03-27-06.cam")   # чужий день — поза вікном
+    friday = date(2026, 11, 13)
+    assert [p.name for p in find_project_files(str(tmp_path), "03-27-06", friday)] == [
+        "2026-11-15_03-27-06.cam"]
+    # Будній день: неділя через два дні вже не його.
+    assert find_project_files(str(tmp_path), "03-27-06", date(2026, 11, 12)) == []
+
+
+def test_find_project_reads_messy_cell_and_missing_root(tmp_path):
+    from datetime import date
+
+    from app.services.sum3d_capture import find_project_files
+
+    _touch(tmp_path / "2026-11-16_10-00-00.cam")
+    _touch(tmp_path / "2026-11-16_11-00-00.cam")
+    cell = "2026-11-16 10-00-00\nнемає папки 11-00-00"
+    assert [p.name for p in find_project_files(str(tmp_path), cell, date(2026, 11, 16))] == [
+        "2026-11-16_10-00-00.cam", "2026-11-16_11-00-00.cam"]
+    assert find_project_files(str(tmp_path / "нема"), "10-00-00", date(2026, 11, 16)) == []
+    assert find_project_files(str(tmp_path), "", date(2026, 11, 16)) == []
+    assert find_project_files(str(tmp_path), "10-00-00", None) == []
