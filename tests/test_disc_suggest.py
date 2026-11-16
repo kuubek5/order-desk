@@ -308,3 +308,53 @@ def test_hint_deck_shows_up_to_three_candidates():
     assert "mdh-next" in html and "/3" in html
     single = Suggestion(want=hint.want, thickness=11.0, heights=[14], why="…", best=pick(1))
     assert "mdh-next" not in templates.get_template("_mail_disc_hint.html").render(hint=single)
+
+
+def test_pick_label_splits_line_shade_and_code():
+    """Варіант A (власник 16.11.26): висота окремо, лінія й колір звичайним
+    текстом, код партії окремо — назва більше не обрізається «…»."""
+    from app.services.disc_suggest import Pick
+
+    def label(name):
+        return Pick(name=name, height=14, free_pct=30, started=True, paths=[]).label
+
+    assert label("zr16_16-Monolith-A1-X52") == ("Monolith A1", "X52")
+    assert label("zr14_14-Monolith-A3-5-x51") == ("Monolith A3.5", "x51")
+    assert label("pmma18_18-a2-x283") == ("PMMA A2", "x283")
+    assert label("zr14_14-1000-x37") == ("1000 опак", "x37")
+    assert label("дивна назва") == ("дивна назва", "")
+
+
+def test_hint_card_keeps_full_name_and_marks_candidates():
+    from app.routers.deps import templates
+    from app.services.disc_suggest import Pick, Suggestion, Want
+
+    def pick(n, **kw):
+        return Pick(name=f"zr14_14-Monolith-A2-x{n}", height=14, free_pct=30, started=True, paths=[], **kw)
+
+    hint = Suggestion(want=Want(family="Цирконій", line="monolith", shades=frozenset({"a2"})),
+                      thickness=11.0, heights=[14], why="…",
+                      best=pick(1), alts=[pick(2, fit=False), Pick(name="zr14_14-Monolith-A2-x3", height=14,
+                                                                    free_pct=100, started=False, paths=[])])
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert 'title="zr14_14-Monolith-A2-x1 ·' in html, "повна назва — у підказці при наведенні"
+    assert '<span class="mdh-name">Monolith A2</span>' in html and ">x1</span>" in html
+    assert html.count('<i class="on"></i>') == 3 and html.count("<i></i>") == 6, "у кожній картці свої три крапки"
+    assert 'data-state="bad"' in html and 'data-state="fresh"' in html
+    new = Suggestion(want=hint.want, thickness=11.0, heights=[14], why="…", new_disc="новий диск 14 мм Monolith A2")
+    assert "Новий диск Monolith A2" in templates.get_template("_mail_disc_hint.html").render(hint=new)
+
+
+def test_hint_steps_are_timed_for_the_slow_request_log(shop):
+    """Прод 16.11.26: підказка 1–4.6 с, а в «Slow request» видно лише render.
+    Кроки мусять іти окремими фазами, щоб було видно, що гальмує."""
+    from app import perf
+
+    root, atts = shop
+    disc_suggest._scan_cache.clear()
+    recorder = perf.start("t")
+    try:
+        disc_suggest.suggest("моно A2", atts, str(root))
+    finally:
+        perf.finish()
+    assert {"disc:scan", "disc:stl", "disc:shapes"} <= set(recorder.phases)

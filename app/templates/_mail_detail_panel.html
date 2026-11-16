@@ -383,7 +383,7 @@
                 {% if disc_hint_on %}
                 <div class="mc-disc" id="mail-disc-hint" hx-get="/mail/{{ email.id }}/disc-hint"
                      hx-trigger="load, change from:#mc-material delay:150ms" hx-include="#mc-material"
-                     hx-target="this" hx-swap="innerHTML" aria-live="polite"></div>
+                     hx-target="this" hx-swap="innerHTML" aria-live="polite"><div class="mdh-wait"><span class="mdh-wait-disc" aria-hidden="true"></span><span class="mdh-wait-lines"><i></i><i></i><span class="mdh-wait-t">рахую диск…</span></span></div></div>
                 {% endif %}
             </div>
             {# Кількість з назв STL (STL_UNITS_BRIEF.md): бейдж «?», поки в полі

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app import perf
 from app.models import EmailMessage
 from app.routers.deps import get_current_user, get_db, templates
 from app.services import disc_suggest
@@ -31,7 +32,8 @@ def get_disc_hint(request: Request, email_id: int, material_color: str = "",
     if email is None:
         raise HTTPException(status_code=404, detail="лист не знайдено")
     machines: dict[str, str] = {}
-    active = disc_suggest.active_discs(db, machines=machines)
+    with perf.span("disc:active"):
+        active = disc_suggest.active_discs(db, machines=machines)
     hint = disc_suggest.suggest(material_color, list(email.attachments or []),
                                 get_setting(db, "cam_blanks_path"),
                                 active=active, machines=machines)

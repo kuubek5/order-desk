@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import math
+import re
 import os
 import struct
 import threading
@@ -31,7 +32,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from app import material_match
+from app import material_match, perf
 from app.material_classifier import PMMA, ZIRCON, classify_material
 from app.services import disc_fit, sum3d_disc
 from app.services.cam_blanks import parse_blank_name, scan_blanks
@@ -171,6 +172,9 @@ class DiscFile:
         `14-monolith-a2-x47` (той самий ключ, що `disc_check.program_disc`)."""
         return _key_of(self.stem)
 
+
+_CODE_RE = re.compile(r"x\d+", re.IGNORECASE)
+_SHADE_RE = re.compile(r"[a-d]\d", re.IGNORECASE)
 
 _scan_cache: dict[str, tuple[float, list[DiscFile]]] = {}
 _scan_lock = threading.Lock()
@@ -354,6 +358,31 @@ class Pick:
     # перевірялась (немає STL з exocad).
     fit: Optional[bool] = None
 
+    @property
+    def label(self) -> tuple[str, str]:
+        """Назва диска для картки (варіант A, власник 16.11.26): лінія й колір
+        окремо від коду партії — `zr16_16-Monolith-A3-5-x51` → («Monolith A3.5»,
+        «x51»). Повна назва лишається в підказці при наведенні."""
+        tail = self.name.rsplit("_", 1)[-1]
+        parts = [p for p in tail.split("-") if p]
+        if parts and parts[0].isdigit():
+            parts = parts[1:]
+        code = parts.pop() if parts and _CODE_RE.fullmatch(parts[-1]) else ""
+        words: list[str] = []
+        for part in parts:
+            if part == "5" and words:
+                words[-1] += ".5"
+            elif _SHADE_RE.fullmatch(part):
+                words.append(part.upper())
+            else:
+                words.append(part)
+        title = " ".join(words)
+        if title.isdigit():
+            title = f"{title} опак"  # 500/800/1000 — коди опаку Doceram
+        if self.name.lower().startswith("pmma"):
+            title = f"PMMA {title}".strip()
+        return title or tail, code
+
 
 @dataclass
 class Suggestion:
@@ -408,11 +437,13 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     if not want.family or not want.shades and want.family == ZIRCON:
         result.note = "немає матеріалу й кольору — підказки немає"
         return result
-    discs = [d for d in disc_files(blanks_root) if _matches(d, want)]
+    with perf.span("disc:scan"):
+        discs = [d for d in disc_files(blanks_root) if _matches(d, want)]
     if not discs:
         result.note = f"дисків {want.label()} у теці немає"
         return result
-    height = letter_height(attachments)
+    with perf.span("disc:stl"):
+        height = letter_height(attachments)
     if height is None:
         result.note = "висоту не визначено (немає STL з exocad)"
         return result
@@ -421,8 +452,9 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     result.heights, result.why = target_heights(result.thickness, available, want)
     if not result.heights:
         return result
-    need_area = letter_footprint(attachments, want.family)
-    pieces = letter_pieces(attachments)
+    with perf.span("disc:stl"):
+        need_area = letter_footprint(attachments, want.family)
+        pieces = letter_pieces(attachments)
     shapes: dict[str, Any] = {}
     picks: list[Pick] = []
     reads = 0
@@ -446,7 +478,8 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
         if reads >= max_reads:
             break
         reads += 1
-        shape = sum3d_disc.shape_of(disc.path)
+        with perf.span("disc:shapes"):
+            shape = sum3d_disc.shape_of(disc.path)
         if shape is None:
             continue
         free = shape.free_share
@@ -488,7 +521,8 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
         if pieces and tries < MAX_FIT_TRIES:
             tries += 1
             shape = shapes[pick.name]
-            pick.fit = disc_fit.fits(shape.radius, shape.contours, pieces, letter_scale(want.family))
+            with perf.span("disc:fit"):
+                pick.fit = disc_fit.fits(shape.radius, shape.contours, pieces, letter_scale(want.family))
             if not pick.fit:
                 result.rejected += 1
                 doubtful.append(pick)
