@@ -197,7 +197,32 @@ def test_active_discs_reads_programs_of_recent_days(app_db):  # noqa: F811
         ])
         db.commit()
         active = disc_suggest.active_discs(db, until=now)
-    assert set(active) == {"14-monolith-a3-5-x51", "14-monolith-a2-x47"}
+    # h1 13.11 фрезерував x47, а 14.11 — уже x51: x47 знято, «на верстаті» лише
+    # x51 (власник 18.11.26). h2: його останній диск — після `until`, а давніший
+    # поза вікном; h3 — назва без диска.
+    assert set(active) == {"14-monolith-a3-5-x51"}
+
+
+def test_active_discs_name_agent_machines_by_key(app_db):  # noqa: F811
+    """Покази пишуть ключ «адреса-порт» (агент на 8765): назва верстата мусить
+    знаходитись і так — картка писала безіменне «на верстаті» (18.11.26)."""
+    from app.models import Machine, MachineReading
+
+    _app, factory = app_db
+    with factory() as db:
+        db.add(Machine(name="250i-Sec", host="192.168.1.113", port=8765, created_at=datetime(2026, 11, 1)))
+        db.add(Machine(name="250i-Tolik", host="192.168.1.81", port=8765, created_at=datetime(2026, 11, 1)))
+        db.add_all([
+            MachineReading(host="192.168.1.113-8765", captured_at=datetime(2026, 11, 18, 8),
+                           iso_name="1_16-Monolith-A1-x26_2026-11-18_08-01-02.iso"),
+            MachineReading(host="192.168.1.81-8765", captured_at=datetime(2026, 11, 18, 7),
+                           iso_name="2_16-Monolith-A1-x26_2026-11-18_07-00-00.iso"),
+        ])
+        db.commit()
+        machines: dict[str, str] = {}
+        active = disc_suggest.active_discs(db, until=datetime(2026, 11, 18, 12), machines=machines)
+    assert set(active) == {"16-monolith-a1-x26"}
+    assert machines == {"16-monolith-a1-x26": "250i-Sec, 250i-Tolik"}
 
 
 def test_hint_row_swaps_only_itself():

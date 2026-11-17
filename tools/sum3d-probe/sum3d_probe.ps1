@@ -41,7 +41,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$KitVersion = 2
+$KitVersion = 3
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outDir = Join-Path $OutRoot $stamp
@@ -139,6 +139,35 @@ function Export-Reg([string]$key, [string]$file) {
     return (Test-Path -LiteralPath $file)
 }
 
+# Копія файлу, який відкрита Sum3D може тримати (LAB_Lang.Ini, проєкт .cam): спільний доступ
+# на читання, запис і видалення — не блокуємо Sum3D і не падаємо на «used by another process»
+# (18.11.26: проба зупинилась на копії LAB_Lang.Ini ще до першого кроку). $false — не вдалось.
+function Copy-Shared([string]$src, [string]$dst) {
+    $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    $in = $null; $out = $null
+    try {
+        $in = New-Object IO.FileStream($src, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+        $out = New-Object IO.FileStream($dst, [IO.FileMode]::Create, [IO.FileAccess]::Write)
+        $in.CopyTo($out)
+        return $true
+    }
+    catch { return $false }
+    finally {
+        if ($out) { $out.Dispose() }
+        if ($in) { $in.Dispose() }
+    }
+}
+
+function Get-SharedSha256Prefix([string]$path) {
+    $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    $in = New-Object IO.FileStream($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        return ([BitConverter]::ToString($sha.ComputeHash($in)) -replace '-', '').Substring(0, 16)
+    }
+    finally { $in.Dispose() }
+}
+
 function Read-RegSections([string]$file) {
     $map = @{}
     if (-not (Test-Path -LiteralPath $file)) { return $map }
@@ -227,7 +256,7 @@ try {
     if ($Cam) {
         if (-not (Test-Path -LiteralPath $Cam)) { Log 'Файл з -Cam не знайдено.'; $report.stopped = 'no cam'; Save-Report; exit 2 }
         $report.cam_source_size = (Get-Item -LiteralPath $Cam).Length
-        $report.cam_source_sha256_16 = (Get-FileHash -LiteralPath $Cam -Algorithm SHA256).Hash.Substring(0, 16)
+        $report.cam_source_sha256_16 = Get-SharedSha256Prefix $Cam
     }
     else { Log 'Без -Cam кроки strategy/space/curves пропускаються.' }
 
@@ -261,9 +290,12 @@ try {
     if ($before.truncated) { Log '  знімок неповний (тека велика) — порівнюються лише обійдені підтеки; корінь обійдено.' }
     $backup = Join-Path $outDir 'backup_ini'
     New-Item -ItemType Directory -Force -Path $backup | Out-Null
+    $notCopied = @()
     Get-ChildItem -LiteralPath $SumDir -File -Force | Where-Object { $_.Extension -match '^\.(ini|cfg|arl|dat)$' } |
-        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $backup -Force }
+        ForEach-Object { if (-not (Copy-Shared $_.FullName (Join-Path $backup $_.Name))) { $notCopied += $_.Name } }
+    $report.backup_not_copied = $notCopied
     Log "Резервна копія налаштувань: $backup ($(@(Get-ChildItem $backup).Count) файлів)"
+    if ($notCopied) { Log "  не скопійовано (зайняті): $($notCopied -join ', ')" }
     $regDir = Join-Path $outDir 'registry'
     New-Item -ItemType Directory -Force -Path $regDir | Out-Null
     $regFound = @()
@@ -280,7 +312,7 @@ try {
         $work = Join-Path $outDir 'work'
         New-Item -ItemType Directory -Force -Path $work | Out-Null
         $workCam = Join-Path $work 'probe.cam'
-        Copy-Item -LiteralPath $Cam -Destination $workCam -Force
+        if (-not (Copy-Shared $Cam $workCam)) { Log 'Проєкт .cam не вдалось скопіювати.'; $report.stopped = 'cam copy failed'; Save-Report; exit 2 }
         Log "Копія проєкту: $workCam"
     }
 

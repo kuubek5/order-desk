@@ -106,8 +106,10 @@ def test_main_script_is_careful_by_default():
     assert "$running -and -not $AllowRunning -and -not $DryRun" in text
     assert "$free -eq 1 -and -not $UseLastSeat" in text
     assert "$report.stopped = 'last seat'" in text
-    # Проєкт копіюється, шлях до нього у звіт не йде.
-    assert "Copy-Item -LiteralPath $Cam -Destination $workCam" in text
+    # Проєкт копіюється, шлях до нього у звіт не йде. Копії — лише зі спільним доступом:
+    # 18.11.26 звичайне копіювання впало на LAB_Lang.Ini, який тримала відкрита Sum3D.
+    assert "Copy-Shared $Cam $workCam" in text
+    assert "Copy-Item" not in text and "Get-FileHash" not in text
     assert "$report.cam_path" not in text and "cam = $Cam" not in text
     # Робоча тека процесу проби — своя, не тека Sum3D.
     assert "if (-not $CwdInSumDir) { $argList += @('-WorkDir'" in text

@@ -401,9 +401,11 @@ class Suggestion:
 
 def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAYS,
                  machines: Optional[dict[str, str]] = None) -> dict[str, datetime]:
-    """Диски з назв програм на верстатах за `days` днів до `until`: ключ → коли
-    востаннє. `machines` (якщо передано) наповнюється ключ → назва верстата,
-    на якому диск був востаннє (власник 14.11.26: писати, НА ЯКОМУ верстаті).
+    """Диски, що ЗАРАЗ стоять у верстатах: ключ → коли бачили. Диск верстата —
+    це диск його ОСТАННЬОЇ програми (з назвою) за `days` днів до `until`; диск
+    попередньої програми того самого верстата вже знято (власник 18.11.26:
+    «на верстаті» лише коли справді стоїть, і писати НА ЯКОМУ). `machines`
+    (якщо передано) наповнюється ключ → назва верстата (кілька — через кому).
     Лише читання `MachineReading` і `Machine`."""
     from sqlalchemy import func, select
 
@@ -418,14 +420,31 @@ def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAY
                MachineReading.captured_at <= end)
         .group_by(MachineReading.iso_name, MachineReading.host)
     ).all()
-    names = {host: name for host, name in db.execute(select(Machine.host, Machine.name)).all()}
-    out: dict[str, datetime] = {}
+    # Покази пишуть КЛЮЧ верстата («адреса-порт», якщо порт не типовий —
+    # `MachineTarget.key`), а не голу адресу: за самою адресою назва агентних
+    # верстатів (порт 8765) не знаходилась, і картка писала безіменне «на верстаті».
+    names: dict[str, str] = {}
+    for host, port, name in db.execute(select(Machine.host, Machine.port, Machine.name)).all():
+        names[f"{host}-{port}"] = name
+        names.setdefault(host, name)
+    latest: dict[str, tuple[datetime, str]] = {}
     for iso, host, seen in rows:
+        if seen is not None and (host not in latest or seen > latest[host][0]):
+            latest[host] = (seen, iso)
+    out: dict[str, datetime] = {}
+    on: dict[str, list[str]] = {}
+    for host, (seen, iso) in latest.items():
         disc = program_disc(iso)
-        if disc is not None and seen is not None and (disc.key not in out or seen > out[disc.key]):
+        if disc is None:
+            continue
+        if disc.key not in out or seen > out[disc.key]:
             out[disc.key] = seen
-            if machines is not None:
-                machines[disc.key] = names.get(host, "")
+        name = names.get(host, "")
+        if name and name not in on.setdefault(disc.key, []):
+            on[disc.key].append(name)
+    if machines is not None:
+        for key in out:
+            machines[key] = ", ".join(sorted(on.get(key, [])))
     return out
 
 
