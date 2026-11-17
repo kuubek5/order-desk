@@ -190,6 +190,10 @@ def place(db, blanks_root: Optional[str], *, limit: int = 40) -> dict[str, Any]:
         later -= own
         unknown = len(shape.contours) - len(known.get(entry["disc"], set()))
         scale = disc_suggest.letter_scale(disc_suggest.want_of(orders[0].material_color).family)
+        if any(disc_fit.wider_than_disc(p, shape.radius, scale) for p in pieces):
+            # Сітка такої «конструкції» будувалась би годинами (disc_fit.wider_than_disc).
+            skip("stl_ширше_за_диск")
+            continue
         own_area = sum(_polygon_area(shape.contours[i]) for i in own)
         areas = _silhouette_areas(pieces, scale)
         margin = min(MARGINS_MM, key=lambda m: abs(areas[m] - own_area))

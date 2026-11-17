@@ -68,6 +68,27 @@ def test_fit_is_fast_enough_for_the_card():
     assert time.perf_counter() - start < 1.5
 
 
+def test_stray_far_vertex_is_rejected_without_building_a_grid(monkeypatch):
+    """17.11.26: підказка листа 3709 рахувалась 3 год 9 хв і тримала процес під
+    час оновлення. STL з далекою зайвою вершиною (чи другим тілом за сотні мм)
+    будував сітку на мільйони клітинок. Ширше за диск — не влазить одразу."""
+    crown = _box(10, 9)
+    stray = np.vstack([crown, [[3000.0, 2500.0]]])
+
+    def boom(*_a, **_k):
+        raise AssertionError("сітку для конструкції, ширшої за диск, будувати не можна")
+
+    monkeypatch.setattr(disc_fit, "piece_mask", boom)
+    start = time.perf_counter()
+    assert not disc_fit.fits(47.0, [], [crown, stray])
+    assert time.perf_counter() - start < 0.5
+    assert disc_fit.wider_than_disc(stray, 47.0)
+    assert not disc_fit.wider_than_disc(crown, 47.0)
+    # Діагональ коротша за діаметр — перевірка нічого справжнього не відсікає.
+    assert not disc_fit.wider_than_disc(_box(66, 66), 47.0)
+    assert disc_fit.wider_than_disc(_box(10, 9), 47.0, scale=11.0)
+
+
 def _area(points):
     s = 0.0
     for (x1, y1), (x2, y2) in zip(points, points[1:] + points[:1]):

@@ -64,6 +64,8 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ExistingExe: String;
   ResultCode: Integer;
+  KillCode: Integer;
+  ResultCode2: Integer;
 begin
   Result := '';
   ExistingExe := ExpandConstant('{app}\{#MyAppExeName}');
@@ -79,6 +81,24 @@ begin
     Exit;
   end;
 
-  if ResultCode <> 0 then
+  { 17.11.26: сервер зупинився, а процес жив далі на завислому потоці
+    (розрахунок підказки диска, 3 год). Restart Manager 30 с не міг його закрити,
+    у тихому режимі відповів «Abort», і 0.21.147 відкотилась. Тому після чемного
+    --shutdown усе, що лишилось від KuubMill.exe, закриваємо силоміць — лише
+    наш exe, нічого чужого. База вже скопійована перед оновленням, а незакомічене
+    SQLite відкотить само. Не зупинився й так — тоді вже повідомляємо. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM {#MyAppExeName}', '', SW_HIDE,
+    ewWaitUntilTerminated, KillCode);
+  { Друга спроба того ж вечора впала вже без зависання: Restart Manager бачив
+    лише «Lab  Application» — процес, що живе між перезапусками й тримає наші
+    файли. Тому закриваємо й усе інше, що ЗАПУЩЕНЕ з теки програми (за шляхом
+    exe — лише наше), а не тільки KuubMill.exe за іменем. }
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith(''' +
+    ExpandConstant('{app}') + '\'', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode2);
+  Sleep(1500);
+
+  if (ResultCode <> 0) and (KillCode <> 0) and (KillCode <> 128) then
     Result := 'KuubMill не завершив роботу вчасно. Закрийте програму та повторіть спробу.';
 end;

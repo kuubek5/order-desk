@@ -544,6 +544,40 @@ def test_newgen_150i_pro_variant_is_read():
     assert read_progress_percent(image) == 38
 
 
+def test_newgen_half_bar_is_not_read_as_full_button():
+    """Згладжений піксель між заливкою й треком рівно в середині смуги.
+
+    Висота смуги мірялась по середній колонці; близько 50 % там стоїть
+    перехідний (44,97,134) — не заливка й не трек. Смугу відкидало, і
+    перемагала синя кнопка «відкрити теку» внизу ліворуч: «100 %» і котик
+    на 250i-Tolik/Sec при реальних 49 % (17.11.26: сім разів за вечір, щоразу
+    48–49 → 100). Перемальовуємо справжній кадр .81 від 17.11.26 (53 %, з
+    перехідним пікселем; у старшому кадрі 30 % його немає й вада не
+    відтворюється) так, щоб межа стала на кожну колонку довкола середини.
+    """
+    import numpy as np
+
+    from app.machine_ocr import find_newgen_progress
+
+    base = _newgen("newgen_250i_tolik_53.png")
+    bar = find_newgen_progress(base)
+    assert bar is not None and bar.percent == 53
+    x0, y0, x1, y1 = bar.box
+    pixels = np.asarray(base).copy()
+    fill = pixels[y0:y1, x0 + 2].copy()
+    track = pixels[y0:y1, x1 - 3].copy()
+    transition = pixels[y0:y1, x0 + bar.fill_width].copy()
+    middle = (x0 + x1 - 1) // 2
+    for edge in range(middle - 3, middle + 4):
+        frame = pixels.copy()
+        frame[y0:y1, x0:edge] = fill[:, None, :]
+        frame[y0:y1, edge + 1:x1] = track[:, None, :]
+        frame[y0:y1, edge] = transition
+        got = find_newgen_progress(Image.fromarray(frame))
+        assert got is not None and got.box == bar.box, edge
+        assert got.percent == round((edge - x0) * 100 / (x1 - x0)), edge
+
+
 def test_newgen_detector_ignores_remicore_frames():
     """Детектор нового покоління НЕ сміє спрацьовувати на RemiCORE.
 

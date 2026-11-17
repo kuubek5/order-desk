@@ -1022,7 +1022,16 @@ def find_newgen_progress(image: Image.Image, masks: "_FrameMasks | None" = None)
             break
 
         # Висота смуги — саме те, що відрізняє її від великих синіх кнопок.
+        # Міряємо по колонці, що САМА належить смузі на цьому рядку. Середина
+        # смуги — не завжди така: близько 50 % там стоїть згладжений піксель
+        # між заливкою й треком (44,97,134), колонка давала висоту 1, смугу
+        # відкидало, і перемагала синя кнопка «відкрити теку» внизу ліворуч —
+        # «100 %» і котик на 250i-Tolik/Sec при реальних 49 % (07.10.26,
+        # 17.11.26: сім разів за вечір, щоразу саме 48–49 → 100).
         x_probe = (x0 + x1) // 2
+        if not belongs_mask[y, x_probe]:
+            inside = np.flatnonzero(belongs_mask[y, x0:x1 + 1])
+            x_probe = x0 + int(inside[np.argmin(np.abs(inside - (x_probe - x0)))])
         column = belongs_mask[:, x_probe]
         above = np.flatnonzero(~column[:y])
         top = int(above[-1]) + 1 if above.size else 0

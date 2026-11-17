@@ -13,7 +13,9 @@
 import logging
 import os
 import subprocess
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
 
@@ -51,7 +53,8 @@ def _open_folder_in_explorer(folder: Path) -> None:
     # Знімок вікон Провідника ДО запуску: нове вікно потім знаходиться
     # різницею, без здогадів про заголовок.
     before = set(_explorer_windows())
-    subprocess.Popen(["explorer", str(folder)], startupinfo=startupinfo)  # noqa: S603,S607
+    with _clean_dll_directory():
+        subprocess.Popen(["explorer", str(folder)], startupinfo=startupinfo)  # noqa: S603,S607
     # Підказки вище — необхідні, але недостатні: `explorer.exe <шлях>` лише
     # передає шлях УЖЕ ЗАПУЩЕНІЙ оболонці, а вікно створює вона, у своєму
     # процесі. STARTUPINFO запущеного нами стабу на те вікно не діє, тож воно
@@ -406,7 +409,8 @@ def _open_rustdesk(url: str, remote_id: str, name: str) -> None:
     except Exception:  # noqa: BLE001 — лише підказка
         pass
     before = {h for h, _ in _rustdesk_windows()}
-    os.startfile(url)  # noqa: S606 — протокол RustDesk, як із браузера
+    with _clean_dll_directory():
+        os.startfile(url)  # noqa: S606 — протокол RustDesk, як із браузера
     Thread(
         target=_raise_rustdesk_window,
         args=(remote_id, name, before),
@@ -428,7 +432,38 @@ def _open_with_default_app(path: Path) -> None:
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
     except Exception:  # noqa: BLE001 — лише підказка
         logger.debug("AllowSetForegroundWindow не вдалось", exc_info=True)
-    os.startfile(str(path))  # noqa: S606 — асоціація Windows, як подвійний клік
+    with _clean_dll_directory():
+        os.startfile(str(path))  # noqa: S606 — асоціація Windows, як подвійний клік
+
+
+_dll_dir_lock = threading.Lock()
+
+
+@contextmanager
+def _clean_dll_directory():
+    """Запустити чужу програму без нашої теки DLL.
+
+    Завантажувач PyInstaller ставить `SetDllDirectory(<тека програми>\\_internal)`,
+    а Windows передає це налаштування КОЖНОМУ дочірньому процесу. Sum3D, відкритий
+    кнопкою «Відкрити в Sum3D», підтягував DLL з теки KuubMill і тримав їх, тож
+    інсталятор оновлення бачив «Lab  Application» (так Sum3D зветься в Restart
+    Manager) і відкочувався — 17.11.26 двічі поспіль. На час запуску теку
+    скидаємо й одразу повертаємо: наш процес далі вантажить свої DLL як досі."""
+    if os.name != "nt":
+        yield
+        return
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    with _dll_dir_lock:
+        buf = ctypes.create_unicode_buffer(32768)
+        length = kernel32.GetDllDirectoryW(len(buf), buf)
+        previous = buf.value if length else None
+        kernel32.SetDllDirectoryW(None)
+        try:
+            yield
+        finally:
+            kernel32.SetDllDirectoryW(previous)
 
 
 # Публічне ім'я для HTTP-шару; внутрішня реалізація лишає бойові коментарі.

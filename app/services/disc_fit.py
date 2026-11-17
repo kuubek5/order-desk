@@ -222,9 +222,24 @@ def place_all(blocked: np.ndarray, pieces: list[np.ndarray], scale: float = 1.0)
     return True
 
 
+def wider_than_disc(points: np.ndarray, radius: float, scale: float = 1.0) -> bool:
+    """Конструкція ширша за диск за будь-якого повороту: розмах по осі не більший
+    за найбільшу відстань між точками, а та мусить влізти в діаметр.
+
+    Без цієї перевірки STL із далекою зайвою вершиною чи другим тілом за сотні мм
+    будував сітку в мільйони клітинок, і `_fill_holes` ішов годинами: 17.11.26
+    запит підказки листа 3709 висів 3 год 9 хв, а при встановленні 0.21.147
+    тримав старий процес — інсталятор відкотився."""
+    if points is None or not len(points):
+        return False
+    return float(np.ptp(points, axis=0).max()) * scale > 2 * radius
+
+
 def fits(radius: float, contours: list[list[tuple[float, float]]], pieces: list[np.ndarray],
          scale: float = 1.0) -> bool:
     """Чи стануть усі конструкції на цей диск поруч із уже розставленим."""
     if not pieces:
         return True
+    if any(wider_than_disc(p, radius, scale) for p in pieces):
+        return False
     return place_all(disc_blocked(radius, contours), pieces, scale)
