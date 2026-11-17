@@ -55,3 +55,21 @@ powershell -ExecutionPolicy Bypass -File sum3d_probe.ps1 -AllowRunning -SumDir C
 ## Чого набір не робить
 Не рахує траєкторії, не відкриває Sum3D, не пише в проєкти, не чіпає ключ/ліцензію,
 не вмикає MillBoxWebServer, нічого не надсилає в мережу.
+
+## Пакет налаштувань Sum3D (окремий крок, проби не стосується)
+Подвійний клік на `3_pack_settings.cmd`. Збирає в один zip те, з чого складається стратегія:
+- архіви `*.arl` з датованими копіями (`Tools.arl`, `Tools.arl.250908122720`, `Machines.arl`…);
+- словники виробника (`params_codes.txt`, `strategies_vocabulary.csv`, `CAMWIN.TAB`, `Reference *.csv`);
+- файли `.cfg` / `.txt` / `.csv` з тек стратегій (`ST`, `STRATEGIES`, `Strategy`).
+
+Бере з обох звичних тек (`C:\iCAMV5smart`, `C:\sum\sum`), якщо вони є. Не бере моделі `.stl`,
+проєкти `.cam`, програми, ключі, файли ліцензії, `.ini`, реєстр. Файли лише читає й не блокує —
+Sum3D може бути відкрита. Нічого не видаляє й не надсилає в мережу.
+
+Результат: `C:\sum3d_pack\<дата_час>\sum3d_pack_<дата_час>.zip` і поруч `manifest.txt` (перелік файлів).
+Архів забрати флешкою; у хмару й месенджери не викладати.
+
+Спершу подивитись, що потрапить, без створення zip:
+```
+powershell -ExecutionPolicy Bypass -File sum3d_pack.ps1 -DryRun
+```
