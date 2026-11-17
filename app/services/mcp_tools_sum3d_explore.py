@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -53,6 +54,108 @@ def tool_sum3d_probe(db: Session, args: dict) -> dict[str, Any]:
     from app.services import sum3d_probe_report
 
     return sum3d_probe_report.report(_int_arg(args, "limit", default=3, low=1, high=20))
+
+
+_STRATEGY_WHAT = ("ops", "op", "diff", "tools", "tool", "tooldiff")
+
+
+def _text_arg(args: dict, key: str) -> str:
+    return str(args.get(key) or "").strip()[:120]
+
+
+def _strategy_tools(what: str, path: str, args: dict, mask: Any) -> dict[str, Any]:
+    """Архів фрез (`Tools.arl`): перелік, одна фреза, різниця двох архівів."""
+    from app.services import sum3d_tools
+
+    cutters = sum3d_tools.load(path)
+    base = {"файл": mask(os.path.basename(path)), "фрез_у_файлі": len(cutters)}
+    machine, group = _text_arg(args, "machine"), _text_arg(args, "group")
+    if what == "tools":
+        return {**base, **sum3d_tools.tools_report(
+            cutters, mask, machine=machine, group=group, query=_text_arg(args, "query"),
+            start=_int_arg(args, "start", default=0, low=0, high=1_000_000),
+            limit=_int_arg(args, "limit", default=120, low=1, high=400))}
+    if what == "tool":
+        if args.get("tool") in (None, ""):
+            raise ToolError("для `tool` потрібен `tool` — номер фрези з what=tools")
+        return {**base, **sum3d_tools.tool_report(cutters, _int_arg(args, "tool", default=0, low=1, high=1_000_000), mask)}
+    if args.get("other") in (None, ""):
+        raise ToolError("для `tooldiff` потрібен `other` — номер «№» другого архіву з того самого переліку")
+    other_path = sum3d_explore.listed_path(_int_arg(args, "other", default=0, low=1, high=100_000))
+    return {**base, "другий_файл": mask(os.path.basename(other_path)),
+            **sum3d_tools.diff_report(cutters, sum3d_tools.load(other_path), mask, machine=machine, group=group,
+                                      limit=_int_arg(args, "limit", default=60, low=1, high=400))}
+
+
+def _op_cutters(path: str, data: bytes, strategy: Any, number: int, args: dict, mask: Any) -> dict[str, Any]:
+    """Чим ріже операція: рядки архіву фрез для її фрези й набору параметрів."""
+    from app.services import sum3d_strategy, sum3d_tools
+
+    archive = sum3d_strategy.find_up(path, sum3d_tools.ARCHIVE_FILE)
+    if not archive:
+        return {"архів_фрез": "Tools.arl поруч зі стратегією й вище не знайдено"}
+    try:
+        cutters = sum3d_tools.load(archive)
+    except sum3d_tools.ToolsError as exc:
+        return {"архів_фрез": str(exc)}
+    op = strategy.ops[number - 1]
+    info = sum3d_strategy.describe_name(op.name)
+    body = strategy.body(data, op)
+    described = sum3d_strategy.field_text(body, sum3d_strategy.TOOL_NAME_CODE) if body is not None else None
+    if not info.get("фреза") and not described:
+        return {"архів_фрез": "операція не називає фрезу"}
+    machine = _text_arg(args, "machine")
+    if not machine:
+        # Тека стратегії зазвичай названа верстатом — беремо його фрези.
+        folder = os.path.dirname(path).lower()
+        named = [m for m in sum3d_tools.machines(cutters) if m.lower() in folder]
+        machine = max(named, key=len) if named else ""
+    link = sum3d_tools.link_report(
+        cutters, mask, code=str(info.get("фреза") or ""), set_name=str(info.get("набір") or ""),
+        description=described or "", machine=machine, group=_text_arg(args, "group"))
+    return {"архів_фрез": {"верстат": mask(machine) or "усі", "за": "кодом фрези" if info.get("фреза") else "описом фрези",
+                           **link}}
+
+
+def tool_sum3d_strategy(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import sum3d_strategy, sum3d_tools
+    from app.services.machine_files import mask
+
+    what = str(args.get("what") or "ops").strip().lower()
+    if what not in _STRATEGY_WHAT:
+        raise ToolError("`what` — " + ", ".join(_STRATEGY_WHAT) + " (типово ops)")
+    if args.get("file") in (None, ""):
+        raise ToolError("потрібен `file` — номер «№» з останнього переліку kmill_sum3d_explore (what=files)")
+    start = _int_arg(args, "start", default=0, low=0, high=1_000_000)
+    try:
+        path = sum3d_explore.listed_path(_int_arg(args, "file", default=0, low=1, high=100_000))
+        if what in ("tools", "tool", "tooldiff"):
+            return _strategy_tools(what, path, args, mask)
+        data, strategy = sum3d_strategy.load(path)
+        names = sum3d_strategy.load_codes(path)
+        base = {"файл": mask(os.path.basename(path)), "байт": len(data),
+                "назви_полів": "з params_codes.txt" if names else "немає (params_codes.txt не знайдено)"}
+        if what == "ops":
+            return {**base, **sum3d_strategy.ops_report(
+                data, strategy, mask, start=start, limit=_int_arg(args, "limit", default=120, low=1, high=400))}
+        if what == "op":
+            if args.get("op") in (None, ""):
+                raise ToolError("для `op` потрібен `op` — номер операції з what=ops")
+            number = _int_arg(args, "op", default=0, low=1, high=100_000)
+            report = sum3d_strategy.op_report(
+                data, strategy, number, mask, start=start, names=names, own=bool(args.get("own")),
+                limit=_int_arg(args, "limit", default=200, low=1, high=400))
+            return {**base, **report, **_op_cutters(path, data, strategy, number, args, mask)}
+        if args.get("other") in (None, ""):
+            raise ToolError("для `diff` потрібен `other` — номер «№» другого файлу з того самого переліку")
+        other_path = sum3d_explore.listed_path(_int_arg(args, "other", default=0, low=1, high=100_000))
+        other_data, other = sum3d_strategy.load(other_path)
+        op = _int_arg(args, "op", default=0, low=1, high=100_000) if args.get("op") not in (None, "") else None
+        return {**base, "другий_файл": mask(os.path.basename(other_path)), "другий_байт": len(other_data),
+                **sum3d_strategy.diff_report(data, strategy, other_data, other, mask, op=op, names=names,
+                                             limit=_int_arg(args, "limit", default=40, low=1, high=400))}
+    except (sum3d_explore.ExploreError, sum3d_strategy.StrategyError, sum3d_tools.ToolsError) as exc:
+        raise ToolError(str(exc)) from None
 
 
 SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
@@ -124,5 +227,44 @@ SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_sum3d_probe,
+    ),
+    Tool(
+        name="kmill_sum3d_strategy",
+        description=(
+            "Стратегія Sum3D і архів фрез до неї, лише читання. Спершу kmill_sum3d_explore "
+            "what=files — номер «№» файлу береться з того переліку. Файл стратегії (.cfg, формат "
+            "TECN 2.0): what=ops (типово; file, start, limit) — будова файлу й таблиця операцій: "
+            "назва, тип обробки, розклад кодів назви (типи робіт, фреза, набір параметрів, опція "
+            "оператора, інші коди). what=op (file, op, start, limit, own) — поля тіла однієї операції; "
+            "номер поля = код параметра виробника, назва поля — з params_codes.txt встановлення; "
+            "own=true лишає тільки названі поля свого типу обробки. Разом з op — «архів_фрез»: оберти, "
+            "подачі й кроки з Tools.arl для фрези й набору цієї операції (machine, group — відбір; "
+            "верстат типово з назви теки стратегії). what=diff (file, other) — чим другий файл "
+            "відрізняється від першого; з op — усі відмінності полів однієї операції. Архів фрез "
+            "(Tools.arl і його датовані копії): what=tools (file, machine, group, query, start, limit) "
+            "— фрези: верстат, група-матеріал, код, форма, діаметр, гніздо, скільки наборів. what=tool "
+            "(file, tool) — одна фреза з усіма наборами параметрів. what=tooldiff (file, other, machine, "
+            "group) — що змінилось між двома архівами: фрези, поля, числа в наборах. Значень не "
+            "тлумачить. Назви файлів робіт (.stl, .cam тощо) не віддає, літери поза латиницею затерто."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "what": {"type": "string", "description": "ops (типово), op, diff — стратегія .cfg; tools, tool, tooldiff — архів фрез .arl."},
+                "file": {"type": "integer", "minimum": 1, "description": "Номер «№» файлу з останнього переліку kmill_sum3d_explore what=files."},
+                "other": {"type": "integer", "minimum": 1, "description": "Для diff і tooldiff: номер «№» другого файлу з того самого переліку."},
+                "op": {"type": "integer", "minimum": 1, "description": "Номер операції з what=ops (для op; для diff — показати поля однієї операції)."},
+                "own": {"type": "boolean", "description": "Для op: лише названі поля, спільні й свого типу обробки."},
+                "tool": {"type": "integer", "minimum": 1, "description": "Для tool: номер фрези з what=tools."},
+                "machine": {"type": "string", "description": "Відбір фрез за верстатом (частина назви)."},
+                "group": {"type": "string", "description": "Відбір фрез за групою-матеріалом (ZR, PMMA, WAX…), точна назва."},
+                "query": {"type": "string", "description": "Для tools: текст у коді, описі чи виробнику фрези."},
+                "start": {"type": "integer", "minimum": 0, "description": "З якої операції (ops), рядка полів (op) або фрези (tools)."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 400, "description": "Скільки рядків."},
+            },
+            "required": ["file"],
+            "additionalProperties": False,
+        },
+        run=tool_sum3d_strategy,
     ),
 )

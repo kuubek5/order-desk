@@ -286,17 +286,22 @@ def strings_in(data: bytes, limit: int = 80) -> list[str]:
     return out[:limit]
 
 
-def look(number: int, *, start: int = 0, limit: int = 80) -> dict[str, Any]:
-    """Один файл із останнього переліку: текст рядками або розбір двійкового."""
-    from app.services import sum3d_files
-
+def listed_path(number: int) -> str:
+    """Шлях файлу за номером «№» з останнього переліку (what=files)."""
     with _lock:
         known = list(_last)
     if not known:
         raise ExploreError("спершу перелік (what=files): номер файлу береться з нього")
     if not 1 <= number <= len(known):
         raise ExploreError(f"номера {number} в останньому переліку немає (1…{len(known)})")
-    path = known[number - 1]
+    return known[number - 1]
+
+
+def look(number: int, *, start: int = 0, limit: int = 80) -> dict[str, Any]:
+    """Один файл із останнього переліку: текст рядками або розбір двійкового."""
+    from app.services import sum3d_files
+
+    path = listed_path(number)
     try:
         size = os.path.getsize(path)
         text_data = read_shared(path, TEXT_READ)
