@@ -3082,16 +3082,25 @@ def _prefer_recent(orders: list[Order], today: Optional[date] = None) -> list[Or
     неархівна (вкладка 01.09 ще в таблиці), а тут шукали серед УСІХ
     неархівних. Вікно — те саме `SCREEN_PROGRAM_DAYS_BACK`, що й у прив'язці
     програми з екрана. Свіжих немає — лишаємо всі, як було: краще показати
-    давню роботу, ніж нічого, коли інших кандидатів немає."""
+    давню роботу, ніж нічого, коли інших кандидатів немає.
+
+    Вікно саме по собі замале: 17.11.26 на 350i_Titan (програма `20-56-55`)
+    поруч із лабораторною 40378 того дня стояв Zahar Pushkar з 12.11 — п'ять
+    днів, усередині вікна, але робота вже «знайдено при видачі». Тому з тих,
+    що лишились, прибираємо вже знайдені/видані: фізично вони в лотку, не на
+    верстаті. Лишились лише такі — показуємо їх, як і раніше."""
     if len(orders) < 2:
         return orders
     from app.business_day import business_today
+    from app.statuses import STATUS_FOUND, STATUS_ISSUED
 
     today = today or business_today()
     low = today - timedelta(days=SCREEN_PROGRAM_DAYS_BACK)
     high = today + timedelta(days=1)
-    recent = [o for o in orders if low <= order_date(o) <= high]
-    return recent or orders
+    recent = [o for o in orders if low <= order_date(o) <= high] or orders
+    done = (STATUS_FOUND, STATUS_ISSUED)
+    on_machine = [o for o in recent if getattr(o, "status", None) not in done]
+    return on_machine or recent
 
 
 # ── Історія стану за добу ───────────────────────────────────────────────────

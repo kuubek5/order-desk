@@ -8,3 +8,5 @@ package main
 func isAdmin() bool { return true }
 
 func relaunchElevated(args ...string) error { return nil }
+
+func runsElevated() bool { return false }

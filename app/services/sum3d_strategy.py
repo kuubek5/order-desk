@@ -2,8 +2,11 @@
 
 Стратегія — це таблиця операцій і тіла операцій:
 
-* запис таблиці: ``FF FF FF FF``, прапорець, байт типу обробки, службові
-  8 байт, зсув тіла, розмір тіла, назва (до кінця запису, доповнена нулями).
+* запис таблиці: назва (154 або 254 байти, доповнена нулями), за нею заголовок
+  24 байти — ``FF FF FF FF``, прапорець, байт типу обробки, службові 8 байт,
+  зсув тіла, розмір тіла. Назва стоїть ПЕРЕД своїм заголовком: та, що йде
+  після заголовка, належить наступній операції (поле 210 тіла «Machining name»
+  це підтверджує; до 17.11.26 читач брав її й зсував усі назви на одну).
   Крок запису залежить від версії файлу (178 або 278 байт), тому він
   визначається з самого файлу — за ланцюжком «зсув + розмір = наступний зсув»;
 * тіло операції — поля підряд у сталому порядку: текст, що закінчується
@@ -38,7 +41,7 @@ MACHINING_TYPES = (
 )
 LABEL = b"TECN 2.0"
 LABEL_AT = 64
-NAME_AT = 24
+HEADER_LEN = 24               # заголовок запису таблиці; назва — перед ним
 SCAN_FROM = 0x2000
 SCAN_BYTES = 6 * 1024 * 1024
 MIN_BODY, MAX_BODY = 256, 64 * 1024
@@ -98,17 +101,24 @@ def _printable(byte: int) -> bool:
     return 0x20 <= byte <= 0x7E or byte >= 0xA0
 
 
-def _record(data: bytes, pos: int, name_len: int) -> Optional[tuple[int, int, int, int, bool, str]]:
-    """(off, size, flag, kind, has_path, name) запису на `pos` або None."""
-    if pos < 0 or pos + NAME_AT + 1 > len(data) or not _SIGN.match(data, pos):
+def _header(data: bytes, pos: int) -> Optional[tuple[int, int, int, int, bool]]:
+    """(off, size, flag, kind, has_path) заголовка запису на `pos` або None."""
+    if pos < 0 or pos + HEADER_LEN > len(data) or not _SIGN.match(data, pos):
         return None
     extra, _marker, off, size = struct.unpack_from("<IIII", data, pos + 8)
     if not MIN_BODY <= size <= MAX_BODY or off > len(data):
         return None
-    raw = data[pos + NAME_AT:pos + NAME_AT + name_len].split(b"\x00", 1)[0]
+    return off, size, data[pos + 4], data[pos + 5], extra != 0
+
+
+def _name_before(data: bytes, pos: int, name_len: int) -> Optional[str]:
+    """Назва операції — у `name_len` байтах ПЕРЕД заголовком на `pos`."""
+    if pos - name_len < 0:
+        return None
+    raw = data[pos - name_len:pos].split(b"\x00", 1)[0]
     if not raw or not all(_printable(b) for b in raw):
         return None
-    return off, size, data[pos + 4], data[pos + 5], extra != 0, raw.decode("cp1252", "replace")
+    return raw.decode("cp1252", "replace")
 
 
 def parse(data: bytes) -> Strategy:
@@ -118,9 +128,9 @@ def parse(data: bytes) -> Strategy:
         raise StrategyError("це не файл TECN 2.0 (стратегії Sum3D починаються з «TECN 2.0»)")
     found: list[tuple[int, int, int]] = []          # (pos, off, size)
     for match in _SIGN.finditer(data, SCAN_FROM, min(len(data), SCAN_FROM + SCAN_BYTES)):
-        rec = _record(data, match.start(), 254)
-        if rec:
-            found.append((match.start(), rec[0], rec[1]))
+        head = _header(data, match.start())
+        if head:
+            found.append((match.start(), head[0], head[1]))
     out = Strategy(size=len(data), stride=None, table_at=None, ops=[])
     if not found:
         out.notes.append("записів таблиці операцій не знайдено")
@@ -131,26 +141,31 @@ def parse(data: bytes) -> Strategy:
     )
     stride = gaps.most_common(1)[0][0] if gaps else None
     out.stride = stride
+    name_len = (stride - HEADER_LEN) if stride else 254
     if stride is None:
-        positions = [f[0] for f in found]
+        positions = [f[0] for f in found if _name_before(data, f[0], name_len)]
         if len(found) > 1:
             out.notes.append("крок запису не визначено: записи не йдуть ланцюжком")
     else:
         start = next(a[0] for a, b in zip(found, found[1:]) if b[0] - a[0] == stride and a[1] + a[2] == b[1])
         positions = []
         pos = start
-        while _record(data, pos, stride - NAME_AT):
+        while _header(data, pos) and _name_before(data, pos, name_len):
             positions.append(pos)
             pos += stride
         skipped = sum(1 for f in found if f[0] < start)
         if skipped:
             out.notes.append(f"перед таблицею пропущено схожих записів: {skipped}")
-    out.table_at = positions[0]
-    name_len = (stride - NAME_AT) if stride else 254
+    if not positions:
+        out.notes.append("записів таблиці операцій не знайдено")
+        return out
+    out.table_at = positions[0] - name_len
     for number, pos in enumerate(positions, start=1):
-        rec = _record(data, pos, name_len)
-        if rec:
-            out.ops.append(Op(number, pos, rec[2], rec[3], rec[4], rec[0], rec[1], rec[5]))
+        head = _header(data, pos)
+        name = _name_before(data, pos, name_len)
+        if head and name:
+            off, size, flag, kind, has_path = head
+            out.ops.append(Op(number, pos, flag, kind, has_path, off, size, name))
     _find_base(data, out)
     return out
 
@@ -159,7 +174,7 @@ def _find_base(data: bytes, out: Strategy) -> None:
     """База тіл: мітка `TECN 2.0` стоїть на зсуві 64 кожного тіла, тож
     відстані між мітками мають збігатися з розмірами тіл."""
     ordered = sorted({op.off for op in out.ops})
-    table_end = max(op.pos for op in out.ops) + (out.stride or 278)
+    table_end = max(op.pos for op in out.ops) + HEADER_LEN
     labels: list[int] = []
     for match in re.finditer(re.escape(LABEL), data[table_end:]):
         labels.append(table_end + match.start())

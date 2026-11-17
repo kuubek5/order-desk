@@ -35,7 +35,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PackVersion = 1
-$knownDirs = @('C:\iCAMV5smart', 'C:\sum\sum')
+$knownDirs = @('C:\iCAMV5smart', 'C:\SUM3D\MillBox', 'C:\sum\sum')
 
 # Що дозволено брати. Усе інше не береться.
 $archivePattern = '(?i)\.arl(\.[A-Za-z0-9.]+)?$'

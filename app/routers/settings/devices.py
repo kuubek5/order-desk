@@ -479,6 +479,36 @@ def check_machine_program_folder(
     )
 
 
+@router.post("/settings/machines/{machine_id}/agent-update")
+def update_machine_agent(request: Request, machine_id: int, db: Session = Depends(get_db)):
+    """Оновити агента на ПК верстата (`app/services/agent_update.py`).
+
+    Звичайний `def`, не async: виклик чекає, поки агент підніметься в новій
+    версії (до хвилини), і мусить іти в threadpool, а не на event loop.
+    Лише адмін: це запуск нового файла на ПК верстата, хоч агент і приймає
+    його тільки з нашим підписом."""
+    from html import escape
+
+    from app.services import agent_update
+
+    user = _require_admin_machines(request, db)
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+    name = machine.name
+    result = agent_update.update_machine(db, machine_id)
+    log_action(
+        db, order=None, operator=user, action_type="settings",
+        field="machine_agent_update",
+        note=f"агент «{name}»: {result.message}",
+    )
+    db.commit()
+    return Response(
+        f'<span class="pf-result pf-{result.tone}">{escape(result.message)}</span>',
+        media_type="text/html",
+    )
+
+
 @router.post("/settings/machines/{machine_id}/move")
 def move_machine(
     request: Request,

@@ -4,6 +4,7 @@ package main
 
 import (
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -24,6 +25,29 @@ func isAdmin() bool {
 	token := windows.GetCurrentProcessToken()
 	member, err := token.IsMember(sid)
 	return err == nil && member
+}
+
+// runsElevated каже, чи процес працює з ПІДВИЩЕНИМИ правами при ввімкненому
+// UAC (повний токен адміністратора, отриманий через підвищення). Саме тоді
+// запускати файл з теки користувача не можна: його могла б підмінити звичайна
+// програма того самого користувача й отримати права адміністратора.
+//
+// Обліковий запис адміністратора з ВИМКНЕНИМ UAC сюди не потрапляє (тип токена
+// «за замовчуванням»): там межі прав немає взагалі, будь-яка програма
+// користувача вже адміністратор, і відмова від оновлення нічого не захистила б
+// — лише назавжди вимкнула б самооновлення на такому ПК.
+func runsElevated() bool {
+	var kind uint32
+	var n uint32
+	err := windows.GetTokenInformation(
+		windows.GetCurrentProcessToken(), windows.TokenElevationType,
+		(*byte)(unsafe.Pointer(&kind)), uint32(unsafe.Sizeof(kind)), &n)
+	if err != nil {
+		// Не вдалось дізнатись — вважаємо підвищеним: краще не оновитись.
+		return true
+	}
+	const tokenElevationTypeFull = 2
+	return kind == tokenElevationTypeFull
 }
 
 // relaunchElevated re-runs this exe with the given args through a UAC prompt.

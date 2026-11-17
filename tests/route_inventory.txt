@@ -27,6 +27,7 @@ GET /settings/report.txt
 POST /settings/machines/{machine_id}/move
 POST /settings/machines/{machine_id}/program-folder
 POST /settings/machines/{machine_id}/program-folder/check
+POST /settings/machines/{machine_id}/agent-update
 GET /machines/calibration.zip
 GET /mail
 POST /mail/{email_id}/fetch-link

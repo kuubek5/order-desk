@@ -174,12 +174,19 @@ func localIPv4s() []string {
 	return out
 }
 
+// exeDir / exePath — ВСТАНОВЛЕНИЙ exe (Program Files), навіть коли цей процес
+// є оновленою версією з теки користувача (selfupdate.go). Від них беруться
+// конфіг, автозапуск, ярлик і запуск з правами адміністратора, а все це мусить
+// вказувати на встановлений файл: записати в автозапуск шлях до оновлення
+// означало б обійти запускач із його перевіркою підпису.
 func exeDir() string {
-	exePath, _ := os.Executable()
-	return filepath.Dir(exePath)
+	return filepath.Dir(exePath())
 }
 
 func exePath() string {
+	if launcherPath != "" {
+		return launcherPath
+	}
 	p, _ := os.Executable()
 	return p
 }
@@ -251,6 +258,7 @@ func main() {
 	_ = flag.Bool("setup", false, "open the settings page in the browser")
 	install := flag.Bool("install", false, "one elevated pass: config+token, autostart, firewall, start (installer runs this)")
 	elevated := flag.Bool("elevated", false, "internal: set after relaunching with admin rights")
+	launcher := flag.String("launcher", "", "internal: path of the installed exe when this process is a self-updated version")
 	flag.Parse()
 
 	// Лог у файл (реліз ховає консоль) — у першій теці, де вдається писати,
@@ -277,7 +285,25 @@ func main() {
 		return
 	}
 	if *serve {
-		runServe(*cfgPath)
+		// Прапорець -launcher діє лише тут: режими з правами адміністратора
+		// завжди виконує встановлений exe, оновлень вони не бачать.
+		useLauncherPath(*launcher)
+		cfg := waitForConfig(*cfgPath)
+		// Зайвий екземпляр іде ТИХО — до першого рядка в лозі й ДО пошуку
+		// оновлень. Сторожова задача щохвилини піднімає агента наосліп
+		// (taskXML), і коли живий уже слухає, новий мусить просто зникнути.
+		// Досі дубль встигав записати «serving on» і «уже обслуговує живий
+		// агент — виходжу»; це не засмічувало лог лише тому, що лог узагалі не
+		// писався (див. logDirs). Перевірка після невдалого bind у runServe
+		// лишається — вона ловить гонку двох одночасних стартів.
+		if healthyAgentOn(cfg.Bind) {
+			os.Exit(0)
+		}
+		if !isPayload() {
+			// Повертається лише коли придатного оновлення немає.
+			runPayloadIfAny(*cfgPath, cfg)
+		}
+		runServe(*cfgPath, cfg)
 		return
 	}
 	// No -serve → settings menu (default, so a double-click opens it too).
@@ -288,20 +314,20 @@ func main() {
 // Background capture server (the scheduled task runs `-serve`).
 // ---------------------------------------------------------------------------
 
-func runServe(cfgPath string) {
-	// Битий/зниклий конфіг НЕ вбиває агента. Раніше тут стояв log.Fatalf, і
-	// це означало: антивірус поклав agent.json у карантин — агент помирає при
-	// кожному вході, планувальник перезапускає його раз на хвилину 999 разів,
-	// і верстат зникає з CRM назавжди без жодного сліду на екрані. Агент живе
-	// на ПК у цеху, куди ніхто не ходить, тож самозцілення тут важливіше за
-	// «чесно впасти»: чекаємо, поки конфіг зʼявиться (його пише -setup або
-	// -install), і піднімаємось самі.
-	var cfg Config
+// waitForConfig чекає на придатний конфіг.
+//
+// Битий/зниклий конфіг НЕ вбиває агента. Раніше тут стояв log.Fatalf, і
+// це означало: антивірус поклав agent.json у карантин — агент помирає при
+// кожному вході, планувальник перезапускає його раз на хвилину 999 разів,
+// і верстат зникає з CRM назавжди без жодного сліду на екрані. Агент живе
+// на ПК у цеху, куди ніхто не ходить, тож самозцілення тут важливіше за
+// «чесно впасти»: чекаємо, поки конфіг зʼявиться (його пише -setup або
+// -install), і піднімаємось самі.
+func waitForConfig(cfgPath string) Config {
 	for {
 		loaded, err := loadConfig(cfgPath)
 		if err == nil && loaded.Token != "" {
-			cfg = loaded
-			break
+			return loaded
 		}
 		if err != nil {
 			log.Printf("config error: %v — чекаю на %s", err, cfgPath)
@@ -310,16 +336,9 @@ func runServe(cfgPath string) {
 		}
 		time.Sleep(configWaitInterval)
 	}
+}
 
-	// Зайвий екземпляр іде ТИХО — до першого рядка в лозі. Сторожова задача
-	// щохвилини піднімає агента наосліп (taskXML), і коли живий уже слухає,
-	// новий мусить просто зникнути. Досі дубль встигав записати «serving on» і
-	// «уже обслуговує живий агент — виходжу»; це не засмічувало лог лише тому,
-	// що лог узагалі не писався (див. logDirs). Перевірка після невдалого bind
-	// нижче лишається — вона ловить гонку двох одночасних стартів.
-	if healthyAgentOn(cfg.Bind) {
-		os.Exit(0)
-	}
+func runServe(cfgPath string, cfg Config) {
 	if logPathUsed != "" {
 		log.Printf("лог: %s", logPathUsed)
 	}
@@ -368,6 +387,15 @@ func runServe(cfgPath string) {
 			"displays": screenshot.NumActiveDisplays(),
 			"version":  Version,
 			"time":     time.Now().Format(time.RFC3339),
+			// Самооновлення (selfupdate.go): CRM за цими полями вирішує, чи
+			// можна слати нову версію, і показує, чому остання не прижилась.
+			"pid":             os.Getpid(),
+			"built":           buildStamp(),
+			"self_update":     true,
+			"updated":         isPayload(),
+			"builtin_version": builtinVersion(),
+			"elevated":        runsElevated(),
+			"update_note":     getUpdateNote(),
 		})
 	}))
 	mux.HandleFunc("/capture", authed(func(w http.ResponseWriter, r *http.Request) {
@@ -389,6 +417,8 @@ func runServe(cfgPath string) {
 	// Розвідка файлів програми верстата — лише читання (discover.go).
 	mux.HandleFunc("/discover", authed(handleDiscover))
 	mux.HandleFunc("/peek", authed(handlePeek))
+	// Нова версія агента від CRM — лише з дійсним підписом (selfupdate.go).
+	mux.HandleFunc("/update", authed(handleUpdate))
 
 	// Also serve the settings menu on loopback 8766 so 127.0.0.1:8766 ALWAYS
 	// works while the agent runs — no separate shortcut needed, and Save runs
@@ -439,6 +469,7 @@ func runServe(cfgPath string) {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+	liveServer.Store(srv)
 	// HTTP — у горутині, трей тримає ГОЛОВНИЙ потік: цикл повідомлень Windows
 	// мусить жити саме там. «Вийти» в треї зупиняє процес цілком.
 	//
@@ -474,6 +505,7 @@ func runServe(cfgPath string) {
 				WriteTimeout: 30 * time.Second,
 				IdleTimeout:  60 * time.Second,
 			}
+			liveServer.Store(srv)
 		}
 	}()
 	// Трей — на ГОЛОВНІЙ горутині (цикл повідомлень Windows цього вимагає), і

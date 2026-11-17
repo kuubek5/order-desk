@@ -125,6 +125,16 @@
                                  title="Версія агента на ПК верстата{% if machine.agent_version_at %}, відповів {{ machine.agent_version_at.strftime('%d.%m %H:%M') }}{% endif %}">
                                 агент {{ machine.agent_version }}{% if machine.id in agent_stale_ids(machines) %} · застарів{% endif %}
                             </div>
+                            {# Оновити агента звідси, без походу до верстата. Сервер сам
+                               відмовить, якщо верстат фрезерує, агент ще старого зразка
+                               або вже найновіший, — і скаже це поруч із кнопкою. #}
+                            {% if user and user.role == 'адмін' %}
+                            <button type="button" class="mc-agent-upd"
+                                    hx-post="/settings/machines/{{ machine.id }}/agent-update"
+                                    hx-target="next .mc-agent-out" hx-swap="innerHTML"
+                                    data-kload="self">Оновити агента</button>
+                            <span class="mc-agent-out" aria-live="polite"></span>
+                            {% endif %}
                             {% endif %}
                         </td>
                         <td>
@@ -260,7 +270,7 @@
 
                         <div class="settings-help">Кадри не накопичуються: по одному файлу на верстат, перезаписується кожні 15 с. <details class="hint-more"><summary>докладніше</summary><div class="hint-full"><b>Куди зберігаються кадри.</b> На верстаті — <b>нікуди</b>: кадр живе в пам'яті й іде мережею на запит. На цьому ПК — один файл на верстат у <code class="mono">%LOCALAPPDATA%\KuubMill\machine_frames</code>, який перезаписується кожні 15 секунд. Місце не росте.</div></details></div>
 
-                        <div class="settings-help">Агент лише дивиться на екран — нічого не натискає й нікуди не пише. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Агент <b>лише читає екран</b>: він не вміє слати верстату ані клавіш, ані миші, не відкриває інших портів і нікуди не «дзвонить» сам.</div></details></div>
+                        <div class="settings-help">Агент лише дивиться на екран — нічого не натискає й нікуди не пише. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Агент <b>лише читає екран</b>: він не вміє слати верстату ані клавіш, ані миші, не відкриває інших портів і нікуди не «дзвонить» сам. Єдине, що він уміє запустити, — власну новішу версію, яку надсилає ця програма за кнопкою «Оновити агента», і лише з підписом розробника; не запрацювала — лишається попередня.</div></details></div>
                     </div>
                 </details>
 

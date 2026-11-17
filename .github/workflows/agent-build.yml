@@ -52,10 +52,32 @@ jobs:
           # говорило про те, який саме білд там стоїть).
           VER="${{ github.event.inputs.version }}"
           if [ -z "$VER" ]; then VER="$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"; fi
+          # Час збірки — те, чим агент порівнює версії при самооновленні
+          # (selfupdate.go): «дата-хеш» упорядкувати не можна. Той самий штамп
+          # іде в підписаний маніфест нижче.
+          BUILT="$(date -u +%s)"
+          echo "AGENT_VER=$VER" >> "$GITHUB_ENV"
+          echo "AGENT_BUILT=$BUILT" >> "$GITHUB_ENV"
           go build -trimpath \
-            -ldflags "-s -w -H=windowsgui -X main.Version=$VER" \
+            -ldflags "-s -w -H=windowsgui -X main.Version=$VER -X main.BuildStamp=$BUILT" \
             -o kmill-agent.exe .
           ls -la kmill-agent.exe
+
+      # Підпис для самооновлення: manifest.json + manifest.sig поруч з exe.
+      # Ключ — секрет AGENT_SIGNING_KEY; публічна частина зашита в агента
+      # (internal/upd.TrustedKeys), і інструмент сам звіряє їх після підпису.
+      # Без секрету (форк, чужий PR) крок пропускається: агент збирається, але
+      # файла оновлення для нього немає — ставиться лише інсталятором.
+      - name: Sign for self-update
+        env:
+          AGENT_SIGNING_KEY: ${{ secrets.AGENT_SIGNING_KEY }}
+        run: |
+          if [ -z "$AGENT_SIGNING_KEY" ]; then
+            echo "AGENT_SIGNING_KEY не задано — підпис пропущено"
+            exit 0
+          fi
+          go run ./tools/sign -exe kmill-agent.exe -version "$AGENT_VER" -built "$AGENT_BUILT"
+          ls -la manifest.json manifest.sig
 
       - name: Package (portable zip)
         run: zip -j kmill-agent.zip kmill-agent.exe config.example.json install.ps1 README.md
@@ -78,7 +100,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kmill-agent-exe
-          path: agent/kmill-agent.exe
+          # Маніфест і підпис є лише коли крок підпису відпрацював.
+          path: |
+            agent/kmill-agent.exe
+            agent/manifest.json
+            agent/manifest.sig
           if-no-files-found: error
           retention-days: 7
 
@@ -158,3 +184,14 @@ jobs:
               --notes "Інсталятор агента для ПК верстата. Посилання стале — оновлюється автоматично."
           }
           gh release upload agent-latest $stable --repo $repo --clobber
+          # Файл для самооновлення агентів: CRM качає ці три звідси й надсилає
+          # на верстат (app/services/agent_update.py). Усі три або жодного:
+          # exe без підпису агент однаково не прийме, а половина набору лише
+          # заплутала б.
+          if ((Test-Path manifest.json) -and (Test-Path manifest.sig)) {
+            Copy-Item manifest.json kmill-agent.manifest.json -Force
+            Copy-Item manifest.sig kmill-agent.manifest.sig -Force
+            gh release upload agent-latest kmill-agent.exe kmill-agent.manifest.json kmill-agent.manifest.sig --repo $repo --clobber
+          } else {
+            Write-Host "Підпису немає — файл самооновлення не публікується"
+          }

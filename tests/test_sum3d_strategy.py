@@ -42,7 +42,7 @@ def strategy_file(ops: list[tuple[str | bytes, int, bytes]], *, stride: int = 17
     for name, kind, payload in ops:
         record = b"\xff\xff\xff\xff" + bytes([0, kind, 0, 0]) + bytes(8) + struct.pack("<II", off, len(payload))
         raw = name if isinstance(name, bytes) else name.encode("cp1252")
-        table += record + raw.ljust(stride - 24, b"\x00")
+        table += raw.ljust(stride - 24, b"\x00") + record     # назва — ПЕРЕД своїм заголовком
         off += len(payload)
     return header + table + bytes(gap) + b"".join(payload for _n, _k, payload in ops)
 

@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File sum3d_probe.ps1 -AllowRunning -SumDir C
 - словники виробника (`params_codes.txt`, `strategies_vocabulary.csv`, `CAMWIN.TAB`, `Reference *.csv`);
 - файли `.cfg` / `.txt` / `.csv` з тек стратегій (`ST`, `STRATEGIES`, `Strategy`).
 
-Бере з обох звичних тек (`C:\iCAMV5smart`, `C:\sum\sum`), якщо вони є. Не бере моделі `.stl`,
+Бере зі звичних тек (`C:\iCAMV5smart`, `C:\SUM3D\MillBox`, `C:\sum\sum`), якщо вони є. Не бере моделі `.stl`,
 проєкти `.cam`, програми, ключі, файли ліцензії, `.ini`, реєстр. Файли лише читає й не блокує —
 Sum3D може бути відкрита. Нічого не видаляє й не надсилає в мережу.
 
