@@ -1156,6 +1156,23 @@ def _mail_links_worker(stop_event: Event) -> None:
             return
 
 
+def _agent_versions_worker(stop_event: Event) -> None:
+    """Версія агента на кожному верстаті — рідко й окремо від опитування екранів
+    (`app/services/agent_versions.py`): там зайва секунда старить кадри решти."""
+    from app.services import agent_versions
+
+    if stop_event.wait(agent_versions.FIRST_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                agent_versions.refresh_once(db)
+        except Exception:  # noqa: BLE001 — довідкове опитування не валить застосунок
+            logger.exception("Версії агентів верстатів не оновлено")
+        if stop_event.wait(agent_versions.REFRESH_SECONDS):
+            return
+
+
 STL_HEIGHT_INITIAL_DELAY_SECONDS = 60.0
 # Прохід займає ~0,6 с у власному потоці (лог цеху 05.11.26), а до бейджа технік
 # чекав до 3 хв: майже вся затримка була саме в цій паузі.
@@ -1487,6 +1504,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-program-tracks-net", _program_tracks_net_worker),
         _BackgroundWorker("kuubmill-sum3d-layout", _sum3d_layout_worker),
         _BackgroundWorker("kuubmill-mail-links", _mail_links_worker),
+        _BackgroundWorker("kuubmill-agent-versions", _agent_versions_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
         _BackgroundWorker("kuubmill-power-schedule", _power_schedule_worker),
     ]

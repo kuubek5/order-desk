@@ -33,6 +33,7 @@ from app.material_class import (
     strip_material_word,
 )
 from app.models import ActionLog, User
+from app.services import agent_versions
 from app.services.stl_height import chip_for as stl_thickness_chip
 from app.runtime import resource_path
 from app.settings_store import (
@@ -909,6 +910,7 @@ templates.env.globals["closed_sections_titles"] = closed_sections_titles
 templates.env.globals["wrong_count"] = wrong_count
 templates.env.globals["perf_id"] = perf.current_request_id
 templates.env.globals["is_overdue"] = is_overdue
+templates.env.globals["agent_stale_ids"] = agent_versions.stale_ids
 templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
 templates.env.globals["material_family_class"] = material_family_class

@@ -118,6 +118,14 @@
                             <input form="machine-{{ machine.id }}" class="login-input mono" type="password" name="agent_token"
                                    autocomplete="new-password"
                                    placeholder="{% if machine.agent_token_encrypted %}збережено{% else %}HTTP-агент (8765){% endif %}">
+                            {# Версію називає сам агент (`GET /status`), питає окремий воркер раз
+                               на пів години. Порожньо — ще не відповів; тоді й рядка немає. #}
+                            {% if machine.agent_version %}
+                            <div class="mc-agent-ver mono{% if machine.id in agent_stale_ids(machines) %} is-stale{% endif %}"
+                                 title="Версія агента на ПК верстата{% if machine.agent_version_at %}, відповів {{ machine.agent_version_at.strftime('%d.%m %H:%M') }}{% endif %}">
+                                агент {{ machine.agent_version }}{% if machine.id in agent_stale_ids(machines) %} · застарів{% endif %}
+                            </div>
+                            {% endif %}
                         </td>
                         <td>
                             <input form="machine-{{ machine.id }}" class="login-input" type="password" name="password"

@@ -168,6 +168,11 @@ class MachineTarget:
     show_on_board: bool = True
     # ID у RustDesk (Machine.rustdesk_id); "" — посилання немає.
     rustdesk_id: str = ""
+    # Версія агента, як її памʼятає база (`app/services/agent_versions.py`), —
+    # лише довідка для звітів. `compare=False`: оновлення версії не має робити
+    # ціль «іншим верстатом» для порівняння й хешу.
+    agent_version: str = field(default="", compare=False)
+    agent_version_at: Optional[datetime] = field(default=None, compare=False)
 
     @property
     def rustdesk_url(self) -> str:
@@ -370,6 +375,8 @@ def target_of(machine: Machine) -> MachineTarget:
         portrait_model=getattr(machine, "portrait_model", "") or "",
         show_on_board=bool(getattr(machine, "show_on_board", True)),
         rustdesk_id=getattr(machine, "rustdesk_id", "") or "",
+        agent_version=getattr(machine, "agent_version", "") or "",
+        agent_version_at=getattr(machine, "agent_version_at", None),
     )
 
 

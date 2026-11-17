@@ -1359,6 +1359,11 @@ class Machine(Base):
     # нових — розшарена тека самого верстата. CRM її ЛИШЕ ЧИТАЄ
     # (`app/services/program_folders.py`). "" = не задано.
     program_folder: Mapped[str] = mapped_column(String(400), default="", server_default="")
+    # Версія агента на ПК верстата, як він сам назвав її в `GET /status`, і коли
+    # відповів востаннє (17.11.26). Пише лише `app/services/agent_versions.py`;
+    # "" = ще не питали або агент не відповів жодного разу.
+    agent_version: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    agent_version_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     # Порядок у переліку, у віджеті й на табло — задає оператор стрілками в
     # Налаштуваннях: верстати стоять у цеху у відомому йому порядку, а
     # сортування за id чи назвою його ламає.

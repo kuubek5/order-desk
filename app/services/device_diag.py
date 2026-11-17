@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app import furnace_ocr
 from app.models import ScreenPuzzle
-from app.services import furnace, machines, screen_inbox
+from app.services import agent_versions, furnace, machines, screen_inbox
 
 # Скільки байтів картинки віддаємо щонайбільше. Кадр верстата буває 271 КБ, а
 # base64 додає третину; межа з запасом, і все, що більше, ЗМЕНШУЄТЬСЯ, а не
@@ -134,8 +134,10 @@ def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
         )
 
     states = machines.states_snapshot()
+    targets = machines.configured_targets(db)
+    fleet = [t.agent_version for t in targets if t.agent_version]
     mills = []
-    for target in machines.configured_targets(db):
+    for target in targets:
         # Своє імʼя, а не повторне використання `state` з циклу печей: стани
         # верстата й печі — різні типи з різними полями, і спільна змінна
         # ховала б помилку до першого звернення до поля, якого немає.
@@ -146,6 +148,10 @@ def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
                 "назва": target.name,
                 "адреса": f"{target.host}:{target.port}",
                 "спосіб": "агент" if target.is_agent else "VNC",
+                # Версію називає сам агент; None — ще не відповів на запит версії.
+                "версія_агента": target.agent_version or None,
+                "версію_бачили": _local(target.agent_version_at),
+                "агент_застарів": agent_versions.is_outdated(target.agent_version, fleet),
                 "відсоток": mill.percent if mill else None,
                 "завершено": bool(mill and mill.completed),
                 "перевірка_програми": bool(mill and mill.validating),

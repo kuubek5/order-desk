@@ -930,6 +930,9 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 
 /* Довідка про агента верстата (Налаштування → Верстати). Згорнута за
    замовчуванням: потрібна раз на верстат, але тоді — цілком. */
+/* Версія агента під полем токена: тихий рядок, жовтіє лише коли агент старіший за решту цеху. */
+.mc-agent-ver{margin-top:4px;font-size:var(--fs-1);color:var(--ink-3);white-space:nowrap}
+.mc-agent-ver.is-stale{color:var(--warn)}
 .mc-agent{margin:14px 0 6px;border:1px solid var(--line);border-radius:10px;background:var(--card-2)}
 .mc-agent > summary{padding:10px 14px;cursor:pointer;font-size:var(--fs-2);font-weight:600;
   color:var(--ink-2);list-style:none;display:flex;align-items:center;gap:8px}
