@@ -36,7 +36,15 @@ description: Випустити нову версію KuubMill на прод (80
    (`github.ref_name`), зашитого рядка там більше немає. Докстрінг самого
    `bump_version.py` ще каже «в чотирьох місцях, workflow 6 разів» — застарів.
 
-3. **Прогнати ТІ САМІ ворота, що й CI, і в тому ж порядку:**
+3. **Прогнати ТІ САМІ ворота, що й CI, і в тому ж порядку** — однією командою
+   (17.11.26, `scripts/release_gates.ps1`; код виходу 0 лише коли зелене ВСЕ):
+   ```
+   pwsh scripts/release_gates.ps1 -Mode pre -Prod <версія на проді>   # ДО бампу: журнал написано? що поїде?
+   pwsh scripts/release_gates.ps1 -Mode gates                        # ПІСЛЯ бампу, перед тегом
+   pwsh scripts/release_gates.ps1 -Mode watch -Tag vX.Y.Z            # ПІСЛЯ пушу: Tests + Release + файли релізу
+   ```
+   `-Quick` пропускає повний прогін і повертає код 2 — до тега не готово. Скрипт нічого
+   не комітить, не тегає й не пушить. Руками ті самі кроки — нижче (скрипт їх і виконує):
    ```
    .venv/Scripts/python.exe -m ruff check .
    .venv/Scripts/python.exe -m mypy app --ignore-missing-imports   # число проти .mypy-baseline
