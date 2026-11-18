@@ -51,8 +51,12 @@ STEP_UP_WITHIN_MM = 2.0
 NEARLY_USED = 0.05
 # Основи конструкцій не лягають щільно: проміжки, конектори, краї.
 PACKING = 1.8
-# Скільки дисків перевіряти справжньою розстановкою за одну підказку.
-MAX_FIT_TRIES = 12
+# Скільки дисків перевіряти справжньою розстановкою за одну підказку і скільки
+# часу на це можна витратити. Диски йдуть від найповніших (добити початий), і
+# 18.11.26 дванадцять спроб згоріли на майже повних 18 мм Monolith A1 — x06
+# пройшов неперевіреним і показався «влазить» (власник: «явно не вміщаються»).
+MAX_FIT_TRIES = 40
+FIT_BUDGET_SECONDS = 1.5
 # Лінійки виробника: слово з назви диска → (назва для людей, мультиколор?).
 LINES = {
     "monolith": ("Monolith", True),
@@ -532,12 +536,16 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     # тож диск, де вона місця не знайшла, не ховаємо: він іде після тих, де
     # знайшла, і підписаний «перевір у Sum3D» — коли кращого немає.
     accepted: list[Pick] = []
+    # Не перевірені розстановкою (межа спроб чи часу): НЕ «влазить» — лише
+    # після тих, де місце справді знайшлось (18.11.26, диск x06).
+    unchecked: list[Pick] = []
     doubtful: list[Pick] = []
     tries = 0
+    started_at = time.monotonic()
     for pick in ordered:
         if len(accepted) >= 3:
             break
-        if pieces and tries < MAX_FIT_TRIES:
+        if pieces and tries < MAX_FIT_TRIES and time.monotonic() - started_at < FIT_BUDGET_SECONDS:
             tries += 1
             shape = shapes[pick.name]
             with perf.span("disc:fit"):
@@ -546,10 +554,15 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
                 result.rejected += 1
                 doubtful.append(pick)
                 continue
-        accepted.append(pick)
+            accepted.append(pick)
+        elif pieces:
+            unchecked.append(pick)
+        else:
+            # Без STL exocad розстановки немає зовсім — порядок як був.
+            accepted.append(pick)
     # Диск «місця не знайдено» — лише коли жоден не влазить: поруч із дисками,
     # де місце є, він тільки заважав би.
-    ranked = accepted or doubtful
+    ranked = (accepted + unchecked) or doubtful
     if ranked:
         result.best = ranked[0]
         result.alts = ranked[1:3]

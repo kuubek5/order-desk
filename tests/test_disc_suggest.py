@@ -317,6 +317,54 @@ def test_disc_without_place_is_kept_as_doubtful(shop, monkeypatch):
     assert hint.best is not None and hint.best.fit is False and hint.rejected >= 1
 
 
+def test_disc_beyond_fit_limit_is_not_called_fitting(shop, monkeypatch):
+    """18.11.26, диск x06: 12 спроб згоріли на майже повних дисках, наступний
+    пройшов без розстановки й показався «влазить». Неперевірений — після тих,
+    де місце знайшлось, і з fit None, не True."""
+    root, atts = shop
+    seen: list[str] = []
+
+    def fits(radius, contours, pieces, scale=1.0):
+        seen.append(len(contours))
+        return len(seen) > 1  # перша перевірка — не влазить, далі влазить
+
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits", fits)
+    monkeypatch.setattr(disc_suggest, "MAX_FIT_TRIES", 1)
+    hint = disc_suggest.suggest("моно A2", atts, str(root))
+    picks = [hint.best, *hint.alts]
+    assert len(seen) == 1, "межа спроб діє"
+    assert all(p.fit is not True for p in picks), "без перевірки «влазить» не буває"
+    assert any(p.fit is None for p in picks)
+    assert picks.index(next(p for p in picks if p.fit is None)) < picks.index(
+        next(p for p in picks if p.fit is False)
+    ) if any(p.fit is False for p in picks) else True
+
+
+def test_checked_fit_wins_over_unchecked(shop, monkeypatch):
+    root, atts = shop
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits", lambda *a, **k: True)
+    monkeypatch.setattr(disc_suggest, "MAX_FIT_TRIES", 1)
+    hint = disc_suggest.suggest("моно A2", atts, str(root))
+    assert hint.best.fit is True
+    assert all(p.fit is None for p in hint.alts)
+
+
+def test_unchecked_started_disc_is_not_labelled_fitting():
+    from app.routers.deps import templates
+    from app.services.disc_suggest import Pick, Suggestion, Want
+
+    def render(fit):
+        pick = Pick(name="zr18_18-Monolith-A1-x06", height=18, free_pct=22, started=True,
+                    paths=[], fit=fit)
+        hint = Suggestion(want=Want(family="Цирконій", line="monolith", shades=frozenset({"a1"})),
+                          thickness=15.1, heights=[18], why="…", best=pick)
+        return templates.get_template("_mail_disc_hint.html").render(hint=hint)
+
+    assert "влазить" in render(True)
+    assert "влазить" not in render(None) and "місце не перевірено" in render(None)
+    assert "перевір у Sum3D" in render(False)
+
+
 def test_hint_deck_shows_up_to_three_candidates():
     """Власник 14.11.26: кандидати гортаються стрілкою, до 3; видно першого."""
     from app.routers.deps import templates
