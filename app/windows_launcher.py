@@ -478,6 +478,9 @@ def main() -> int:
     # Аварійне відновлення бази (app/snapshot_cli.py): той самий exe, веб не
     # стартує і ключі шифрування не читаються — потрібне саме тоді, коли
     # застосунок не запускається (DR-навчання 07.10.26).
+    # Важкий інструмент MCP окремим процесом (app/mcp_isolated.py, 18.11.26):
+    # той самий exe, веб не стартує. ДО перевірки «вже запущено».
+    parser.add_argument("--mcp-tool", nargs=2, metavar=("REQUEST", "RESULT"))
     parser.add_argument("--list-snapshots", action="store_true")
     parser.add_argument("--restore-snapshot", nargs="?", const="latest", metavar="ШЛЯХ|latest")
     parser.add_argument("--from", dest="from_dirs", action="append", metavar="ТЕКА")
@@ -488,6 +491,11 @@ def main() -> int:
         from app.desktop_popup_ui import run_helper
 
         return run_helper(int(args.popup_ui[0]), args.popup_ui[1])
+
+    if args.mcp_tool:
+        from app.mcp_isolated import run_child
+
+        return run_child(args.mcp_tool[0], args.mcp_tool[1])
 
     if args.list_snapshots or args.restore_snapshot:
         from app import snapshot_cli

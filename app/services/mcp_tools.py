@@ -1216,6 +1216,9 @@ TOOLS = TOOLS + (
             "additionalProperties": False,
         },
         run=tool_stl_shapes,
+        # З `kind` — читання й малювання STL з мережевих тек: окремим процесом
+        # (`app/mcp_isolated.py`). Без `kind` — один запит до бази, вдома.
+        isolate=lambda args: bool(str(args.get("kind") or "").strip()),
     ),
 )
 

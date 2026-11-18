@@ -18,6 +18,17 @@ from app.services.mcp_common import Tool, ToolError, _int_arg
 from app.services.order_dates import parse_sheet_tab
 
 
+# Види, що розбирають проєкти `.cam` з Cam-work (десятки МБ на файл) — окремим
+# процесом (`app/mcp_isolated.py`): 18.11.26 `kind=cam` поклав прод на 2 хв.
+# board_disc / disc_link / iso_link лишаються вдома — вони читають верстати з
+# памʼяті процесу, якої в окремому процесі немає.
+CAM_KINDS = frozenset({"both", "cam", "cam_deep", "cam_compare"})
+
+
+def _kind(args: dict) -> str:
+    return str(args.get("kind") or "both").strip().lower()
+
+
 def tool_sum3d_files(db: Session, args: dict) -> dict[str, Any]:
     """Формат файлів дисків `.blk` і проєктів `.cam` Sum3D — щоб знайти, де
     лежить коефіцієнт усадки (`app/services/sum3d_files.py`). Лише числа й
@@ -535,5 +546,6 @@ SUM3D_TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_sum3d_files,
+        isolate=lambda args: _kind(args) in CAM_KINDS,
     ),
 )

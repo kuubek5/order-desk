@@ -106,6 +106,18 @@ def _fresh_sheets_quota_counter():
 
 
 @pytest.fixture(autouse=True)
+def _mcp_tools_run_inline(monkeypatch):
+    """Важкі інструменти MCP у бою йдуть окремим процесом (`app/mcp_isolated`),
+    а той відкриває СПРАВЖНЮ базу — тестової в памʼяті він не бачить. Тому в
+    тестах виконання лишається в процесі; сам механізм стереже
+    `tests/test_mcp_isolated.py` (там `INLINE` вимикається свідомо)."""
+    from app import mcp_isolated
+
+    monkeypatch.setattr(mcp_isolated, "INLINE", True)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _fresh_sheet_erase_guard():
     """Стеля стирань рядків теж живе на ПРОЦЕС (app/sheet_erase_guard).
     Без скидання файл, який ганяє стирання, вичерпує вікно наступному, і той

@@ -50,6 +50,9 @@ class Tool:
     description: str
     schema: dict[str, Any]
     run: Callable[[Session, dict], dict[str, Any]]
+    # Чи йти окремим процесом за цих аргументів (`app/mcp_isolated.py`). Лише для
+    # інструментів, що НЕ читають живого стану процесу CRM (верстати, кеші).
+    isolate: Optional[Callable[[dict], bool]] = None
 
 
 _DAY_PROP = {

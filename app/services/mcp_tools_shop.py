@@ -313,5 +313,8 @@ SHOP_TOOLS = SHOP_TOOLS + (
         ),
         schema=_days_limit_schema(30, 90),
         run=tool_disc_fit_replay,
+        # Розстановка STL на диску — важкий numpy/Python; 17.11.26 подібна
+        # розстановка висіла 3 год. Окремим процесом (`app/mcp_isolated.py`).
+        isolate=lambda args: True,
     ),
 )

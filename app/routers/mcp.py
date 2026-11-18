@@ -39,6 +39,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app import mcp_isolated
 from app.__version__ import VERSION
 from app.routers.deps import get_db, is_loopback_request
 from app.services.mcp_gateway import gateway_enabled, token_matches
@@ -186,6 +187,10 @@ def handle_rpc(payload: Any, db: Session) -> Response:
         raw_args = params.get("arguments")
         args: dict[Any, Any] = raw_args if isinstance(raw_args, dict) else {}
         try:
+            # Важкий інструмент — окремим процесом, щоб не голодити CRM
+            # (`app/mcp_isolated.py`, 18.11.26).
+            if mcp_isolated.should_isolate(tool, args):
+                return _tool_result(request_id, mcp_isolated.run(tool, args))
             return _tool_result(request_id, tool.run(db, args))
         except ToolError as exc:
             return _tool_failure(request_id, str(exc))
