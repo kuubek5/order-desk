@@ -55,8 +55,25 @@ PACKING = 1.8
 # часу на це можна витратити. Диски йдуть від найповніших (добити початий), і
 # 18.11.26 дванадцять спроб згоріли на майже повних 18 мм Monolith A1 — x06
 # пройшов неперевіреним і показався «влазить» (власник: «явно не вміщаються»).
-MAX_FIT_TRIES = 40
-FIT_BUDGET_SECONDS = 1.5
+MAX_FIT_TRIES = 60
+FIT_BUDGET_SECONDS = 2.5
+# Відповідь розстановки «диск × конструкції листа» — у пам'яті процесу:
+# картку листа відкривають і перемальовують кілька разів, а диск не змінився
+# (обʼєкт диска з кешу `shape_of` — той самий, доки файл не переписали).
+_FIT_CACHE_MAX = 2000
+_fit_cache: dict[tuple, tuple[Any, bool]] = {}
+_fit_lock = threading.Lock()
+
+
+def _pieces_key(pieces: list[Any], scale: float) -> tuple:
+    return (round(scale, 4),) + tuple((len(p), round(float(p.sum()), 3)) for p in pieces)
+
+
+def _remember_fit(key: tuple, shape: Any, ok: bool) -> None:
+    with _fit_lock:
+        if len(_fit_cache) >= _FIT_CACHE_MAX:
+            _fit_cache.clear()
+        _fit_cache[key] = (shape, ok)
 # Лінійки виробника: слово з назви диска → (назва для людей, мультиколор?).
 LINES = {
     "monolith": ("Monolith", True),
@@ -545,24 +562,47 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     doubtful: list[Pick] = []
     tries = 0
     started_at = time.monotonic()
+    # Силуети листа й їхні спектри — один раз на всі диски (18.11.26: інакше
+    # ~150 мс на диск у цеху, і за межу часу перевірялось лише ~10 дисків).
+    masks = disc_fit.Masks(pieces, letter_scale(want.family)) if pieces else None
+    piece_key = _pieces_key(pieces, masks.scale) if masks else None
+
+    def check(pick: Pick) -> bool:
+        shape = shapes[pick.name]
+        hit = _fit_cache.get((pick.name, piece_key))
+        if hit is not None and hit[0] is shape:
+            return hit[1]
+        with perf.span("disc:fit"):
+            ok = disc_fit.fits_on(shape.radius, shape.blocked_grid(), masks)
+        _remember_fit((pick.name, piece_key), shape, ok)
+        return ok
+
     for pick in ordered:
         if len(accepted) >= 3:
             break
-        if pieces and tries < MAX_FIT_TRIES and time.monotonic() - started_at < FIT_BUDGET_SECONDS:
+        if masks and tries < MAX_FIT_TRIES and time.monotonic() - started_at < FIT_BUDGET_SECONDS:
             tries += 1
-            shape = shapes[pick.name]
-            with perf.span("disc:fit"):
-                pick.fit = disc_fit.fits(shape.radius, shape.contours, pieces, letter_scale(want.family))
+            pick.fit = check(pick)
             if not pick.fit:
                 result.rejected += 1
                 doubtful.append(pick)
                 continue
             accepted.append(pick)
-        elif pieces:
+        elif masks:
             unchecked.append(pick)
         else:
             # Без STL exocad розстановки немає зовсім — порядок як був.
             accepted.append(pick)
+    # Жоден перевірений не підійшов, а межа вичерпалась — НОВИЙ диск потрібної
+    # висоти й кольору (на порожньому місце є) перевіряємо поза межею: він
+    # кращий за неперевірений майже повний (18.11.26: x06 «місце не
+    # перевірено» стояв першим).
+    if masks and not accepted:
+        for pick in [p for p in unchecked if not p.started][:2]:
+            pick.fit = check(pick)
+            if pick.fit:
+                accepted.append(pick)
+        unchecked = [p for p in unchecked if p.fit is None]
     # Диск «місця не знайдено» — лише коли жоден не влазить: поруч із дисками,
     # де місце є, він тільки заважав би.
     ranked = (accepted + unchecked) or doubtful

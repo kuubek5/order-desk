@@ -238,18 +238,53 @@ def usable_share(radius: float, contours: list[list[tuple[float, float]]]) -> fl
 # ── Розстановка ─────────────────────────────────────────────────────────────
 
 
-def _place(blocked: np.ndarray, mask: np.ndarray) -> Optional[tuple[int, int]]:
+class Masks:
+    """Силуети конструкцій листа в усіх поворотах і їхні спектри — один раз на
+    лист, а не на кожен диск і поворот (18.11.26: ~150 мс на диск у цеху, і за
+    межу часу підказка встигала перевірити лише ~10 дисків)."""
+
+    def __init__(self, pieces: list[np.ndarray], scale: float = 1.0):
+        self.pieces = sorted(pieces, key=lambda p: float(np.ptp(p[:, 0]) * np.ptp(p[:, 1])), reverse=True)
+        self.scale = scale
+        self._masks: dict[tuple[int, float], np.ndarray] = {}
+        self._spectra: dict[tuple[int, float, tuple[int, int]], np.ndarray] = {}
+
+    def mask(self, i: int, angle: float) -> np.ndarray:
+        key = (i, angle)
+        if key not in self._masks:
+            self._masks[key] = piece_mask(self.pieces[i], angle, self.scale)
+        return self._masks[key]
+
+    def spectrum(self, i: int, angle: float, shape: tuple[int, int]) -> np.ndarray:
+        key = (i, angle, shape)
+        if key not in self._spectra:
+            m = self.mask(i, angle)
+            self._spectra[key] = np.fft.rfft2(m[::-1, ::-1].astype(np.float32), shape)
+        return self._spectra[key]
+
+    def frame(self, i: int, blocked_shape: tuple[int, int]) -> tuple[int, int]:
+        """Спільний розмір FFT для всіх поворотів конструкції: спектр диска
+        рахується раз на конструкцію, а не на кожен поворот."""
+        hs = [self.mask(i, a).shape for a in ANGLES]
+        return (blocked_shape[0] + max(h for h, _ in hs) - 1, blocked_shape[1] + max(w for _, w in hs) - 1)
+
+
+def _place(blocked: np.ndarray, mask: np.ndarray, *, spectrum: Optional[np.ndarray] = None,
+           disc_spectrum: Optional[np.ndarray] = None,
+           shape: Optional[tuple[int, int]] = None) -> Optional[tuple[int, int]]:
     """Місце (рядок, стовпець лівого верхнього кута) без перетину, ближче до
     краю диска; None — немає."""
     H, W = blocked.shape
     h, w = mask.shape
     if h > H or w > W:
         return None
-    shape = (H + h - 1, W + w - 1)
-    conv = np.fft.irfft2(
-        np.fft.rfft2(blocked.astype(np.float32), shape) * np.fft.rfft2(mask[::-1, ::-1].astype(np.float32), shape),
-        shape,
-    )
+    if shape is None:
+        shape = (H + h - 1, W + w - 1)
+    if disc_spectrum is None:
+        disc_spectrum = np.fft.rfft2(blocked.astype(np.float32), shape)
+    if spectrum is None:
+        spectrum = np.fft.rfft2(mask[::-1, ::-1].astype(np.float32), shape)
+    conv = np.fft.irfft2(disc_spectrum * spectrum, shape)
     hits = conv[h - 1: H, w - 1: W]  # позиції, де маска цілком на сітці
     free = hits < 0.5
     if not free.any():
@@ -261,15 +296,18 @@ def _place(blocked: np.ndarray, mask: np.ndarray) -> Optional[tuple[int, int]]:
     return int(rows[best]), int(cols[best])
 
 
-def place_all(blocked: np.ndarray, pieces: list[np.ndarray], scale: float = 1.0) -> bool:
+def place_all(blocked: np.ndarray, pieces: "list[np.ndarray] | Masks", scale: float = 1.0) -> bool:
     """Поставити всі конструкції по черзі (найбільша перша). `blocked`
-    змінюється — передавати копію."""
-    order = sorted(pieces, key=lambda p: float(np.ptp(p[:, 0]) * np.ptp(p[:, 1])), reverse=True)
-    for points in order:
+    змінюється — передавати копію. `pieces` — точки або готові `Masks`."""
+    masks = pieces if isinstance(pieces, Masks) else Masks(pieces, scale)
+    for i in range(len(masks.pieces)):
         placed = False
+        shape = masks.frame(i, blocked.shape)
+        disc_spectrum = np.fft.rfft2(blocked.astype(np.float32), shape)
         for angle in ANGLES:
-            mask = piece_mask(points, angle, scale)
-            spot = _place(blocked, mask)
+            mask = masks.mask(i, angle)
+            spot = _place(blocked, mask, spectrum=masks.spectrum(i, angle, shape),
+                          disc_spectrum=disc_spectrum, shape=shape)
             if spot is None:
                 continue
             r, c = spot
@@ -300,11 +338,18 @@ def wider_than_disc(points: np.ndarray, radius: float, scale: float = 1.0) -> bo
     return float(np.ptp(points, axis=0).max()) * scale > 2 * radius
 
 
-def fits(radius: float, contours: list[list[tuple[float, float]]], pieces: list[np.ndarray],
+def fits(radius: float, contours: list[list[tuple[float, float]]], pieces: "list[np.ndarray] | Masks",
          scale: float = 1.0) -> bool:
-    """Чи стануть усі конструкції на цей диск поруч із уже розставленим."""
-    if not pieces:
+    """Чи стануть усі конструкції на цей диск поруч із уже розставленим.
+    `pieces` — точки STL або `Masks` (спільні на всі диски одного листа)."""
+    masks = pieces if isinstance(pieces, Masks) else Masks(pieces, scale)
+    return fits_on(radius, disc_blocked(radius, contours), masks)
+
+
+def fits_on(radius: float, blocked: np.ndarray, masks: Masks) -> bool:
+    """`fits` на вже побудованій картині диска (її не змінює — бере копію)."""
+    if not masks.pieces:
         return True
-    if any(wider_than_disc(p, radius, scale) for p in pieces):
+    if any(wider_than_disc(p, radius, masks.scale) for p in masks.pieces):
         return False
-    return place_all(disc_blocked(radius, contours), pieces, scale)
+    return place_all(blocked.copy(), masks)

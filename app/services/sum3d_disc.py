@@ -50,6 +50,16 @@ class BlankShape:
     contours: list[list[tuple[float, float]]] = field(default_factory=list)
     areas: list[float] = field(default_factory=list)
     _usable: Optional[float] = field(default=None, repr=False, compare=False)
+    _blocked: Optional[object] = field(default=None, repr=False, compare=False)
+
+    def blocked_grid(self):
+        """Зайняте на сітці розстановки (дірки, острівці, край) — один раз на
+        розібраний диск; розстановка бере КОПІЮ (`disc_fit.fits_on`)."""
+        if self._blocked is None:
+            from app.services import disc_fit
+
+            self._blocked = disc_fit.disc_blocked(self.radius, self.contours)
+        return self._blocked
 
     @property
     def usable_share(self) -> float:

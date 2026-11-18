@@ -22,6 +22,14 @@ from tests.test_sum3d_disc import _blank, _square
 HEIGHTS = [10, 12, 14, 16, 18, 20, 22, 25]
 
 
+@pytest.fixture(autouse=True)
+def _fresh_fit_cache():
+    """Відповіді розстановки живуть у пам'яті процесу — між тестами чисто."""
+    disc_suggest._fit_cache.clear()
+    yield
+    disc_suggest._fit_cache.clear()
+
+
 @pytest.mark.parametrize("material, thickness, expected", [
     ("пмма A2", 14.7, [16]),  # 14,7 + 0,5 = 15,2 → 16, бо 15 немає
     ("пмма A2", 11.0, [12]),
@@ -312,37 +320,49 @@ def test_disc_without_place_is_kept_as_doubtful(shop, monkeypatch):
     """Розстановка наближена — диск, де вона не знайшла місця, не ховається,
     а йде після тих, де знайшла (власник 14.11.26)."""
     root, atts = shop
-    monkeypatch.setattr(disc_suggest.disc_fit, "fits", lambda *a, **k: False)
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: False)
     hint = disc_suggest.suggest("моно A2", atts, str(root))
     assert hint.best is not None and hint.best.fit is False and hint.rejected >= 1
 
 
-def test_disc_beyond_fit_limit_is_not_called_fitting(shop, monkeypatch):
-    """18.11.26, диск x06: 12 спроб згоріли на майже повних дисках, наступний
-    пройшов без розстановки й показався «влазить». Неперевірений — після тих,
-    де місце знайшлось, і з fit None, не True."""
+def test_new_disc_beats_unchecked_started_one_when_limit_runs_out(shop, monkeypatch):
+    """18.11.26, x06 після 0.21.151: перевірки скінчились на майже повних, і
+    першим став неперевірений початий диск «місце не перевірено». Тепер, коли
+    жоден перевірений не підійшов, НОВИЙ диск перевіряється поза межею й іде
+    першим — на ньому місце є напевно."""
     root, atts = shop
-    seen: list[str] = []
+    seen: list[int] = []
 
-    def fits(radius, contours, pieces, scale=1.0):
-        seen.append(len(contours))
-        return len(seen) > 1  # перша перевірка — не влазить, далі влазить
+    def fits_on(radius, blocked, masks):
+        seen.append(int(blocked.sum()))
+        return len(seen) > 1  # перший (початий) — не влазить, далі влазить
 
-    monkeypatch.setattr(disc_suggest.disc_fit, "fits", fits)
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", fits_on)
     monkeypatch.setattr(disc_suggest, "MAX_FIT_TRIES", 1)
     hint = disc_suggest.suggest("моно A2", atts, str(root))
-    picks = [hint.best, *hint.alts]
-    assert len(seen) == 1, "межа спроб діє"
-    assert all(p.fit is not True for p in picks), "без перевірки «влазить» не буває"
-    assert any(p.fit is None for p in picks)
-    assert picks.index(next(p for p in picks if p.fit is None)) < picks.index(
-        next(p for p in picks if p.fit is False)
-    ) if any(p.fit is False for p in picks) else True
+    assert len(seen) == 2, "межа спроб + одна перевірка нового диска"
+    assert hint.best.fit is True and not hint.best.started
+    assert all(p.fit is not True for p in hint.alts if p.started), "початий без перевірки — не «влазить»"
+
+
+def test_fit_answer_is_remembered_for_the_same_disc_and_letter(shop, monkeypatch):
+    root, atts = shop
+    calls: list[int] = []
+
+    def fits_on(radius, blocked, masks):
+        calls.append(1)
+        return True
+
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", fits_on)
+    disc_suggest.suggest("моно A2", atts, str(root))
+    first = len(calls)
+    disc_suggest.suggest("моно A2", atts, str(root))
+    assert first >= 1 and len(calls) == first, "повторне відкриття листа не перераховує"
 
 
 def test_checked_fit_wins_over_unchecked(shop, monkeypatch):
     root, atts = shop
-    monkeypatch.setattr(disc_suggest.disc_fit, "fits", lambda *a, **k: True)
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: True)
     monkeypatch.setattr(disc_suggest, "MAX_FIT_TRIES", 1)
     hint = disc_suggest.suggest("моно A2", atts, str(root))
     assert hint.best.fit is True
