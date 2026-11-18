@@ -568,6 +568,7 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     piece_key = _pieces_key(pieces, masks.scale) if masks else None
 
     def check(pick: Pick) -> bool:
+        assert masks is not None  # кличеться лише коли є STL exocad
         shape = shapes[pick.name]
         hit = _fit_cache.get((pick.name, piece_key))
         if hit is not None and hit[0] is shape:
