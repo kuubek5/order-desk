@@ -310,3 +310,6 @@ GET /mail/{email_id}/disc-hint
 POST /settings/queue-fx
 GET /settings/login-scene/preview
 POST /settings/login-scene
+GET /material-guard/slot
+POST /material-guard/ack
+POST /account/material-guard

@@ -1494,3 +1494,57 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
   .q2 .q-live i{transition:none}
   .q2 table.qtable tbody tr.row-new>td,.q2 table.qtable tbody tr.row-leave>td,.q2 .n.n-tick,.q2 #queue-meta.n-tick{animation:none}
 }
+
+/* ── Сторож матеріалу (18.11.26, MATERIAL_GUARD_BRIEF.md; _material_guard.html) ──
+   Вигляд A — банер над чергою, B — картка-порівняння в правому нижньому куті.
+   Рядок роботи в черзі — ПРАВИЙ край (лівий край — матеріал, фон — стани,
+   контур — «мої зараз»: CLAUDE.md §14 «новий сигнал шукає канал»). */
+#mguard-slot:empty, .mguard:empty { display: none; }
+.mguard-banner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  margin: 0 0 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(var(--alarm-rgb), .6);
+  background: linear-gradient(90deg, rgba(var(--alarm-rgb), .16), rgba(var(--alarm-rgb), .05)); }
+.mguard-bico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  background: rgba(var(--alarm-rgb), .22); color: var(--alarm); }
+.mguard-bico .mguard-ic { width: 20px; height: 20px; }
+.mguard-btext { min-width: 0; }
+.mguard-bt { font-weight: 700; font-size: .95rem; color: var(--ink); }
+.mguard-bline { margin-top: 3px; color: var(--ink-2); font-size: .84rem; overflow-wrap: anywhere; }
+.mguard-bline b { color: var(--ink); font-weight: 600; }
+.mguard-bad { color: var(--alarm); font-weight: 600; }
+.mguard-more { margin: -4px 0 10px; font-size: .8rem; color: var(--ink-3); }
+.mguard-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.mguard-btn { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: .82rem;
+  padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line-2); color: var(--ink); background: rgba(255, 255, 255, .03); }
+.mguard-btn:hover { border-color: var(--ink-3); }
+.mguard-btn:focus-visible { outline: 2px solid var(--alarm); outline-offset: 2px; }
+.mguard-open { background: rgba(var(--accent-rgb), .14); border-color: rgba(var(--accent-rgb), .5); }
+.mguard-agree { border-color: rgba(var(--alarm-rgb), .55); color: var(--alarm-ink); }
+.mguard-disc { font-weight: 500; color: var(--ink-2); border-style: dashed; }
+.mguard-ic { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.mguard-card { position: fixed; right: 20px; bottom: 20px; z-index: 60; width: min(440px, calc(100vw - 32px));
+  border-radius: 14px; border: 1px solid rgba(var(--alarm-rgb), .7); background: var(--card);
+  box-shadow: 0 28px 60px -20px rgba(0, 0, 0, .9); }
+.mguard-card .mguard-acts { justify-content: flex-start; padding: 0 14px 14px; }
+.mguard-card-head { display: flex; gap: 10px; align-items: center; padding: 11px 14px; border-radius: 14px 14px 0 0;
+  background: rgba(var(--alarm-rgb), .18); border-bottom: 1px solid rgba(var(--alarm-rgb), .35); }
+.mguard-card-head b { color: var(--alarm-ink); font-size: .95rem; }
+.mguard-warn { color: var(--alarm); }
+.mguard-where { margin-left: auto; color: var(--ink-3); font-size: .78rem; }
+.mguard-count { font-size: .75rem; color: var(--ink-2); }
+.mguard-card-body { display: grid; gap: 10px; padding: 12px 14px; }
+.mguard-work { font-size: .86rem; color: var(--ink-2); }
+.mguard-work b { color: var(--ink); }
+.mguard-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mguard-col { border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; min-width: 0; }
+.mguard-col.is-bad { border-color: rgba(var(--alarm-rgb), .55); background: rgba(var(--alarm-rgb), .06); }
+.mguard-col.is-bad .mguard-big { color: var(--alarm-ink); }
+.mguard-lbl { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+.mguard-big { font-weight: 800; font-size: var(--fs-4); color: var(--ink); overflow-wrap: anywhere; }
+.mguard-sub { font-size: .74rem; color: var(--ink-3); margin-top: 2px; overflow-wrap: anywhere; }
+.mguard-why { font-size: .8rem; color: var(--alarm); }
+tr.mguard-row > td:last-child { box-shadow: inset -4px 0 0 var(--alarm); }
+@media (max-width: 760px) {
+  .mguard-banner { grid-template-columns: auto minmax(0, 1fr); }
+  .mguard-banner .mguard-acts { grid-column: 1 / -1; justify-content: flex-start; }
+}

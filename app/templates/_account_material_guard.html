@@ -1,0 +1,50 @@
+{# Сторож матеріалу — перемикачі оператора (кабінет → «Сповіщення»; власник
+   18.11.26, MATERIAL_GUARD_BRIEF.md). Кожен перемикач шле ЛИШЕ своє поле
+   власним словом (on/off, banner/card) — порожнє поле сервер читає як «не
+   чіпати» (CLAUDE.md §14). Зберігається одразу, без кнопки. #}
+<section class="dn mguard-prefs" data-mguard-prefs>
+    <div class="dn-head">
+        <div>
+            <h3 class="dn-title">Сторож матеріалу</h3>
+            <p class="dn-sub">Червона картка в черзі, коли замовлене не збігається з диском програми: інший матеріал, лінія (Emotions ≠ Z-Nature) чи колір. Перевірка — щойно програма з'явилась у теці, ще до верстата. «Погоджено» знімає картку (клієнт передумав), «Погодити весь диск» — коли диск названо неправильно.</p>
+        </div>
+        <label class="dn-master"><span>Увімкнено</span>
+            <input type="checkbox" class="dn-switch" data-mguard="guard"{% if user.material_guard %} checked{% endif %}>
+        </label>
+    </div>
+    <label class="dn-ev">
+        <span class="dn-ev-text"><b>Лист ↔ вписане оператором</b><small>Окремо: клієнт написав у листі одне, а при прийнятті вписано інше</small></span>
+        <input type="checkbox" class="dn-switch" data-mguard="letter"{% if user.material_guard_letter %} checked{% endif %}>
+    </label>
+    <div class="dn-chips" role="radiogroup" aria-label="Вигляд картки" style="margin-top:12px">
+        <label class="dn-chip"><input type="radio" name="mguard-view" value="banner"{% if user.material_guard_view != 'card' %} checked{% endif %} data-mguard="view"><span>Банер над чергою</span></label>
+        <label class="dn-chip"><input type="radio" name="mguard-view" value="card"{% if user.material_guard_view == 'card' %} checked{% endif %} data-mguard="view"><span>Картка-порівняння</span></label>
+    </div>
+    <p class="dn-state" data-mguard-state hidden></p>
+</section>
+<script>
+(function () {
+  var root = document.querySelector("[data-mguard-prefs]");
+  if (!root || root.dataset.wired) return;
+  root.dataset.wired = "1";
+  var state = root.querySelector("[data-mguard-state]");
+  root.addEventListener("change", function (event) {
+    var input = event.target;
+    var field = input && input.dataset ? input.dataset.mguard : "";
+    if (!field) return;
+    var body = new FormData();
+    body.append(field, field === "view" ? input.value : (input.checked ? "on" : "off"));
+    fetch("/account/material-guard", { method: "POST", body: body, credentials: "same-origin" })
+      .then(function (r) {
+        state.hidden = false;
+        state.dataset.tone = r.ok ? "ok" : "warn";
+        state.textContent = r.ok ? "Збережено" : "Не збережено — оновіть сторінку й спробуйте ще раз";
+      })
+      .catch(function () {
+        state.hidden = false;
+        state.dataset.tone = "warn";
+        state.textContent = "Немає зв'язку з CRM — не збережено";
+      });
+  });
+})();
+</script>

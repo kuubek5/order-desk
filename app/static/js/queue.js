@@ -1729,3 +1729,25 @@ document.addEventListener("click", (event) => {
     } catch (_e) { /* вигляд не має ламати оновлення черги */ }
   });
 })();
+
+// Сторож матеріалу (18.11.26, MATERIAL_GUARD_BRIEF.md): правий червоний край
+// рядкам робіт із червоної картки. Список id приходить у `data-orders` слоту
+// (#mguard-slot); рядки малюються в багатьох місцях, тож позначку ставимо тут,
+// після свапу слоту АБО черги (полл перемальовує рядки без класу).
+(function () {
+  function applyGuardRows() {
+    const holder = document.querySelector("#mguard-slot .mguard");
+    const ids = new Set(((holder && holder.dataset.orders) || "").split(",").filter(Boolean));
+    document.querySelectorAll("tr.mguard-row").forEach((row) => {
+      if (!ids.has(row.id.replace("order-row-", ""))) row.classList.remove("mguard-row");
+    });
+    ids.forEach((id) => {
+      const row = document.getElementById("order-row-" + id);
+      if (row) row.classList.add("mguard-row");
+    });
+  }
+  document.addEventListener("htmx:afterSwap", (event) => {
+    const id = event.target && event.target.id;
+    if (id === "mguard-slot" || id === "queue-rows") applyGuardRows();
+  });
+})();

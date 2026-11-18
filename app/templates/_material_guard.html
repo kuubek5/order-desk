@@ -1,0 +1,61 @@
+{# Сторож матеріалу (власник 18.11.26, MATERIAL_GUARD_BRIEF.md): червоні
+   картки «замовлено ≠ фрезерується» (і окремо «лист ≠ вписане оператором»).
+   Вигляд обирає оператор у кабінеті: "banner" — смуги над чергою (A),
+   "card" — картка-порівняння (B). `data-orders` читає queue.js і фарбує ці
+   рядки черги червоним краєм — так не треба чіпати кожен рендер рядка.
+   Порожньо — порожній <div>, щоб queue.js зняв позначки з рядків. #}
+{% set _ids = mg_alerts | map(attribute='order_id') | join(',') %}
+<div class="mguard" data-orders="{{ _ids }}" data-view="{{ mg_view }}">
+{% if mg_alerts %}
+{% macro acts(a) -%}
+<div class="mguard-acts">
+    <a class="mguard-btn mguard-open" href="/orders/{{ a.order_id }}" data-order-detail="{{ a.order_id }}">
+        <svg class="mguard-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>Відкрити роботу</a>
+    <button type="button" class="mguard-btn mguard-agree"
+            hx-post="/material-guard/ack" hx-target="#mguard-slot" hx-swap="innerHTML"
+            hx-vals='{{ {"layer": a.layer, "order_id": a.order_id, "disc_key": a.disc_key, "scope": "order"} | tojson }}'
+            title="Клієнт передумав (по телефону) — картка зникне, у журналі лишиться, хто й коли погодив">
+        <svg class="mguard-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg>Погоджено</button>
+    {% if a.disc_key %}
+    <button type="button" class="mguard-btn mguard-disc"
+            hx-post="/material-guard/ack" hx-target="#mguard-slot" hx-swap="innerHTML"
+            hx-vals='{{ {"layer": a.layer, "order_id": a.order_id, "disc_key": a.disc_key, "scope": "disc"} | tojson }}'
+            title="Диск названо неправильно — зняти картки всіх робіт на диску {{ a.disc_key }} і не показувати нових">
+        Погодити весь диск</button>
+    {% endif %}
+</div>
+{%- endmacro %}
+{% if mg_view == "card" %}
+{% set a = mg_alerts[0] %}
+<section class="mguard-card" role="alert" aria-live="polite">
+    <header class="mguard-card-head">
+        <svg class="mguard-ic mguard-warn" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 20H2z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg>
+        <b>{{ a.title }}</b>
+        <span class="mguard-where">{{ a.where }}{% if a.seen_at %} · {{ a.seen_at.strftime('%H:%M') }}{% endif %}</span>
+        {% if mg_alerts|length > 1 %}<span class="mguard-count mono">1 з {{ mg_alerts|length }}</span>{% endif %}
+    </header>
+    <div class="mguard-card-body">
+        <div class="mguard-work"><b>{{ a.client or ('робота ' ~ a.order_id) }}</b>{% if a.quantity %} · {{ a.quantity }} од.{% endif %}</div>
+        <div class="mguard-cmp">
+            <div class="mguard-col"><div class="mguard-lbl">Замовлено</div><div class="mguard-big">{{ a.ordered_label }}</div><div class="mguard-sub mono">{{ a.ordered }}</div></div>
+            <div class="mguard-col is-bad"><div class="mguard-lbl">{% if a.layer == 'disc' %}Фрезерується{% else %}У листі{% endif %}</div><div class="mguard-big">{{ a.actual_label }}</div><div class="mguard-sub mono">{{ a.actual }}</div></div>
+        </div>
+        <div class="mguard-why">{{ a.reasons | join(' · ') }}</div>
+    </div>
+    {{ acts(a) }}
+</section>
+{% else %}
+{% for a in mg_alerts[:3] %}
+<section class="mguard-banner" role="alert" aria-live="polite">
+    <div class="mguard-bico"><svg class="mguard-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 20H2z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg></div>
+    <div class="mguard-btext">
+        <div class="mguard-bt">{{ a.title }}: замовлено {{ a.ordered_label }} — {% if a.layer == 'disc' %}фрезерується{% else %}у листі{% endif %} {{ a.actual_label }}</div>
+        <div class="mguard-bline"><b>{{ a.client or ('робота ' ~ a.order_id) }}</b>{% if a.quantity %} · {{ a.quantity }} од.{% endif %}{% if a.program %} · <span class="mono">{{ a.actual }}</span>{% endif %}{% if a.where %} · {{ a.where }}{% endif %} · <span class="mguard-bad">{{ a.reasons | join(' · ') }}</span></div>
+    </div>
+    {{ acts(a) }}
+</section>
+{% endfor %}
+{% if mg_alerts|length > 3 %}<div class="mguard-more">ще {{ mg_alerts|length - 3 }} — з'являться, коли погодите ці</div>{% endif %}
+{% endif %}
+{% endif %}
+</div>

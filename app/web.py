@@ -90,6 +90,7 @@ from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
 from app.routers.discs import router as discs_router
 from app.routers.disc_hint import router as disc_hint_router
+from app.routers.material_guard import router as material_guard_router
 from app.routers.screens import router as screens_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
@@ -1904,6 +1905,8 @@ app.include_router(power_router)
 app.include_router(discs_router)
 # Підказка диска в картці листа (12.11.26) — окремий ледачий запит.
 app.include_router(disc_hint_router)
+# Сторож матеріалу (18.11.26): червоні картки «замовлено ≠ фрезерується».
+app.include_router(material_guard_router)
 # Скринька невідомих екранів — кадри, на яких читач печей і верстатів
 # спіткнувся, і рядок-підпис від людини до них.
 app.include_router(screens_router)

@@ -131,6 +131,12 @@
          hx-get="/sheets/write-failures" hx-trigger="every 15s[!document.hidden]" hx-target="this" hx-swap="innerHTML">
         {% include "_sheet_write_failures.html" %}
     </div>
+    {# Сторож матеріалу (18.11.26, MATERIAL_GUARD_BRIEF.md): червоні картки
+       «замовлено ≠ фрезерується». Поза #queue-rows — свій полл; перший вміст
+       приходить запитом одразу (load), щоб не рахувати сторож у рендері черги.
+       Вимкнено в оператора — сервер віддає порожній блок. #}
+    <div id="mguard-slot"
+         hx-get="/material-guard/slot" hx-trigger="load, every 20s[!document.hidden]" hx-target="this" hx-swap="innerHTML"></div>
 
     {# Верхня стрічка-статуслайн прихована на прохання (пошта ще не задіяна) —
        повернути, розкоментувавши цей include; сам _queue_kpi_row.html цілий. #}

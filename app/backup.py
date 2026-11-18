@@ -61,6 +61,7 @@ from app.models import (
     MailFilterRule,
     Material,
     MaterialAlias,
+    MaterialGuardAck,
     MaterialShortcut,
     Order,
     OrderEmail,
@@ -180,6 +181,9 @@ _TABLE_MODELS: list[Any] = [
     OrderEmail,
     StatusEvent,
     ActionLog,
+    # «Погоджено» сторожа матеріалу (18.11.26): після Order і User — FK на обидва.
+    # Без них переїзд повернув би вже погоджені червоні картки.
+    MaterialGuardAck,
     Comment,
     ReworkRecord,
     OrderFocus,
@@ -241,7 +245,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 9  # client_fact_decisions (07.11.26)
+_NEW_SINCE_FLAG = 10  # material_guard_acks (18.11.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:

@@ -137,6 +137,13 @@ class User(Base):
     # `app/services/account_store.py`.
     mail_fam: Mapped[str] = mapped_column(String(120), default="", server_default="")
     ui_store: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # Сторож матеріалу (власник 18.11.26, MATERIAL_GUARD_BRIEF.md, міграція 0103):
+    # червона картка «замовлено ≠ фрезерується» і окремо «лист ≠ вписане
+    # оператором». Кожному оператору окремо, за замовчуванням вимкнено. Вигляд:
+    # "" — банер над чергою (A), "card" — картка-порівняння (B).
+    material_guard: Mapped[bool] = mapped_column(default=False, server_default="0")
+    material_guard_letter: Mapped[bool] = mapped_column(default=False, server_default="0")
+    material_guard_view: Mapped[str] = mapped_column(String(20), default="", server_default="")
     # НЕ ВИКОРИСТОВУЮТЬСЯ (власник 12.10.26 прибрав вікна «Що нового» і ранкового
     # привітання): колонки лишено, щоб не робити міграцію (0087/0088).
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -908,6 +915,25 @@ class ClientSenderMemory(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
     )
+
+
+class MaterialGuardAck(Base):
+    """«Погоджено» на червоній картці сторожа матеріалу (міграція 0103).
+
+    `order_id` — погоджено одну роботу (клієнт передумав по телефону);
+    `disc_key` без `order_id` — погоджено ВЕСЬ диск (невірно названий диск,
+    власник 18.11.26: Monolith «A4» x05 насправді A3.5). `layer`: "disc" —
+    замовлено ↔ фрезерується, "letter" — лист ↔ вписане оператором."""
+
+    __tablename__ = "material_guard_acks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
+    disc_key: Mapped[Optional[str]] = mapped_column(String(160), nullable=True, index=True)
+    layer: Mapped[str] = mapped_column(String(10), default="disc", server_default="disc")
+    operator_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Локальний час, як у ActionLog (без server_default — на SQLite там UTC).
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.now)
 
 
 class Attachment(Base):
