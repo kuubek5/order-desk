@@ -95,17 +95,18 @@ def test_two_works_on_one_sum3d_are_both_named():
 
 def test_mail_letter_text_in_kind_never_reaches_the_tv():
     """Телевізор 18.11.26: «Илья Катеринец pmma a1 · 4 · Доброго дня! …» — у
-    «вид» поштової роботи потрапив шматок листа. Клієнтській роботі вид не
-    показуємо; лабораторній (без клієнта, за нарядом) — показуємо, як і раніше."""
+    «вид» поштової роботи потрапив шматок листа. Виду на табло немає зовсім
+    (власник 18.11.26): клієнт — ім'я, матеріал·колір, кількість; лабораторна —
+    наряд, технік, матеріал, кількість."""
     lab = SimpleNamespace(id=2, client_name=None, material_color="pmma a3", quantity="1",
                           kind="анатомія гвинтова 12-13", work_order_no="39933", technician_name="Илья")
     view = _view([_card("A", "run", percent=10, sum3d="12-01-45", orders=[
         _order("Илья Катеринец", "pmma a1", "4", "Доброго дня! Пацієнт-Акуленко Ангеліна, робота- шина"),
         lab,
     ])])
-    assert [(w.name, w.material) for w in view.machines[0].works] == [
-        ("Илья Катеринец", "pmma a1 · 4"),
-        ("39933", "pmma a3 · 1 · анатомія гвинтова 12-13"),
+    assert [(w.name, w.tech, w.material) for w in view.machines[0].works] == [
+        ("Илья Катеринец", "", "pmma a1 · 4"),
+        ("39933", "Илья", "pmma a3 · 1"),
     ]
 
 

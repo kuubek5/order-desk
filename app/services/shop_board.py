@@ -499,19 +499,16 @@ def _works_of(card, *, last: bool = False) -> tuple[list[ShopWork], str]:
         # телевізорі було видно лише матеріал (скарга з цеху 14.09.26).
         name = (getattr(order, "client_name", "") or "").strip()
         tech = ""
-        kind = ""
         if not name:
             name = (getattr(order, "work_order_no", "") or "").strip()
             tech = (getattr(order, "technician_name", "") or "").strip()
-            # Вид роботи — лише лабораторній: її пише технік у таблиці. У
-            # клієнтської «вид» буває шматком листа («Доброго дня! Пацієнт…» —
-            # телевізор 18.11.26); власник: ім'я, матеріал·колір і кількість,
-            # як у таблиці.
-            kind = (getattr(order, "kind", "") or "").strip()
+        # Виду роботи на табло немає (власник 18.11.26): клієнт — ім'я,
+        # матеріал·колір і кількість, як у таблиці; лабораторна — наряд, технік,
+        # матеріал і кількість. У поштової «вид» буває шматком листа
+        # («Доброго дня! Пацієнт…» — телевізор 18.11.26).
         bits = [
             (getattr(order, "material_color", "") or "").strip(),
             (getattr(order, "quantity", "") or "").strip(),
-            kind,
         ]
         material = " · ".join(b for b in bits if b)
         # Робота без імені Й без матеріалу не рядок, а порожнє місце: колись
