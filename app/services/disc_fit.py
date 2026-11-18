@@ -39,6 +39,10 @@ CLEARANCE_MM = 2.8  # власник 14.11.26, бліц (було 2 мм)
 # Край диска, куди роботи не ставлять. Коло у `.blk` — уже робоча зона Sum3D
 # (r 47 на диску 98), тож запас малий (14.11.26: 2 мм відсіювали забагато).
 RIM_MM = 1.0
+# Наскільки запас нової роботи може зайти на вже вирізану дірку (рожевий
+# контур Sum3D — це дірка в диску): власник 18.11.26, «трішечки», до 1 мм.
+# Лише на старі дірки: між новими роботами листа й до краю диска — повний запас.
+HOLE_OVERLAP_MM = 1.0
 ANGLES = (0, 90, 45, 135, 30, 60, 120, 150)
 _MAX_POINTS = 400_000
 
@@ -164,16 +168,27 @@ def _fill_polygon(grid: np.ndarray, poly: list[tuple[float, float]], origin: flo
             grid[row, c0: c1 + 1] = True
 
 
+def _erode(mask: np.ndarray, radius_cells: int) -> np.ndarray:
+    """Стиснути зайняте на `radius_cells` клітинок з кожного боку."""
+    if radius_cells <= 0:
+        return mask
+    r = radius_cells
+    return ~_dilate(~mask, r)[r:-r, r:-r]
+
+
 def disc_blocked(radius: float, contours: list[list[tuple[float, float]]]) -> np.ndarray:
-    """Зайняті клітинки диска: поза колом (з краєм) і під уже розставленими."""
+    """Зайняті клітинки диска: поза колом (з краєм) і під уже вирізаними
+    дірками — стиснутими на `HOLE_OVERLAP_MM`, бо запас нової роботи може
+    трохи на них заходити."""
     n = int(math.ceil(2 * radius / GRID_MM))
     origin = -radius
     centres = origin + (np.arange(n) + 0.5) * GRID_MM
     yy, xx = np.meshgrid(centres, centres, indexing="ij")
-    blocked = np.hypot(xx, yy) > radius - RIM_MM
+    holes = np.zeros((n, n), dtype=bool)
     for poly in contours:
-        _fill_polygon(blocked, poly, origin)
-    return blocked
+        _fill_polygon(holes, poly, origin)
+    holes = _erode(holes, int(round(HOLE_OVERLAP_MM / GRID_MM)))
+    return (np.hypot(xx, yy) > radius - RIM_MM) | holes
 
 
 # ── Розстановка ─────────────────────────────────────────────────────────────

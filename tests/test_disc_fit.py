@@ -42,6 +42,26 @@ def test_scattered_free_space_is_not_enough():
     assert not disc_fit.fits(47.0, cuts, [_box(10, 9)])
 
 
+def _slot(width: float):
+    """Дві великі дірки зліва й справа — між ними коридор `width` мм."""
+    return [_rect(-width / 2 - 30, 0, 60, 120), _rect(width / 2 + 30, 0, 60, 120)]
+
+
+def test_new_work_margin_may_overlap_old_hole_by_one_mm():
+    """Власник 18.11.26: рожевий контур — уже дірка, запас нової роботи може
+    «трішечки» на неї зайти — до 1 мм з кожного боку. Коронка 10 мм + запас
+    3 мм з боків = 16 мм; у коридорі 15 мм вона стає лише завдяки нахльосту,
+    у 12 мм — ні (і з нахльостом бракує)."""
+    crown = [_box(10, 10)]
+    assert disc_fit.fits(47.0, _slot(15), crown)
+    assert not disc_fit.fits(47.0, _slot(12), crown)
+
+
+def test_overlap_rule_is_what_lets_the_crown_in(monkeypatch):
+    monkeypatch.setattr(disc_fit, "HOLE_OVERLAP_MM", 0.0)
+    assert not disc_fit.fits(47.0, _slot(15), [_box(10, 10)])
+
+
 def test_long_bridge_turns_to_fit():
     # Вільна лише вертикальна смуга 16 мм посередині — міст 40×9 стане лише повернутим.
     cuts = [_rect(-27, 0, 38, 94), _rect(27, 0, 38, 94)]
