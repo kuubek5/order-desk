@@ -7,4 +7,4 @@ and fails the suite if the two drift apart instead of failing silently in
 production.
 """
 
-VERSION = "0.21.151"
+VERSION = "0.21.152"
