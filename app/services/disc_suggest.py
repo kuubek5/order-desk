@@ -505,7 +505,10 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
             shape = sum3d_disc.shape_of(disc.path)
         if shape is None:
             continue
-        free = shape.free_share
+        # Лише матеріал, з'єднаний із краєм диска: острівці між дірками в
+        # диску вже випали (власник 18.11.26). Сітка ~15 мс, кеш на диск.
+        with perf.span("disc:usable"):
+            free = shape.usable_share
         if free < NEARLY_USED:
             continue
         if need_area is not None:

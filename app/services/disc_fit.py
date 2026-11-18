@@ -176,19 +176,59 @@ def _erode(mask: np.ndarray, radius_cells: int) -> np.ndarray:
     return ~_dilate(~mask, r)[r:-r, r:-r]
 
 
-def disc_blocked(radius: float, contours: list[list[tuple[float, float]]]) -> np.ndarray:
-    """Зайняті клітинки диска: поза колом (з краєм) і під уже вирізаними
-    дірками — стиснутими на `HOLE_OVERLAP_MM`, бо запас нової роботи може
-    трохи на них заходити."""
+def _islands(material: np.ndarray, attached: np.ndarray) -> np.ndarray:
+    """Клітинки матеріалу, до яких від `attached` не дійти по матеріалу
+    (4-сусідство) — повністю оточені дірками."""
+    reach = attached & material
+    while True:
+        grown = reach.copy()
+        grown[1:, :] |= reach[:-1, :]
+        grown[:-1, :] |= reach[1:, :]
+        grown[:, 1:] |= reach[:, :-1]
+        grown[:, :-1] |= reach[:, 1:]
+        grown &= material
+        if (grown == reach).all():
+            return material & ~reach
+        reach = grown
+
+
+def _grid(radius: float, contours: list[list[tuple[float, float]]]):
+    """(дірки з острівцями, коло диска, відстань від центру) на сітці.
+
+    Острівець — матеріал, повністю оточений вирізаними дірками: у програмі він
+    «вільний», а в диску його вже нема — випадає разом із сусідніми роботами
+    (власник 18.11.26: «рахуєш вільне місце, яке є острівцями»). Тонкі
+    перемички тримаються — втраченим вважаємо лише те, що з краєм диска не
+    з'єднане зовсім. Край диска — кільце тримача за колом `radius`."""
     n = int(math.ceil(2 * radius / GRID_MM))
     origin = -radius
     centres = origin + (np.arange(n) + 0.5) * GRID_MM
     yy, xx = np.meshgrid(centres, centres, indexing="ij")
+    dist = np.hypot(xx, yy)
+    disc = dist <= radius
     holes = np.zeros((n, n), dtype=bool)
     for poly in contours:
         _fill_polygon(holes, poly, origin)
+    material = disc & ~holes
+    edge = disc & (dist > radius - GRID_MM)
+    return holes | _islands(material, edge), disc, dist
+
+
+def disc_blocked(radius: float, contours: list[list[tuple[float, float]]]) -> np.ndarray:
+    """Зайняті клітинки диска: поза колом (з краєм), під вирізаними дірками й
+    острівцями — стиснутими на `HOLE_OVERLAP_MM`, бо запас нової роботи може
+    трохи на них заходити."""
+    holes, _disc, dist = _grid(radius, contours)
     holes = _erode(holes, int(round(HOLE_OVERLAP_MM / GRID_MM)))
-    return (np.hypot(xx, yy) > radius - RIM_MM) | holes
+    return (dist > radius - RIM_MM) | holes
+
+
+def usable_share(radius: float, contours: list[list[tuple[float, float]]]) -> float:
+    """Частка диска (0..1), що лишилась матеріалом: без дірок і без острівців.
+    Сума площ обрисів рахувала острівці вільними."""
+    holes, disc, _dist = _grid(radius, contours)
+    total = int(disc.sum())
+    return float((disc & ~holes).sum()) / total if total else 0.0
 
 
 # ── Розстановка ─────────────────────────────────────────────────────────────

@@ -49,6 +49,19 @@ class BlankShape:
     radius: float
     contours: list[list[tuple[float, float]]] = field(default_factory=list)
     areas: list[float] = field(default_factory=list)
+    _usable: Optional[float] = field(default=None, repr=False, compare=False)
+
+    @property
+    def usable_share(self) -> float:
+        """Частка диска, що лишилась МАТЕРІАЛОМ (0..1): без дірок і без
+        острівців, повністю оточених дірками, — їх у диску вже нема (власник
+        18.11.26). Рахується сіткою один раз на розібраний диск (кеш
+        `shape_of`)."""
+        if self._usable is None:
+            from app.services import disc_fit
+
+            self._usable = disc_fit.usable_share(self.radius, self.contours)
+        return self._usable
 
     @property
     def free_share(self) -> float:
@@ -242,4 +255,6 @@ def disc_for_program(program: Optional[str]) -> Optional[TileDisc]:
     shape = shape_of(path)
     if shape is None:
         return None
-    return TileDisc(svg_paths(shape), round(shape.free_share * 100), path.stem, path=path)
+    # «Вільно %» — лише матеріал, з'єднаний із краєм диска: острівці між
+    # дірками в диску вже випали (власник 18.11.26).
+    return TileDisc(svg_paths(shape), round(shape.usable_share * 100), path.stem, path=path)

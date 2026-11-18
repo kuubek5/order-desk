@@ -57,6 +57,43 @@ def test_new_work_margin_may_overlap_old_hole_by_one_mm():
     assert not disc_fit.fits(47.0, _slot(12), crown)
 
 
+def _ring(cx, cy, r_out, r_in, n=48):
+    """Кільце дірок навколо (cx, cy): чотири дуги, між якими лишається
+    острівець радіуса r_in, повністю оточений вирізаним."""
+    out = [(cx + r_out * math.cos(2 * math.pi * k / n), cy + r_out * math.sin(2 * math.pi * k / n)) for k in range(n)]
+    inn = [(cx + r_in * math.cos(-2 * math.pi * k / n), cy + r_in * math.sin(-2 * math.pi * k / n)) for k in range(n)]
+    return out, inn
+
+
+def test_island_surrounded_by_holes_is_not_free():
+    """Власник 18.11.26: матеріал, повністю оточений дірками, у диску вже
+    випав — ні вільним місцем, ні місцем для коронки він не є."""
+    # Чотири дірки-сектори кільцем навколо центру: острівець r 10 у середині.
+    holes = []
+    for q in range(4):
+        a0, a1 = q * math.pi / 2, (q + 1) * math.pi / 2
+        arc = [a0 + (a1 - a0) * k / 12 for k in range(13)]
+        outer = [(22 * math.cos(a), 22 * math.sin(a)) for a in arc]
+        inner = [(10 * math.cos(a), 10 * math.sin(a)) for a in reversed(arc)]
+        holes.append(outer + inner)
+    island_free = disc_fit.usable_share(47.0, holes)
+    no_island = disc_fit.usable_share(47.0, holes + [[(10 * math.cos(2 * math.pi * k / 48), 10 * math.sin(2 * math.pi * k / 48)) for k in range(48)]])
+    assert abs(island_free - no_island) < 0.01, "острівець не рахується вільним"
+    # Коронка 10×10 з запасом у острівець r 10 влізла б за самою геометрією —
+    # тепер ні: місце є лише в зовнішньому кільці, і там вона й стане.
+    blocked = disc_fit.disc_blocked(47.0, holes)
+    n = blocked.shape[0]
+    assert blocked[n // 2, n // 2], "центр острівця зайнятий"
+
+
+def test_material_touching_the_rim_stays_free():
+    """Матеріал між дірками, що виходить до краю диска, тримається — навіть
+    тонкою перемичкою (власник 18.11.26: «лише острівці»)."""
+    half = [(-47, -1), (47, -1), (47, -60), (-47, -60)]  # нижня половина — дірка
+    share = disc_fit.usable_share(47.0, [half])
+    assert 0.45 < share < 0.53
+
+
 def test_overlap_rule_is_what_lets_the_crown_in(monkeypatch):
     monkeypatch.setattr(disc_fit, "HOLE_OVERLAP_MM", 0.0)
     assert not disc_fit.fits(47.0, _slot(15), [_box(10, 10)])
