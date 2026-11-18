@@ -316,13 +316,20 @@ def test_hint_row_names_machine_and_warns_when_no_place_found():
     assert "перевір у Sum3D" in html
 
 
-def test_disc_without_place_is_kept_as_doubtful(shop, monkeypatch):
-    """Розстановка наближена — диск, де вона не знайшла місця, не ховається,
-    а йде після тих, де знайшла (власник 14.11.26)."""
+def test_disc_without_place_is_not_offered(shop, monkeypatch):
+    """Власник 18.11.26 (Emotions A3 x37, вільно 8 %, «місця не знайдено»):
+    «тут же очевидно, що не влізе». Диск, де розстановка місця не знайшла, не
+    пропонується — картка каже «новий диск». (Було 14.11.26: показувати як
+    сумнівний; змінено власником.)"""
+    from app.routers.deps import templates
+
     root, atts = shop
     monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: False)
     hint = disc_suggest.suggest("моно A2", atts, str(root))
-    assert hint.best is not None and hint.best.fit is False and hint.rejected >= 1
+    assert hint.best is None and hint.alts == [] and hint.rejected >= 1
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert "Новий диск" in html and "початого диска з місцем немає" in html
+    assert "перевір у Sum3D" not in html
 
 
 def test_new_disc_beats_unchecked_started_one_when_limit_runs_out(shop, monkeypatch):
