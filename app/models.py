@@ -928,6 +928,10 @@ class Attachment(Base):
     saved_path: Mapped[str] = mapped_column(String(500))
     size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    # Назва архіву, з якого файл розпаковано (міграція 0102, 18.11.26): клієнт
+    # буває пише матеріал і колір лише в ній, а рядок архіву після розпакування
+    # видаляється. Читає `mail_letter_signals.archive_names`.
+    archive_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
 
     email_message: Mapped["EmailMessage"] = relationship("EmailMessage", back_populates="attachments")
 

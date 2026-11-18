@@ -83,12 +83,30 @@ def test_two_works_on_one_sum3d_are_both_named():
         _order("Ортос", "pmma A2", "2"),
     ])])
     m = view.machines[0]
+    # Вид роботи в клієнтської роботи не показується (власник 18.11.26):
+    # ім'я, матеріал·колір і кількість, як у таблиці.
     assert [(w.name, w.material) for w in m.works] == [
-        ("Дента Люкс", "mono A3 · 6 · анатомія"),
+        ("Дента Люкс", "mono A3 · 6"),
         ("Ортос", "pmma A2 · 2"),
     ]
     assert m.extra == "", "дві роботи вміщаються поіменно — рахувати нічого"
-    assert (m.client, m.material) == ("Дента Люкс", "mono A3 · 6 · анатомія")
+    assert (m.client, m.material) == ("Дента Люкс", "mono A3 · 6")
+
+
+def test_mail_letter_text_in_kind_never_reaches_the_tv():
+    """Телевізор 18.11.26: «Илья Катеринец pmma a1 · 4 · Доброго дня! …» — у
+    «вид» поштової роботи потрапив шматок листа. Клієнтській роботі вид не
+    показуємо; лабораторній (без клієнта, за нарядом) — показуємо, як і раніше."""
+    lab = SimpleNamespace(id=2, client_name=None, material_color="pmma a3", quantity="1",
+                          kind="анатомія гвинтова 12-13", work_order_no="39933", technician_name="Илья")
+    view = _view([_card("A", "run", percent=10, sum3d="12-01-45", orders=[
+        _order("Илья Катеринец", "pmma a1", "4", "Доброго дня! Пацієнт-Акуленко Ангеліна, робота- шина"),
+        lab,
+    ])])
+    assert [(w.name, w.material) for w in view.machines[0].works] == [
+        ("Илья Катеринец", "pmma a1 · 4"),
+        ("39933", "pmma a3 · 1 · анатомія гвинтова 12-13"),
+    ]
 
 
 def test_third_work_is_counted_not_named():

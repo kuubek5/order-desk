@@ -341,6 +341,9 @@ def extract_archive_attachments(
                     filename=path.name,
                     saved_path=str(path),
                     size_bytes=path.stat().st_size,
+                    # Назва архіву лишається при файлах: у ній буває матеріал і
+                    # колір, яких немає в листі (власник 18.11.26).
+                    archive_name=(attachment.filename or "")[:300] or None,
                 )
             )
         session.delete(attachment)

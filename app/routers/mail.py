@@ -69,7 +69,9 @@ from app.services.material_suggest import (
     canonical_suggestions,
     letter_materials,
     row_label,
+    splint_material,
 )
+from app.services.mail_letter_signals import archive_names, is_splint_letter
 from app.material_catalog import load_alias_rows
 from app.material_class import mail_material_badge
 from app.mail_reader import (
@@ -204,7 +206,19 @@ def _material_context(email: EmailMessage, customer_text: str | None = None) -> 
     («емоутіонс а2» → `emo a2`)."""
     if customer_text is None:
         customer_text = useful_text(letter_segments(email.body_text))
-    return f"{email.subject or ''}\n{customer_text}"
+    # Назви архівів — ПІСЛЯ тексту: слово матеріалу береться перше знайдене,
+    # тож сказане в листі важить більше (власник 18.11.26: матеріал і колір
+    # буває лише в назві архіву).
+    archives = "\n".join(archive_names(email.attachments))
+    return f"{email.subject or ''}\n{customer_text}" + (f"\n{archives}" if archives else "")
+
+
+def _splint_material(db: Session, email: EmailMessage, context: str) -> str | None:
+    """Канон капи (`kappa`), коли вся робота листа — фрезерована капа; інакше
+    None. Одне правило для поля картки й чіпа рядка списку."""
+    if not is_splint_letter(context, (a.filename for a in email.attachments)):
+        return None
+    return splint_material(db)
 
 
 _BADGE_CLS = {"Zr": "mat-zr", "PMMA": "mat-pmma", "Ti": "mat-ti", "SLM": "mat-slm", "Wax": "mat-wax"}
@@ -664,17 +678,22 @@ def get_mail(
         # Бейдж «опак» (власник 29.09.26): замовник просить покрити опаком
         # («з опаком», «блокир.», «заопачити») — нагадування, не поле.
         _email.opak_hint = letter_opak_hint(_context)
-        _label = row_label(db, _email.material_color_guess, _context)
+        # Капа — те саме правило, що в полі картки (`_splint_material`).
+        _splint = _splint_material(db, _email, _context)
+        _label = (
+            row_label(db, _splint) if _splint
+            else row_label(db, _email.material_color_guess, _context)
+        )
         if _label:
             _email.mat_badge = _row_badge(_label, _email.mat_badge)
             # Для бейджа готовності (triage_readiness): матеріал з відтінком
             # упізнано однозначно — поле картки заповниться саме.
-            _email.material_known = bool(
+            _email.material_known = bool(_splint) or bool(
                 best_material(db, _email.material_color_guess, _context)
             )
         # Кілька матеріалів в одному листі (власник 05.11.26): чіп показує один,
         # поруч — решта. Лише «Вхідні»: там лист і чекає рішення.
-        if view == "pending":
+        if view == "pending" and not _splint:
             _email.material_mix = _material_mix(
                 letter_materials(db, _email.material_color_guess, _context, alias_rows=_mat_aliases),
                 _email.mat_badge,
@@ -1274,6 +1293,9 @@ def _mail_panel_context(
     body_segments = letter_segments(email.body_text)
     customer_text = useful_text(body_segments)
     material_ctx = _material_context(email, customer_text)
+    # Фрезерована капа (bitesplint, «сплінт», «шина»): цех пише `kappa` без
+    # кольору, навіть коли клієнт додав «ПММА прозорий» (власник 18.11.26).
+    splint = _splint_material(db, email, material_ctx)
     if material_color is None:
         # Поле — одразу латинський канон, коли здогад однозначний: матеріал
         # упізнано й відтінок рівно один («ПММА а2» → `pmma a2`). Інакше в таблицю
@@ -1283,7 +1305,7 @@ def _mail_panel_context(
         # Слово матеріалу шукаємо й у тексті замовника, коли здогад його не
         # назвав («B1» + у тексті «Monolight» → `mono b1`).
         guess = email.material_color_guess or ""
-        material_color = best_material(db, guess, material_ctx) or guess
+        material_color = splint or best_material(db, guess, material_ctx) or guess
     if kind is None:
         kind = email.kind_guess or ""
     # Порожнє поле — ще семена: тоді кількість може дати назва STL (нижче).
@@ -1343,7 +1365,7 @@ def _mail_panel_context(
     # «прибрати кирилицю — mono a2, emo a2»). Клік по групі кольору підставляє
     # `mono a3,5`, а не сире «Monolith a3.5»; чіпи під полем — ті самі канони
     # для відтінків листа. Одне правило — `material_suggest.canonical_*`.
-    material_guess = email.material_color_guess or material_color or seed
+    material_guess = splint or email.material_color_guess or material_color or seed
     if color_plan:
         for group in color_plan.groups:
             group.material = (
@@ -1353,7 +1375,8 @@ def _mail_panel_context(
     material_cands = canonical_suggestions(
         db, material_guess,
         [g.shade for g in color_plan.groups] if color_plan else None,
-        context=material_ctx,
+        # Капа: «ПММА» з її тексту інакше вилазило першим чіпом (`pmma a3`).
+        context=None if splint else material_ctx,
     )
     context = {
         "email": email,
@@ -1374,7 +1397,8 @@ def _mail_panel_context(
         "can_auto": can_edit(user, "mail-filters") and sender_key_for(email) is not None,
         "material_color": material_color,
         "opak_hint": letter_opak_hint(material_ctx),
-        "material_mix": letter_materials(db, email.material_color_guess, material_ctx),
+        # Капа: «ПММА» в її тексті — це матеріал самої капи, не друга робота.
+        "material_mix": [] if splint else letter_materials(db, email.material_color_guess, material_ctx),
         "kind": kind,
         "quantity": quantity,
         # Одиниці з назв STL: число, звідки воно (по квадрантах), чи поле зараз

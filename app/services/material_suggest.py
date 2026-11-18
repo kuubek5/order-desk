@@ -465,6 +465,14 @@ def _context_with_shades(context: str | None, shades: list[str] | None) -> str |
     return (context or "") + "\n" + " ".join(shades)
 
 
+def splint_material(session: Session) -> str | None:
+    """Як цех пише фрезеровану капу (`kappa`): найчастіше слово канону без
+    кольору. None — у даних капи ще не було, і вигадувати назву не будемо."""
+    weight = _word_weights(session)
+    words = [w for w in weight if _is_shadeless(w)]
+    return max(words, key=lambda w: (weight[w], w)) if words else None
+
+
 def best_material(session: Session, guess: str | None, context: str | None = None) -> str | None:
     """ОДНА впевнена відповідь для поля матеріалу: матеріал упізнано (у здогаді чи
     в тексті) і відтінок рівно один. Інакше None — поле лишається як було,
