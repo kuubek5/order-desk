@@ -45,10 +45,10 @@
             <span class="mdh-f">вільно <b class="mono">{{ p.free_pct }} %</b></span>
             {% if p.fit is sameas false %}<span class="mdh-f is-warn"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3"/></svg>місця не знайдено — перевір у Sum3D</span>
             {% elif p.fit is sameas true %}<span class="mdh-f is-ok"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.3 2.8 2.7 6-6.2"/></svg>влазить</span>
-            {# Розстановку не запускали (межа спроб чи немає STL exocad) — «влазить»
-               тут було б неправдою (18.11.26, диск x06). #}
-            {% elif p.started %}<span class="mdh-f">місце не перевірено</span>
-            {% else %}<span class="mdh-f">новий у теці</span>{% endif %}
+            {# Розстановку не запускали (немає STL exocad) — про місце мовчимо:
+               «влазить» було б неправдою, а «не перевірено» не допомагає
+               (власник 18.11.26). #}
+            {% elif not p.started %}<span class="mdh-f">новий у теці</span>{% endif %}
         </span>
     </div>
     {% endfor %}

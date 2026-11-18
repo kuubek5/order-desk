@@ -603,9 +603,11 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
             if pick.fit:
                 accepted.append(pick)
         unchecked = [p for p in unchecked if p.fit is None]
+    # Неперевірені НЕ показуються (власник 18.11.26: «навіщо показувати, що місце
+    # не перевірене, — я й сам можу перевірити; підказка має допомагати»).
     # Диск «місця не знайдено» — лише коли жоден не влазить: поруч із дисками,
     # де місце є, він тільки заважав би.
-    ranked = (accepted + unchecked) or doubtful
+    ranked = accepted or doubtful
     if ranked:
         result.best = ranked[0]
         result.alts = ranked[1:3]

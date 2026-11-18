@@ -342,7 +342,7 @@ def test_new_disc_beats_unchecked_started_one_when_limit_runs_out(shop, monkeypa
     hint = disc_suggest.suggest("моно A2", atts, str(root))
     assert len(seen) == 2, "межа спроб + одна перевірка нового диска"
     assert hint.best.fit is True and not hint.best.started
-    assert all(p.fit is not True for p in hint.alts if p.started), "початий без перевірки — не «влазить»"
+    assert all(p.fit is True for p in [hint.best, *hint.alts]), "неперевірених не показуємо"
 
 
 def test_fit_answer_is_remembered_for_the_same_disc_and_letter(shop, monkeypatch):
@@ -366,7 +366,7 @@ def test_checked_fit_wins_over_unchecked(shop, monkeypatch):
     monkeypatch.setattr(disc_suggest, "MAX_FIT_TRIES", 1)
     hint = disc_suggest.suggest("моно A2", atts, str(root))
     assert hint.best.fit is True
-    assert all(p.fit is None for p in hint.alts)
+    assert hint.alts == [], "за межею спроб — не показуємо зовсім (власник 18.11.26)"
 
 
 def test_unchecked_started_disc_is_not_labelled_fitting():
@@ -381,7 +381,8 @@ def test_unchecked_started_disc_is_not_labelled_fitting():
         return templates.get_template("_mail_disc_hint.html").render(hint=hint)
 
     assert "влазить" in render(True)
-    assert "влазить" not in render(None) and "місце не перевірено" in render(None)
+    # Без перевірки (немає STL exocad) — про місце ні слова (власник 18.11.26).
+    assert "влазить" not in render(None) and "не перевірено" not in render(None)
     assert "перевір у Sum3D" in render(False)
 
 
