@@ -249,6 +249,27 @@ def test_account_switches_save_only_their_own_field(app_db):  # noqa: F811
         assert user.material_guard is False and user.material_guard_view == "card"
 
 
+def test_agree_button_request_records_and_answers_with_the_slot(app_db):  # noqa: F811
+    """Те, що шле кнопка (`hx-vals` форма): запис «Погоджено» і новий слот."""
+    app, factory = app_db
+    with factory() as db:
+        order = Order(source="sheet_client", client_name="Неда", material_color="mono a3.5",
+                      quantity="1", sum3d_id="16-07-15", sheet_tab=TAB)
+        db.add(order)
+        db.commit()
+        order_id = order.id
+    client = MiniClient(app)
+    client.login(*OPERATOR)
+    status, _, html = client.post("/material-guard/ack", {"layer": "disc", "order_id": str(order_id),
+                                                          "disc_key": "16-monolith-a4-x05", "scope": "disc"})
+    assert status == 200 and 'class="mguard"' in html
+    assert client.post("/material-guard/ack", {"layer": "disc", "order_id": str(order_id),
+                                               "disc_key": "x", "scope": "everything"})[0] == 422
+    with factory() as db:
+        ack = db.query(MaterialGuardAck).one()
+        assert ack.disc_key == "16-monolith-a4-x05" and ack.order_id is None and ack.operator_id is not None
+
+
 def test_slot_is_empty_for_an_operator_with_the_guard_off(app_db):  # noqa: F811
     app, _ = app_db
     client = MiniClient(app)
