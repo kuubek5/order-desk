@@ -97,6 +97,19 @@ def test_bite_splint_is_14_per_jaw():
     assert mixed.units == 15 and mixed.summary == "капа низ = 14 · 36"
 
 
+def test_every_splint_file_is_14():
+    """Власник 18.11.26 (робота 8480: три капи, оператор 42, система 14):
+    кожен файл капи — 14, навіть на ту саму щелепу. Копії — ні."""
+    three = count_units(["a-41-bitesplint_cad.stl", "b-42-bitesplint_cad.stl", "c-46-bitesplint_cad.stl"])
+    assert three.units == 42 and three.splint_jaws == ["низ", "низ", "низ"]
+    assert three.summary == "капи низ ×3 = 42"
+    copies = count_units(["a-41-bitesplint_cad.stl", "a-41-bitesplint_cad (2).stl",
+                          "a-41-bitesplint_cad - Copy.stl", "A-41-bitesplint_cad — копія (3).stl"])
+    assert copies.units == 14
+    upper_lower = count_units(["a-41-bitesplint_cad.stl", "b-42-bitesplint_cad.stl", "c-11-bitesplint_cad.stl"])
+    assert upper_lower.units == 42 and upper_lower.summary == "капи низ ×2 = 28 · капа верх = 14"
+
+
 
 @pytest.mark.parametrize(
     "name",

@@ -118,7 +118,10 @@ class UnitsCount:
     @property
     def summary(self) -> str:
         """Підказка «звідки число»: зуби по квадрантах, повтори окремо."""
-        parts = [f"капа {jaw} = {SPLINT_UNITS}" for jaw in self.splint_jaws]
+        parts = []
+        for jaw in dict.fromkeys(self.splint_jaws):
+            n = self.splint_jaws.count(jaw)
+            parts.append(f"капа {jaw} = {SPLINT_UNITS}" if n == 1 else f"капи {jaw} ×{n} = {SPLINT_UNITS * n}")
         if not self.teeth:
             return " · ".join(parts)
         for quadrant in (1, 2, 3, 4):
@@ -135,14 +138,20 @@ def count_units(filenames: Iterable[str]) -> UnitsCount:
     """Унікальні зуби по всіх файлах моделей роботи."""
     result = UnitsCount()
     seen: dict[int, int] = {}
+    splints: set[str] = set()
     for name in filenames:
         if not is_model_file(name):
             continue
         result.model_files += 1
         if is_splint_file(name):
-            jaw = _splint_jaw(teeth_in_filename(name), name)
-            if jaw not in result.splint_jaws:
-                result.splint_jaws.append(jaw)
+            # Кожен ФАЙЛ капи — 14 (власник 18.11.26: три капи в листі = 42,
+            # а не 14 на щелепу). Копія того самого файлу («— копия (2)»,
+            # « (2)») — та сама капа, не рахується.
+            original = _without_copy_mark(name)
+            if original in splints:
+                continue
+            splints.add(original)
+            result.splint_jaws.append(_splint_jaw(teeth_in_filename(name), name))
             continue
         teeth = teeth_in_filename(name)
         if not teeth:
@@ -154,6 +163,16 @@ def count_units(filenames: Iterable[str]) -> UnitsCount:
     result.repeated = sorted(t for t, n in seen.items() if n > 1)
     result.units = len(result.teeth) + SPLINT_UNITS * len(result.splint_jaws)
     return result
+
+
+_COPY_MARK = re.compile(r"(?:\s*(?:[—–-]\s*)?(?:копия|копія|copy))?\s*(?:\(\d+\))?$", re.IGNORECASE)
+
+
+def _without_copy_mark(name: str) -> str:
+    """Назва файлу без позначки копії Windows/спулу: «x — копия (2).stl» → «x»,
+    «kappa lower copy» → «kappa lower»; `_` = пробіл."""
+    stem = PurePath(name or "").stem.replace("_", " ")
+    return " ".join(_COPY_MARK.sub("", stem).split()).casefold()
 
 
 _UPPER_WORD = re.compile(r"верх|верхн|upper|maxill", re.IGNORECASE)
