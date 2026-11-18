@@ -94,6 +94,19 @@ def test_material_touching_the_rim_stays_free():
     assert 0.45 < share < 0.53
 
 
+def test_new_works_of_a_letter_keep_sum3d_gap(monkeypatch):
+    """Між обрисами нових робіт — 1 мм, як `NestingParameterOffsetPiece_` у
+    журналі розстановника Sum3D цеху (18.11.26). Дві коронки в кишені, де
+    обриси лише торкнулися б, — не стають; без проміжку стали б."""
+    mask = disc_fit.piece_mask(_box(10, 10), 0)
+    h, w = mask.shape
+    pocket = np.ones((h + 10, 2 * w + 1 + 10), dtype=bool)
+    pocket[5:5 + h, 5:5 + 2 * w + 1] = False  # рівно на дві маски + 1 клітинка
+    assert not disc_fit.place_all(pocket.copy(), [_box(10, 10), _box(10, 10)])
+    monkeypatch.setattr(disc_fit, "PIECE_GAP_MM", 0.0)
+    assert disc_fit.place_all(pocket.copy(), [_box(10, 10), _box(10, 10)])
+
+
 def test_overlap_rule_is_what_lets_the_crown_in(monkeypatch):
     monkeypatch.setattr(disc_fit, "HOLE_OVERLAP_MM", 0.0)
     assert not disc_fit.fits(47.0, _slot(15), [_box(10, 10)])

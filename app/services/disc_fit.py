@@ -43,6 +43,10 @@ RIM_MM = 1.0
 # контур Sum3D — це дірка в диску): власник 18.11.26, «трішечки», до 1 мм.
 # Лише на старі дірки: між новими роботами листа й до краю диска — повний запас.
 HOLE_OVERLAP_MM = 1.0
+# Проміжок між обрисами НОВИХ робіт листа — як у самого Sum3D:
+# `NestingParameterOffsetPiece_ = 1.0` у журналі його розстановника
+# (`millbox/AmpNesting/millbox_nesting.log` на ПК цеху, 18.11.26).
+PIECE_GAP_MM = 1.0
 ANGLES = (0, 90, 45, 135, 30, 60, 120, 150)
 _MAX_POINTS = 400_000
 
@@ -269,7 +273,13 @@ def place_all(blocked: np.ndarray, pieces: list[np.ndarray], scale: float = 1.0)
             if spot is None:
                 continue
             r, c = spot
-            blocked[r: r + mask.shape[0], c: c + mask.shape[1]] |= mask
+            gap = int(round(PIECE_GAP_MM / GRID_MM))
+            # Обрис + проміжок до наступної роботи (Sum3D OffsetPiece).
+            grown = _dilate(mask, gap)
+            r0, c0 = r - gap, c - gap
+            rs, cs = max(r0, 0), max(c0, 0)
+            re_, ce = min(r0 + grown.shape[0], blocked.shape[0]), min(c0 + grown.shape[1], blocked.shape[1])
+            blocked[rs:re_, cs:ce] |= grown[rs - r0: re_ - r0, cs - c0: ce - c0]
             placed = True
             break
         if not placed:
