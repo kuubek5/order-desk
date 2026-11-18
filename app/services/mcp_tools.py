@@ -670,18 +670,35 @@ def tool_mail_material(db: Session, args: dict) -> dict[str, Any]:
         email_id = int(str(raw))
     except (TypeError, ValueError):
         raise ToolError("потрібен `email_id` — номер листа (з адреси /mail?open=N)")
-    from app.mail_body_view import letter_segments, useful_text
     from app.models import EmailMessage
     from app.services.material_suggest import explain_material
 
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise ToolError(f"листа {email_id} немає")
-    # Той самий контекст, що `_material_context` у картці: тема + слова замовника.
-    context = "\n".join([email.subject or "", useful_text(letter_segments(email.body_text))])
+    # Той самий контекст і те саме правило, що в картці — одне джерело
+    # (`mail_letter_signals`): тема, слова замовника, назви архівів; капа.
+    from app.services import mail_letter_signals
+
+    context = mail_letter_signals.material_context(email)
     out = explain_material(db, email.material_color_guess, context)
+    splint = mail_letter_signals.splint_for(db, email, context)
+    if splint:
+        out["капа"] = splint
+        out["поле_картки"] = splint
+    out["архівів_з_назвою"] = len(mail_letter_signals.archive_names(email.attachments))
     out["лист"] = email_id
     return out
+
+
+def tool_mail_learn(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import mail_learn
+
+    return mail_learn.report(
+        db,
+        _int_arg(args, "days", default=7, low=1, high=60),
+        _int_arg(args, "limit", default=40, low=1, high=200),
+    )
 
 
 def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
@@ -1219,6 +1236,29 @@ TOOLS = TOOLS + (
         # З `kind` — читання й малювання STL з мережевих тек: окремим процесом
         # (`app/mcp_isolated.py`). Без `kind` — один запит до бази, вдома.
         isolate=lambda args: bool(str(args.get("kind") or "").strip()),
+    ),
+    Tool(
+        name="kmill_mail_learn",
+        description=(
+            "Навчання на прийнятих листах: для кожного листа за період — що картка підставила б у "
+            "матеріал·колір ЗАРАЗ проти того, що лишив оператор. Точність, причини розбіжностей "
+            "(матеріал не впізнано / інший матеріал / колір не знайдено / кілька кольорів / інший колір), "
+            "звідки можна було взяти правильне (усе було в листі, відтінок лише в назвах файлів, у листі "
+            "немає), чи вгадало б «звичне клієнта», пари «система → оператор», приклади з номерами листів "
+            "(далі — kmill_mail_material). Тексту листа, клієнтів і назв файлів не віддає. Лише читання."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "minimum": 1, "maximum": 60, "description": "За скільки днів, типово 7."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Скільки прикладів розбіжностей, типово 40."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_mail_learn,
+        # Сотні листів × розбір тексту — чистий Python: окремим процесом
+        # (`app/mcp_isolated.py`), щоб не голодити CRM.
+        isolate=lambda args: True,
     ),
 )
 

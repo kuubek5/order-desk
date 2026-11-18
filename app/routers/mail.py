@@ -69,9 +69,8 @@ from app.services.material_suggest import (
     canonical_suggestions,
     letter_materials,
     row_label,
-    splint_material,
 )
-from app.services.mail_letter_signals import archive_names, is_splint_letter
+from app.services import mail_letter_signals
 from app.material_catalog import load_alias_rows
 from app.material_class import mail_material_badge
 from app.mail_reader import (
@@ -204,21 +203,15 @@ def _material_context(email: EmailMessage, customer_text: str | None = None) -> 
     """Де шукати матеріал, коли здогад його не назвав: ТЕМА + слова замовника
     (без пересилання й підпису). Тема — бо клієнт часто пише матеріал лише там
     («емоутіонс а2» → `emo a2`)."""
-    if customer_text is None:
-        customer_text = useful_text(letter_segments(email.body_text))
-    # Назви архівів — ПІСЛЯ тексту: слово матеріалу береться перше знайдене,
-    # тож сказане в листі важить більше (власник 18.11.26: матеріал і колір
-    # буває лише в назві архіву).
-    archives = "\n".join(archive_names(email.attachments))
-    return f"{email.subject or ''}\n{customer_text}" + (f"\n{archives}" if archives else "")
+    # Одне джерело з MCP (`mail_letter_signals.material_context`): тема, слова
+    # замовника, назви архівів (власник 18.11.26).
+    return mail_letter_signals.material_context(email, customer_text)
 
 
 def _splint_material(db: Session, email: EmailMessage, context: str) -> str | None:
     """Канон капи (`kappa`), коли вся робота листа — фрезерована капа; інакше
     None. Одне правило для поля картки й чіпа рядка списку."""
-    if not is_splint_letter(context, (a.filename for a in email.attachments)):
-        return None
-    return splint_material(db)
+    return mail_letter_signals.splint_for(db, email, context)
 
 
 _BADGE_CLS = {"Zr": "mat-zr", "PMMA": "mat-pmma", "Ti": "mat-ti", "SLM": "mat-slm", "Wax": "mat-wax"}

@@ -406,6 +406,11 @@ def _context_word(session: Session, context: str | None, weight: Counter[str]) -
     (`tit`, `emo`, `wax`) як ПОЧАТОК слова тексту приймаємо лише тоді, коли
     бібліотека матеріалів сама впізнає це слово як матеріал: «титан» → так,
     «тітка» → ні."""
+    return next(_context_words(session, context, weight), None)
+
+
+def _context_words(session: Session, context: str | None, weight: Counter[str]):
+    """Усі слова канону в тексті, у порядку появи (правила — `_context_word`)."""
     alias_rows = None
     names = None
     for token in _mm_tokens(context):
@@ -422,8 +427,17 @@ def _context_word(session: Session, context: str | None, weight: Counter[str]) -
                 names = material_id_by_name(session)
             if resolve_material_id(token, alias_rows, names or {}) is None:
                 continue
-        return word
-    return None
+        yield word
+
+
+def canon_words_in(session: Session, text: str | None) -> list[str]:
+    """Слова канону цеху, які названо в тексті (без повторів) — для звірки
+    «чи було слово оператора в листі» (`mail_learn`)."""
+    out: list[str] = []
+    for word in _context_words(session, text, _word_weights(session)):
+        if word not in out:
+            out.append(word)
+    return out
 
 
 def canonical_material(

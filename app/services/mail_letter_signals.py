@@ -27,6 +27,37 @@ class _Att(Protocol):
     archive_name: Optional[str]
 
 
+def material_context(email, customer_text: str | None = None) -> str:
+    """Де картка шукає матеріал, коли здогад його не назвав: ТЕМА + слова
+    замовника (без пересилання й підпису) + назви архівів. Назви архівів —
+    ПІСЛЯ тексту: слово матеріалу береться перше знайдене, тож сказане в листі
+    важить більше. Одне джерело для картки, рядка списку й MCP."""
+    if customer_text is None:
+        from app.mail_body_view import letter_segments, useful_text
+
+        customer_text = useful_text(letter_segments(email.body_text))
+    archives = "\n".join(archive_names(email.attachments))
+    return f"{email.subject or ''}\n{customer_text}" + (f"\n{archives}" if archives else "")
+
+
+def splint_for(db, email, context: str) -> Optional[str]:
+    """Канон капи (`kappa`), коли вся робота листа — фрезерована капа."""
+    if not is_splint_letter(context, (a.filename for a in email.attachments)):
+        return None
+    from app.services.material_suggest import splint_material
+
+    return splint_material(db)
+
+
+def card_material(db, email, context: str | None = None) -> Optional[str]:
+    """Що картка САМА підставить у поле матеріалу; None — лишить здогад як є
+    (матеріал чи колір не однозначні)."""
+    from app.services.material_suggest import best_material
+
+    ctx = material_context(email) if context is None else context
+    return splint_for(db, email, ctx) or best_material(db, email.material_color_guess or "", ctx)
+
+
 def archive_names(attachments: Iterable[_Att]) -> list[str]:
     """Назви архівів листа без розширення, `_` → пробіл, без повторів."""
     out: list[str] = []

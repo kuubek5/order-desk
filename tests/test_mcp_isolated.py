@@ -56,6 +56,7 @@ def _tool(name: str = "kmill_fake") -> Tool:
         ("kmill_disc_fit_replay", {}, True),
         ("kmill_stl_shapes", {"kind": "міст"}, True),
         ("kmill_stl_shapes", {}, False),
+        ("kmill_mail_learn", {"days": 7}, True),
         # Нумерація «№» з what=files живе в памʼяті процесу — лишається вдома.
         ("kmill_sum3d_explore", {"what": "files"}, False),
         ("kmill_health", {}, False),
