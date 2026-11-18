@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Сторож матеріалу — картка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Мокап 18.11.26: червона картка «замовлено ≠ фрезерується» поверх черги.
+   Кольори — тема «Аврора» (app/static/css/theme-aurora.css). */
+:root{
+  --bg:#07080e; --card:#11131c; --card-2:#161926; --card-3:#1c2030; --line:#23273a; --line-2:#353b55;
+  --ink:#eef0f8; --ink-2:#b4b8cc; --ink-3:#9095ac;
+  --accent:#b7a6ff; --accent-rgb:199,185,255;
+  --alarm:#ff7d8b; --alarm-rgb:255,125,139; --alarm-ink:#ffc9cf;
+  --ok:#6ee7b7; --ok-rgb:110,231,183; --warn:#ffb86b;
+  --f:'Golos Text',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--f);padding:28px 16px 60px;
+  background-image:linear-gradient(rgba(183,166,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(183,166,255,.045) 1px,transparent 1px);
+  background-size:32px 32px}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:34px}
+h1{font:800 32px/1.1 var(--f);margin:0;letter-spacing:-.01em}
+.lede{color:var(--ink-2);margin:8px 0 0;max-width:80ch}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.var{border:1px solid var(--line);border-radius:18px;background:rgba(17,19,28,.85);padding:20px 20px 24px}
+.var > h2{font:800 22px/1.2 var(--f);margin:0 0 4px}
+.var > h2 .tag{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;margin-right:10px;
+  background:rgba(var(--accent-rgb),.16);color:var(--accent);font:800 16px var(--f);vertical-align:2px}
+.var > p{margin:0 0 14px;color:var(--ink-2);max-width:95ch}
+
+/* ── Імітація екрана черги ── */
+.screen{position:relative;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.bar{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--card-2)}
+.bar .t{font:800 16px var(--f);margin-right:10px}
+.pill{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2)}
+.pill.on{border-color:rgba(var(--accent-rgb),.6);background:rgba(var(--accent-rgb),.14);color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);text-align:left;font-weight:600;padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+td b{color:var(--ink);font-weight:600}
+tr.bad td{background:rgba(var(--alarm-rgb),.07)}
+tr.bad td:first-child{box-shadow:inset 4px 0 0 var(--alarm)}
+.chip{display:inline-flex;gap:6px;align-items:center;font:600 12px var(--mono);padding:2px 8px;border-radius:7px;border:1px solid var(--line-2);color:var(--ink)}
+.chip.zr{border-color:rgba(var(--accent-rgb),.5)}
+.chip.x{border-color:rgba(var(--alarm-rgb),.7);background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--alarm);display:inline-block}
+.dim{color:var(--ink-3)}
+
+/* ── Спільне в картці ── */
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font:600 13px var(--f);padding:8px 13px;border-radius:9px;
+  border:1px solid var(--line-2);color:var(--ink);background:rgba(255,255,255,.03)}
+.btn.agree{border-color:rgba(var(--alarm-rgb),.55);color:var(--alarm-ink)}
+.btn.main{background:rgba(var(--accent-rgb),.16);border-color:rgba(var(--accent-rgb),.55)}
+.ic{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.diff{color:var(--alarm);font-weight:700}
+.same{color:var(--ink-2)}
+.who{font-size:12px;color:var(--ink-3)}
+.disc{width:44px;height:44px;flex:0 0 auto}
+.disc circle{fill:rgba(var(--accent-rgb),.10);stroke:rgba(var(--accent-rgb),.6);stroke-width:2}
+.disc.r circle{fill:rgba(var(--alarm-rgb),.10);stroke:rgba(var(--alarm-rgb),.75)}
+.disc path{fill:var(--card);stroke:rgba(var(--accent-rgb),.45);stroke-width:1.2}
+.disc.r path{stroke:rgba(var(--alarm-rgb),.5)}
+
+/* A — банер над чергою */
+.a-banner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:center;margin:12px;padding:14px 16px;border-radius:12px;
+  border:1px solid rgba(var(--alarm-rgb),.6);background:linear-gradient(90deg,rgba(var(--alarm-rgb),.16),rgba(var(--alarm-rgb),.05))}
+.a-ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:rgba(var(--alarm-rgb),.22);color:var(--alarm)}
+.a-ico .ic{width:20px;height:20px}
+.a-t{font:700 15px var(--f)}
+.a-line{margin-top:3px;color:var(--ink-2)}
+.a-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+/* B — картка-порівняння поверх черги */
+.b-over{position:absolute;right:16px;top:58px;width:430px;border-radius:14px;border:1px solid rgba(var(--alarm-rgb),.7);
+  background:#1a1218;box-shadow:0 28px 60px -20px rgba(0,0,0,.9),0 0 0 1px rgba(0,0,0,.4)}
+.b-head{display:flex;gap:10px;align-items:center;padding:12px 14px;background:rgba(var(--alarm-rgb),.18);border-bottom:1px solid rgba(var(--alarm-rgb),.35);border-radius:14px 14px 0 0}
+.b-head .t{font:800 15px var(--f);color:var(--alarm-ink)}
+.b-head .x{margin-left:auto;color:var(--ink-3);font-size:12px}
+.b-body{padding:12px 14px;display:grid;gap:10px}
+.b-work{font-size:13px;color:var(--ink-2)} .b-work b{color:var(--ink)}
+.b-cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.b-col{border:1px solid var(--line-2);border-radius:10px;padding:10px;background:rgba(255,255,255,.02)}
+.b-col.r{border-color:rgba(var(--alarm-rgb),.55);background:rgba(var(--alarm-rgb),.06)}
+.b-lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
+.b-big{font:800 17px var(--f)} .b-sub{font:500 12px var(--mono);color:var(--ink-3);margin-top:2px}
+.b-acts{display:flex;gap:8px;padding:0 14px 14px;flex-wrap:wrap}
+
+/* C — рядок черги розкривається */
+tr.c-open td{border-bottom:none}
+tr.c-strip td{padding:0 12px 12px;background:rgba(var(--alarm-rgb),.07);box-shadow:inset 4px 0 0 var(--alarm);white-space:normal}
+.c-box{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-radius:10px;border:1px dashed rgba(var(--alarm-rgb),.55)}
+.c-arrow{font:700 13px var(--mono);color:var(--ink-2)}
+.c-acts{margin-left:auto;display:flex;gap:8px}
+
+/* D — стрічка + шухляда */
+.d-pill{position:absolute;left:50%;top:10px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;padding:6px 12px 6px 8px;border-radius:999px;
+  background:var(--alarm);color:#2a0b10;font:700 13px var(--f);box-shadow:0 10px 24px -12px rgba(0,0,0,.85)}
+.d-pill .n{background:#2a0b10;color:var(--alarm);border-radius:999px;font:800 12px var(--mono);padding:2px 7px}
+.d-drawer{position:absolute;top:0;right:0;bottom:0;width:380px;border-left:1px solid rgba(var(--alarm-rgb),.55);background:#15101a;padding:14px;display:grid;align-content:start;gap:10px;
+  box-shadow:-30px 0 60px -30px rgba(0,0,0,.9)}
+.d-h{font:800 15px var(--f);color:var(--alarm-ink);display:flex;align-items:center;gap:8px}
+.d-item{border:1px solid rgba(var(--alarm-rgb),.45);border-radius:11px;padding:11px;background:rgba(var(--alarm-rgb),.06);display:grid;gap:7px}
+.d-item.done{opacity:.55;border-color:var(--line-2);background:transparent}
+.d-row{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.d-acts{display:flex;gap:8px}
+.note{font-size:12px;color:var(--ink-3);margin-top:12px}
+.note b{color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Сторож матеріалу — яку картку обрати</h1>
+  <p class="lede">Приклад на всіх варіантах: робота <b>Маріанна Голій</b> замовлена <b class="mono">emo a3</b> (Emotions A3), а програма на <b>250i-Sec</b> — на диску <b class="mono">16-Z-Nature-A3-x12</b>. Колір збігся, лінія — ні. Кнопки скрізь ті самі: «Відкрити роботу» і «Погоджено» (клієнт передумав по телефону — картка зникає, у журналі лишається хто й коли).</p>
+</header>
+
+<!-- ── A ── -->
+<section class="var">
+  <h2><span class="tag">A</span>Банер над чергою</h2>
+  <p>Широка червона смуга над таблицею, поки її не знімуть. Видно одразу, не закриває роботи; кілька помилок — кілька смуг одна під одною.</p>
+  <div class="screen">
+    <div class="bar"><span class="t">Черга</span><span class="pill on">Сьогодні 112</span><span class="pill">Вчора 189</span><span class="pill">Можна брати 3</span></div>
+    <div class="a-banner">
+      <div class="a-ico"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3 22 20H2z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg></div>
+      <div>
+        <div class="a-t">Не той диск: замовлено Emotions A3 — фрезерується Z-Nature A3</div>
+        <div class="a-line"><b>Маріанна Голій</b> · 4 од. · програма <span class="mono">16-Z-Nature-A3-x12_…02-24-01</span> на <b>250i-Sec</b> · <span class="diff">лінія Emotions ≠ Z-Nature</span> · <span class="same">колір A3 = A3</span></div>
+      </div>
+      <div class="a-acts">
+        <button class="btn main"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>Відкрити роботу</button>
+        <button class="btn agree"><svg class="ic" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>Погоджено</button>
+      </div>
+    </div>
+    <table>
+      <tr><th>Наряд</th><th>Кількість</th><th>Матеріал</th><th>Вид / клієнт</th><th>Sum3D</th></tr>
+      <tr><td><b>24122</b></td><td>3</td><td><span class="chip zr">mono a2</span></td><td>анатомія</td><td class="mono">01-20-28</td></tr>
+      <tr class="bad"><td><span class="dot"></span> <b>пошта</b></td><td>4</td><td><span class="chip x">emo a3</span></td><td><b>Маріанна Голій</b></td><td class="mono">02-24-01</td></tr>
+      <tr><td><b>24130</b></td><td>1</td><td><span class="chip zr">mono a3</span></td><td>анатомія гвинтова</td><td class="mono">02-03-13</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ── B ── -->
+<section class="var">
+  <h2><span class="tag">B</span>Картка-порівняння поверх черги</h2>
+  <p>Окрема червона картка в правому куті: зліва «замовлено», справа «фрезерується», різниця підсвічена. Найнаочніше, але закриває частину таблиці, доки не натиснеш.</p>
+  <div class="screen" style="min-height:330px">
+    <div class="bar"><span class="t">Черга</span><span class="pill on">Сьогодні 112</span><span class="pill">Вчора 189</span><span class="pill">Можна брати 3</span></div>
+    <table>
+      <tr><th>Наряд</th><th>Кількість</th><th>Матеріал</th><th>Вид / клієнт</th><th>Sum3D</th></tr>
+      <tr><td><b>24122</b></td><td>3</td><td><span class="chip zr">mono a2</span></td><td>анатомія</td><td class="mono">01-20-28</td></tr>
+      <tr class="bad"><td><span class="dot"></span> <b>пошта</b></td><td>4</td><td><span class="chip x">emo a3</span></td><td><b>Маріанна Голій</b></td><td class="mono">02-24-01</td></tr>
+      <tr><td><b>24130</b></td><td>1</td><td><span class="chip zr">mono a3</span></td><td>анатомія гвинтова</td><td class="mono">02-03-13</td></tr>
+      <tr><td><b>24131</b></td><td>2</td><td><span class="chip zr">pmma a2</span></td><td>анатомія</td><td class="mono">02-11-40</td></tr>
+    </table>
+    <div class="b-over">
+      <div class="b-head"><svg class="ic" viewBox="0 0 24 24" style="color:var(--alarm)"><path d="M12 3 22 20H2z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg><span class="t">Не той диск</span><span class="x">250i-Sec · 03:12</span></div>
+      <div class="b-body">
+        <div class="b-work"><b>Маріанна Голій</b> · 4 од. · Sum3D <span class="mono">02-24-01</span></div>
+        <div class="b-cmp">
+          <div class="b-col"><div class="b-lbl">Замовлено</div><div class="b-big">Emotions A3</div><div class="b-sub">emo a3</div></div>
+          <div class="b-col r"><div class="b-lbl">Фрезерується</div><div class="b-big"><span class="diff">Z-Nature</span> A3</div><div class="b-sub">16-Z-Nature-A3-x12</div></div>
+        </div>
+      </div>
+      <div class="b-acts">
+        <button class="btn main"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>Відкрити роботу</button>
+        <button class="btn agree"><svg class="ic" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>Погоджено — клієнт змінив</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── C ── -->
+<section class="var">
+  <h2><span class="tag">C</span>Рядок роботи розкривається</h2>
+  <p>Нічого не з'являється поверх: червоним стає сам рядок, а під ним — смужка з поясненням і кнопками. Найспокійніше, але видно лише тоді, коли рядок на екрані (довга черга — може бути нижче).</p>
+  <div class="screen">
+    <div class="bar"><span class="t">Черга</span><span class="pill on">Сьогодні 112</span><span class="pill">Вчора 189</span><span class="pill">Можна брати 3</span></div>
+    <table>
+      <tr><th>Наряд</th><th>Кількість</th><th>Матеріал</th><th>Вид / клієнт</th><th>Sum3D</th></tr>
+      <tr><td><b>24122</b></td><td>3</td><td><span class="chip zr">mono a2</span></td><td>анатомія</td><td class="mono">01-20-28</td></tr>
+      <tr class="bad c-open"><td><span class="dot"></span> <b>пошта</b></td><td>4</td><td><span class="chip x">emo a3</span></td><td><b>Маріанна Голій</b></td><td class="mono">02-24-01</td></tr>
+      <tr class="c-strip"><td colspan="5"><div class="c-box">
+        <svg class="disc r" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><path d="M30 30 a12 12 0 1 0 1 0z"/><path d="M60 55 a14 10 0 1 0 1 0z"/></svg>
+        <div><div><b>Не той диск</b> · на <b>250i-Sec</b> фрезерується <span class="mono">16-Z-Nature-A3-x12</span></div>
+        <div class="c-arrow">emo a3 → <span class="diff">Z-Nature</span> A3 · лінія інша, колір той самий</div></div>
+        <div class="c-acts">
+          <button class="btn main"><svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>Відкрити роботу</button>
+          <button class="btn agree"><svg class="ic" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>Погоджено</button>
+        </div>
+      </div></td></tr>
+      <tr><td><b>24130</b></td><td>1</td><td><span class="chip zr">mono a3</span></td><td>анатомія гвинтова</td><td class="mono">02-03-13</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ── D ── -->
+<section class="var">
+  <h2><span class="tag">D</span>Червона позначка + шухляда збоку</h2>
+  <p>Угорі черги — червона позначка «1 помилка матеріалу», клік відкриває шухляду справа зі списком (кілька помилок — список, погоджені лишаються сірими до кінця зміни). Займає найменше місця, але потребує одного кліку, щоб побачити деталі.</p>
+  <div class="screen" style="min-height:360px">
+    <div class="bar"><span class="t">Черга</span><span class="pill on">Сьогодні 112</span><span class="pill">Вчора 189</span><span class="pill">Можна брати 3</span></div>
+    <div class="d-pill"><span class="n">1</span>помилка матеріалу — подивитись</div>
+    <table>
+      <tr><th>Наряд</th><th>Кількість</th><th>Матеріал</th><th>Вид / клієнт</th><th>Sum3D</th></tr>
+      <tr><td><b>24122</b></td><td>3</td><td><span class="chip zr">mono a2</span></td><td>анатомія</td><td class="mono">01-20-28</td></tr>
+      <tr class="bad"><td><span class="dot"></span> <b>пошта</b></td><td>4</td><td><span class="chip x">emo a3</span></td><td><b>Маріанна Голій</b></td><td class="mono">02-24-01</td></tr>
+      <tr><td><b>24130</b></td><td>1</td><td><span class="chip zr">mono a3</span></td><td>анатомія гвинтова</td><td class="mono">02-03-13</td></tr>
+    </table>
+    <div class="d-drawer">
+      <div class="d-h"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3 22 20H2z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg>Помилки матеріалу</div>
+      <div class="d-item">
+        <div class="d-row"><b>Маріанна Голій · 4 од.</b><span class="who">250i-Sec · 03:12</span></div>
+        <div class="d-row"><span>замовлено <b class="mono">emo a3</b></span><span>диск <b class="mono"><span class="diff">Z-Nature</span>-A3-x12</b></span></div>
+        <div class="d-acts">
+          <button class="btn main">Відкрити</button>
+          <button class="btn agree">Погоджено</button>
+        </div>
+      </div>
+      <div class="d-item done">
+        <div class="d-row"><b>24105 · 2 од.</b><span class="who">погодив Олег 01:40</span></div>
+        <div class="d-row"><span>замовлено <b class="mono">mono a2</b></span><span>диск <b class="mono">16-Monolith-A3-x47</b></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<p class="note">У кожному варіанті рядок роботи в черзі ще й червоніє (лівий край + тінт) — щоб помилку було видно й після того, як картку згорнули, доки її не погодять або не виправлять диск. Перевірка «лист ↔ вписане оператором» (окремий перемикач) виглядатиме так само, лише з написом <b>«Не той матеріал у листі»</b> замість «Не той диск».</p>
+</div>
+</body>
+</html>
