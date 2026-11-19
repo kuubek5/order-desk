@@ -530,6 +530,10 @@ _TI_BASE_RE = re.compile(
     r"|тит\w*[\s-]*(?:основ|баз)\w*|(?:основ|баз)\w*\s+(?:з\s+)?тит\w*",
     re.IGNORECASE,
 )
+# Хвіст назви експорту exocad (`…-bridge_slm_cad`, `waxup_slm_cad`) і «wax-up» —
+# вид конструкції, не матеріал: назви архівів ідуть у контекст листа, і 19.11.26
+# три листи з дванадцяти дістали хибне «SLM»/«Wax» поруч із правильним полем.
+_EXOCAD_TYPE_RE = re.compile(r"(?<![^\W_])(?:slm[\s_-]+cad|wax[\s_-]?up)(?![^\W_])", re.IGNORECASE)
 # Прізвища й слова, що лише починаються як матеріал: «Воскобойник», «Цирконенко»,
 # «мономер». У чіпі першого слова вони не трапляються, а тут читаємо весь текст.
 _NOT_MATERIAL_WORD_RE = re.compile(
@@ -557,6 +561,7 @@ def letter_materials(
     families: dict[str, None] = {}
     lines: dict[str, None] = {}
     text = _TI_BASE_RE.sub(" ", f"{guess or ''}\n{context or ''}")
+    text = _EXOCAD_TYPE_RE.sub(" ", text)
     for token in _mm_tokens(text):
         if token.isdigit() or _SHADE_RE.match(token) or not any(ch.isalpha() for ch in token):
             continue

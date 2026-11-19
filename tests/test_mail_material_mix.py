@@ -87,6 +87,16 @@ def _row(page: str, email_id: int) -> str:
     ("Тетяна Цирконенко PMMA a2", set()),
     ("мономер pmma а2", set()),
     ("тітка просила швидше, моно а3", set()),
+    # Назва експорту exocad (`<тип>_slm_cad`, `waxup`) — це вид конструкції, не
+    # матеріал: 19.11.26 три листи з дванадцяти отримали хибне «SLM»/«Wax».
+    ("Emotions A3\n2026 11 18 00002 001 35 34 33 bridge slm cad", set()),
+    ("pmma A1\nFINAL-001-16-15-14-13 waxup slm cad", set()),
+    ("моно а2\nproject_2026-11-18_00006-001-36-crown_slm_cad", set()),
+    ("pmma a2 wax-up", set()),
+    # Справжній СЛМ і віск у листі — і далі мішанина.
+    ("Коронки цирконій а2, каркас СЛМ", {"Zr", "SLM"}),
+    ("Коронки цирконій а2, каркас slm", {"Zr", "SLM"}),
+    ("Цирконій а3 і віск", {"Zr", "Wax"}),
 ])
 def test_letter_materials_on_real_wording(app_db, text, expected):  # noqa: F811
     from app.services.material_suggest import letter_materials
