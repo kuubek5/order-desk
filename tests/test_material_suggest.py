@@ -529,4 +529,75 @@ def test_doceram_without_final_m_is_still_doceram():
 
     assert doceram_code("", "циркон docera--3.5")[0] is True
     with _canon_session() as session:
+        # «--3.5» без літери — відтінком не читається, поле порожнє (як і було).
         assert best_material(session, "", "циркон docera--3.5") is None
+        # Власник 20.11.26: A3.5 Doceram — `1333` (до того коду не було).
+        assert best_material(session, "", "циркон docera A3.5") == "1333"
+        # Відтінок без коду — як і було, нічого.
+        assert best_material(session, "", "циркон docera B2") is None
+
+
+def test_titanium_and_wax_without_colour_fill_the_field():
+    """Власник 20.11.26: за 14 днів 4 листи зі словом «титан» без кольору —
+    оператор щоразу вписував `tit`, а поле лишалось порожнім. Титан і віск, як
+    капа, кольору не мають."""
+    from app.services.material_suggest import best_material, splint_material
+
+    with _canon_session() as session:
+        add_orders(session, {"wax": 6, "tit": 10})
+        invalidate_cache()
+        assert best_material(session, "Титановий", "Титановий абатмент, titan") == "tit"
+        assert best_material(session, None, "Прошу відфрезерувати з титану") == "tit"
+        assert best_material(session, None, "Фрезерування воск, 3 одиниці") == "wax"
+        # Листи 3333 і 3864: здогад «воску» / «Воск» — теж віск.
+        assert best_material(session, "воску", "") == "wax"
+        assert best_material(session, "Воск", "") == "wax"
+        # Титанова основа під коронку — не титан листа.
+        assert best_material(session, None, "Коронки на титановій основі, гвинтові") is None
+        assert best_material(session, None, "Crowns on Ti-base, screw retained") is None
+        # Колір названо — він лишається, як і було.
+        assert best_material(session, "", "титан а2") == "tit a2"
+        # «waxup» у назві архіву exocad і прізвище — не віск.
+        assert best_material(session, None, "Коронки\n2026-11-18 waxup_slm_cad") is None
+        assert best_material(session, None, "Від Воскобойник О., дякую") is None
+        # Капа листа лишається капою, хоч титану в цеху більше.
+        assert splint_material(session) == "kappa"
+        # Матеріал з кольором без кольору в листі — не вгадуємо, як і було.
+        assert best_material(session, "Monolith", "Monolith, дякую") is None
+
+
+def _client_orders(session: Session, client: str, materials: list[str], *, days_ago: int = 5) -> None:
+    created = utc_now() - timedelta(days=days_ago)
+    for text in materials:
+        session.add(Order(
+            source="email", status="нове", client_name=client, material_color=text, created_at=created,
+        ))
+    session.commit()
+
+
+def test_doceram_client_gets_code_by_letter_colour():
+    """Власник 20.11.26: Doceram-клієнти пишуть лише «A2», оператор ставить
+    `800`. За 14 днів 15 листів, код щоразу відповідав кольору. Клієнт, що
+    бере Doceram у ≥60 % із ≥3 робіт за 90 днів, отримує код за кольором."""
+    from app.services.material_suggest import best_material, doceram_habit_code
+
+    with _canon_session() as session:
+        _client_orders(session, "Яна Тестова", ["800", "1000", "800", "mono a2"])
+        _client_orders(session, "Інший Клієнт", ["800", "mono a3", "emo a2", "mono a2"])
+        _client_orders(session, "Новий Клієнт", ["800", "1000"])
+        text = "Добрий день, коронки, колір A2"
+        assert best_material(session, "", text, client_name="Яна Тестова") == "800"
+        assert best_material(session, "", "колір А1", client_name="Яна Тестова") == "500"
+        assert best_material(session, "", "колір A3,5", client_name="Яна Тестова") == "1333"
+        # Колір без коду, кілька кольорів, без клієнта — нічого.
+        assert best_material(session, "", "колір B1", client_name="Яна Тестова") is None
+        assert best_material(session, "", "A2 і A3", client_name="Яна Тестова") is None
+        assert best_material(session, "", text) is None
+        # Матеріал названо — слово листа важить більше за звичку.
+        assert best_material(session, "", "Monolith A2", client_name="Яна Тестова") == "mono a2"
+        # Doceram лише 25 % робіт / лише 2 роботи — звички немає.
+        assert best_material(session, "", text, client_name="Інший Клієнт") is None
+        assert best_material(session, "", text, client_name="Новий Клієнт") is None
+        # Звичка рахується ДО листа: роботи, старші за вікно, не входять.
+        early = utc_now() - timedelta(days=200)
+        assert doceram_habit_code(session, "Яна Тестова", "a2", before=early) is None

@@ -1298,7 +1298,11 @@ def _mail_panel_context(
         # Слово матеріалу шукаємо й у тексті замовника, коли здогад його не
         # назвав («B1» + у тексті «Monolight» → `mono b1`).
         guess = email.material_color_guess or ""
-        material_color = splint or best_material(db, guess, material_ctx) or guess
+        # Матеріалу в листі немає, колір один, а клієнт майже завжди бере
+        # Doceram — код за кольором (власник 20.11.26, `doceram_habit_code`).
+        material_color = (
+            splint or best_material(db, guess, material_ctx, client_name=client_name) or guess
+        )
     if kind is None:
         kind = email.kind_guess or ""
     # Порожнє поле — ще семена: тоді кількість може дати назва STL (нижче).

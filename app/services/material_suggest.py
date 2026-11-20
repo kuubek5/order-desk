@@ -25,10 +25,10 @@ import re
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from rapidfuzz import fuzz
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
@@ -317,11 +317,21 @@ def _same_word(token: str, word: str) -> bool:
     return any(_stem(f) != f and _stem(f) in word_stems for f in token_forms)
 
 
-def _is_shadeless(word: str) -> bool:
-    """Матеріал, у якого кольору не буває: капа (власник 29.09.26 — «фрезеровані
-    капи» мають ставати капою на фрезерування). Лише капа: титан і віск у полі
-    картки лишаються як були, доки власник не скаже інакше."""
+def _is_kapa(word: str) -> bool:
+    """Слово канону — капа (`kappa`). Окремо від `_is_shadeless`: капою листа
+    (`splint_material`) титан чи віск не стануть, хоч кольору в них теж немає."""
     return "kapa" in _concepts(_forms(word))
+
+
+_SHADELESS_FAMILIES = frozenset({"kapa", "tit", "wax"})
+"""Матеріали, у яких кольору не буває, — поле картки береться без нього.
+Капа — власник 29.09.26 («фрезеровані капи»); титан і віск — власник 20.11.26:
+за 14 днів 4 листи зі словом «титан» без кольору, оператор щоразу вписував
+`tit`, а поле лишалось порожнім."""
+
+
+def _is_shadeless(word: str) -> bool:
+    return bool(_SHADELESS_FAMILIES & _concepts(_forms(word)))
 
 
 _MONOCHROME_KEYS = ("monoxpom", "monoxrom", "monochrom", "monocrom")
@@ -333,11 +343,12 @@ _DOCERAM_KEYS = ("docera", "docepa", "dokepa", "docerem", "docepem", "docrem", "
 """Doceram латиницею й кирилицею («Доцерам», «Досерам», «Докерам») після
 `match_key`, і з одруківками без «а» («Docrem», «Доцрем» — Ковтун 18.10.26:
 картка не впізнала Doceram і дала «цирконій»)."""
-_DOCERAM_CODES = {"a1": "500", "a2": "800", "a3": "1000"}
+_DOCERAM_CODES = {"a1": "500", "a2": "800", "a3": "1000", "a3.5": "1333"}
 """Доцерам цех пише ГОЛИМ кодом виробника (CLAUDE.md §3: `500` = A1 опак,
-`800` = A2 опак, `1000` = A3 опак — власник 18.10.26). `2000` теж буває в
-таблиці, але відтінку власник не назвав — для решти відтінків Doceram
-нічого не підставляємо."""
+`800` = A2 опак, `1000` = A3 опак — власник 18.10.26; `1333` = A3.5 — власник
+20.11.26). `2000` теж буває в таблиці, але відтінку власник не назвав — для
+решти відтінків Doceram нічого не підставляємо."""
+_DOCERAM_CODE_SET = frozenset(_DOCERAM_CODES.values()) | {"2000"}
 
 
 def _is_monochrome(key: str) -> bool:
@@ -358,7 +369,7 @@ def doceram_code(guess: str | None, context: str | None) -> tuple[bool, str | No
 
 
 def _match_word(
-    token: str, weight: Counter[str], *, allow_short: bool, fuzzy: bool = False
+    token: str, weight: Counter[str], *, allow_short: bool, fuzzy: bool = False, raw: str | None = None
 ) -> str | None:
     """Слово канону для одного згорнутого слова: канон — його початок або воно —
     початок канону (обидва ≥3 літер; коротше — лише повний збіг, і то лише коли
@@ -379,6 +390,16 @@ def _match_word(
             )
         if hit and (best is None or (total, word) > best):
             best = (total, word)
+    if best is None and raw is not None and len(token) >= 4:
+        # Синонім з переліку понять (`material_match._SYNONYMS`): «воск», «воску»
+        # → `wax` (листи 3333, 3864 — чіп `wax` був, поле порожнє: канон із трьох
+        # літер нечіткий збіг не бере). Лише від 4 літер — «ti» з «Ti-base» титаном
+        # не стає. Поняття — із СИРОГО слова: `match_key("воск")` = `bock`.
+        concepts = _concepts(_forms((raw or token).casefold()))
+        if concepts:
+            for word, total in weight.items():
+                if word and _concepts(_forms(word)) & concepts and (best is None or (total, word) > best):
+                    best = (total, word)
     return best[1] if best else None
 
 
@@ -394,7 +415,8 @@ def canonical_material_word(
     там вони збігались би з чим завгодно. None — впізнати нема з чим."""
     weight = _word_weights(session)
     key = match_key(guess or "")
-    word = _match_word(key.split(" ", 1)[0] if key else "", weight, allow_short=True)
+    raw = next(iter(_mm_tokens(guess)), None)
+    word = _match_word(key.split(" ", 1)[0] if key else "", weight, allow_short=True, raw=raw)
     return word or _context_word(session, context, weight)
 
 
@@ -417,7 +439,7 @@ def _context_words(session: Session, context: str | None, weight: Counter[str]):
         if token.isdigit() or _SHADE_RE.match(token) or not any(ch.isalpha() for ch in token):
             continue
         key = match_key(token)
-        word = _match_word(key, weight, allow_short=False, fuzzy=True)
+        word = _match_word(key, weight, allow_short=False, fuzzy=True, raw=token)
         if not word:
             continue
         if len(word) <= _MIN_PREFIX_WORD and key != word:
@@ -483,26 +505,91 @@ def splint_material(session: Session) -> str | None:
     """Як цех пише фрезеровану капу (`kappa`): найчастіше слово канону без
     кольору. None — у даних капи ще не було, і вигадувати назву не будемо."""
     weight = _word_weights(session)
-    words = [w for w in weight if _is_shadeless(w)]
+    words = [w for w in weight if _is_kapa(w)]
     return max(words, key=lambda w: (weight[w], w)) if words else None
 
 
-def best_material(session: Session, guess: str | None, context: str | None = None) -> str | None:
+def best_material(
+    session: Session,
+    guess: str | None,
+    context: str | None = None,
+    *,
+    client_name: str | None = None,
+    before: datetime | None = None,
+) -> str | None:
     """ОДНА впевнена відповідь для поля матеріалу: матеріал упізнано (у здогаді чи
     в тексті) і відтінок рівно один. Інакше None — поле лишається як було,
-    вгадувати колір чи матеріал не можна."""
+    вгадувати колір чи матеріал не можна.
+
+    `client_name` — лише для листа, де матеріалу не названо зовсім: клієнт, що
+    майже завжди бере Doceram, отримує код за кольором (`doceram_habit_code`)."""
     named, code = doceram_code(guess, context)
     if named:
         return code  # Doceram — лише відомий код; інша лінія тут хибна
     wanted = _wanted_shades(guess, None, context)
     word = canonical_material_word(session, guess, context)
     if not word:
+        if client_name and len(wanted) == 1:
+            return doceram_habit_code(session, client_name, wanted[0], before=before)
         return None
     if not wanted and _is_shadeless(word):
-        return word  # капа: кольору немає — і не треба
+        # Капа, титан, віск: кольору немає — і не треба. Титан і віск — лише коли
+        # слово стоїть і в очищеному тексті: «waxup» у назві архіву exocad чи
+        # прізвище «Воскобойник» воском не є (`_shadeless_word_is_real`).
+        if _is_kapa(word) or _shadeless_word_is_real(session, guess, context, word):
+            return word
+        return None
     if len(wanted) != 1:
         return None
     return canonical_material(session, guess, wanted[0], context)
+
+
+def _shadeless_word_is_real(
+    session: Session, guess: str | None, context: str | None, word: str
+) -> bool:
+    """Те саме слово канону знаходиться й тоді, коли з тексту прибрано тип
+    конструкції exocad (`waxup`, `slm_cad`), титанову основу під коронку
+    («на титановій основі», Ti-base) і слова-прізвища."""
+    text = _TI_BASE_RE.sub(" ", _EXOCAD_TYPE_RE.sub(" ", context or ""))
+    if guess and _TI_BASE_RE.search(guess):
+        guess = None
+    text = " ".join(t for t in text.split() if not _NOT_MATERIAL_WORD_RE.search(t.strip(".,;:!?()\"'«»")))
+    return canonical_material_word(session, guess, text) == word
+
+
+DOCERAM_HABIT_DAYS = 90
+DOCERAM_HABIT_MIN_WORKS = 3
+DOCERAM_HABIT_SHARE = 0.6
+
+
+def doceram_habit_code(
+    session: Session, client_name: str, shade: str, *, before: datetime | None = None
+) -> str | None:
+    """Код Doceram за кольором листа для клієнта, що бере Doceram майже завжди.
+
+    Власник 20.11.26: Doceram-клієнти (Ковальчук та ін.) пишуть у листі лише
+    «A2», а оператор ставить `800`. За 14 днів 15 таких листів, код щоразу
+    відповідав кольору. «Звичне» — ≥60 % із ≥3 робіт клієнта за 90 днів до
+    листа мають код Doceram (500/800/1000/1333/2000). Колір без відомого коду
+    (B1) — None."""
+    code = _DOCERAM_CODES.get(_shade_key(shade))
+    name = (client_name or "").strip()
+    if not code or not name:
+        return None
+    high = before or utc_now()
+    rows = session.scalars(
+        select(Order.material_color).where(
+            func.trim(Order.client_name) == name,
+            Order.created_at >= high - timedelta(days=DOCERAM_HABIT_DAYS),
+            Order.created_at < high,
+        )
+    ).all()
+    keys = [match_key(m or "") for m in rows]
+    keys = [k for k in keys if k]
+    if len(keys) < DOCERAM_HABIT_MIN_WORKS:
+        return None
+    share = sum(1 for k in keys if k in _DOCERAM_CODE_SET) / len(keys)
+    return code if share >= DOCERAM_HABIT_SHARE else None
 
 
 def row_label(session: Session, guess: str | None, context: str | None = None) -> dict | None:

@@ -86,7 +86,9 @@ def _judge(db: Session, email: EmailMessage, order: Order, habit: Optional[str])
     op_key = match_key(operator)
     guess = email.material_color_guess or ""
     context = signals.material_context(email)
-    system = signals.card_material(db, email, context)
+    system = signals.card_material(
+        db, email, context, client_name=order.client_name, before=order.created_at
+    )
     splint = signals.splint_for(db, email, context)
 
     words = ms.canon_words_in(db, context)

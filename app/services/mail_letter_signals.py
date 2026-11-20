@@ -49,13 +49,18 @@ def splint_for(db, email, context: str) -> Optional[str]:
     return splint_material(db)
 
 
-def card_material(db, email, context: str | None = None) -> Optional[str]:
+def card_material(
+    db, email, context: str | None = None, *, client_name: str | None = None, before=None
+) -> Optional[str]:
     """Що картка САМА підставить у поле матеріалу; None — лишить здогад як є
-    (матеріал чи колір не однозначні)."""
+    (матеріал чи колір не однозначні). `client_name` — як у картці: для листа
+    без матеріалу від Doceram-клієнта (`best_material`)."""
     from app.services.material_suggest import best_material
 
     ctx = material_context(email) if context is None else context
-    return splint_for(db, email, ctx) or best_material(db, email.material_color_guess or "", ctx)
+    return splint_for(db, email, ctx) or best_material(
+        db, email.material_color_guess or "", ctx, client_name=client_name, before=before
+    )
 
 
 def archive_names(attachments: Iterable[_Att]) -> list[str]:
