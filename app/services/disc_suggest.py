@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from app import material_match, perf
 from app.material_classifier import PMMA, ZIRCON, classify_material
@@ -56,6 +56,9 @@ PACKING = 1.8
 # 18.11.26 дванадцять спроб згоріли на майже повних 18 мм Monolith A1 — x06
 # пройшов неперевіреним і показався «влазить» (власник: «явно не вміщаються»).
 MAX_FIT_TRIES = 60
+# Початий диск, де розстановка місця не знайшла, усе одно показується (з
+# «розстав у Sum3D»), якщо вільно щонайменше стільки відсотків (власник 20.11.26).
+DOUBTFUL_SHOW_PCT = 30
 FIT_BUDGET_SECONDS = 2.5
 # Відповідь розстановки «диск × конструкції листа» — у пам'яті процесу:
 # картку листа відкривають і перемальовують кілька разів, а диск не змінився
@@ -471,9 +474,32 @@ def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAY
 
 def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: Optional[str],
             *, max_reads: int = 60, active: Optional[dict[str, datetime]] = None,
-            machines: Optional[dict[str, str]] = None) -> Suggestion:
+            machines: Optional[dict[str, str]] = None,
+            trace: Optional[dict[str, Any]] = None) -> Suggestion:
+    """`trace` (лише діагностика, `kmill_disc_hint`, 20.11.26): словник, куди
+    лягає, що сталося з КОЖНИМ диском потрібного матеріалу й кольору і чому —
+    висота, читання, вільне, площа, розстановка (скільки конструкцій лягло).
+    Картка його не передає: розстановка з поясненням дорожча."""
     want = want_of(material_text)
     result = Suggestion(want=want)
+    seen: dict[str, dict[str, Any]] = {}
+
+    def note(disc_stem: str, **facts: Any) -> None:
+        if trace is not None:
+            seen.setdefault(disc_stem, {"диск": disc_stem}).update(facts)
+
+    if trace is not None:
+        trace["диски"] = []
+    try:
+        return _suggest(want, result, attachments, blanks_root, max_reads, active, machines, trace, note)
+    finally:
+        if trace is not None:
+            trace["диски"] = list(seen.values())
+
+
+def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root: Optional[str],
+             max_reads: int, active: Optional[dict[str, datetime]], machines: Optional[dict[str, str]],
+             trace: Optional[dict[str, Any]], note: Callable[..., None]) -> Suggestion:
     if not want.family or not want.shades and want.family == ZIRCON:
         result.note = "немає матеріалу й кольору — підказки немає"
         return result
@@ -495,6 +521,18 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     with perf.span("disc:stl"):
         need_area = letter_footprint(attachments, want.family)
         pieces = letter_pieces(attachments)
+    if trace is not None:
+        scale = letter_scale(want.family)
+        trace["лист"] = {
+            "товщина_мм": round(result.thickness, 2), "висоти": result.heights, "чому": result.why,
+            "конструкцій_для_розстановки": len(pieces), "усадка": round(scale, 3),
+            "площа_основ_мм2": round(need_area) if need_area is not None else None,
+            "потрібно_вільного_мм2": round(need_area * PACKING) if need_area is not None else None,
+            "розміри_мм": [f"{float(p[:, 0].max() - p[:, 0].min()) * scale:.1f}×{float(p[:, 1].max() - p[:, 1].min()) * scale:.1f}"
+                           for p in pieces],
+        }
+        for d in discs:
+            note(d.stem, висота=d.height, на_верстаті=d.key in (active or {}))
     shapes: dict[str, Any] = {}
     picks: list[Pick] = []
     reads = 0
@@ -513,24 +551,33 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
 
     # Диск із верстата — першим і в читанні: інакше межа `max_reads` могла б
     # його не дочитати.
+    for disc in discs:
+        if not allowed(disc):
+            note(disc.stem, рішення="висота не за правилом")
     for disc in sorted((d for d in discs if allowed(d)),
                        key=lambda d: (d.key not in active, rank(d.height or 0), d.stem)):
         if reads >= max_reads:
-            break
+            note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
+            continue
         reads += 1
         with perf.span("disc:shapes"):
             shape = sum3d_disc.shape_of(disc.path)
         if shape is None:
+            note(disc.stem, рішення="файл диска не прочитався")
             continue
         # Лише матеріал, з'єднаний із краєм диска: острівці між дірками в
         # диску вже випали (власник 18.11.26). Сітка ~15 мс, кеш на диск.
         with perf.span("disc:usable"):
             free = shape.usable_share
+        note(disc.stem, вільно_відсотків=round(free * 100, 1), початий=bool(shape.contours),
+             вільно_мм2=round(free * math.pi * shape.radius ** 2))
         if free < NEARLY_USED:
+            note(disc.stem, рішення=f"майже вирізаний (< {round(NEARLY_USED * 100)} %)")
             continue
         if need_area is not None:
             free_area = free * math.pi * shape.radius ** 2
             if free_area < need_area * PACKING:
+                note(disc.stem, рішення="замало вільної площі")
                 continue
         picks.append(Pick(name=disc.stem, height=disc.height or 0, free_pct=round(free * 100),
                           started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape),
@@ -573,6 +620,11 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
         hit = _fit_cache.get((pick.name, piece_key))
         if hit is not None and hit[0] is shape:
             return hit[1]
+        if trace is not None:
+            # Діагностика: та сама розстановка, але з тим, скільки лягло.
+            report = disc_fit.fit_report(shape.radius, shape.blocked_grid(), masks)
+            note(pick.name, розстановка=report)
+            return bool(report["влазить"])
         with perf.span("disc:fit"):
             ok = disc_fit.fits_on(shape.radius, shape.blocked_grid(), masks)
         _remember_fit((pick.name, piece_key), shape, ok)
@@ -604,11 +656,33 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
             if pick.fit:
                 accepted.append(pick)
         unchecked = [p for p in unchecked if p.fit is None]
-    # Показуємо ЛИШЕ диски, де місце знайдено (власник 18.11.26: «навіщо
-    # показувати, що місце не перевірене», а на диску з 8 % вільного «тут же
-    # очевидно, що не влізе»). Ні неперевірених, ні «місця не знайдено» — тоді
-    # картка каже «новий диск» (шаблон, гілка без `best`).
-    ranked = accepted
+    # Неперевірених не показуємо (власник 18.11.26: «навіщо показувати, що
+    # місце не перевірене»). «Місця не знайдено» — лише початий із багатьма
+    # вільними (нижче); жодного — картка каже «новий диск» (гілка без `best`).
+    # Початий диск, де розстановка місця не знайшла, але вільного багато, —
+    # показуємо ПІСЛЯ тих, де знайшла, з «розстав у Sum3D» (власник 20.11.26:
+    # лист Павленка — картка «новий диск», а він сам розмістив 7 зубів на x265;
+    # моя розстановка лише наближення). Майже повний диск (18.11.26, x37 з 8 %)
+    # і далі не показуємо.
+    # Конструкція, ширша за сам диск, не влізе нікуди — тоді не показуємо.
+    def placeable(pick: Pick) -> bool:
+        return masks is None or not any(
+            disc_fit.wider_than_disc(p, shapes[pick.name].radius, masks.scale) for p in masks.pieces)
+
+    ranked = accepted + [p for p in doubtful
+                         if p.started and p.free_pct >= DOUBTFUL_SHOW_PCT and placeable(p)]
+    ranked = ranked[:3]
+    for pick in ordered:
+        if pick in accepted:
+            note(pick.name, рішення="у картці" if accepted.index(pick) < 3 else "запасний поза картою")
+        elif pick.fit is False and pick in ranked:
+            note(pick.name, рішення="розстановка не знайшла місця — показано з «розстав у Sum3D»")
+        elif pick.fit is False:
+            note(pick.name, рішення="розстановка не знайшла місця — не показано")
+        elif pick in unchecked:
+            note(pick.name, рішення="не перевірено (межа спроб чи часу) — не показано")
+        else:
+            note(pick.name, рішення="не дійшла черга (уже є 3 кращі)")
     if ranked:
         result.best = ranked[0]
         result.alts = ranked[1:3]

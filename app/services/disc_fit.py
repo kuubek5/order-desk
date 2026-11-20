@@ -300,6 +300,13 @@ def place_all(blocked: np.ndarray, pieces: "list[np.ndarray] | Masks", scale: fl
     """Поставити всі конструкції по черзі (найбільша перша). `blocked`
     змінюється — передавати копію. `pieces` — точки або готові `Masks`."""
     masks = pieces if isinstance(pieces, Masks) else Masks(pieces, scale)
+    return placed_count(blocked, masks) == len(masks.pieces)
+
+
+def placed_count(blocked: np.ndarray, masks: Masks) -> int:
+    """Скільки конструкцій стало, перш ніж наступна не лягла (найбільша
+    перша). `blocked` змінюється — передавати копію. Для діагностики
+    (`kmill_disc_hint`) — номер тієї, що не лягла, = результат."""
     for i in range(len(masks.pieces)):
         placed = False
         shape = masks.frame(i, blocked.shape)
@@ -321,8 +328,29 @@ def place_all(blocked: np.ndarray, pieces: "list[np.ndarray] | Masks", scale: fl
             placed = True
             break
         if not placed:
-            return False
-    return True
+            return i
+    return len(masks.pieces)
+
+
+def fit_report(radius: float, blocked: np.ndarray, masks: Masks) -> dict:
+    """Розстановка з поясненням: скільки конструкцій лягло і розмір тієї, що
+    не лягла (мм, після усадки). Картину диска не змінює."""
+    total = len(masks.pieces)
+    wide = [i for i, p in enumerate(masks.pieces) if wider_than_disc(p, radius, masks.scale)]
+    if wide:
+        return {"влазить": False, "лягло": 0, "з": total, "причина": "конструкція ширша за диск",
+                "не_лягла": _piece_size(masks, wide[0])}
+    done = placed_count(blocked.copy(), masks) if total else 0
+    out: dict = {"влазить": done == total, "лягло": done, "з": total,
+                 "вільних_клітинок_%": round(100 * float(1 - blocked.mean()), 1)}
+    if done < total:
+        out["не_лягла"] = _piece_size(masks, done)
+    return out
+
+
+def _piece_size(masks: Masks, i: int) -> str:
+    p = masks.pieces[i]
+    return f"{np.ptp(p[:, 0]) * masks.scale:.1f}×{np.ptp(p[:, 1]) * masks.scale:.1f} мм"
 
 
 def wider_than_disc(points: np.ndarray, radius: float, scale: float = 1.0) -> bool:

@@ -313,23 +313,89 @@ def test_hint_row_names_machine_and_warns_when_no_place_found():
                       thickness=9.0, heights=[14], why="…", best=pick)
     html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
     assert "стоїть у 250i-Tolik" in html and "на верстаті" not in html
-    assert "перевір у Sum3D" in html
+    assert "розстав у Sum3D" in html
 
 
-def test_disc_without_place_is_not_offered(shop, monkeypatch):
-    """Власник 18.11.26 (Emotions A3 x37, вільно 8 %, «місця не знайдено»):
-    «тут же очевидно, що не влізе». Диск, де розстановка місця не знайшла, не
-    пропонується — картка каже «новий диск». (Було 14.11.26: показувати як
-    сумнівний; змінено власником.)"""
+def test_started_disc_without_place_is_offered_only_when_much_is_free(shop, monkeypatch):
+    """Власник 20.11.26 (лист Павленка: картка «новий диск», а він сам розмістив
+    7 зубів на x265): розстановка CRM — наближення, тож початий диск, де вона
+    місця не знайшла, але вільно ≥ 30 %, показується з «розстав у Sum3D».
+    Майже повний (18.11.26, x37 з 8 %: «тут же очевидно, що не влізе») і новий
+    диск без місця — ні."""
     from app.routers.deps import templates
 
     root, atts = shop
     monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: False)
     hint = disc_suggest.suggest("моно A2", atts, str(root))
+    assert hint.best is not None and hint.best.name == "zr16_16-Monolith-A2-x37"
+    assert hint.best.fit is False and hint.best.started and hint.best.free_pct >= 30
+    shown = {hint.best.name, *(a.name for a in hint.alts)}
+    assert "zr16_16-Monolith-A2-x41" not in shown, "вирізано ~88 % — не показуємо"
+    assert "zr16_16-Monolith-A2-x40" not in shown, "новий диск, де місця немає, — ні"
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert "розстав у Sum3D" in html and "влазить" not in html
+
+
+def test_nothing_with_place_and_little_free_says_new_disc(shop, monkeypatch):
+    from app.routers.deps import templates
+
+    root, atts = shop
+    monkeypatch.setattr(disc_suggest, "DOUBTFUL_SHOW_PCT", 101)
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: False)
+    hint = disc_suggest.suggest("моно A2", atts, str(root))
     assert hint.best is None and hint.alts == [] and hint.rejected >= 1
     html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
     assert "Новий диск" in html and "початого диска з місцем немає" in html
-    assert "перевір у Sum3D" not in html
+    assert "розстав у Sum3D" not in html
+
+
+def test_trace_explains_every_disc_and_keeps_the_card(shop):
+    """`kmill_disc_hint` (20.11.26, лист Павленка: картка «новий диск», Sum3D —
+    x265): по кожному диску потрібного кольору — чому він у картці чи ні."""
+    root, atts = shop
+    plain = disc_suggest.suggest("моно A2", atts, str(root))
+    disc_suggest._fit_cache.clear()
+    trace: dict = {}
+    traced = disc_suggest.suggest("моно A2", atts, str(root), trace=trace)
+    assert traced.best.name == plain.best.name and [p.name for p in traced.alts] == [p.name for p in plain.alts]
+
+    by = {d["диск"]: d for d in trace["диски"]}
+    assert "zr16_16-Monolith-A3-x5" not in by, "лише потрібний колір"
+    assert by["zr14_14-Monolith-A2-x30"]["рішення"] == "висота не за правилом"
+    cut = by["zr16_16-Monolith-A2-x41"]  # вирізано ~88 %
+    assert cut["рішення"] == "розстановка не знайшла місця — не показано"
+    assert cut["розстановка"]["лягло"] < cut["розстановка"]["з"] and "не_лягла" in cut["розстановка"]
+    best = by["zr16_16-Monolith-A2-x37"]
+    assert best["рішення"] == "у картці" and best["початий"] is True
+    assert best["розстановка"]["влазить"] is True and best["розстановка"]["лягло"] == 3
+    letter = trace["лист"]
+    assert letter["конструкцій_для_розстановки"] == 3 and len(letter["розміри_мм"]) == 3
+    assert letter["висоти"] == [16]
+
+
+def test_trace_names_the_piece_that_did_not_fit(tmp_path, shop):
+    """Конструкція, ширша за диск (зайва далека вершина в STL), не лягає ніде —
+    і слід каже, яка саме й якого розміру."""
+    root, atts = shop
+    huge = _stl(tmp_path / "mail" / "case_31-anatomy_cad.stl", 120, 10, 10.0)
+    atts = [*atts, SimpleNamespace(filename=huge.name, saved_path=str(huge))]
+    trace: dict = {}
+    hint = disc_suggest.suggest("моно A2", atts, str(root), trace=trace)
+    assert hint.best is None
+    reports = [d["розстановка"] for d in trace["диски"] if "розстановка" in d]
+    assert reports and all(r["влазить"] is False for r in reports)
+    assert reports[0]["причина"] == "конструкція ширша за диск"
+    assert reports[0]["не_лягла"].startswith("150.0×")  # 120 мм × усадка 1.25
+
+
+def test_disc_hint_tool_needs_a_real_letter(db_session):
+    from app.services.mcp_common import ToolError
+    from app.services.mcp_tools_shop import tool_disc_hint
+
+    with pytest.raises(ToolError, match="email_id"):
+        tool_disc_hint(db_session, {})
+    with pytest.raises(ToolError, match="листа 999 немає"):
+        tool_disc_hint(db_session, {"email_id": 999})
 
 
 def test_new_disc_beats_unchecked_started_one_when_limit_runs_out(shop, monkeypatch):
@@ -390,7 +456,7 @@ def test_unchecked_started_disc_is_not_labelled_fitting():
     assert "влазить" in render(True)
     # Без перевірки (немає STL exocad) — про місце ні слова (власник 18.11.26).
     assert "влазить" not in render(None) and "не перевірено" not in render(None)
-    assert "перевір у Sum3D" in render(False)
+    assert "розстав у Sum3D" in render(False)
 
 
 def test_hint_deck_shows_up_to_three_candidates():

@@ -54,6 +54,7 @@ def _tool(name: str = "kmill_fake") -> Tool:
         ("kmill_sum3d_files", {"kind": "iso_link"}, False),
         ("kmill_sum3d_files", {"kind": "blk_shape"}, False),
         ("kmill_disc_fit_replay", {}, True),
+        ("kmill_disc_hint", {"email_id": 1}, True),
         ("kmill_stl_shapes", {"kind": "міст"}, True),
         ("kmill_stl_shapes", {}, False),
         ("kmill_mail_learn", {"days": 7}, True),
