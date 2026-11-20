@@ -11,7 +11,7 @@ MiniClient; імена вигадані.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -21,7 +21,13 @@ from app.models import ActionLog, Order, StatusEvent
 from app.services import sheet_stuck_writes as stuck
 from app.services import undo as undo_service
 from tests.asgi_client import MiniClient
+from tests.timepin import pinned_today
 from tests.test_settings_slabs_render import OPERATOR, app_db  # noqa: F401 — фікстура
+
+# Вкладка роботи — за кілька днів до сьогодні, а не датою: «20.10.26» на
+# 20.11.26 стала старшою за вікно черги (30 днів) і тести впали самі собою.
+_TAB_DAY = pinned_today() - timedelta(days=2)
+TAB = _TAB_DAY.strftime("%d.%m.%y")
 
 ROW_LOST = "рядок у таблиці не підтверджено — не записано"
 
@@ -41,7 +47,7 @@ def _client(app):
 
 def _mail_order(db, **fields) -> Order:
     base = dict(
-        source="email", sheet_tab="20.10.26", row_number=74, client_name="Клієнт-А",
+        source="email", sheet_tab=TAB, row_number=74, client_name="Клієнт-А",
         material_color="mono a2", quantity="2", status="знайдено при видачі",
         fill_pending="clear",
     )

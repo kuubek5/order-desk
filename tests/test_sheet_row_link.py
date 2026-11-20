@@ -7,6 +7,7 @@ gid вкладки береться з памʼяті (листинг синку
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +16,13 @@ import app.sheets as sheets
 from app.models import Order
 from app.services import sheet_stuck_writes as stuck
 from tests.asgi_client import MiniClient
+from tests.timepin import pinned_today
 from tests.test_settings_slabs_render import OPERATOR, app_db  # noqa: F401 — фікстура
+
+# Вкладка роботи — за кілька днів до сьогодні, а не датою: «20.10.26» на
+# 20.11.26 стала старшою за вікно черги (30 днів) і тести впали самі собою.
+_TAB_DAY = pinned_today() - timedelta(days=2)
+TAB = _TAB_DAY.strftime("%d.%m.%y")
 
 SHEET = "1TESTSHEETIDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
@@ -65,7 +72,7 @@ def _seed(session_factory):
 
     with session_factory() as db:
         set_setting(db, "google_sheet_id", SHEET)
-        order = Order(source="email", sheet_tab="20.10.26", row_number=74, client_name="Клієнт-А",
+        order = Order(source="email", sheet_tab=TAB, row_number=74, client_name="Клієнт-А",
                       material_color="mono a2", quantity="2", status="знайдено при видачі",
                       fill_pending="clear")
         db.add(order)
@@ -83,7 +90,7 @@ def test_banner_and_passport_carry_the_link_without_calling_google(app_db, monke
     monkeypatch.setattr(sheets, "open_spreadsheet", no_google)
     app, session_factory = app_db
     order_id = _seed(session_factory)
-    _remember("20.10.26", 9001)
+    _remember(TAB, 9001)
     expected = f"edit#gid=9001&amp;range={74 + HEADER_ROWS}:{74 + HEADER_ROWS}"
 
     client = MiniClient(app)

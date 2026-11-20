@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -21,8 +21,14 @@ from app.services import sheet_row_actions
 from app.services import sheet_stuck_writes as stuck
 from app.services.mail_row_retry import append_pending_mail_row_warm, pending_row_clause
 from tests.asgi_client import MiniClient
+from tests.timepin import pinned_today
 from tests.test_multicalc_safety import _client_line, _raw, _wire_sheet, rowdb  # noqa: F401
 from tests.test_settings_slabs_render import OPERATOR, app_db  # noqa: F401 — фікстура
+
+# Вкладка роботи — за кілька днів до сьогодні, а не датою: «20.10.26» на
+# 20.11.26 стала старшою за вікно черги (30 днів) і тести впали самі собою.
+_TAB_DAY = pinned_today() - timedelta(days=2)
+TAB = _TAB_DAY.strftime("%d.%m.%y")
 
 LOST_AT = datetime(2026, 10, 21, 5, 54)
 
@@ -36,7 +42,7 @@ def _clean():
 
 def _lost_mail(db, **kw) -> Order:
     base = dict(
-        source="email", sheet_tab="20.10.26", row_number=74, client_name="Клієнт-А",
+        source="email", sheet_tab=TAB, row_number=74, client_name="Клієнт-А",
         material_color="mono a3", quantity="1", sum3d_id="10-19-48", status="прораховано",
         sheet_row_lost_at=LOST_AT,
     )
@@ -72,7 +78,7 @@ def test_rewrite_binds_the_row_put_back_by_hand(rowdb, monkeypatch):  # noqa: F8
     line = _client_line("Клієнт-А", "mono a3", "1", "10-19-48")
     _wire_sheet(monkeypatch, _raw(_client_line("Інший", "pmma a2", "2"), line), appended)
     with Session(rowdb, expire_on_commit=False) as db:
-        db.add(Order(source="email", sheet_tab="20.10.26", row_number=1, client_name="Інший",
+        db.add(Order(source="email", sheet_tab=TAB, row_number=1, client_name="Інший",
                      material_color="pmma a2", quantity="2", status="нове"))
         order = _lost_mail(db)
         sheet_row_actions.start_rewrite_row(db, order, _user(db))
@@ -89,7 +95,7 @@ def test_rewrite_appends_when_the_row_is_really_gone_and_clears_blue_for_issued(
     appended: list = []
     _wire_sheet(monkeypatch, _raw(_client_line("Лаб-Б", "mono a3", "1", "16-20-34")), appended)
     with Session(rowdb, expire_on_commit=False) as db:
-        db.add(Order(source="email", sheet_tab="20.10.26", row_number=1, client_name="Лаб-Б",
+        db.add(Order(source="email", sheet_tab=TAB, row_number=1, client_name="Лаб-Б",
                      material_color="mono a3", quantity="1", sum3d_id="16-20-34", status="нове"))
         order = _lost_mail(db, status="знайдено при видачі")
         sheet_row_actions.start_rewrite_row(db, order, _user(db))
