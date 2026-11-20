@@ -174,6 +174,19 @@ def cache_dir() -> Path:
 # ── вибір файлів роботи ────────────────────────────────────────────────────
 
 
+_COPY_TAIL = re.compile(r"(?:(?:\s+|\s*[—–-]\s*)(?:копия|копія|copy))?\s*(?:\(\d+\))?$", re.IGNORECASE)
+
+
+def without_copy_mark(filename: str) -> str:
+    """Назва без позначки копії Windows: «x_cad – копія.stl» → «x_cad.stl».
+
+    20.11.26 (150i-Olejka): клієнт прислав конструкцію і її копію, верстат
+    фрезерував обидві, а табло показувало одну — копія не закінчувалась на
+    `_cad.stl` і не проходила фільтр експорту Exocad."""
+    path = PurePath(filename or "")
+    return _COPY_TAIL.sub("", path.stem) + path.suffix
+
+
 def work_stl_files(folder: Path) -> list[Path]:
     """STL-файли самої роботи в її теці й на рівень глибше.
 
@@ -193,11 +206,16 @@ def work_stl_files(folder: Path) -> list[Path]:
         if skipped is not None:
             logger.info("3D табло: тека %s недоступна: %s (ще %d подібних відтоді)", folder, exc, skipped)
         return []
-    cad = [p for p in found if p.name.lower().endswith("_cad.stl")]
+    # Копія Windows (`…_cad – копія.stl`) — теж конструкція: її фрезерують.
+    cad = [p for p in found if without_copy_mark(p.name).lower().endswith("_cad.stl")]
     chosen = cad or [p for p in found if not _NOT_WORK.search(PurePath(p.name).stem)]
     seen: set[tuple[str, int]] = set()
     unique: list[Path] = []
-    for path in sorted(chosen, key=lambda p: p.name.lower()):
+    def _order(p: Path) -> tuple[str, bool, str]:
+        plain = without_copy_mark(p.name)
+        return plain.lower(), p.name != plain, p.name.lower()  # оригінал перед копією
+
+    for path in sorted(chosen, key=_order):
         try:
             size = path.stat().st_size
         except OSError:
@@ -245,7 +263,8 @@ def pick_pose(tris: np.ndarray, filename: str) -> tuple[np.ndarray, str]:
 
     flat = tris.reshape(-1, 3)
     dims = flat.max(0) - flat.min(0)
-    if exocad_type(filename) not in ROTATABLE_TYPES or max(dims[0], dims[1]) >= SINGLE_UNIT_MM:
+    # Копія лягає так само, як оригінал.
+    if exocad_type(without_copy_mark(filename)) not in ROTATABLE_TYPES or max(dims[0], dims[1]) >= SINGLE_UNIT_MM:
         return AS_FILE, "файл"
     up = stl_shapes.upright(tris)
     if not up.rim_points:

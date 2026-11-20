@@ -68,6 +68,33 @@ def test_work_files_prefer_exocad_export_and_skip_jaw_models(tmp_path):
         "без експорту Exocad — усі STL, крім моделей щелеп і антагоністів"
 
 
+def test_windows_copy_of_exocad_export_is_a_second_construction(tmp_path):
+    """150i-Olejka 20.11.26: конструкція і її копія фрезерувались обидві, а
+    табло показувало одну — «…_cad – копія.stl» не проходив фільтр Exocad."""
+    folder = tmp_path / "лист"
+    folder.mkdir()
+    _write_binary(folder / "2026-11-20_00008-001-13-waxup_slm_cad.stl", _CUBE)
+    _write_binary(folder / "2026-11-20_00008-001-13-waxup_slm_cad – копія.stl", _CUBE)
+    _write_binary(folder / "Model_upper.stl", _CUBE)
+    assert [p.name for p in bm.work_stl_files(folder)] == [
+        "2026-11-20_00008-001-13-waxup_slm_cad.stl",
+        "2026-11-20_00008-001-13-waxup_slm_cad – копія.stl",
+    ]
+
+
+@pytest.mark.parametrize("name, plain", [
+    ("x-36-crown_cad – копія.stl", "x-36-crown_cad.stl"),
+    ("x-36-crown_cad - Copy (2).stl", "x-36-crown_cad.stl"),
+    ("x-36-crown_cad — копия.stl", "x-36-crown_cad.stl"),
+    ("x-36-crown_cad (3).stl", "x-36-crown_cad.stl"),
+    ("x-36-crown_cad.stl", "x-36-crown_cad.stl"),
+    # «copy» усередині слова — не позначка копії.
+    ("xcopy_cad.stl", "xcopy_cad.stl"),
+])
+def test_without_copy_mark(name, plain):
+    assert bm.without_copy_mark(name) == plain
+
+
 def test_pose_rule_rotates_only_a_single_exocad_crown(monkeypatch):
     """Правило з бойових файлів 12.11.26: «як у файлі», поворот — лише
     одиночній коронці Exocad, яку він робить нижчою хоча б на 15 %."""
