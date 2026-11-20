@@ -154,6 +154,11 @@ class User(Base):
     # (`app/services/feature_access.py`).
     furnace_power_alert: Mapped[bool] = mapped_column(default=False, server_default="0")
     furnace_power_access: Mapped[str] = mapped_column(String(10), default="", server_default="")
+    # Кнопка «Написати нам» (власник 20.11.26, міграція 0106): власний
+    # перемикач — за замовчуванням УВІМКНЕНО (кнопка була в усіх), доступ від
+    # адміна — те саме правило `feature_access`.
+    feedback_beacon: Mapped[bool] = mapped_column(default=True, server_default="1")
+    feedback_access: Mapped[str] = mapped_column(String(10), default="", server_default="")
     # НЕ ВИКОРИСТОВУЮТЬСЯ (власник 12.10.26 прибрав вікна «Що нового» і ранкового
     # привітання): колонки лишено, щоб не робити міграцію (0087/0088).
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

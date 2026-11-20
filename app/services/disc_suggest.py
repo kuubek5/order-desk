@@ -59,6 +59,12 @@ MAX_FIT_TRIES = 60
 # Початий диск, де розстановка місця не знайшла, усе одно показується (з
 # «розстав у Sum3D»), якщо вільно щонайменше стільки відсотків (власник 20.11.26).
 DOUBTFUL_SHOW_PCT = 30
+# Диск, файл якого Sum3D не переписував довше за стільки днів, не пропонується:
+# його, найімовірніше, вже викинули (власник 20.11.26: x136 Emotions A3 востаннє
+# брали у 2024, «99 % що його вже немає»; поріг — пів року). Sum3D переписує
+# `.blk` щоразу, коли кладе на диск роботу. Копіювання й антивірус дату лише
+# ОСВІЖАЮТЬ (`cam_blanks`), тож стара дата — надійна ознака «не чіпали».
+STALE_DAYS = 182
 FIT_BUDGET_SECONDS = 2.5
 # Відповідь розстановки «диск × конструкції листа» — у пам'яті процесу:
 # картку листа відкривають і перемальовують кілька разів, а диск не змінився
@@ -554,7 +560,17 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     for disc in discs:
         if not allowed(disc):
             note(disc.stem, рішення="висота не за правилом")
-    for disc in sorted((d for d in discs if allowed(d)),
+    # Давно не чіпаний диск — поза підказкою; диск, що стоїть у верстаті, — ні.
+    stale_before = time.time() - STALE_DAYS * 86400
+    fresh: list[DiscFile] = []
+    for disc in (d for d in discs if allowed(d)):
+        touched = _touched_at(disc.path)
+        if disc.key not in active and touched is not None and touched < stale_before:
+            note(disc.stem, рішення=f"не брали понад {STALE_DAYS} дн "
+                                  f"(файл змінено {datetime.fromtimestamp(touched):%d.%m.%y}) — не показано")
+            continue
+        fresh.append(disc)
+    for disc in sorted(fresh,
                        key=lambda d: (d.key not in active, rank(d.height or 0), d.stem)):
         if reads >= max_reads:
             note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
@@ -688,6 +704,15 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
         result.alts = ranked[1:3]
     result.new_disc = f"новий диск {result.heights[0]} мм {want.label()}"
     return result
+
+
+def _touched_at(path: Path) -> Optional[float]:
+    """Коли Sum3D востаннє переписував файл диска; не прочиталось — None
+    (тоді диск НЕ ховаємо: «не знаю» не привід прибрати)."""
+    try:
+        return os.stat(path).st_mtime
+    except OSError:
+        return None
 
 
 def _key_of(stem: str) -> str:

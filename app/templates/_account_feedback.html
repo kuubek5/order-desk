@@ -1,0 +1,58 @@
+{# Кнопка «Написати нам» — перемикач оператора (кабінет → «Сповіщення»; власник
+   20.11.26: «потрібно мати можливість відключити»). Доступ від адміна
+   (`users.feedback_access`, app/services/feature_access.py): "deny" — лише
+   повідомлення, без перемикача; "force" — увімкнений і заблокований. За
+   замовчуванням кнопка УВІМКНЕНА. Зміна видна після оновлення сторінки. #}
+{% set fb_access = user.feedback_access or '' %}
+<section class="dn fbprefs" data-fbprefs>
+    <div class="dn-head">
+        <div>
+            <h3 class="dn-title">Кнопка «Написати нам»</h3>
+            <p class="dn-sub">Кругла кнопка в нижньому кутку кожного екрана — повідомити про помилку, ідею чи питання. Вимкнена — кнопки не видно.</p>
+        </div>
+        {% if fb_access != 'deny' %}
+        <label class="dn-master"><span>Увімкнено</span>
+            <input type="checkbox" class="dn-switch" data-fbprefs-switch{% if user.feedback_beacon or fb_access == 'force' %} checked{% endif %}{% if fb_access == 'force' %} disabled{% endif %}>
+        </label>
+        {% endif %}
+    </div>
+    {% if fb_access == 'deny' %}
+    <p class="dn-state" data-tone="warn">Адміністратор вимкнув для вас цю кнопку.</p>
+    {% elif fb_access == 'force' %}
+    <p class="dn-state" data-tone="ok">Увімкнено адміністратором — вимкнути може лише він.</p>
+    {% endif %}
+    <p class="dn-state" data-fbprefs-state hidden></p>
+</section>
+<script>
+(function () {
+  var root = document.querySelector("[data-fbprefs]");
+  if (!root || root.dataset.wired) return;
+  root.dataset.wired = "1";
+  var state = root.querySelector("[data-fbprefs-state]");
+  root.addEventListener("change", function (event) {
+    var input = event.target;
+    if (!input || !input.hasAttribute("data-fbprefs-switch")) return;
+    var body = new FormData();
+    body.append("beacon", input.checked ? "on" : "off");
+    fetch("/account/feedback-beacon", { method: "POST", body: body, credentials: "same-origin" })
+      .then(function (r) {
+        state.hidden = false;
+        state.dataset.tone = r.ok ? "ok" : "warn";
+        if (!r.ok) {
+          state.textContent = "Не збережено — оновіть сторінку й спробуйте ще раз";
+          return;
+        }
+        // Кнопка зникає одразу; з'явитись може лише та, що вже є на сторінці.
+        var widget = document.getElementById("fb-root");
+        if (widget) widget.hidden = !input.checked;
+        state.textContent = (input.checked && !widget)
+          ? "Збережено — кнопка з'явиться після оновлення сторінки" : "Збережено";
+      })
+      .catch(function () {
+        state.hidden = false;
+        state.dataset.tone = "warn";
+        state.textContent = "Немає зв'язку з CRM — не збережено";
+      });
+  });
+})();
+</script>

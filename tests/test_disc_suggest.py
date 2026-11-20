@@ -8,7 +8,9 @@
 from __future__ import annotations
 
 import json
+import os
 import struct
+import time
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -386,6 +388,53 @@ def test_trace_names_the_piece_that_did_not_fit(tmp_path, shop):
     assert reports and all(r["влазить"] is False for r in reports)
     assert reports[0]["причина"] == "конструкція ширша за диск"
     assert reports[0]["не_лягла"].startswith("150.0×")  # 120 мм × усадка 1.25
+
+
+def test_disc_untouched_for_half_a_year_is_not_offered(shop):
+    """Власник 20.11.26: x136 Emotions A3 востаннє брали у 2024 — «99 % що його
+    вже немає». Файл диска, який Sum3D не переписував понад пів року, — поза
+    підказкою; той самий диск у верстаті — показується."""
+    root, atts = shop
+    old = root / "zr" / "16" / "zr16_16-Monolith-A2-x37.blk"
+    stamp = time.time() - (disc_suggest.STALE_DAYS + 30) * 86400
+    os.utime(old, (stamp, stamp))
+    trace: dict = {}
+    hint = disc_suggest.suggest("моно A2", atts, str(root), trace=trace)
+    shown = {hint.best.name if hint.best else None, *(a.name for a in hint.alts)}
+    assert "zr16_16-Monolith-A2-x37" not in shown
+    assert hint.best is not None and hint.best.name == "zr16_16-Monolith-A2-x40", "свіжий диск лишився"
+    why = {d["диск"]: d for d in trace["диски"]}["zr16_16-Monolith-A2-x37"]["рішення"]
+    assert why.startswith(f"не брали понад {disc_suggest.STALE_DAYS} дн")
+
+    # Стоїть у верстаті — отже фізично є, хай файл і старий.
+    on_machine = disc_suggest.suggest("моно A2", atts, str(root),
+                                      active={"16-monolith-a2-x37": datetime.now()})
+    assert on_machine.best is not None and on_machine.best.name == "zr16_16-Monolith-A2-x37"
+
+    # Трохи молодший за поріг — лишається.
+    stamp = time.time() - (disc_suggest.STALE_DAYS - 5) * 86400
+    os.utime(old, (stamp, stamp))
+    assert disc_suggest.suggest("моно A2", atts, str(root)).best.name == "zr16_16-Monolith-A2-x37"
+
+
+def test_stale_16_gives_way_to_existing_18_for_multilayer(tmp_path):
+    """Власник 20.11.26 (лист Павленка, Emotions A3, ≈13,9 мм): x136 16 мм не
+    брали з 2024 — «можна розглядати висоту 18». Мультиколор і так допускає
+    крок вище; без давнього 16 першим стає наявний 18, а не «новий диск»."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    used = [_square(x, 0, 6) for x in (-25, 0)]
+    _disc(root, "zr", 16, "zr16_16-Emotions-A3-x136", used)
+    _disc(root, "zr", 18, "zr18_18-Emotions-A3-x200", used)
+    stamp = time.time() - 700 * 86400
+    os.utime(root / "zr" / "16" / "zr16_16-Emotions-A3-x136.blk", (stamp, stamp))
+    (tmp_path / "mail").mkdir()
+    files = [_stl(tmp_path / "mail" / f"case_{t}-crown_cad.stl", 9, 10, 10.0) for t in (11, 12)]
+    atts = [SimpleNamespace(filename=f.name, saved_path=str(f)) for f in files]
+    hint = disc_suggest.suggest("emo a3", atts, str(root))
+    assert hint.heights == [16, 18]
+    assert hint.best is not None and hint.best.name == "zr18_18-Emotions-A3-x200"
+    assert hint.alts == []
 
 
 def test_disc_hint_tool_needs_a_real_letter(db_session):

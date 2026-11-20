@@ -24,11 +24,36 @@ from app.feedback_images import (
 from app.models import Feedback, FeedbackImage, User
 from app.services.attempt_limit import feedback_limiter
 from app.routers.deps import get_current_user, login_redirect, get_db, templates, toast_response
+from app.services import feature_access
 from app.services import feedback as feedback_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_FEEDBACK = feature_access.BY_KEY["feedback"]
+_SWITCH = {"on": True, "off": False}
+
+
+@router.post("/account/feedback-beacon", status_code=204)
+def post_account_feedback_beacon(request: Request, beacon: str | None = Form(None),
+                                 db: Session = Depends(get_db)):
+    """Власний перемикач кнопки «Написати нам» (кабінет → «Сповіщення»,
+    20.11.26). Поле — власне слово on/off; відсутнє = «не чіпати»."""
+    from fastapi import Response
+
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    if beacon is None:
+        return Response(status_code=204)
+    if beacon not in _SWITCH:
+        return Response(status_code=422)
+    if not feature_access.own_switch_allowed(user, _FEEDBACK, _SWITCH[beacon]):
+        return Response(status_code=403)
+    user.feedback_beacon = _SWITCH[beacon]
+    db.commit()
+    return Response(status_code=204)
 
 
 def _require_user(request: Request, db: Session) -> User:
@@ -80,6 +105,10 @@ def submit_feedback(
     db: Session = Depends(get_db),
 ):
     user = _require_user(request, db)
+    # Кнопку вимкнено цій людині (20.11.26, доступ від адміна або власний
+    # перемикач) — звернення не приймаємо, навіть якщо форма лишилась відкритою.
+    if not feature_access.is_on(user, _FEEDBACK):
+        return toast_response("Зворотний зв'язок для вас вимкнено.", kind="error")
     # Ключ — оператор, а не IP: IP тут в усіх один (127.0.0.1).
     limiter_key = f"feedback:{user.id}"
     if feedback_limiter.retry_after(limiter_key):

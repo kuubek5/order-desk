@@ -622,6 +622,8 @@ def ui_prefs(request: Request) -> dict:
         "hidden_widgets": "",
         # Фон порожньої черги: "" = за темою (app/services/queue_empty_bg.py).
         "queue_empty_bg": "",
+        # Кнопка «Написати нам» (20.11.26): анонім/збій — видно, як було.
+        "feedback": True,
     }
     mirrored = False
     try:
@@ -657,6 +659,7 @@ def ui_prefs(request: Request) -> dict:
                         "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
                         "hidden_widgets": user.queue_hidden_widgets or "",
                         "queue_empty_bg": user.queue_empty_bg or "",
+                        "feedback": _feature_access.is_on(user, _feature_access.BY_KEY["feedback"]),
                     }
                     mirrored = True
             finally:
