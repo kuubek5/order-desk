@@ -18,7 +18,7 @@ from app.models import ActionLog, MachineReading, MaterialGuardAck, Order, User
 from app.services import disc_check
 from app.services import material_guard as mg
 from tests.asgi_client import MiniClient
-from tests.test_settings_slabs_render import OPERATOR, app_db  # noqa: F401 — фікстура
+from tests.test_settings_slabs_render import ADMIN, OPERATOR, app_db  # noqa: F401 — фікстура
 
 NOW = datetime(2026, 11, 18, 4, 0)
 TAB = "17.11.26"
@@ -247,6 +247,80 @@ def test_account_switches_save_only_their_own_field(app_db):  # noqa: F811
     with factory() as db:
         user = db.query(User).filter_by(username=OPERATOR[0]).one()
         assert user.material_guard is False and user.material_guard_view == "card"
+
+
+# ── Доступ від адміна (власник 20.11.26) ────────────────────────────────────
+
+
+def test_admin_access_overrides_operator_switches(db_session, monkeypatch):
+    disc = mg.Alert(layer=mg.LAYER_DISC, order_id=1, client="", quantity="", ordered="", ordered_label="",
+                    actual="", actual_label="")
+    letter = mg.Alert(layer=mg.LAYER_LETTER, order_id=2, client="", quantity="", ordered="", ordered_label="",
+                      actual="", actual_label="")
+    monkeypatch.setattr(mg, "all_alerts", lambda db: [disc, letter])
+    user = User(username="op", password_hash="x", material_guard=True, material_guard_letter=True)
+    # Порожньо (стара база, ніхто не чіпав) = на вибір оператора, як було.
+    assert mg.alerts_for(db_session, user) == [disc, letter]
+    user.material_guard_access = "deny"
+    assert mg.alerts_for(db_session, user) == []
+    user.material_guard_access = "force"
+    user.material_guard = False
+    user.material_guard_letter = False
+    # «Завжди» вмикає основну перевірку, але не «лист ↔ вписане».
+    assert mg.alerts_for(db_session, user) == [disc]
+    user.material_guard_access = "щось"
+    assert mg.access_of(user) == mg.ACCESS_CHOICE and mg.alerts_for(db_session, user) == []
+
+
+def _access(factory, username: str) -> str:
+    with factory() as db:
+        return db.query(User).filter_by(username=username).one().material_guard_access
+
+
+def test_admin_sets_access_and_operator_switches_obey(app_db):  # noqa: F811
+    app, factory = app_db
+    with factory() as db:
+        operator_id = db.query(User).filter_by(username=OPERATOR[0]).one().id
+    admin = MiniClient(app)
+    admin.login(*ADMIN)
+    url = f"/settings/users/{operator_id}/feature-access"
+
+    status, _, page = admin.get("/settings")
+    assert status == 200 and f'action="{url}"' in page and '<option value="force"' in page
+    assert 'name="feature" value="material_guard"' in page
+
+    def set_access(word: str) -> int:
+        return admin.post(url, {"feature": "material_guard", "access": word})[0]
+
+    assert set_access("deny") == 303
+    assert _access(factory, OPERATOR[0]) == "deny"
+    operator = MiniClient(app)
+    operator.login(*OPERATOR)
+    assert operator.post("/account/material-guard", {"guard": "on"})[0] == 403
+    assert operator.post("/account/material-guard", {"letter": "on"})[0] == 403
+    assert operator.post("/account/material-guard", {"view": "card"})[0] == 204
+    assert operator.post("/material-guard/ack", {"layer": "disc", "order_id": "1"})[0] == 403
+    _, _, account = operator.get("/account")
+    assert "Адміністратор вимкнув для вас сторож матеріалу" in account
+    assert 'data-mguard="guard"' not in account
+
+    assert set_access("force") == 303
+    assert operator.post("/account/material-guard", {"guard": "off"})[0] == 403
+    assert operator.post("/account/material-guard", {"letter": "on"})[0] == 204
+    _, _, account = operator.get("/account")
+    assert "Увімкнено адміністратором" in account
+
+    assert set_access("choice") == 303
+    assert _access(factory, OPERATOR[0]) == ""
+    assert operator.post("/account/material-guard", {"guard": "off"})[0] == 204
+    # Невідоме слово, порожнє поле й невідома функція нічого не змінюють.
+    assert set_access("") == 303
+    assert set_access("maybe") == 303
+    assert admin.post(url, {"feature": "nope", "access": "force"})[0] == 303
+    assert _access(factory, OPERATOR[0]) == ""
+    # Оператор сам собі доступу не дасть.
+    assert operator.post(url, {"feature": "material_guard", "access": "force"})[0] == 403
+    assert _access(factory, OPERATOR[0]) == ""
 
 
 def test_agree_button_request_records_and_answers_with_the_slot(app_db):  # noqa: F811

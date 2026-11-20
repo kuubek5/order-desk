@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import EmailMessage, MaterialGuardAck, Order, User
-from app.services import disc_check
+from app.services import disc_check, feature_access
 from app.services.order_dates import order_date
 
 RECENT_HOURS = 24
@@ -262,13 +262,38 @@ def invalidate() -> None:
         _cache = (0.0, [])
 
 
+# Доступ, яким керує адмін (власник 20.11.26) — спільне правило
+# `feature_access` (так само живе повідомлення «піч без зв'язку»).
+FEATURE = feature_access.BY_KEY["material_guard"]
+ACCESS_CHOICE = feature_access.CHOICE
+ACCESS_DENY = feature_access.DENY
+ACCESS_FORCE = feature_access.FORCE
+
+
+def access_of(user: Optional[User]) -> str:
+    return feature_access.access_of(user, FEATURE)
+
+
+def disc_layer_on(user: Optional[User]) -> bool:
+    """Основна перевірка (диск програми ↔ замовлене) для цього оператора."""
+    return feature_access.is_on(user, FEATURE)
+
+
+def letter_layer_on(user: Optional[User]) -> bool:
+    """«Лист ↔ вписане»: заборона адміна її теж вимикає; «завжди» — ні, вона
+    лишається окремим вибором оператора."""
+    if user is None or access_of(user) == ACCESS_DENY:
+        return False
+    return bool(user.material_guard_letter)
+
+
 def alerts_for(db: Session, user: Optional[User]) -> list[Alert]:
-    """Картки, які бачить цей оператор (його перемикачі)."""
-    if user is None or not (user.material_guard or user.material_guard_letter):
-        return []
-    layers = {LAYER_DISC} if user.material_guard else set()
-    if user.material_guard_letter:
+    """Картки, які бачить цей оператор (його перемикачі й доступ від адміна)."""
+    layers = {LAYER_DISC} if disc_layer_on(user) else set()
+    if letter_layer_on(user):
         layers.add(LAYER_LETTER)
+    if not layers:
+        return []
     return [a for a in all_alerts(db) if a.layer in layers]
 
 

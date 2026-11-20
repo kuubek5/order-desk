@@ -2,16 +2,28 @@
    18.11.26, MATERIAL_GUARD_BRIEF.md). Кожен перемикач шле ЛИШЕ своє поле
    власним словом (on/off, banner/card) — порожнє поле сервер читає як «не
    чіпати» (CLAUDE.md §14). Зберігається одразу, без кнопки. #}
+{# Доступ від адміна (20.11.26, `users.material_guard_access`): "deny" — лише
+   повідомлення, без перемикачів (сервер їх і так відхилить); "force" —
+   основний перемикач стоїть увімкненим і заблокованим. #}
+{% set mg_access = user.material_guard_access or '' %}
 <section class="dn mguard-prefs" data-mguard-prefs>
     <div class="dn-head">
         <div>
             <h3 class="dn-title">Сторож матеріалу</h3>
             <p class="dn-sub">Червона картка в черзі, коли замовлене не збігається з диском програми: інший матеріал, лінія (Emotions ≠ Z-Nature) чи колір. Перевірка — щойно програма з'явилась у теці, ще до верстата. «Погоджено» знімає картку (клієнт передумав), «Погодити весь диск» — коли диск названо неправильно.</p>
         </div>
+        {% if mg_access != 'deny' %}
         <label class="dn-master"><span>Увімкнено</span>
-            <input type="checkbox" class="dn-switch" data-mguard="guard"{% if user.material_guard %} checked{% endif %}>
+            <input type="checkbox" class="dn-switch" data-mguard="guard"{% if user.material_guard or mg_access == 'force' %} checked{% endif %}{% if mg_access == 'force' %} disabled{% endif %}>
         </label>
+        {% endif %}
     </div>
+    {% if mg_access == 'deny' %}
+    <p class="dn-state" data-tone="warn">Адміністратор вимкнув для вас сторож матеріалу.</p>
+    {% else %}
+    {% if mg_access == 'force' %}
+    <p class="dn-state" data-tone="ok">Увімкнено адміністратором — вимкнути може лише він.</p>
+    {% endif %}
     <label class="dn-ev">
         <span class="dn-ev-text"><b>Лист ↔ вписане оператором</b><small>Окремо: клієнт написав у листі одне, а при прийнятті вписано інше</small></span>
         <input type="checkbox" class="dn-switch" data-mguard="letter"{% if user.material_guard_letter %} checked{% endif %}>
@@ -20,6 +32,7 @@
         <label class="dn-chip"><input type="radio" name="mguard-view" value="banner"{% if user.material_guard_view != 'card' %} checked{% endif %} data-mguard="view"><span>Банер над чергою</span></label>
         <label class="dn-chip"><input type="radio" name="mguard-view" value="card"{% if user.material_guard_view == 'card' %} checked{% endif %} data-mguard="view"><span>Картка-порівняння</span></label>
     </div>
+    {% endif %}
     <p class="dn-state" data-mguard-state hidden></p>
 </section>
 <script>

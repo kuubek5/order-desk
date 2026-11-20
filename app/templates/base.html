@@ -121,6 +121,11 @@
        (сторінка логіна) не показуємо: форма однаково вимагає авторизації. #}
     {% if request.session.get('user_id') %}
     {% include "_feedback.html" %}
+    {# Піч без зв'язку під час спікання (20.11.26) — на кожному екрані під
+       сесією. Хто бачить — доступ від адміна + перемикач у Кабінеті; іншим
+       сервер віддає порожньо. #}
+    <div id="fpower-slot" hx-get="/furnace-power/slot" hx-trigger="load delay:800ms, every 20s[!document.hidden]"
+         hx-target="this" hx-swap="innerHTML"></div>
     {% endif %}
     {% include "_update_overlay.html" %}
     {# Зона спливаючих сповіщень. Вигляд (скляна/картка), позиція і перелік

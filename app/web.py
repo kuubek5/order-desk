@@ -91,6 +91,7 @@ from app.routers.shift import router as shift_router
 from app.routers.discs import router as discs_router
 from app.routers.disc_hint import router as disc_hint_router
 from app.routers.material_guard import router as material_guard_router
+from app.routers.furnace_power import router as furnace_power_router
 from app.routers.screens import router as screens_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
@@ -116,6 +117,7 @@ from app.services.machines import (
     prune_machine_readings as _prune_machine_readings,
 )
 from app.services.furnace_rediscover import tick as _furnace_rediscover_tick
+from app.services.furnace_power import tick as _furnace_power_tick
 from app.services.machine_rediscover import tick as _machine_rediscover_tick
 from app.services.cam_blanks import sync_blanks as _sync_cam_blanks
 from app.settings_store import get_setting
@@ -746,6 +748,8 @@ def _furnace_tick(db: Session) -> None:
     if not _furnaces_configured(db):
         return
     _poll_furnaces(db)
+    # Піч замовкла під час спікання (батарея живлення, власник 20.11.26).
+    _furnace_power_tick(db)
     _furnace_rediscover_tick(db)
 
 
@@ -1907,6 +1911,8 @@ app.include_router(discs_router)
 app.include_router(disc_hint_router)
 # Сторож матеріалу (18.11.26): червоні картки «замовлено ≠ фрезерується».
 app.include_router(material_guard_router)
+# Піч без зв'язку під час спікання (20.11.26): смуга на всіх екранах.
+app.include_router(furnace_power_router)
 # Скринька невідомих екранів — кадри, на яких читач печей і верстатів
 # спіткнувся, і рядок-підпис від людини до них.
 app.include_router(screens_router)

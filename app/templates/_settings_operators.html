@@ -15,6 +15,9 @@
                             <th>Роль</th>
                             <th>Літера</th>
                             <th>Статус</th>
+                            {% for f in access_features %}
+                            <th title="{{ f.hint }}">{{ f.title }}</th>
+                            {% endfor %}
                             <th>Скинути пароль</th>
                             <th></th>
                         </tr>
@@ -42,6 +45,26 @@
                                     {{ 'активний' if operator.is_active else 'вимкнено' }}
                                 </span>
                             </td>
+                            {% for f in access_features %}
+                            <td>
+                                {# Доступ до функції (власник 20.11.26, app/services/feature_access.py).
+                                   Кожен стан — власне слово: порожнє значення сервер читає як
+                                   «поля не було» (CLAUDE.md §14). Зберігається одразу при виборі. #}
+                                {% set fa = operator[f.access_field] or '' %}
+                                <form method="post" action="/settings/users/{{ operator.id }}/feature-access">
+                                    <input type="hidden" name="feature" value="{{ f.key }}">
+                                    <select name="access" class="login-input users-access-select" onchange="this.form.submit()" style="width:auto;padding-right:2rem;"
+                                            aria-label="{{ f.title }}: {{ operator.full_name or operator.username }}"
+                                            title="Заборонено — не бачить і не вмикає · На вибір — вмикає сам у Кабінеті · Завжди — увімкнено, вимкнути не може">
+                                        {# Підписи короткі: дві такі колонки й так розширюють таблицю. #}
+                                        <option value="deny"{% if fa == 'deny' %} selected{% endif %}>Заборонено</option>
+                                        <option value="choice"{% if fa not in ('deny', 'force') %} selected{% endif %}>На вибір</option>
+                                        <option value="force"{% if fa == 'force' %} selected{% endif %}>Завжди</option>
+                                    </select>
+                                    <noscript><button type="submit" class="link-button">Зберегти</button></noscript>
+                                </form>
+                            </td>
+                            {% endfor %}
                             <td>
                                 <form method="post" action="/settings/users/{{ operator.id }}/reset-password" class="users-reset-form">
                                     <input type="password" name="new_password" class="login-input users-reset-input" placeholder="новий пароль" minlength="10">

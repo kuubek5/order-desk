@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.services.mcp_common import Tool, _days_limit_schema, _int_arg
+from app.services.mcp_common import Tool, ToolError, _days_limit_schema, _int_arg
 
 SHOP_TOOLS: tuple[Tool, ...] = ()
 
@@ -194,6 +194,49 @@ def tool_furnace_cycles(db: Session, args: dict) -> dict[str, Any]:
     )
 
 
+def tool_disc_hint(db: Session, args: dict) -> dict[str, Any]:
+    """Підказка диска одного листа з поясненням по КОЖНОМУ диску (20.11.26:
+    картка Павленка сказала «новий диск», а Sum3D поставив роботу на x265)."""
+    from app.models import EmailMessage
+    from app.services import disc_suggest
+    from app.settings_store import get_setting
+
+    raw = args.get("email_id")
+    try:
+        email_id = int(str(raw))
+    except (TypeError, ValueError):
+        raise ToolError("потрібен `email_id` — номер листа (з адреси /mail?open=N)") from None
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise ToolError(f"листа {email_id} немає")
+    material = str(args.get("material") or "").strip() or (email.material_color_guess or "")
+    machines: dict[str, str] = {}
+    active = disc_suggest.active_discs(db, machines=machines)
+    trace: dict[str, Any] = {}
+    hint = disc_suggest.suggest(material, list(email.attachments or []), get_setting(db, "cam_blanks_path"),
+                                active=active, machines=machines, trace=trace)
+    return {
+        "лист": email_id,
+        "матеріал": material,
+        "шукали": hint.want.label() if hint.want.family else None,
+        "картка": (
+            {"диск": hint.best.name, "запасні": [p.name for p in hint.alts]} if hint.best
+            else (f"новий диск {hint.heights[0]} мм" if hint.heights else (hint.note or hint.why))
+        ),
+        "розстановкою_відкинуто": hint.rejected,
+        "конструкції": trace.get("лист"),
+        "диски": trace.get("диски", []),
+        "пояснення": "Диски — лише потрібного матеріалу й кольору. «розстановка»: скільки конструкцій "
+                     "лягло з усіх і розмір тієї, що не лягла (після усадки). Назв STL не віддає.",
+    }
+
+
+def tool_furnace_power(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import furnace_power
+
+    return furnace_power.replay(db, _int_arg(args, "days", default=14, low=1, high=60))
+
+
 def tool_export_overview(db: Session, args: dict) -> dict[str, Any]:
     from app.services import shop_history
 
@@ -240,6 +283,35 @@ SHOP_TOOLS = SHOP_TOOLS + (
         ),
         schema=_days_limit_schema(14, 120),
         run=tool_furnace_cycles,
+    ),
+    Tool(
+        name="kmill_disc_hint",
+        description=(
+            "Підказка диска для ОДНОГО листа з поясненням по кожному диску потрібного матеріалу й "
+            "кольору: висота за правилом, вільне місце, перевірка площі, розстановка (скільки "
+            "конструкцій лягло і розмір тієї, що не лягла) і чи показано в картці. Для «чому картка "
+            "не підказала диск, на який цех поставив роботу». Назв STL не віддає. Лише читання."
+        ),
+        schema={"type": "object", "properties": {
+            "email_id": {"type": "integer", "description": "Номер листа (з адреси /mail?open=N)."},
+            "material": {"type": "string",
+                         "description": "Матеріал-колір, як у полі картки (`emo a1`). Пусто — здогад листа."},
+        }, "required": ["email_id"], "additionalProperties": False},
+        run=tool_disc_hint,
+        # Читання .blk і розстановка STL — важкий numpy: окремим процесом.
+        isolate=lambda args: True,
+    ),
+    Tool(
+        name="kmill_furnace_power",
+        description=(
+            "Піч замовкала під час спікання (батарея живлення, мережа): що правило повідомлення «піч без "
+            "зв'язку» сказало б за минулі дні — з показів печей. Обриви під час RUN з часом і тривалістю, "
+            "скільки обривів поза спіканням. Лише читання."
+        ),
+        schema={"type": "object", "properties": {
+            "days": {"type": "integer", "minimum": 1, "maximum": 60, "description": "За скільки днів, типово 14."},
+        }, "additionalProperties": False},
+        run=tool_furnace_power,
     ),
     Tool(
         name="kmill_export_overview",

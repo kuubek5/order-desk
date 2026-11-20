@@ -1,0 +1,50 @@
+{# Піч без зв'язку під час спікання — перемикач оператора (кабінет → «Сповіщення»;
+   власник 20.11.26). Доступ від адміна (`users.furnace_power_access`,
+   app/services/feature_access.py): "deny" — лише повідомлення, без
+   перемикача; "force" — перемикач увімкнений і заблокований. Перемикач шле
+   своє поле власним словом (on/off) і зберігається одразу. #}
+{% set fp_access = user.furnace_power_access or '' %}
+<section class="dn fpower-prefs" data-fpower-prefs>
+    <div class="dn-head">
+        <div>
+            <h3 class="dn-title">Піч без зв'язку під час спікання</h3>
+            <p class="dn-sub">Смуга вгорі будь-якого екрана, коли піч перестала відповідати посеред спікання довше за хвилину — наприклад, розрядилась батарея живлення. Висить, доки хтось не натисне «Зрозуміло».</p>
+        </div>
+        {% if fp_access != 'deny' %}
+        <label class="dn-master"><span>Увімкнено</span>
+            <input type="checkbox" class="dn-switch" data-fpower="alert"{% if user.furnace_power_alert or fp_access == 'force' %} checked{% endif %}{% if fp_access == 'force' %} disabled{% endif %}>
+        </label>
+        {% endif %}
+    </div>
+    {% if fp_access == 'deny' %}
+    <p class="dn-state" data-tone="warn">Адміністратор вимкнув для вас це повідомлення.</p>
+    {% elif fp_access == 'force' %}
+    <p class="dn-state" data-tone="ok">Увімкнено адміністратором — вимкнути може лише він.</p>
+    {% endif %}
+    <p class="dn-state" data-fpower-state hidden></p>
+</section>
+<script>
+(function () {
+  var root = document.querySelector("[data-fpower-prefs]");
+  if (!root || root.dataset.wired) return;
+  root.dataset.wired = "1";
+  var state = root.querySelector("[data-fpower-state]");
+  root.addEventListener("change", function (event) {
+    var input = event.target;
+    if (!input || !input.dataset || input.dataset.fpower !== "alert") return;
+    var body = new FormData();
+    body.append("alert", input.checked ? "on" : "off");
+    fetch("/account/furnace-power", { method: "POST", body: body, credentials: "same-origin" })
+      .then(function (r) {
+        state.hidden = false;
+        state.dataset.tone = r.ok ? "ok" : "warn";
+        state.textContent = r.ok ? "Збережено" : "Не збережено — оновіть сторінку й спробуйте ще раз";
+      })
+      .catch(function () {
+        state.hidden = false;
+        state.dataset.tone = "warn";
+        state.textContent = "Немає зв'язку з CRM — не збережено";
+      });
+  });
+})();
+</script>

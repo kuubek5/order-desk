@@ -1548,3 +1548,33 @@ tr.mguard-row > td:last-child { box-shadow: inset -4px 0 0 var(--alarm); }
   .mguard-banner { grid-template-columns: auto minmax(0, 1fr); }
   .mguard-banner .mguard-acts { grid-column: 1 / -1; justify-content: flex-start; }
 }
+
+/* ── Піч без зв'язку під час спікання (20.11.26, _furnace_power.html) ──
+   Смуга поверх будь-якого екрана: fixed, тож сторінка під нею не стрибає.
+   Тон «увага» (warn), не «тривога»: це інформація, а не помилка оператора. */
+#fpower-slot:empty { display: none; }
+.fpower { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 70;
+  width: min(760px, calc(100vw - 32px)); display: grid; gap: 8px; pointer-events: none; }
+.fpower-strip { pointer-events: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px;
+  align-items: center; padding: 11px 14px; border-radius: 12px; background: var(--card);
+  border: 1px solid rgba(var(--warn-rgb), .55);
+  background-image: linear-gradient(90deg, rgba(var(--warn-rgb), .16), rgba(var(--warn-rgb), .04));
+  box-shadow: 0 22px 48px -20px rgba(0, 0, 0, .9); }
+.fpower-strip.is-open { border-color: rgba(var(--warn-rgb), .85); }
+.fpower-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+  background: rgba(var(--warn-rgb), .2); color: var(--warn); }
+.fpower-ic { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.fpower-text { min-width: 0; }
+.fpower-title { font-weight: 700; font-size: .93rem; color: var(--ink); }
+.fpower-line { margin-top: 3px; font-size: .82rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.fpower-btn { all: unset; cursor: pointer; font-weight: 600; font-size: .82rem; padding: 7px 12px; border-radius: 9px;
+  border: 1px solid rgba(var(--warn-rgb), .6); color: var(--ink); background: rgba(255, 255, 255, .03); }
+.fpower-btn:hover { border-color: var(--warn); }
+.fpower-btn:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+.fpower-more { pointer-events: auto; justify-self: center; font-size: .78rem; color: var(--ink-3);
+  background: var(--card); padding: 3px 10px; border-radius: 999px; }
+@media (max-width: 760px) {
+  .fpower-strip { grid-template-columns: auto minmax(0, 1fr); }
+  .fpower-btn { grid-column: 1 / -1; justify-self: start; }
+}

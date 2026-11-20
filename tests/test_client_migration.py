@@ -136,6 +136,8 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "client_fact_decisions",
             # «Погоджено» сторожа матеріалу (0103, 18.11.26).
             "material_guard_acks",
+            # Піч без зв'язку під час спікання (0105, 20.11.26).
+            "furnace_outages",
         }
         assert tables_before - tables_after == set()
     finally:

@@ -166,6 +166,36 @@ async def toggle_operator_active(
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
+@router.post("/settings/users/{user_id}/feature-access", response_class=HTMLResponse)
+async def set_operator_feature_access(
+    request: Request, user_id: int, db: Session = Depends(get_db)
+):
+    """Доступ оператора до функції (власник 20.11.26): заборонено / на вибір
+    оператора / завжди увімкнено — для кожної з `feature_access.FEATURES`
+    (сторож матеріалу, піч без зв'язку). Кожен стан — власне слово у формі
+    (`deny`/`choice`/`force`), бо порожнє поле = «поля не було» (CLAUDE.md §14)."""
+    from app.services import feature_access
+
+    admin = require_admin_or_redirect(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="користувача не знайдено")
+
+    form = await request.form()
+    feature = feature_access.BY_KEY.get(form_text(form, "feature").strip())
+    access = form_text(form, "access").strip()
+    if feature is None or access not in feature_access.WORDS:
+        return RedirectResponse(
+            f"/settings?error={quote('невідома функція або стан доступу')}#operators", status_code=303
+        )
+    setattr(target, feature.access_field, feature_access.WORDS[access])
+    db.commit()
+    return RedirectResponse("/settings?saved=1#operators", status_code=303)
+
+
 @router.post("/settings/users/{user_id}/reset-password", response_class=HTMLResponse)
 async def reset_operator_password(
     request: Request, user_id: int, db: Session = Depends(get_db)

@@ -144,6 +144,16 @@ class User(Base):
     material_guard: Mapped[bool] = mapped_column(default=False, server_default="0")
     material_guard_letter: Mapped[bool] = mapped_column(default=False, server_default="0")
     material_guard_view: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Доступ до сторожа, яким керує адмін (власник 20.11.26, міграція 0104):
+    # "" — на вибір оператора (як було), "deny" — заборонено (ні перемикачів,
+    # ні карток), "force" — завжди увімкнено (основна перевірка, оператор не
+    # вимкне). Тлумачення — лише `material_guard.disc_layer_on/letter_layer_on`.
+    material_guard_access: Mapped[str] = mapped_column(String(10), default="", server_default="")
+    # «Піч без зв'язку під час спікання» (власник 20.11.26, міграція 0105):
+    # власний перемикач і доступ від адміна — те саме правило
+    # (`app/services/feature_access.py`).
+    furnace_power_alert: Mapped[bool] = mapped_column(default=False, server_default="0")
+    furnace_power_access: Mapped[str] = mapped_column(String(10), default="", server_default="")
     # НЕ ВИКОРИСТОВУЮТЬСЯ (власник 12.10.26 прибрав вікна «Що нового» і ранкового
     # привітання): колонки лишено, щоб не робити міграцію (0087/0088).
     seen_whats_new: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -1284,6 +1294,32 @@ class FurnaceReading(Base):
     # Кадр узагалі не знявся (піч вимкнена, мережа, пароль). Тоді решта полів
     # порожня, а рядок лишається слідом, що ми пробували і що саме сказала піч.
     error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+
+class FurnaceOutage(Base):
+    """Піч перестала відповідати, коли йшло спікання (власник 20.11.26).
+
+    Піч живиться від батареї резервного живлення, і батарея може сісти посеред
+    спікання. Тоді табло мовчить так само, як при обриві мережі, тому запис —
+    це «не відповідала», а не вирок «вимкнулась». Висить у CRM, доки хтось не
+    натисне «Зрозуміло» (`acked_at`): після повернення світла програма печі,
+    найімовірніше, обірвана, і саме тоді це треба побачити.
+
+    Час локальний, без server_default (як у FurnaceReading)."""
+
+    __tablename__ = "furnace_outages"
+    __table_args__ = (UniqueConstraint("furnace_key", "started_at", name="uq_furnace_outage_start"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    furnace_key: Mapped[str] = mapped_column(String(80), index=True)
+    furnace_name: Mapped[str] = mapped_column(String(80), default="")
+    # Останній кадр, на якому піч ще відповідала й ішов RUN.
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    recovered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    last_temp_c: Mapped[Optional[int]] = mapped_column(nullable=True)
+    acked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True, index=True)
+    acked_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class Furnace(Base):

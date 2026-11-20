@@ -1,0 +1,29 @@
+{# Піч без зв'язку під час спікання (власник 20.11.26; app/services/furnace_power.py).
+   Смуга поверх будь-якого екрана (position:fixed — сторінка під нею не
+   стрибає). Висить, доки хтось не натисне «Зрозуміло»: після повернення
+   живлення програма печі, найімовірніше, обірвана. Порожньо — нічого. #}
+{% if fp_notices %}
+<div class="fpower" role="alert" aria-live="polite">
+{% for n in fp_notices[:3] %}
+<section class="fpower-strip{% if n.is_open %} is-open{% endif %}">
+    <div class="fpower-ico" aria-hidden="true">
+        <svg class="fpower-ic" viewBox="0 0 24 24"><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/></svg>
+    </div>
+    <div class="fpower-text">
+        {% if n.is_open %}
+        <div class="fpower-title">{{ n.name }} не відповідає вже {{ n.minutes(fp_now) }} хв — ішло спікання</div>
+        <div class="fpower-line">Зв'язок зник о <span class="mono">{{ n.started_at.strftime('%H:%M') }}</span>{% if n.last_temp_c is not none %} при <span class="mono">{{ n.last_temp_c }} °C</span>{% endif %}. Можливо, розрядилась батарея живлення печі або зникла мережа.</div>
+        {% else %}
+        <div class="fpower-title">{{ n.name }} не відповідала {{ n.minutes(fp_now) }} хв під час спікання</div>
+        <div class="fpower-line"><span class="mono">{{ n.started_at.strftime('%d.%m %H:%M') }}–{{ n.recovered_at.strftime('%H:%M') }}</span>{% if n.last_temp_c is not none %}, перед тим <span class="mono">{{ n.last_temp_c }} °C</span>{% endif %}. Перевірте, чи програма не обірвалась, і роботи в печі.</div>
+        {% endif %}
+    </div>
+    <button type="button" class="fpower-btn"
+            hx-post="/furnace-power/ack" hx-target="#fpower-slot" hx-swap="innerHTML"
+            hx-vals='{{ {"outage_id": n.id} | tojson }}'
+            title="Прибрати повідомлення для всіх">Зрозуміло</button>
+</section>
+{% endfor %}
+{% if fp_notices|length > 3 %}<div class="fpower-more">ще {{ fp_notices|length - 3 }}</div>{% endif %}
+</div>
+{% endif %}

@@ -46,6 +46,8 @@ def post_material_guard_ack(
     user = get_current_user(request, db)
     if user is None:
         return HTMLResponse("", status_code=401)
+    if material_guard.access_of(user) == material_guard.ACCESS_DENY:
+        return HTMLResponse("", status_code=403)
     if scope not in ("order", "disc"):
         return HTMLResponse("", status_code=422)
     try:
@@ -76,6 +78,13 @@ def post_account_material_guard(
     if (guard is not None and guard not in _SWITCH) or (letter is not None and letter not in _SWITCH) \
             or (view is not None and view not in _VIEW):
         return Response(status_code=422)
+    # Доступ від адміна (20.11.26): «заборонено» — перемикачі не діють;
+    # «завжди увімкнено» — основну перевірку оператор не вимкне. Вигляд — завжди.
+    access = material_guard.access_of(user)
+    if access == material_guard.ACCESS_DENY and (guard is not None or letter is not None):
+        return Response(status_code=403)
+    if access == material_guard.ACCESS_FORCE and guard == "off":
+        return Response(status_code=403)
     if guard is not None:
         user.material_guard = _SWITCH[guard]
     if letter is not None:

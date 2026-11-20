@@ -15,6 +15,7 @@ POST /register
 POST /mail/{email_id}/move-processed
 POST /actions/{action_id}/undo
 POST /settings/users/{user_id}/initial
+POST /settings/users/{user_id}/feature-access
 POST /mail/{email_id}/wizard
 POST /mail/{email_id}/filter
 POST /orders/sum3d-batch
@@ -313,3 +314,6 @@ POST /settings/login-scene
 GET /material-guard/slot
 POST /material-guard/ack
 POST /account/material-guard
+GET /furnace-power/slot
+POST /furnace-power/ack
+POST /account/furnace-power
