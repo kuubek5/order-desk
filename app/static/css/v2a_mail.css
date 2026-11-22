@@ -1708,6 +1708,9 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
 .mailv2 .mc-disc:empty{display:none}
 .mailv2 .mc-disc{margin-top:8px;container-type:inline-size}
 .mailv2 .mc-disc.htmx-request > *{opacity:.55;transition:opacity .15s}
+/* Конвеєр: той самий рядок диска під смугою зведення + підпис «для N листів». */
+.mailv2 .mb-disc{margin-top:0}
+.mailv2 .mb-disc-note{margin:0 0 4px 2px;font-size:var(--fs-0);color:var(--ink-3)}
 .mailv2 .mdh{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"disc head pager" "disc facts facts";gap:6px 12px;align-items:center;padding:10px 12px;border-radius:12px;
   border:1px solid rgba(var(--accent-rgb), .35);background:linear-gradient(180deg,rgba(var(--accent-rgb), .08),rgba(var(--accent-rgb), .02));cursor:help}
 .mailv2 .mdh-disc{grid-area:disc;width:44px;height:44px;align-self:start}

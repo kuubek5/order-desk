@@ -1,0 +1,8 @@
+{# Диск на весь мультипрорахунок Конвеєра (власник 22.11.26): конструкції всіх
+   листів кольору більшості разом, висота — за найвищою роботою. Сама картка —
+   та сама, що в листі (`_mail_disc_hint.html`), тож вигляд і «›» по кандидатах
+   однакові. Роут — `POST /mail/batch-disc-hint` (app/routers/disc_hint.py). #}
+{% if hint.best or hint.heights or hint.note or hint.why %}
+<div class="mb-disc-note">Диск для {{ letters }} {% if letters == 1 %}листа{% else %}листів{% endif %} разом{% if skipped %} · не враховано {{ skipped }}: інший колір або без матеріалу{% endif %}</div>
+{% include "_mail_disc_hint.html" %}
+{% endif %}

@@ -148,6 +148,49 @@ def test_access_is_per_person_and_off_by_default(app_db, shop):  # noqa: F811
     assert operator.post("/settings/disc-suggest", {"enabled": "1"})[0] == 403
 
 
+def test_conveyor_hint_packs_all_letters_of_the_main_colour(app_db, shop, tmp_path):  # noqa: F811
+    """Власник 22.11.26: у мультипрорахунку Конвеєра — один диск на роботи ВСІХ
+    листів. Мультипрорахунок збирає один колір, тож лист «інший колір» у
+    розстановку не йде (лише лічильник), а висота — за найвищою роботою."""
+    from app.models import Attachment, EmailMessage, User
+
+    root, atts = shop
+    app, factory = app_db
+    tall = tmp_path / "tall"
+    tall.mkdir()
+    # Висока робота в листі іншого кольору: якби її врахували — висота 25 мм.
+    big = _stl(tall / "case_36-anatomy_cad.stl", 9, 10, 19.0)
+    with factory() as db:
+        from app.settings_store import set_setting
+
+        set_setting(db, "cam_blanks_path", str(root))
+        ids = []
+        for files in (atts[:1], atts[1:], [SimpleNamespace(filename=big.name, saved_path=str(big))]):
+            mail = EmailMessage(uid=str(len(ids) + 10), status="нове", attachments_status="ready",
+                                received_at=datetime(2026, 11, 22, 9))
+            db.add(mail)
+            db.flush()
+            for a in files:
+                db.add(Attachment(email_message_id=mail.id, filename=a.filename, saved_path=a.saved_path))
+            ids.append(mail.id)
+        db.commit()
+        admin_id = db.query(User).filter_by(username=ADMIN[0]).one().id
+
+    admin = MiniClient(app)
+    admin.login(*ADMIN)
+    form = []
+    for eid, material in zip(ids, ("моно A2", "моно A2", "моно A3")):
+        form += [("batch_email_id", str(eid)), ("client_name", "К"), ("material_color", material), ("quantity", "1")]
+    assert admin.post("/mail/batch-disc-hint", form)[2] == "", "вимкнено за замовчуванням"
+
+    assert admin.post("/settings/disc-suggest", {"enabled": "1", f"user_{admin_id}": "1"})[0] == 303
+    body = admin.post("/mail/batch-disc-hint", form)[2]
+    assert "Диск для 2 листів разом" in body
+    assert "не враховано 1" in body
+    assert "zr16_16-Monolith-A2-x37" in body, "той самий диск, що й для трьох конструкцій одного листа"
+    assert "→ 16 мм" in body, "висота за роботами кольору більшості, без високої роботи іншого кольору"
+
+
 def test_audit_tool_runs_on_empty_shop(app_db):  # noqa: F811
     from app.services.mcp_tools import TOOLS_BY_NAME
 

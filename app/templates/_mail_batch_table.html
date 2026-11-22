@@ -30,6 +30,16 @@
     </div>
 
     {% include "_mail_batch_summary.html" %}
+    {# Диск на весь мультипрорахунок (власник 22.11.26): окремий запит, як у
+       картці листа, — читання дисків не гальмує Конвеєр; перераховується на
+       зміну будь-якого поля карток (матеріал, набір). `hx-target="this"` —
+       та сама причина, що в картці: без власної цілі відповідь пішла б у
+       чужу. Видно лише тим, кому адмін дав підказку диска. #}
+    {% if batch_rows and batch_rows[0].disc_hint_on %}
+    <div class="mc-disc mb-disc" id="mb-disc-hint" hx-post="/mail/batch-disc-hint"
+         hx-include="#mail-batch-form" hx-trigger="load, change from:#mail-batch-form delay:300ms"
+         hx-target="this" hx-swap="innerHTML" aria-live="polite"><div class="mdh-wait"><span class="mdh-wait-disc" aria-hidden="true"></span><span class="mdh-wait-lines"><i></i><i></i><span class="mdh-wait-t">рахую диск…</span></span></div></div>
+    {% endif %}
     {# Відмова передперевірки (мультипрорахунок) лягає СЮДИ — картки лишаються. #}
     <div id="mb-preflight" aria-live="polite"></div>
 

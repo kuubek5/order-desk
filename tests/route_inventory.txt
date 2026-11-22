@@ -318,3 +318,4 @@ GET /furnace-power/slot
 POST /furnace-power/ack
 POST /account/furnace-power
 POST /account/feedback-beacon
+POST /mail/batch-disc-hint
