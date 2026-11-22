@@ -152,6 +152,7 @@ def _summary(folder: str, data: dict[str, Any]) -> dict[str, Any]:
             "верстат": _scrub(place.get("machine", "")),
             "матеріал": _scrub(place.get("material", "")),
             "матеріал_спрацював": _scrub(place.get("material_used", "")),
+            "ліцензія_не_пускає": bool(place.get("license_denied")),
             "обладнання": _scrub(place.get("equipment", "")),
             "усадка": place.get("shrink"),
             "вид_роботи": place.get("object_type"),

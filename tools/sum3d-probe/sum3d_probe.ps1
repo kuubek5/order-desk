@@ -362,7 +362,7 @@ try {
         $report.place = [ordered]@{
             stl_size = (Get-Item -LiteralPath $Stl).Length; stl_sha256_16 = Get-SharedSha256Prefix $Stl
             blk = [IO.Path]::GetFileName($Blk); blk_size = (Get-Item -LiteralPath $Blk).Length
-            machine = $Machine; material = $Material; material_used = ''; equipment = $Equipment
+            machine = $Machine; material = $Material; material_used = ''; license_denied = $false; equipment = $Equipment
             shrink = $Shrink; object_type = $ObjectType; shift_x = $ShiftX
         }
         Log "Рівень 2: STL на копію диска $([IO.Path]::GetFileName($Blk)), верстат $Machine, матеріал $Material, усадка $Shrink."
@@ -507,6 +507,13 @@ try {
                     '-Blk', "`"$workBlk`"", '-Stl', "`"$($v[1])`"", '-Obj', "`"$obj`"",
                     '-ObjectType', $ObjectType, '-Shrink', $Shrink.ToString([Globalization.CultureInfo]::InvariantCulture))
                 $imp = Invoke-ProbeStep 'import' "import_$($v[0])$suffix" '' $common
+                if ($imp.result -and $imp.result.code -eq 23) {
+                    # 0x17 — ядро не бачить ліцензії на імпорт (22.11.26: «DONGLE NOT FOUND» у цеху).
+                    # Інші назви й копії дадуть те саме, а кожна спроба може показати вікно ключа.
+                    Log '  Код 23: ліцензія Sum3D не дозволяє імпорт через DLL — решту спроб пропущено.'
+                    $report.place.license_denied = $true
+                    break
+                }
                 if (Test-StepOk $imp) {
                     # Назва спрацювала — далі лише вона.
                     $report.place.material_used = $materials[$m]
@@ -514,6 +521,7 @@ try {
                     break
                 }
             }
+            if ($report.place.license_denied) { break }
             if (-not (Test-StepOk $imp)) { continue }
             $toCam = Invoke-ProbeStep 'tocam' "tocam_$($v[0])" $outCam @('-Obj', "`"$obj`"")
             if (Test-StepOk $toCam) { [void](Invoke-ProbeStep 'curves' "curves_$($v[0])" $outCam @()) }

@@ -172,6 +172,8 @@ def test_place_level_writes_only_new_files_in_its_own_folder():
     # Верстат береться лише зі списку самої Sum3D: неоднозначна чи невідома назва зупиняє пробу.
     assert "$report.stopped = 'place machine not found'; $baseOk = $false; break" in main
     assert "if ($hit.Count -ne 1)" in main
+    # Код 23 (ліцензія) зупиняє решту спроб імпорту: кожна могла показати вікно ключа (22.11.26).
+    assert "if ($imp.result -and $imp.result.code -eq 23)" in main and "if ($report.place.license_denied) { break }" in main
     # Назва STL у звіт не йде (імена пацієнтів) — лише розмір і початок хешу.
     place_report = main[main.index("$report.place = [ordered]@{"):main.index("Log \"Рівень 2:")]
     assert "stl_size" in place_report and "GetFileName($Stl)" not in main
@@ -322,6 +324,7 @@ def test_report_shows_the_place_level(reports):
     assert r["набір_v"] == 4
     assert r["постановка"] == {"диск": "zr14_14-Monolith-A3-x101.blk", "верстат": "350i_Boris",
                                "матеріал": "ZR|Zirconium", "матеріал_спрацював": "Zirconium",
+                               "ліцензія_не_пускає": False,
                                "обладнання": "Disc 98", "усадка": 1.242,
                                "вид_роботи": 9, "зсув_x_мм": 20, "розмір_stl": 421337}
     by = {s["крок"]: s for s in r["кроки"]}
