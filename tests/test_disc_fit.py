@@ -192,3 +192,62 @@ def test_closed_hole_inside_silhouette_is_filled():
     mask = disc_fit.piece_mask(np.array(ring), 0)
     h, w = mask.shape
     assert mask[h // 2, w // 2], "замкнена порожнина — частина силуету"
+
+
+# ── Швидка відмова на грубій сітці (22.11.26, лист 4001) ─────────────────────
+
+
+def _random_cuts(rng: np.random.Generator, count: int) -> list:
+    cuts = []
+    for _ in range(count):
+        cx, cy = rng.uniform(-44, 44, 2)
+        w, h = rng.uniform(6, 22, 2)
+        cuts.append(_rect(cx, cy, w, h))
+    return cuts
+
+
+def test_coarse_refusal_never_contradicts_the_full_fit():
+    """Доказовість: швидка перевірка каже «ні» лише там, де повна розстановка
+    теж каже «ні». Інакше вона ховала б диск, на який робота стає. Диски —
+    випадкові, від порожніх до майже вирізаних, і конструкції різної форми."""
+    rng = np.random.default_rng(20261122)
+    shapes = [[_box(10, 9)], [_box(14.6, 14.9)], [_box(30, 9)], [_arch()], [_box(8, 8)] * 3, [_box(12, 10), _box(22, 9)]]
+    refused = 0
+    for trial in range(160):
+        cuts = _random_cuts(rng, int(rng.integers(0, 40)))
+        pieces = shapes[trial % len(shapes)]
+        masks = disc_fit.Masks(pieces)
+        blocked = disc_fit.disc_blocked(47.0, cuts)
+        full = disc_fit.place_all(blocked.copy(), masks)
+        quick = disc_fit.could_fit(blocked, masks)
+        assert quick or not full, f"спроба {trial}: швидка сказала «ні», а робота стає"
+        refused += not quick
+    assert refused >= 15, "перевірка має щось відсіювати, інакше вона марна"
+
+
+def test_coarse_check_sees_room_at_the_very_edge():
+    """Місце біля самого краю сітки: порожні хвости грубої маски не мають
+    виводити її за край (тоді була б хибна відмова)."""
+    blocked = np.ones((80, 80), dtype=bool)
+    masks = disc_fit.Masks([_box(10, 9)])
+    h, w = masks.mask(0, 0).shape
+    blocked[80 - h:, 80 - w:] = False  # рівно під маску в нижньому правому куті
+    assert disc_fit.place_all(blocked.copy(), masks)
+    assert disc_fit.could_fit(blocked, masks)
+
+
+def test_nearly_full_disc_is_refused_quickly():
+    """Майже вирізаний диск відкидається швидкою перевіркою в рази швидше за
+    повну розстановку — тоді бюджет 2,5 с доходить до дисків із місцем."""
+    cuts = [_rect(x, y, 13, 13) for x in range(-42, 43, 14) for y in range(-42, 43, 14)]
+    masks = disc_fit.Masks([_box(14.6, 14.9)])
+    blocked = disc_fit.disc_blocked(47.0, cuts)
+    disc_fit.could_fit(blocked, masks)  # прогрів кешу масок
+    start = time.perf_counter()
+    for _ in range(5):
+        assert not disc_fit.could_fit(blocked, masks)
+    quick = (time.perf_counter() - start) / 5
+    start = time.perf_counter()
+    assert not disc_fit.place_all(blocked.copy(), masks)
+    full = time.perf_counter() - start
+    assert quick * 3 < full, f"швидка {quick * 1000:.1f} мс проти повної {full * 1000:.1f} мс"

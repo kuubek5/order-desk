@@ -153,6 +153,7 @@ class Want:
     line: Optional[str]
     shades: frozenset[str]
     code: Optional[str] = None
+    hipc: bool = False
 
     @property
     def multilayer(self) -> bool:
@@ -160,6 +161,8 @@ class Want:
 
     def label(self) -> str:
         name = LINES[self.line][0] if self.line else (self.family or "")
+        if self.hipc:
+            name = "HIPC"
         if self.code:
             return f"{name} {self.code}".strip()
         shade = "/".join(sorted(s.upper() for s in self.shades))
@@ -176,7 +179,21 @@ def want_of(material_text: Optional[str]) -> Want:
     found = material_match.shades(material_text)
     return Want(family=family, line=line,
                 shades=frozenset(_norm(s) for s in found),
-                code=next((c for c in OPAQUE_CODES if c in found), None))
+                code=next((c for c in OPAQUE_CODES if c in found), None),
+                hipc=_is_hipc(text))
+
+
+# HIPC — окремий матеріал, хоч диски лежать у теках ПММА й звуться
+# `pmma20_20-hipc-a3-x54`, а класифікатор відносить його до родини ПММА.
+# Власник 22.11.26: HIPC замість ПММА пропонувати не можна (картка «pmma a3»
+# давала запасним диск `hipc-a3`). Так само й навпаки: замовлено HIPC — лише
+# диски HIPC. Слова — ті самі, що в `material_classifier` і `material_match`.
+_HIPC_WORDS = ("hipc", "hips", "hipk", "хіпс", "хипс", "хіпк", "хипк")
+
+
+def _is_hipc(text: Optional[str]) -> bool:
+    low = (text or "").lower()
+    return any(word in low for word in _HIPC_WORDS)
 
 
 def _norm(shade: str) -> str:
@@ -197,6 +214,7 @@ class DiscFile:
     line: Optional[str]
     shades: frozenset[str]
     code: Optional[str] = None
+    hipc: bool = False
 
     @property
     def key(self) -> str:
@@ -242,6 +260,7 @@ def disc_files(root: Optional[str]) -> list[DiscFile]:
             family=family, line=line,
             shades=frozenset(_norm(s) for s in material_match.shades(shade_text)),
             code=(parsed.shade or "") if (parsed.shade or "") in OPAQUE_CODES else None,
+            hipc=_is_hipc(low),
         ))
     with _scan_lock:
         _scan_cache[root] = (now, out)
@@ -257,6 +276,8 @@ def _matches(disc: DiscFile, want: Want) -> bool:
         return False
     if want.code != disc.code:
         return False  # опак кодом — лише свої диски, і навпаки
+    if want.hipc != disc.hipc:
+        return False  # HIPC і ПММА — різні матеріали (власник 22.11.26)
     return disc.height is not None
 
 
@@ -580,15 +601,23 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     # Давно не чіпаний диск — поза підказкою; диск, що стоїть у верстаті, — ні.
     stale_before = time.time() - STALE_DAYS * 86400
     fresh: list[DiscFile] = []
+    touched_at: dict[str, float] = {}
     for disc in (d for d in discs if allowed(d)):
         touched = _touched_at(disc.path)
         if disc.key not in active and touched is not None and touched < stale_before:
             note(disc.stem, рішення=f"не брали понад {STALE_DAYS} дн "
                                   f"(файл змінено {datetime.fromtimestamp(touched):%d.%m.%y}) — не показано")
             continue
+        touched_at[str(disc.path)] = touched or 0.0
         fresh.append(disc)
+    # Межа читання відсікає НАЙДАВНІШЕ чіпані диски, а не останні за назвою
+    # (22.11.26, ПММА A3: усі висоти рівні, тож читались pmma10…pmma20 за
+    # абеткою, а 22 диски 25 мм — серед них учорашні x266 і x267 з купою
+    # місця — лишались «не прочитано», і картка казала «новий диск»). Свіжіший
+    # файл = диск, який цех брав останнім; так само сортує діалог Sum3D.
     for disc in sorted(fresh,
-                       key=lambda d: (d.key not in active, rank(d.height or 0), d.stem)):
+                       key=lambda d: (d.key not in active, rank(d.height or 0),
+                                      -touched_at[str(d.path)], d.stem)):
         if reads >= max_reads:
             note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
             continue

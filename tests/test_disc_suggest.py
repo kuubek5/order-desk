@@ -661,3 +661,90 @@ def test_hint_steps_are_timed_for_the_slow_request_log(shop):
     finally:
         perf.finish()
     assert {"disc:scan", "disc:stl", "disc:shapes"} <= set(recorder.phases)
+
+
+def test_roomy_started_disc_is_reached_behind_many_nearly_full(tmp_path, monkeypatch):
+    """22.11.26, лист 4001: початі диски перевіряються від найменш вільного
+    («добити диск»), і 47 майже повних з'їли весь бюджет — до x101 з 34 %
+    вільного черга не дійшла, хоча оператор поставив коронку саме туди. Тепер
+    безнадійні відкидає швидка перевірка, повна розстановка на них не йде, і
+    диск із місцем потрапляє в картку."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    def box(cx, cy, w, h):
+        return [(cx - w / 2, cy - h / 2), (cx + w / 2, cy - h / 2), (cx + w / 2, cy + h / 2), (cx - w / 2, cy + h / 2)]
+
+    grid = [box(x, y, 12, 12) for x in range(-42, 43, 14) for y in range(-42, 43, 14) if math.hypot(x, y) < 50]
+    for n in range(1, 41):  # вирізано решіткою: вільні лише вузькі коридори
+        _disc(root, "zr", 16, f"zr16_16-Monolith-A2-x{n:02d}", grid)
+    _disc(root, "zr", 16, "zr16_16-Monolith-A2-x99", [box(-24, 0, 48, 100)])  # ліва половина
+    stl = tmp_path / "mail"
+    stl.mkdir()
+    atts = [SimpleNamespace(filename="case_11-anatomy_cad.stl",
+                            saved_path=str(_stl(stl / "case_11-anatomy_cad.stl", 9, 10, 10.0)))]
+    full: list[int] = []
+    real = disc_suggest.disc_fit.place_all
+
+    def counted(blocked, masks, scale=1.0):
+        full.append(1)
+        return real(blocked, masks, scale)
+
+    monkeypatch.setattr(disc_suggest.disc_fit, "place_all", counted)
+    hint = disc_suggest.suggest("моно A2", atts, str(root))
+    assert hint.best is not None and hint.best.name == "zr16_16-Monolith-A2-x99"
+    assert hint.best.fit is True and hint.best.started
+    assert len(full) <= 5, f"повна розстановка на майже повних дисках: {len(full)} разів"
+
+
+def test_read_limit_drops_the_oldest_discs_not_the_last_by_name(tmp_path):
+    """22.11.26, ПММА A3: для ПММА годиться будь-яка вища висота, тож усі висоти
+    рівні, і диски читались за назвою — pmma14, pmma16, … до межі 60. Диски
+    25 мм (учорашні x266/x267 з купою місця) лишались «не прочитано», а картка
+    казала «новий диск, початого з місцем немає». Тепер межа відсікає ті, що
+    найдавніше чіпані."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+
+    def box(cx, cy, w, h):
+        return [(cx - w / 2, cy - h / 2), (cx + w / 2, cy - h / 2), (cx + w / 2, cy + h / 2), (cx - w / 2, cy + h / 2)]
+
+    grid = [box(x, y, 12, 12) for x in range(-42, 43, 14) for y in range(-42, 43, 14) if math.hypot(x, y) < 50]
+    month_ago = time.time() - 30 * 86400
+    for n in range(1, 71):  # 70 майже вирізаних, давно не чіпаних
+        _disc(root, "pmma", 14, f"pmma14_14-a2-x{n:02d}", grid)
+        path = root / "pmma" / "14" / f"pmma14_14-a2-x{n:02d}.blk"
+        os.utime(path, (month_ago, month_ago))
+    _disc(root, "pmma", 25, "pmma25_25-a2-x266", [box(-24, 0, 48, 100)])  # учорашній, половина вільна
+    stl = tmp_path / "mail"
+    stl.mkdir()
+    atts = [SimpleNamespace(filename="case_45-46-47-bridge_cad.stl",
+                            saved_path=str(_stl(stl / "case_45-46-47-bridge_cad.stl", 28, 10, 8.1)))]
+    trace: dict = {}
+    hint = disc_suggest.suggest("пмма A2", atts, str(root), trace=trace)
+    by = {d["диск"]: d for d in trace["диски"]}
+    assert "не прочитано" not in by["pmma25_25-a2-x266"]["рішення"], by["pmma25_25-a2-x266"]
+    assert hint.best is not None and hint.best.name == "pmma25_25-a2-x266"
+    unread = [d for d in by.values() if "не прочитано" in d["рішення"]]
+    assert len(unread) == 11 and all(d["висота"] == 14 for d in unread), "за межею — лише давні"
+
+
+def test_hipc_and_pmma_discs_never_stand_in_for_each_other(shop):
+    """Власник 22.11.26: HIPC замість ПММА пропонувати не можна. Диск HIPC лежить
+    у теці ПММА й зветься `pmma20_20-hipc-a3-x54`, тож картка «pmma a3» давала
+    його запасним (листи 3998 і 4000). Навпаки теж: замовлено HIPC — лише HIPC."""
+    root, atts = shop
+    _disc(root, "pmma", 16, "pmma16_16-hipc-a2-x54", [])
+    disc_suggest._scan_cache.clear()
+
+    def offered(material):
+        hint = disc_suggest.suggest(material, atts, str(root))
+        return hint, [p.name for p in ([hint.best] if hint.best else []) + list(hint.alts)]
+
+    plain, names = offered("пмма A2")
+    assert names == ["pmma16_16-a2-x200"], "диск HIPC у підказці ПММА"
+    assert plain.new_disc == "новий диск 16 мм ПММА A2"
+    for text in ("hipc a2", "Hips A2", "хіпс а2"):
+        hipc, names = offered(text)
+        assert names == ["pmma16_16-hipc-a2-x54"], text
+        assert hipc.new_disc == "новий диск 16 мм HIPC A2"
+    assert disc_suggest.want_of("pmma a2").hipc is False

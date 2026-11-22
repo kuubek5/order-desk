@@ -248,6 +248,7 @@ class Masks:
         self.scale = scale
         self._masks: dict[tuple[int, float], np.ndarray] = {}
         self._spectra: dict[tuple[int, float, tuple[int, int]], np.ndarray] = {}
+        self._coarse: dict[tuple[int, float], np.ndarray] = {}
 
     def mask(self, i: int, angle: float) -> np.ndarray:
         key = (i, angle)
@@ -261,6 +262,14 @@ class Masks:
             m = self.mask(i, angle)
             self._spectra[key] = np.fft.rfft2(m[::-1, ::-1].astype(np.float32), shape)
         return self._spectra[key]
+
+    def coarse(self, i: int, angle: float) -> np.ndarray:
+        """Силует на грубій сітці (`COARSE` клітинок в одній) — лише те, що
+        лежить під конструкцією за БУДЬ-ЯКОГО зсуву відносно грубої сітки."""
+        key = (i, angle)
+        if key not in self._coarse:
+            self._coarse[key] = _coarse_core(self.mask(i, angle))
+        return self._coarse[key]
 
     def frame(self, i: int, blocked_shape: tuple[int, int]) -> tuple[int, int]:
         """Спільний розмір FFT для всіх поворотів конструкції: спектр диска
@@ -340,6 +349,13 @@ def fit_report(radius: float, blocked: np.ndarray, masks: Masks) -> dict:
     if wide:
         return {"влазить": False, "лягло": 0, "з": total, "причина": "конструкція ширша за диск",
                 "не_лягла": _piece_size(masks, wide[0])}
+    alone = _first_without_room(blocked, masks)
+    if alone is not None:
+        # Та сама швидка відмова, що й у `fits_on`, — інакше діагностика
+        # витрачала б бюджет часу інакше за картку. «лягло» тут — щонайбільше.
+        return {"влазить": False, "лягло": alone, "з": total, "груба_сітка": True,
+                "вільних_клітинок_%": round(100 * float(1 - blocked.mean()), 1),
+                "не_лягла": _piece_size(masks, alone)}
     done = placed_count(blocked.copy(), masks) if total else 0
     out: dict = {"влазить": done == total, "лягло": done, "з": total,
                  "вільних_клітинок_%": round(100 * float(1 - blocked.mean()), 1)}
@@ -380,4 +396,96 @@ def fits_on(radius: float, blocked: np.ndarray, masks: Masks) -> bool:
         return True
     if any(wider_than_disc(p, radius, masks.scale) for p in masks.pieces):
         return False
+    if not could_fit(blocked, masks):
+        return False
     return place_all(blocked.copy(), masks)
+
+
+# ── Швидка відмова на грубій сітці ──────────────────────────────────────────
+#
+# 22.11.26, лист 4001: розстановка перевіряє початі диски від найменш вільного
+# («добити диск»), і 47 майже повних (9–16 %) з'їли весь бюджет 2,5 с — до x101
+# з 34 % вільного черга не дійшла, хоч оператор поставив коронку саме туди.
+# Повна розстановка на сітці 0,5 мм — ~50 мс на диск; тут та сама перевірка на
+# сітці 1 мм (у 4 рази менше клітинок, кожна конструкція окремо) і лише як
+# НЕОБХІДНА умова: «не стала навіть тут» доводить «не стане й точно». «Стала
+# тут» нічого не доводить — тоді йде повна розстановка, як і раніше.
+# Вибір кроку (тест на випадкових дисках): 1 мм відсікає 59 % безнадійних за
+# ~1/7 часу повної, 2 мм — лише 29 % (груба клітинка з'їдає по 1,5 мм з боків).
+
+COARSE = 2  # дрібних клітинок у грубій по кожній осі: 2 × 0,5 мм = 1 мм
+
+
+def _coarse_blocked(blocked: np.ndarray) -> np.ndarray:
+    """Груба клітинка зайнята, лише коли зайняті ВСІ її дрібні (оптимістично
+    вільна). За краєм сітки — зайнято."""
+    k = COARSE
+    H, W = blocked.shape
+    hh, ww = -(-H // k) * k, -(-W // k) * k
+    padded = np.ones((hh, ww), dtype=bool)
+    padded[:H, :W] = blocked
+    return np.asarray(padded.reshape(hh // k, k, ww // k, k).all(axis=(1, 3)))
+
+
+def _coarse_core(mask: np.ndarray) -> np.ndarray:
+    """Груба клітинка (u, v) силуету — лише коли силует суцільний на всьому
+    вікні дрібних рядків [k·u − (k−1), k·u + (k−1)] (і так само стовпців).
+
+    Якщо дрібна розстановка стала з лівим верхнім кутом (r, c) = (k·R + a,
+    k·C + b), 0 ≤ a, b < k, то груба клітинка (R + u, C + v) охоплює рядки
+    силуету k·u − a … k·u − a + k − 1 — вони всередині вікна за будь-якого a.
+    Тож усі її дрібні клітинки під силуетом, отже вільні, отже груба клітинка
+    вільна і на `_coarse_blocked`. Груба розстановка стає завжди, коли стає
+    точна: відмова на грубій — доказ."""
+    k = COARSE
+    h, w = mask.shape
+    span = 2 * k - 1
+    # Сума у вікні через інтегральне зображення; поза силуетом — нулі.
+    padded = np.zeros((h + 2 * span, w + 2 * span), dtype=np.int32)
+    padded[span:span + h, span:span + w] = mask
+    integral = np.zeros((padded.shape[0] + 1, padded.shape[1] + 1), dtype=np.int32)
+    integral[1:, 1:] = padded.cumsum(0).cumsum(1)
+    rows = -(-h // k) + 1
+    cols = -(-w // k) + 1
+    # Початок вікна в координатах `padded`: k·u − (k−1) + span.
+    r0 = np.arange(rows) * k - (k - 1) + span
+    c0 = np.arange(cols) * k - (k - 1) + span
+    R0, C0 = np.meshgrid(r0, c0, indexing="ij")
+    total = (integral[R0 + span, C0 + span] - integral[R0, C0 + span]
+             - integral[R0 + span, C0] + integral[R0, C0])
+    core = total == span * span
+    if not core.any():
+        return core[:0, :0]
+    # Порожні краї обрізаємо: `_place` бере лише позиції, де маска ЦІЛКОМ на
+    # сітці, і порожній хвіст виводив би її за край — хибна відмова біля краю.
+    # Існування місця від зсуву всієї маски не залежить.
+    ys, xs = np.nonzero(core)
+    return core[ys.min(): ys.max() + 1, xs.min(): xs.max() + 1]
+
+
+def could_fit(blocked: np.ndarray, masks: Masks) -> bool:
+    """НЕОБХІДНА умова розстановки, у рази дешевша: кожна конструкція
+    окремо знаходить місце на грубій сітці хоч в одному повороті. False —
+    точно не влізе (доказ у `_coarse_core`); True — треба повну перевірку."""
+    return _first_without_room(blocked, masks) is None
+
+
+def _first_without_room(blocked: np.ndarray, masks: Masks) -> Optional[int]:
+    """Номер першої конструкції, якій немає місця навіть самій на грубій
+    сітці; None — такої немає (або довести не можна)."""
+    if not masks.pieces:
+        return None
+    coarse = _coarse_blocked(blocked)
+    for i in range(len(masks.pieces)):
+        placed = False
+        for angle in ANGLES:
+            core = masks.coarse(i, angle)
+            if not core.size:
+                placed = True  # дрібніша за вікно — нічого не доведемо
+                break
+            if _place(coarse, core) is not None:
+                placed = True
+                break
+        if not placed:
+            return i
+    return None
