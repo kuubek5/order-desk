@@ -433,14 +433,22 @@ def test_lab_row_without_sum3d_is_not_counted():
     assert _totals(db)["lab_zr"] == 30
 
 
-def test_mail_row_counts_without_sum3d():
-    """Правило лише для лабораторії: клієнтську роботу заводять один раз."""
+def test_mail_row_without_sum3d_is_not_counted():
+    """До 22.11.26 правило «без Sum3D не рахується» діяло лише для лабораторії.
+    Власник: не прорахована робота не виконана — хай звідки вона. Старий рахунок
+    лишився тільки аварійним відкатом (налаштування «0»)."""
     db = _db()
     mat = _materials(db)
     _order(db, source="email", material_id=mat["Цирконій"], qty=132, sum3d=None)
     _order(db, source="sheet_client", material_id=mat["ПММА"], qty=56, sum3d="")
+    _order(db, source="email", material_id=mat["Цирконій"], qty=7, sum3d="2026-08-05_12-01-45")
     totals = _totals(db)
-    assert totals["mail_zr"] == 132 and totals["mail_pmma"] == 56
+    assert totals["mail_zr"] == 7 and totals["mail_pmma"] == 0
+
+    vyrobitok.set_rules_v2(db, False)
+    db.commit()
+    totals = _totals(db)
+    assert totals["mail_zr"] == 139 and totals["mail_pmma"] == 56
 
 
 def test_lab_work_carried_to_next_day_counts_once():

@@ -92,7 +92,7 @@ def _old_live_units(db: Session, first: date, last: date):
 
 
 def test_old_rules_give_exactly_the_old_numbers():
-    """Рефакторинг не має права зрушити жодного числа, поки вимикач вимкнено."""
+    """Старий рахунок відтворено рядок у рядок — ним звіряємо «було → стало»."""
     db = _db()
     ids = _materials(db)
     zr, pmma, ti, slm = ids["Цирконій"], ids["ПММА"], ids["Титан"], ids["СЛМ"]
@@ -111,7 +111,8 @@ def test_old_rules_give_exactly_the_old_numbers():
     _row(db, "27.10.26", material=zr, qty="3", sum3d="18-53-11", naryad="36652", kind=KIND, row=13)
     _row(db, "05.11.26", material=zr, qty="1", sum3d="08-00-00", archived=True, row=14)
 
-    assert rules_v2(db) is False
+    set_rules_v2(db, False)         # аварійний відкат = старий рахунок рядок у рядок
+    db.commit()
     for span in (NOV, OCT, (date(2026, 11, 2), date(2026, 11, 2))):
         auto, live_days, months = vyrobitok._live_units(db, *span)
         want_auto, want_days, want_months = _old_live_units(db, *span)
@@ -291,10 +292,12 @@ def test_every_silent_zero_gets_a_reason_on_the_screen():
     assert all(item["counted"] is False and item["day"] == "16.11" for item in grid.skipped)
 
 
-# ── Вимикач і перерахунок закритих днів ─────────────────────────────────────
+# ── Правила діють одразу; закриті дні чекають перерахунку ───────────────────
 
 
-def test_switch_is_off_by_default_and_frozen_days_wait_for_a_recount():
+def test_rules_apply_by_default_and_closed_days_wait_for_a_recount():
+    """Правила власника — не опція: чиста база рахує ними одразу. Але день,
+    закритий ЩЕ за старим рахунком, сам числа не міняє — лише перерахунком."""
     db = _db()
     zr = _materials(db)["Цирконій"]
     _row(db, "27.10.26", material=zr, sum3d="18-53-11", naryad="36652", kind=KIND, row=13)
@@ -302,14 +305,16 @@ def test_switch_is_off_by_default_and_frozen_days_wait_for_a_recount():
     _row(db, "02.11.26", material=zr, qty="5", sum3d="13-00-00", naryad="40100", row=5)
     day = date(2026, 11, 2)
 
-    assert rules_v2(db) is False
-    vyrobitok._snapshot_orders(db, day)             # день закрився за старими правилами
-    db.add(VyrobitokDay(day=day, orders_frozen_at=datetime(2026, 11, 3, 7, 40)))
-    db.commit()
-    assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 8
+    assert rules_v2(db) is True, "без жодного перемикання"
+    assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 5, "відкритий день — одразу"
 
+    set_rules_v2(db, False)                         # день закрився до релізу, за старим рахунком
+    db.commit()
+    vyrobitok._snapshot_orders(db, day)
+    db.add(VyrobitokDay(day=day, orders_frozen_at=datetime(2026, 11, 3, 7, 40)))
     set_rules_v2(db, True)
     db.commit()
+
     grid = compute_month(db, 2026, 11, persist=False)
     assert grid.rules_v2 is True
     assert grid.totals["lab_zr"] == 8, "закритий день сам не перераховується"
@@ -322,7 +327,7 @@ def test_switch_is_off_by_default_and_frozen_days_wait_for_a_recount():
     set_rules_v2(db, False)
     db.commit()
     recount_month(db, 2026, 11)
-    assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 8, "відкат — тим самим шляхом"
+    assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 8, "аварійний відкат — тим самим шляхом"
 
 
 def test_recount_leaves_a_cleaned_out_day_alone():
@@ -386,7 +391,7 @@ def test_recount_keeps_the_operators_own_number():
     assert cell["num"] == 9 and cell["edited"]
 
 
-# ── Роути вимикача й перерахунку: лише адміністратор ────────────────────────
+# ── Перерахунок закритих днів: лише адміністратор ───────────────────────────
 
 
 def _user(db: Session, role: str):
@@ -411,40 +416,41 @@ def _html(response) -> str:
     return response.body.decode("utf-8")
 
 
-def test_admin_switches_the_rules_and_recounts_from_the_screen():
+def test_admin_recounts_closed_days_from_the_screen():
     from app.routers import vyrobitok as routes
+    from app.routers.deps import templates
 
     db = _db()
     zr = _materials(db)["Цирконій"]
     _row(db, "27.10.26", material=zr, sum3d="18-53-11", naryad="36652", kind=KIND, row=13)
     _row(db, "02.11.26", material=zr, sum3d="12-54-26", naryad="36652", kind=KIND, row=4)
     day = date(2026, 11, 2)
+    set_rules_v2(db, False)                         # день закрився за старим рахунком
+    db.commit()
     vyrobitok._snapshot_orders(db, day)
     db.add(VyrobitokDay(day=day, orders_frozen_at=datetime(2026, 11, 3, 7, 40)))
+    set_rules_v2(db, True)
     db.commit()
     admin = _user(db, "адмін")
 
-    resp = routes.post_vyrobitok_rules(_req(admin), year=2026, month=11, enabled="1", db=db)
-    assert resp.status_code == 200
-    assert rules_v2(db) is True
-    page = _html(resp)
-    assert "Повернути старі правила" in page and "уже пораховано 27.10" in page
-    assert '<details class="vt-skip" open>' in page, "після дії блок лишається розгорнутим"
+    page = templates.env.get_template("_vyrobitok_body.html").render(
+        routes._grid_context(db, admin, 2026, 11, persist=False)
+    )
+    assert "/vyrobitok/recount" in page and "уже пораховано 27.10" in page
+    assert "/vyrobitok/rules" not in page, "вимикача правил на екрані немає"
     assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 3, "закритий день ще чекає"
 
     resp = routes.post_vyrobitok_recount(_req(admin), year=2026, month=11, db=db)
     assert resp.status_code == 200
-    assert "Перераховано закритих днів: 1." in _html(resp)
+    page = _html(resp)
+    assert "Перераховано закритих днів: 1." in page
+    assert '<details class="vt-skip" open>' in page, "після дії блок лишається розгорнутим"
     assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 0
 
-    resp = routes.post_vyrobitok_rules(_req(admin), year=2026, month=11, enabled="0", db=db)
-    assert rules_v2(db) is False
-    assert "Увімкнути нові правила" in _html(resp)
 
-
-def test_operator_cannot_switch_rules_or_recount():
-    """Це гроші всього цеху: вимикач і перерахунок — лише адміністратор.
-    Оператор кнопок не бачить, а прямий запит дістає 403 і нічого не міняє."""
+def test_operator_cannot_recount():
+    """Це гроші всього цеху: перерахунок закритих днів — лише адміністратор.
+    Оператор кнопки не бачить, а прямий запит дістає 403."""
     import pytest
     from fastapi import HTTPException
 
@@ -457,33 +463,33 @@ def test_operator_cannot_switch_rules_or_recount():
     operator = _user(db, "оператор")
 
     with pytest.raises(HTTPException) as denied:
-        routes.post_vyrobitok_rules(_req(operator), year=2026, month=11, enabled="1", db=db)
-    assert denied.value.status_code == 403
-    assert rules_v2(db) is False
-    with pytest.raises(HTTPException) as denied:
         routes.post_vyrobitok_recount(_req(operator), year=2026, month=11, db=db)
     assert denied.value.status_code == 403
 
     page = templates.env.get_template("_vyrobitok_body.html").render(
         routes._grid_context(db, operator, 2026, 11, persist=False)
     )
-    assert "Не пораховано й чому" in page
-    assert "/vyrobitok/rules" not in page and "/vyrobitok/recount" not in page
+    assert "Не пораховано й чому" in page and "Як рахується" in page
+    assert "/vyrobitok/recount" not in page
 
 
-def test_rules_route_stays_behind_the_section_pin():
+def test_recount_route_stays_behind_the_section_pin():
     from app.routers import vyrobitok as routes
     from app.settings_store import set_setting
 
     db = _db()
-    _materials(db)
+    zr = _materials(db)["Цирконій"]
+    _row(db, "02.11.26", material=zr, qty="5", sum3d="13-00-00", naryad="40100", row=5)
+    day = date(2026, 11, 2)
+    db.add(VyrobitokCell(day=day, col_key="lab_zr", auto_value=99))
+    db.add(VyrobitokDay(day=day, orders_frozen_at=datetime(2026, 11, 3, 7, 40)))
     admin = _user(db, "адмін")
     set_setting(db, "vyrobitok_pin", "2468")
     db.commit()
 
-    resp = routes.post_vyrobitok_rules(_req(admin), year=2026, month=11, enabled="1", db=db)
+    resp = routes.post_vyrobitok_recount(_req(admin), year=2026, month=11, db=db)
     assert resp.status_code == 303
-    assert rules_v2(db) is False
+    assert compute_month(db, 2026, 11, persist=False).totals["lab_zr"] == 99, "нічого не перераховано"
 
 
 # ── Звірка «було → стало» (MCP kmill_vyrobitok_audit) ───────────────────────
@@ -506,13 +512,13 @@ def test_audit_shows_screen_old_and_new_numbers_without_writing_anything():
     report = vyrobitok_audit.audit(db, 2026, 11)
 
     assert db.query(VyrobitokCell).count() == cells_before, "звірка нічого не пише"
-    assert report["нові_правила_ввімкнено"] is False
-    assert report["разом"]["екран"]["lab_zr"] == 8
+    assert report["нові_правила_ввімкнено"] is True
+    assert report["разом"]["екран"]["lab_zr"] == 5, "відкритий день уже за чинними правилами"
     assert report["разом"]["живі_старі"]["lab_zr"] == 8
     assert report["разом"]["нові"]["lab_zr"] == 5
-    assert report["разом"]["екран"]["mail_zr"] == 4 and report["разом"]["нові"]["mail_zr"] == 0
+    assert report["разом"]["живі_старі"]["mail_zr"] == 4 and report["разом"]["нові"]["mail_zr"] == 0
     day = next(d for d in report["дні_з_різницею"] if d["день"] == "02.11")
-    assert day["колонки"]["lab_zr"] == {"екран": 8, "живі_старі": 8, "нові": 5}
+    assert day["колонки"]["lab_zr"] == {"екран": 5, "живі_старі": 8, "нові": 5}
     removed = {item["хто"]: item["чому"] for item in report["нові_правила_знімуть"]["приклади"]}
     assert "уже пораховано 27.10" in removed["наряд 36652"]
     assert "клієнт П.І." in removed, "ім'я клієнта — лише ініціалами"

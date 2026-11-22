@@ -43,7 +43,6 @@ from app.services.vyrobitok import (
     resync_guard,
     save_month_settings,
     set_cell,
-    set_rules_v2,
     unfreeze_day,
 )
 from app.settings_store import get_setting
@@ -334,7 +333,7 @@ def post_vyrobitok_settings(
 
 
 def _rules_action_context(request: Request, db: Session, year: int, month: int):
-    """Гейт дій над правилами підрахунку: лише адміністратор і лише з відкритим
+    """Гейт перерахунку закритих днів: лише адміністратор і лише з відкритим
     розділом (ПІН). Повертає (користувач, рік, місяць) або готову відповідь."""
     user = require_admin_or_redirect(request, db, loopback=False)
     if isinstance(user, RedirectResponse):
@@ -343,35 +342,6 @@ def _rules_action_context(request: Request, db: Session, year: int, month: int):
         return RedirectResponse("/vyrobitok", status_code=303)
     y, m = _clamp_period(year, month)
     return user, y, m
-
-
-@router.post("/vyrobitok/rules", response_class=HTMLResponse)
-def post_vyrobitok_rules(
-    request: Request,
-    year: int = Form(...),
-    month: int = Form(...),
-    enabled: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    """Вимикач нових правил підрахунку (`services/vyrobitok_rows.py`, 22.11.26).
-
-    Діє одразу на відкриті дні; закриті тримають своє число до «Перерахувати
-    закриті дні місяця» — тому вмикання саме по собі минулих цифр не рухає."""
-    gate = _rules_action_context(request, db, year, month)
-    if not isinstance(gate, tuple):
-        return gate
-    user, y, m = gate
-    on = enabled == "1"
-    set_rules_v2(db, on)
-    db.commit()
-    context = _grid_context(db, user, y, m)
-    context["skip_open"] = True
-    context["skip_note"] = (
-        "Нові правила підрахунку ввімкнено. Закриті дні зміняться після «Перерахувати закриті дні місяця»."
-        if on else
-        "Повернуто старі правила підрахунку. Закриті дні зміняться після «Перерахувати закриті дні місяця»."
-    )
-    return templates.TemplateResponse(request, "_vyrobitok_body.html", context)
 
 
 @router.post("/vyrobitok/recount", response_class=HTMLResponse)
