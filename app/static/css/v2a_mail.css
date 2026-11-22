@@ -65,6 +65,16 @@ main.mailv2{max-width:none;margin:0;padding:18px 20px}
    the state worth noticing. */
 .mailv2 .dl-mode{display:flex;align-items:center;gap:8px;margin:0 0 0 auto}
 .mailv2 .dl-mode-label{font-size:var(--fs-1);color:var(--ink-3)}
+/* «Приймаю на: пт / пн» — лише у вихідні (services/mail_accept_day.py). Той
+   самий скляний .dl-seg, без JS: плитка їде праворуч у стані next. Стан «на
+   понеділок» має бурштиновий контур — це НЕзвичний режим (рядок ляже не в
+   сьогоднішню вкладку), його не можна не помітити. */
+.mailv2 .acd-mode{display:flex;align-items:center;gap:8px;margin:0 0 0 auto}
+.mailv2 .acd-mode + .dl-mode{margin-left:14px}
+.mailv2 .acd-mode .dl-seg[data-state="next"]::after{transform:translateX(100%)}
+.mailv2 .acd-mode.is-next .dl-seg{border-color:rgba(var(--warn-rgb), .6)}
+.mailv2 .acd-mode.is-next .dl-seg-opt[aria-pressed="true"]{color:var(--warn-ink)}
+.mailv2 .acd-mode .dl-seg-opt:disabled{opacity:.4;cursor:not-allowed}
 .mailv2 .btn.danger{border-color:rgba(var(--alarm-rgb), .35);color:var(--alarm-ink)}
 .mailv2 .btn.danger:hover{background:rgba(var(--alarm-rgb), .12);border-color:rgba(var(--alarm-rgb), .5)}
 .mailv2 .btn.sm{height:30px;padding:0 11px;font-size:var(--fs-2)}
@@ -1566,6 +1576,7 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
   .mailv2 .list-controls{gap:10px}
   /* Перемикач скачування (лише адмін) — власним рядком під стрічкою. */
   .mailv2 .list-controls>.dl-mode{order:3;flex:1 1 100%;margin:0}
+  .mailv2 .list-controls>.acd-mode{order:3;flex:1 1 100%;margin:0}
   .mailv2 .tab-nav{flex:1 1 0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
     -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
     mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);padding-right:24px}

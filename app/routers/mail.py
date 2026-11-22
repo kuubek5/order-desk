@@ -141,6 +141,7 @@ from app.services.mail_accept import (
 from app.services.mail_link_fetch import fetch_link, unpack_if_archive
 from app.services.mail_merge import detach_letter, detachable_link, merge_enabled, plan_merge
 from app.services.mail_rework import accept_rework, rework_form, rework_order_ids
+from app.services import mail_accept_day
 from app.services import mail_auto_backfill
 from app.services import disc_suggest
 from app.services.focus import recently_taken_ids
@@ -572,7 +573,8 @@ def get_mail(
         return templates.TemplateResponse(
             request, "_mail_batch_table.html",
             {"batch_rows": batch_rows, "blocked_rows": blocked_rows,
-             "user": user, "summary": summary},
+             "user": user, "summary": summary,
+             "accept_day": mail_accept_day.view(db, user)},
         )
 
     # Views: pending = "нове" NOT stamped by a filter rule; filtered = "нове"
@@ -934,6 +936,8 @@ def get_mail(
             # «Скачувати всі вкладення» — той самий тоггл, що в налаштуваннях,
             # продубльований у шапці тріажу для швидкого доступу (адмін).
             "mail_download_all": get_mail_download_all(db),
+            # У вихідні — перемикач «приймаю на п'ятницю / понеділок» (None у будень).
+            "accept_day": mail_accept_day.view(db, user),
             # Frozen-list state (see the `since` comment above).
             "list_watermark": list_watermark,
             "held_back_count": held_back_count,
@@ -975,6 +979,21 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(f"/mail?error={quote(str(exc))}", status_code=303)
 
     return RedirectResponse(f"/mail?synced={count}", status_code=303)
+
+
+@router.post("/mail/accept-day")
+def set_mail_accept_day(request: Request, day: str = Form(""), db: Session = Depends(get_db)):
+    """Перемикач шапки пошти у вихідні: приймати листи у п'ятничну вкладку чи
+    на понеділок (`services/mail_accept_day.py`). Сторінка перечитується цілком:
+    від вибору залежать підписи кнопок «Прийняти» в картці й у Конвеєрі."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if mail_accept_day.choose(db, user, day):
+        db.commit()
+    if request.headers.get("HX-Request"):
+        return Response(status_code=204, headers={"HX-Refresh": "true"})
+    return RedirectResponse("/mail", status_code=303)
 
 
 def _dock_day_of(request: Request):
@@ -1378,6 +1397,8 @@ def _mail_panel_context(
     context = {
         "email": email,
         "user": user,
+        # У вихідні кнопка «Прийняти» каже, якщо рядок ляже на понеділок.
+        "accept_day": mail_accept_day.view(db, user),
         # Вигляд екрана пошти (MAIL_V1_BRIEF.md етап 2): з акаунта оператора,
         # прямо з `user`, без другого round-trip до ui_prefs(request) — картку
         # рендерять і без request (див. виклики нижче в цьому файлі).
@@ -2193,6 +2214,7 @@ def accept_email(
         accept_anyway=bool(accept_anyway),
         sum3d_id=sum3d_id,
         opak=opak,
+        accept_day=mail_accept_day.chosen(db, user),
     )
     if not result.ok:
         return _accept_failed(result.error)
@@ -2658,6 +2680,7 @@ def _accept_one_batch_letter(
             merge_into=merge_into,
             merge_primary=bool(mkey) and merge_into is None,
             selection_mode="conveyor",
+            accept_day=mail_accept_day.chosen(db, user),
         )
     except Exception as exc:  # noqa: BLE001 — див. докстрінг
         eid = email.id

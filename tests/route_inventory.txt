@@ -320,3 +320,4 @@ POST /account/furnace-power
 POST /account/feedback-beacon
 POST /mail/batch-disc-hint
 POST /settings/feedback/board/finish
+POST /mail/accept-day

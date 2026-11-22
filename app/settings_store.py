@@ -446,8 +446,19 @@ def _is_section_key(key: str) -> bool:
     return key.startswith(_SECTION_KEY_PREFIXES)
 
 
+# Вибір ОДНОГО оператора, що живе кілька годин і не вартий стовпця в `users`:
+# «у вихідні приймаю листи на понеділок» (`services/mail_accept_day.py`).
+# Ключ — префікс + id оператора; значення — назва цільової вкладки.
+USER_KEY_PREFIX_ACCEPT_DAY = "mail_accept_day:"
+_USER_KEY_PREFIXES = (USER_KEY_PREFIX_ACCEPT_DAY,)
+
+
 def set_setting(session: Session, key: str, value: str) -> None:
-    if key not in SETTING_KEYS and not _is_section_key(key):
+    if (
+        key not in SETTING_KEYS
+        and not _is_section_key(key)
+        and not key.startswith(_USER_KEY_PREFIXES)
+    ):
         raise ValueError(f"unknown setting key: {key}")
     row = session.get(AppSetting, key)
     encrypted = encrypt_value(value)

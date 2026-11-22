@@ -206,7 +206,7 @@
                 hx-post="/mail/accept-batch" hx-target="#mail-detail" hx-swap="innerHTML"
                 hx-vals='js:{payload: window.collectMailBatch()}'
                 hx-indicator="this" hx-disabled-elt="this">
-            ✓ Прийняти {{ n }} в чергу
+            ✓ Прийняти {{ n }} в чергу{% if accept_day %}{{ accept_day.button_suffix }}{% endif %}
         </button>
         {% else %}
         <span class="mb-hint">Готових листів ще немає — скачайте файли вище.</span>

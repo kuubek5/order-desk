@@ -198,6 +198,7 @@ def accept_letter(
     merge_into: Order | None = None,
     merge_primary: bool = False,
     selection_mode: str = "card",
+    accept_day: date | None = None,
 ) -> AcceptResult:
     """Прийняти лист (або одну кольорову партію з нього) у чергу.
 
@@ -239,6 +240,7 @@ def accept_letter(
             accept_anyway=accept_anyway, sum3d_id=sum3d_id, opak=opak,
             join_export_folder=join_export_folder,
             merge_into=merge_into, merge_primary=merge_primary,
+            accept_day=accept_day,
         )
     finally:
         lock.release()
@@ -273,6 +275,7 @@ def _accept_letter_locked(
     join_export_folder: str = "",
     merge_into: Order | None = None,
     merge_primary: bool = False,
+    accept_day: date | None = None,
 ) -> AcceptResult:
     """Тіло `accept_letter` під локом листа — див. коментар до `_letter_locks`."""
     attachment_ids = list(attachment_ids or [])
@@ -298,7 +301,7 @@ def _accept_letter_locked(
     # Фази прийняття — у рядку «Slow request» (07.10.26: на проді 2.3–3.5 с на лист,
     # а розбивки не було). Поза запитом (фонові виклики, тести) — no-op.
     with perf.span("accept:tab"):
-        target_tab, tab_found = _resolve_target_tab_warm(db, email)
+        target_tab, tab_found = _resolve_target_tab_warm(db, email, accept_day)
 
     new_order = Order(
         source="email",
@@ -760,13 +763,15 @@ class _EmailRef:
 _found_tab = threading.local()
 
 
-def _resolve_tab_title(db: Session, email_id: int) -> tuple[str, bool]:
-    title, worksheet = _resolve_target_tab(db, _EmailRef(email_id))
+def _resolve_tab_title(db: Session, email_id: int, day: date | None = None) -> tuple[str, bool]:
+    title, worksheet = _resolve_target_tab(db, _EmailRef(email_id), day)
     _found_tab.worksheet = worksheet
     return title, worksheet is not None
 
 
-def _resolve_target_tab_warm(db: Session, email: EmailMessage) -> tuple[str, bool]:
+def _resolve_target_tab_warm(
+    db: Session, email: EmailMessage, day: date | None = None
+) -> tuple[str, bool]:
     """`_resolve_target_tab` на теплому потоці: (назва вкладки, чи вона є).
 
     Потік не відповів вчасно — шукаємо тут, як до 28.10.26: повільно, але
@@ -774,29 +779,30 @@ def _resolve_target_tab_warm(db: Session, email: EmailMessage) -> tuple[str, boo
     немає (`_offline_tab`): тоді шукати марно, а рядок допише повтор.
     """
     if _sheets.google_unreachable():
-        return _offline_tab(db, email), False
+        return _offline_tab(db, email, day), False
     try:
-        return _run_warm(db, _resolve_tab_title, email.id)
+        return _run_warm(db, _resolve_tab_title, email.id, day)
     except FutureTimeout:
         if _sheets.google_unreachable():
-            return _offline_tab(db, email), False
+            return _offline_tab(db, email, day), False
         logger.warning(
             "Потік запису зайнятий понад %.0f с — вкладку для листа %s шукаємо тут",
             WARM_WAIT_SECONDS, email.id,
         )
-        title, worksheet = _resolve_target_tab(db, email)
+        title, worksheet = _resolve_target_tab(db, email, day)
         return title, worksheet is not None
 
 
-def _offline_tab(db: Session | None, email) -> str:
+def _offline_tab(db: Session | None, email, day: date | None = None) -> str:
     """Вкладка для роботи, коли Google недоступний (03.11.26).
 
     Робота мусить лягти в ПРАВИЛЬНИЙ день: повтор допише рядок саме в
     `Order.sheet_tab`. Тому — вкладка, вже знайдена сьогодні (кеш, будь-якого
     віку в межах робочого дня), інакше найсвіжіша з тих, що синк уже бачив у
     таблиці (≤ сьогодні: лабораторія буває на день позаду), і лише тоді назва
-    сьогоднішнього дня — як і досі при збої таблиці."""
-    today = business_today()
+    сьогоднішнього дня — як і досі при збої таблиці. `day` — день, на який
+    приймає оператор (понеділок у вихідні, `mail_accept_day`)."""
+    today = day or business_today()
     cached = _tab_cache
     if cached is not None and cached[0] == today:
         tab = cached[1]
@@ -869,7 +875,9 @@ def _warm_appender(db: Session, tab: str | None):
     return append
 
 
-def _resolve_target_tab(db: Session, email: "EmailMessage | _EmailRef"):
+def _resolve_target_tab(
+    db: Session, email: "EmailMessage | _EmailRef", day: date | None = None
+):
     """До якої датованої вкладки належить ця робота.
 
     Лабораторія часто працює на день-два позаду, тож вкладки на СЬОГОДНІ може
@@ -889,7 +897,10 @@ def _resolve_target_tab(db: Session, email: "EmailMessage | _EmailRef"):
     вкладка, створена посеред дня, підхоплюється щонайпізніше за хвилину.
     """
     global _tab_cache
-    today = business_today()
+    # `day` — оператор у вихідні приймає на понеділок (`mail_accept_day`,
+    # 22.11.26). Правило те саме: найсвіжіша вкладка ≤ цього дня, тож коли
+    # понеділкової ще немає, рядок лягає в п'ятничну, як і без перемикача.
+    today = day or business_today()
     target_tab = today.strftime("%d.%m.%y")
     cached = _tab_cache
     if (
