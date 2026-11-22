@@ -285,6 +285,12 @@ try {
 
     if ($SumDir) { $SumDir = (Resolve-Path -LiteralPath $SumDir).Path.TrimEnd('\') }
     elseif ($found.Count -eq 1) { $SumDir = $found[0] }
+    elseif (-not $DryRun -and @($report.candidates | Where-Object { $_.has_dll_x64 -and $_.x64 -and -not $_.missing_exports }).Count -eq 1) {
+        # Тек кілька, але всі потрібні функції має лише одна — беремо її (22.11.26: проба рівня 2
+        # зупинилась на «вкажи теку», хоч придатною була тільки C:\iCAMV5smart).
+        $SumDir = @($report.candidates | Where-Object { $_.has_dll_x64 -and $_.x64 -and -not $_.missing_exports })[0].dir
+        Log "Тек Sum3D кілька, але всі потрібні функції має лише одна — беру її: $SumDir"
+    }
     else {
         if ($found.Count -gt 1) { Log 'Знайдено кілька тек Sum3D — для проби вкажи одну: -SumDir <тека>.' }
         $report.stopped = $(if ($DryRun) { 'dry run' } else { 'sumdir ambiguous' })

@@ -165,6 +165,10 @@ def test_place_level_writes_only_new_files_in_its_own_folder():
     assert "$Blk`\"" not in main and "'-Stl', \"`\"$Stl`\"\"" not in main
     # Кроки рівня 2 запускаються лише з -Place і лише після вдалих load/init.
     assert "if ($Place -and $baseOk)" in main
+    # Тек Sum3D кілька — сама бере лише ту ЄДИНУ, де є всі потрібні функції (22.11.26: перша проба
+    # в цеху зупинилась на «вкажи теку» при одній придатній); дві придатні — як і раніше, питає.
+    assert "Where-Object { $_.has_dll_x64 -and $_.x64 -and -not $_.missing_exports }).Count -eq 1" in main
+    assert main.index("has_dll_x64 -and $_.x64 -and -not $_.missing_exports }).Count -eq 1") < main.index("sumdir ambiguous")
     # Верстат береться лише зі списку самої Sum3D: неоднозначна чи невідома назва зупиняє пробу.
     assert "$report.stopped = 'place machine not found'; $baseOk = $false; break" in main
     assert "if ($hit.Count -ne 1)" in main
