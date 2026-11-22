@@ -13,6 +13,17 @@ from app.services.mcp_common import Tool, ToolError, _int_arg
 _WHAT = ("roots", "map", "files", "schema", "file", "exe", "assoc")
 
 
+def tool_sum3d_fetch(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import sum3d_fetch
+
+    if args.get("file") is None:
+        raise ToolError("потрібен `file` — номер «№» з останнього переліку kmill_sum3d_explore (what=files)")
+    try:
+        return sum3d_fetch.offer(db, _int_arg(args, "file", default=0, low=1, high=100_000))
+    except sum3d_fetch.FetchError as exc:
+        raise ToolError(str(exc)) from exc
+
+
 def tool_sum3d_explore(db: Session, args: dict) -> dict[str, Any]:
     what = str(args.get("what") or "roots").strip().lower()
     if what not in _WHAT:
@@ -266,5 +277,27 @@ SUM3D_EXPLORE_TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_sum3d_strategy,
+    ),
+    Tool(
+        name="kmill_sum3d_fetch",
+        description=(
+            "Забрати ПРОГРАМНИЙ файл Sum3D на аналіз: видає одноразове посилання (діє 5 хв, один раз) "
+            "на файл №file з останнього переліку kmill_sum3d_explore what=files; самі байти — окремим "
+            "GET на той самий слухач MCP (хост і порт як у /mcp, шлях з відповіді), без токена. У "
+            "відповіді назва, розмір і sha256 для звірки. Лише файли з тек Sum3D із Налаштувань і лише "
+            "програмні/конфігураційні (.exe .dll .ini .cfg .txt .arl .tab .par .mnu .xml .json .log .dat "
+            ".lib .csv .eqp), до 300 МБ. Проєкти, диски, роботи (.cam .blk .stl .iso) і теки робіт не "
+            "віддає. Нічого не змінює; файл читається зі спільним доступом. Кожна видача — у лозі CRM."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "file": {"type": "integer", "minimum": 1, "description": "Номер «№» файлу з останнього переліку kmill_sum3d_explore what=files."},
+            },
+            "required": ["file"],
+            "additionalProperties": False,
+        },
+        run=tool_sum3d_fetch,
+        # Квиток живе в пам'яті процесу CRM — окремий процес його б не побачив.
     ),
 )

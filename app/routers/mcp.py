@@ -297,6 +297,28 @@ def create_mcp_app() -> FastAPI:
                 )
             return handle_rpc(payload, db)
 
+    @app.get("/fetch/{key}")
+    def fetch_sum3d_file(key: str):
+        """Байти одного програмного файла Sum3D за одноразовим ключем, який
+        щойно видав інструмент `kmill_sum3d_fetch` (власник 22.11.26). Токена тут
+        немає свідомо: ключ і є дозвіл — його видано через `/mcp` під токеном, він
+        діє 5 хв і один раз. Будь-що інше — те саме «Не знайдено», що й решта
+        шляхів: відповідь не підказує, чи ключ був."""
+        from fastapi.responses import StreamingResponse
+
+        from app.services import sum3d_fetch
+
+        with _remote_db() as db:
+            allowed = gateway_enabled(db)
+        ticket = sum3d_fetch.redeem(key) if allowed else None
+        if ticket is None:
+            return PlainTextResponse("Не знайдено", status_code=404)
+        return StreamingResponse(
+            sum3d_fetch.stream(ticket),
+            media_type="application/octet-stream",
+            headers={"Content-Length": str(ticket.size), "X-Sha256": ticket.sha256},
+        )
+
     @app.api_route(
         "/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],

@@ -60,6 +60,8 @@ def _tool(name: str = "kmill_fake") -> Tool:
         ("kmill_mail_learn", {"days": 7}, True),
         # Журнал підбору — один запит до бази, вдома.
         ("kmill_selection_journal", {"days": 7}, False),
+        # Одноразовий квиток живе в памʼяті процесу CRM — лишається вдома.
+        ("kmill_sum3d_fetch", {"file": 1}, False),
         # Нумерація «№» з what=files живе в памʼяті процесу — лишається вдома.
         ("kmill_sum3d_explore", {"what": "files"}, False),
         ("kmill_health", {}, False),
