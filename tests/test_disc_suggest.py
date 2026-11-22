@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import struct
 import time
@@ -33,8 +34,11 @@ def _fresh_fit_cache():
 
 
 @pytest.mark.parametrize("material, thickness, expected", [
-    ("пмма A2", 14.7, [16]),  # 14,7 + 0,5 = 15,2 → 16, бо 15 немає
-    ("пмма A2", 11.0, [12]),
+    # ПММА (власник 22.11.26): будь-який диск не нижчий за потрібну висоту —
+    # для 8 мм годиться й 25. Раніше тут була лише найменша ([16], [12]).
+    ("пмма A2", 14.7, [16, 18, 20, 22, 25]),  # 14,7 + 0,5 = 15,2 → від 16, бо 15 немає
+    ("пмма A2", 11.0, [12, 14, 16, 18, 20, 22, 25]),
+    ("воск", 11.0, [12]),  # віск і далі — саме ця висота
     ("емо A2", 12.5, [14, 16]),  # мультиколор: ця або ще одна вище
     ("моно A2", 12.5, [16]),  # 14 впритул (1,5 мм < 2) → Monolith на крок вище
     ("моно A2", 11.6, [14, 16]),  # до 14 запас 2,4 мм — кроку немає, як мультиколор
@@ -189,6 +193,46 @@ def test_conveyor_hint_packs_all_letters_of_the_main_colour(app_db, shop, tmp_pa
     assert "не враховано 1" in body
     assert "zr16_16-Monolith-A2-x37" in body, "той самий диск, що й для трьох конструкцій одного листа"
     assert "→ 16 мм" in body, "висота за роботами кольору більшості, без високої роботи іншого кольору"
+
+
+def test_pmma_takes_any_taller_disc_and_finishes_the_fullest_started_one(tmp_path):
+    """Власник 22.11.26: для ПММА висота не підбирається під роботу — робота 8 мм
+    іде й на 25. Серед початих першим той, де менше вільного (добити диск),
+    незалежно від висоти; новий — лише запасним, і найнижчий."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    ring = [_square(28 * math.cos(a), 28 * math.sin(a), 12) for a in (0, 1.05, 2.1, 3.15, 4.2, 5.25)]
+    _disc(root, "pmma", 10, "pmma10_10-a2-x11", [_square(30, 0, 8)])  # початий, вільно ~97 %
+    _disc(root, "pmma", 25, "pmma25_25-a2-x251", ring)  # початий, вільно ~60 %
+    _disc(root, "pmma", 12, "pmma12_12-a2-x20", [])  # новий
+    _disc(root, "pmma", 20, "pmma20_20-a2-x30", [])  # новий, вищий
+    _disc(root, "zr", 25, "zr25_25-Monolith-A2-x9", [])  # чужий матеріал
+    stl = tmp_path / "mail"
+    stl.mkdir()
+    atts = [SimpleNamespace(filename=f.name, saved_path=str(f))
+            for f in (_stl(stl / f"case_{t}-anatomy_cad.stl", 9, 10, 8.0) for t in (11, 21))]
+
+    hint = disc_suggest.suggest("pmma a2", atts, str(root))
+    assert hint.heights[0] == 10 and 25 in hint.heights and hint.any_higher
+    order = [hint.best.name] + [p.name for p in hint.alts]
+    assert order[:2] == ["pmma25_25-a2-x251", "pmma10_10-a2-x11"], "початий із меншим вільним — першим"
+    assert order[2] == "pmma12_12-a2-x20", "новий — найнижчий, що підходить"
+    assert hint.new_disc.startswith("новий диск 10 мм")
+
+    # Цирконій правило не змінилось: Monolith 8 мм — 10 або 12 (мультиколор), не 25.
+    mono = disc_suggest.want_of("моно A2")
+    assert disc_suggest.target_heights(8.0, [10, 12, 14, 25], mono)[0] == [10, 12]
+
+
+def test_pmma_card_says_from_height_not_a_list():
+    from app.routers.deps import templates
+
+    want = disc_suggest.want_of("pmma a2")
+    pick = disc_suggest.Pick(name="pmma25_25-a2-x251", height=25, free_pct=60, started=True, paths=[], fit=True)
+    hint = disc_suggest.Suggestion(want=want, thickness=8.0, heights=[10, 12, 25], best=pick,
+                                   new_disc="новий диск 10 мм", any_higher=True)
+    html = templates.env.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert "робота ≈8.0 мм → від 10 мм" in html and "(диск вищий)" not in html
 
 
 def test_audit_tool_runs_on_empty_shop(app_db):  # noqa: F811

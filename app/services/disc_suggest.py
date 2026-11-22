@@ -6,7 +6,9 @@
 1. Матеріал, лінійка й колір диска = матеріал і колір листа.
 2. Висота: найвища конструкція листа (STL × усадка) + запас **мінімум 1 мм**
    → найменша висота, що ФІЗИЧНО є серед дисків (14,7 → 16, бо 15 немає).
-3. Одноколірні (ПММА, віск…) — саме ця висота.
+3. Одноколірні (віск…) — саме ця висота. ПММА — будь-який диск, НЕ НИЖЧИЙ за
+   цю висоту (власник 22.11.26: «для 8 мм навіть 25»); серед початих першим —
+   де менше вільного, незалежно від висоти; новий — найнижчий, що підходить.
 4. Мультиколор (Emotions/«емо», Katana, Monolith — знизу темний, далі світліше):
    ця висота АБО ще одна вище — щоб висота диска була близька до роботи.
 5. Monolith — ЗАВЖДИ на крок вище (високий світлий шар): влазить у 14 → 16.
@@ -273,6 +275,11 @@ def letter_height(attachments: Iterable[Any]) -> Optional[float]:
     return max(heights) if heights else None
 
 
+def any_height_above(want: Want) -> bool:
+    """ПММА: висота диска — будь-яка, не нижча за потрібну (власник 22.11.26)."""
+    return want.family == PMMA
+
+
 def target_heights(thickness: float, available: list[int], want: Want) -> tuple[list[int], str]:
     """Допустимі висоти диска й пояснення правила."""
     need = thickness + MARGIN_MM
@@ -282,6 +289,8 @@ def target_heights(thickness: float, available: list[int], want: Want) -> tuple[
     base = fitting[0]
     above = fitting[1] if len(fitting) > 1 else None
     why = f"≈{thickness:.1f} + запас {MARGIN_MM:g} → {base} мм"
+    if any_height_above(want):
+        return fitting, why + (" (ПММА: годиться й будь-який вищий)" if above is not None else "")
     if want.line in STEP_UP_LINES and base - thickness < STEP_UP_WITHIN_MM:
         if above is None:
             return [base], why + f"; {LINES[want.line][0]} впритул, +1 крок — вищого немає"
@@ -427,6 +436,8 @@ class Suggestion:
     # Скільки дисків пройшли суму площ, але розстановка конструкцій на них не
     # вдалась (клаптики між вирізами).
     rejected: int = 0
+    # ПММА: `heights` — усі висоти від потрібної й вище; картка пише «від N мм».
+    any_higher: bool = False
 
 
 def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAYS,
@@ -544,8 +555,14 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     reads = 0
     active = active or {}
     heights = result.heights
+    # ПММА: усі допустимі висоти рівні — серед початих вирішує вільне місце
+    # (добити диск), серед нових — висота (найнижчий, що підходить).
+    flat = any_height_above(want)
+    result.any_higher = flat and len(heights) > 1
 
     def rank(height: int) -> int:
+        if flat and height in heights:
+            return 0
         return heights.index(height) if height in heights else len(heights) + height
 
     # Диск, що стоїть у верстаті, — і ВИЩИЙ за правило висоти, якщо робота
@@ -610,7 +627,7 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
                                        -active[_key_of(p.name)].timestamp()
                                        if _key_of(p.name) in active else 0.0))
     picks.sort(key=lambda p: (rank(p.height), not p.started,
-                              p.free_pct if p.started else 100))
+                              p.free_pct if p.started else (p.height if flat else 100)))
     ordered = on_machine + [p for p in picks if p.started and not p.on_machine] +         [p for p in picks if not p.started and not p.on_machine]
     # Сума площ лише відсіяла явно замалі. Тепер — справжня розстановка
     # конструкцій (власник 14.11.26), у порядку пріоритету й лише поки не

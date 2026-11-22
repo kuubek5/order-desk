@@ -40,7 +40,7 @@
            14.11.26: «чому висоту конструкцій тепер не підказує»): диск із
            верстата буває вищим за правило. #}
         <span class="mdh-facts">
-            {% if hint.thickness %}<span class="mdh-f">робота ≈{{ '%.1f'|format(hint.thickness) }} мм → {{ hint.heights|join(' / ') }} мм{% if p.height not in hint.heights %} (диск вищий){% endif %}</span>{% endif %}
+            {% if hint.thickness %}<span class="mdh-f">робота ≈{{ '%.1f'|format(hint.thickness) }} мм → {% if hint.any_higher %}від {{ hint.heights[0] }}{% else %}{{ hint.heights|join(' / ') }}{% endif %} мм{% if p.height not in hint.heights %} (диск вищий){% endif %}</span>{% endif %}
             {% if p.on_machine %}<span class="mdh-f is-mach"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="8" rx="1.5"/><path d="M5.5 14h5M8 11v3"/></svg>{% if p.machine %}стоїть у {{ p.machine }}{% else %}на верстаті{% endif %}</span>{% endif %}
             <span class="mdh-f">вільно <b class="mono">{{ p.free_pct }} %</b></span>
             {# 20.11.26: початий диск із багатьма вільними, де розстановка CRM
