@@ -214,6 +214,29 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .mc-cat{position:absolute;bottom:100%;right:0;width:clamp(56px,12vh,190px);
   height:clamp(56px,12vh,190px);margin-bottom:.2vh;pointer-events:none;z-index:3}
 .mc-cat img{display:block;width:100%;height:100%;object-fit:contain}
+/* Фігури замість котика (власник 22.11.26, вибір у Налаштуваннях → Табло цеху):
+   «Диск готовий» і штамп «ГОТОВО» — намальовані SVG, цикл рівно 4 с (у 12 с
+   чергування вкладається тричі). Обертання й масштаб — навколо центру полотна
+   в його ж одиницях (`60px 60px` при viewBox 120): без `transform-box` і без
+   властивостей `translate`/`scale`, яких старий браузер телевізора не знає. */
+.mc-cat svg{display:block;width:100%;height:100%;overflow:visible}
+.fin-cuts{transform-origin:60px 60px;animation:fin-spin 4s cubic-bezier(.2,.7,.2,1) infinite}
+.fin-ring{stroke-dasharray:264;animation:fin-ring 4s ease-out infinite}
+.fin-check{stroke-dasharray:64;animation:fin-check 4s ease-out infinite}
+.fin-pop{transform-origin:60px 60px;animation:fin-pop 4s ease-out infinite}
+.fin-stamp{transform-origin:60px 60px;animation:fin-slam 4s cubic-bezier(.2,.9,.3,1) infinite}
+.fin-wave{transform-origin:60px 60px;animation:fin-wave 4s ease-out infinite}
+.fin-word{font:800 22px var(--font-display);letter-spacing:.06em}
+@keyframes fin-spin{0%{transform:rotate(0)}45%,100%{transform:rotate(360deg)}}
+@keyframes fin-ring{0%{stroke-dashoffset:264}45%,100%{stroke-dashoffset:0}}
+@keyframes fin-check{0%,45%{stroke-dashoffset:64}60%,100%{stroke-dashoffset:0}}
+@keyframes fin-pop{0%,45%{transform:scale(.6);opacity:0}58%{transform:scale(1.15);opacity:1}
+  66%,90%{transform:scale(1);opacity:1}100%{transform:scale(1);opacity:0}}
+@keyframes fin-slam{0%{transform:scale(1.9);opacity:0}10%{transform:scale(.94);opacity:1}
+  15%{transform:scale(1.05)}20%,86%{transform:scale(1);opacity:1}100%{transform:scale(1);opacity:0}}
+@keyframes fin-wave{0%,9%{transform:scale(.5);opacity:0}11%{opacity:.8}38%,100%{transform:scale(1.5);opacity:0}}
+@media (prefers-reduced-motion:reduce){.mc-cat svg *{animation:none!important}
+  .fin-ring,.fin-check{stroke-dashoffset:0}}
 /* Помилка на екрані верстата — окремо від «немає зв'язку», хоч тон у них
    спільний (`t-bad`): до зв'язку йти нема сенсу, а до помилки — треба
    (власник 18.09.26). Тому своя картка: густіший червоний контур, тло з
@@ -585,10 +608,28 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 
   // `getAttribute`, не `.src`: та сама адреса не перепризначається, і танець
   // поточного котика не перезапускається на кожному оновленні.
+  // Черга кадрів — з Налаштувань (`data-finish` живого шматка: cats, disc,
+  // stamp), тож зміну вибору телевізор бере з наступним оновленням, без
+  // перезавантаження. Кадр однаковий на всіх картках. Котик → котик міняє
+  // лише адресу картинки (стара лишається на екрані, поки вантажиться нова).
+  function finishFrames() {
+    const live = document.getElementById("shop-live");
+    const out = [];
+    ((live && live.dataset.finish) || "").split(",").forEach((key) => {
+      (FRAMES_OF[key] || []).forEach((frame) => out.push(frame));
+    });
+    return out;
+  }
   function applyCat() {
-    const want = CATS[catIdx];
-    document.querySelectorAll(".mc-cat img").forEach((img) => {
-      if (img.getAttribute("src") !== want) img.setAttribute("src", want);
+    const frames = finishFrames();
+    if (!frames.length) return;
+    const want = frames[catIdx % frames.length];
+    document.querySelectorAll(".mc-cat").forEach((el) => {
+      if (el.dataset.frame === want) return;
+      const img = el.querySelector("img");
+      if (img && CATS[want]) img.setAttribute("src", CATS[want]);
+      else el.innerHTML = CATS[want] ? '<img src="' + CATS[want] + '" alt="">' : FIGURES[want];
+      el.dataset.frame = want;
     });
   }
 
@@ -662,9 +703,28 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
   // Котики по черзі: один танець (~12 с) — один котик, далі інший. Міняємо
   // саму картинку (у картці вона одна), однаково на всіх картках; новий
   // котик зі свіжого шматка одразу отримує поточного (applyCat у refresh).
-  const CATS = ["/static/img/shop-cat-a.webp", "/static/img/shop-cat-b.webp"];
+  // З 22.11.26 у черзі не лише коти: «Диск готовий» і штамп «ГОТОВО» (SVG,
+  // стилі `fin-*` вище). Що саме в черзі — `finishFrames()`.
+  const CATS = { "cat-a": "/static/img/shop-cat-a.webp", "cat-b": "/static/img/shop-cat-b.webp" };
+  const FIGURES = {
+    disc: '<svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="46" fill="#1d150c" stroke="rgba(255,212,137,.3)" stroke-width="1.5"/>'
+      + '<g class="fin-cuts" fill="rgba(255,180,84,.22)" stroke="rgba(255,212,137,.6)" stroke-width="1">'
+      + '<rect x="34" y="30" width="16" height="13" rx="5"/><rect x="66" y="28" width="18" height="12" rx="5"/>'
+      + '<rect x="28" y="58" width="13" height="16" rx="5"/><rect x="78" y="56" width="14" height="17" rx="5"/>'
+      + '<rect x="44" y="80" width="17" height="12" rx="5"/><rect x="68" y="78" width="13" height="13" rx="5"/></g>'
+      + '<circle class="fin-ring" cx="60" cy="60" r="42" fill="none" stroke="#ffb454" stroke-width="5" stroke-linecap="round" transform="rotate(-90 60 60)"/>'
+      + '<g class="fin-pop"><circle cx="60" cy="60" r="22" fill="#ffb454"/>'
+      + '<path class="fin-check" d="M48 61 L57 70 L73 51" fill="none" stroke="#171008" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g></svg>',
+    stamp: '<svg viewBox="0 0 120 120"><g transform="rotate(-12 60 60)">'
+      + '<rect class="fin-wave" x="10" y="39" width="100" height="42" rx="10" fill="none" stroke="#ffb454" stroke-width="2"/>'
+      + '<g class="fin-stamp"><rect x="8" y="37" width="104" height="46" rx="9" fill="rgba(255,180,84,.16)" stroke="#ffb454" stroke-width="4"/>'
+      + '<rect x="14" y="43" width="92" height="34" rx="5" fill="none" stroke="#ffb454" stroke-width="1.4"/>'
+      + '<text class="fin-word" x="60" y="68" text-anchor="middle" textLength="80" lengthAdjust="spacingAndGlyphs" fill="#ffd894">ГОТОВО</text></g></g></svg>',
+  };
+  const FRAMES_OF = { cats: ["cat-a", "cat-b"], disc: ["disc"], stamp: ["stamp"] };
   let catIdx = 0;
-  setInterval(() => { catIdx = 1 - catIdx; applyCat(); }, 12000);
+  applyCat();
+  setInterval(() => { catIdx += 1; applyCat(); }, 12000);
 })();
 </script>
 <script src="/static/js/shop_board_slm.js" defer></script>

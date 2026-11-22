@@ -310,6 +310,9 @@ PREFERENCE_KEYS = {
     # Що малює плитка SISMA на табло цеху: "classic" | "melt" | "tower"
     # (`shop_board.SISMA_STYLES`); не задано — "classic", як до вибору.
     "shop_board_sisma_style",
+    # Що над «100%» на табло цеху (`shop_board.FINISH_FIGURES`): слова через
+    # кому ("cats,disc") або "none"; не задано — коти, як до вибору.
+    "shop_board_finish",
     # 3D-роботи на плитках табло цеху (`board_models.THREE_D_FIELDS`): JSON з
     # перемикачами й розмірами; не задано — усе ввімкнено з типовими розмірами.
     "shop_board_3d",

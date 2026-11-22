@@ -107,6 +107,22 @@
                         </form>
                     </div>
 
+                    {# Що над «100%» (власник 22.11.26): галочки, не радіо — обрані
+                       чергуються по 12 с. Жодної галочки — без анімації (сервер
+                       кладе власне слово `none`). #}
+                    <div class="stand-cell w3" id="board-finish">
+                        <h3>Коли завершено</h3>
+                        <div class="settings-help">Що рухається над «100%» на плитці верстата, поки диск не зняли. <details class="hint-more"><summary>докладніше</summary><div class="hint-full">Обрані анімації чергуються кожні 12 секунд. Без жодної галочки над «100%» нічого не рухається.</div></details></div>
+                        <form method="post" action="/settings/feedback/board/finish" class="b-form">
+                            <div class="sisma-style-opts" role="group" aria-label="Анімація над 100% на табло">
+                                {% for key, name, hint in finish_figures %}
+                                <label class="schip" title="{{ hint }}"><input type="checkbox" name="figure" value="{{ key }}" {% if key in finish %}checked{% endif %}> {{ name }}</label>
+                                {% endfor %}
+                            </div>
+                            <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        </form>
+                    </div>
+
                     {# Вигляд телевізора з ЖИВИМ прев'ю (`settings_board3d.js` →
                        `KM3D.setConfig`): рух повзунка одразу в прев'ю, у базу —
                        кнопкою «Зберегти»; телевізор бере збережене за ≤30 с.

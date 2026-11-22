@@ -81,6 +81,8 @@ def get_board_settings(request: Request, db: Session = Depends(get_db)):
             "board_port": furnace_board.BOARD_PORT,
             "sisma_styles": shop_board.SISMA_STYLES,
             "sisma_style": shop_board.read_sisma_style(db),
+            "finish_figures": shop_board.FINISH_FIGURES,
+            "finish": shop_board.read_finish(db),
             "three_d": board_models.read_3d(db),
             "three_d_fields": board_models.THREE_D_FIELDS,
             "power_group": get_setting(db, "power_group") or "",
@@ -357,6 +359,27 @@ def save_sisma_style(request: Request, style: str = Form(...), db: Session = Dep
     return _board_flash(
         request, "success",
         f"SISMA на табло: «{names[style]}». Телевізор підхопить з наступним оновленням (до 30 с).",
+    )
+
+
+@router.post("/settings/feedback/board/finish")
+def save_board_finish(request: Request, figure: list[str] = Form([]), db: Session = Depends(get_db)):
+    """Що танцює над «100%» на табло цеху (власник 22.11.26): коти, «Диск
+    готовий», штамп «ГОТОВО» — будь-який набір, чергуються. Жодної галочки —
+    власне слово `none` (без анімації), а не порожнє значення."""
+    require_settings_admin(request, db)
+    from app.services import shop_board
+
+    names = {key: name for key, name, _ in shop_board.FINISH_FIGURES}
+    if any(key not in names for key in figure):
+        return _board_flash(request, "error", "Такої анімації немає.")
+    set_setting(db, shop_board.FINISH_KEY, shop_board.finish_value(figure))
+    db.commit()
+    picked = [names[key] for key in shop_board.normalize_finish(shop_board.finish_value(figure))]
+    said = "«" + "», «".join(picked) + "»" if picked else "без анімації"
+    return _board_flash(
+        request, "success",
+        f"Над «100%» на табло: {said}. Телевізор підхопить з наступним оновленням (до 30 с).",
     )
 
 

@@ -85,6 +85,45 @@ def read_sisma_style(db: Optional[Session]) -> str:
     return normalize_sisma_style(get_setting(db, SISMA_STYLE_KEY))
 
 
+# Що танцює над «100%», коли програма завершена (власник 22.11.26: до котиків —
+# «Диск готовий» і штамп «ГОТОВО», на вибір). Кілька — чергуються по 12 с, як
+# коти досі. Власне слово для «нічого» (`none`): порожнє значення в базі = «ще не
+# обирали» = коти, як було до вибору (CLAUDE.md §14 «Порожнє поле = поля не було»).
+FINISH_KEY = "shop_board_finish"
+FINISH_FIGURES: tuple[tuple[str, str, str], ...] = (
+    ("cats", "Котики", "два танцюючі котики по черзі (як було)"),
+    ("disc", "Диск готовий", "диск докручується, коло замикається, з'являється галочка"),
+    ("stamp", "Штамп «ГОТОВО»", "слово прибивається печаткою"),
+)
+FINISH_NONE = "none"
+DEFAULT_FINISH: tuple[str, ...] = ("cats",)
+
+
+def normalize_finish(value: Optional[str]) -> tuple[str, ...]:
+    """Обрані фігури в порядку `FINISH_FIGURES`; `none` — жодної; порожнє чи
+    сміття — типові коти."""
+    raw = (value or "").strip()
+    if raw == FINISH_NONE:
+        return ()
+    picked = {part.strip() for part in raw.split(",")}
+    found = tuple(key for key, _, _ in FINISH_FIGURES if key in picked)
+    return found or DEFAULT_FINISH
+
+
+def finish_value(keys) -> str:
+    """Значення для бази: слова через кому або `none`, ніколи не порожнє."""
+    found = [key for key, _, _ in FINISH_FIGURES if key in set(keys or ())]
+    return ",".join(found) if found else FINISH_NONE
+
+
+def read_finish(db: Optional[Session]) -> tuple[str, ...]:
+    if db is None:
+        return DEFAULT_FINISH
+    from app.settings_store import get_setting
+
+    return normalize_finish(get_setting(db, FINISH_KEY))
+
+
 # ── Диск, що вифрезеровується (ТВ 3, власник 11.10.26) ─────────────────────
 # Замість точкової смужки — заготовка, на якій із відсотком проступають
 # вирізані одиниці, і дуга прогресу довкола. Число на картці лишається тим
@@ -420,6 +459,8 @@ class ShopView:
     nearest_iso: str = ""
     # Стиль малюнка в полотні SISMA (`SISMA_STYLES`); плитку не змінює.
     sisma_style: str = DEFAULT_SISMA_STYLE
+    # Фігури над «100%» (`FINISH_FIGURES`); порожньо — без анімації.
+    finish: tuple[str, ...] = DEFAULT_FINISH
     # Смуга «Світло» в шапці (`power_schedule.PowerView`); None — вимкнено в
     # налаштуваннях або черга відключень не задана.
     power: Optional[object] = None
@@ -701,12 +742,13 @@ def shop_view(
     furnace_view=None,
     curves: Optional[dict] = None,
     sisma_style: Optional[str] = None,
+    finish: Optional[str] = None,
 ) -> ShopView:
     """Зібрати все, що показує табло цеху.
 
     `cards`/`furnace_view`/`curves` — для тестів; `curves` — крива за НАЗВОЮ
-    печі (у тестових картках немає ключа печі). `sisma_style` — для тестів;
-    інакше стиль читається з налаштувань.
+    печі (у тестових картках немає ключа печі). `sisma_style` і `finish` — для
+    тестів; інакше читаються з налаштувань.
     """
     from app.services import furnace_board
     from app.services.machines import snapshot
@@ -716,6 +758,7 @@ def shop_view(
     view = ShopView(now=now)
     view.sisma_style = (normalize_sisma_style(sisma_style) if sisma_style is not None
                         else read_sisma_style(db))
+    view.finish = normalize_finish(finish) if finish is not None else read_finish(db)
     # Графік світла вже лежить у памʼяті — табло по нього нікуди не ходить.
     from app.services import power_schedule
 

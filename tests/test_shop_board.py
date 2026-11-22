@@ -991,6 +991,101 @@ def _sisma_frag(style):
     return templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
 
 
+def _finish_frag(finish):
+    from app.routers.deps import templates
+
+    furnace = SimpleNamespace(cards=[], nearest_name="", nearest_at="",
+                              nearest_day="", nearest_iso="")
+    view = sb.shop_view(None, token="t", now=NOW, furnace_view=furnace, finish=finish,
+                        cards=[_card("M-100", "run", percent=100), _card("M-63", "run", percent=63)])
+    return templates.env.get_template("_shop_board_cards.html").render(view=view, token="t")
+
+
+def test_finish_figures_default_to_cats_and_none_has_its_own_word(app_db):  # noqa: F811
+    """Власник 22.11.26: над «100%» — коти, «Диск готовий», штамп «ГОТОВО», на
+    вибір. Не обирали — коти, як було; «нічого» — власне слово `none`, а не
+    порожнє значення (CLAUDE.md §14, «Порожнє поле»)."""
+    _, factory = app_db
+    with factory() as db:
+        assert sb.read_finish(db) == ("cats",)
+    assert sb.read_finish(None) == ("cats",)
+    for raw in ("", None, "  ", "neon"):
+        assert sb.normalize_finish(raw) == ("cats",), raw
+    assert sb.normalize_finish("none") == ()
+    assert sb.normalize_finish("stamp, disc") == ("disc", "stamp"), "порядок — як у переліку"
+    assert sb.finish_value([]) == "none" and sb.finish_value(["stamp", "cats"]) == "cats,stamp"
+    assert [key for key, _, _ in sb.FINISH_FIGURES] == ["cats", "disc", "stamp"]
+
+
+def test_finish_choice_reaches_the_board_fragment():
+    # Коти обрані — перший кадр котик, як і було; черга їде в `data-finish`.
+    cats = _finish_frag("cats,disc")
+    assert 'data-finish="cats,disc"' in cats
+    slot = cats.split('class="mc-cat"', 1)[1].split("</span>", 1)[0]
+    assert 'data-frame="cat-a"' in slot and slot.count("<img") == 1
+    # Без котів слот порожній: фігуру кладе скрипт, котика на мить не видно.
+    drawn = _finish_frag("disc,stamp")
+    assert 'data-finish="disc,stamp"' in drawn
+    slot = drawn.split('class="mc-cat"', 1)[1].split("</span>", 1)[0]
+    assert "<img" not in slot and "data-frame" not in slot
+    assert "has-cat" in drawn, "місце під фігуру в рядку програми лишається"
+    # Нічого не обрано — ні слота, ні відступу під нього.
+    none = _finish_frag("none")
+    assert 'data-finish=""' in none
+    assert 'class="mc-cat"' not in none and "has-cat" not in none
+
+
+def test_board_page_knows_how_to_draw_every_finish_figure(app_db, monkeypatch):  # noqa: F811
+    """Кожна фігура з переліку має кадри в скрипті табло — інакше галочка в
+    Налаштуваннях давала б порожній квадрат над «100%»."""
+    from app.routers.furnace_board import create_board_app
+    from app.services import furnace_board as fb
+    from app.services import machines as machines_mod
+    from tests.test_furnace_board import _enable
+
+    _, factory = app_db
+    token = _enable(factory)
+    monkeypatch.setattr("app.db.SessionLocal", factory)
+    monkeypatch.setattr(machines_mod, "snapshot", lambda db: [])
+    monkeypatch.setattr(fb, "board_view", lambda db, now=None, cards=None: SimpleNamespace(
+        cards=[], nearest_name="", nearest_at="", nearest_day="", nearest_iso=""))
+    status, _, page = MiniClient(create_board_app()).get(f"/t/{token}/shop")
+    assert status == 200
+    frames = page.split("const FRAMES_OF = {", 1)[1].split("}", 1)[0]
+    for key, _, _ in sb.FINISH_FIGURES:
+        assert f"{key}:" in frames, key
+    assert "fin-ring" in page and "fin-stamp" in page and "ГОТОВО" in page
+
+
+def test_admin_picks_finish_figures_operator_cannot(app_db):  # noqa: F811
+    from tests.test_settings_slabs_render import OPERATOR
+
+    app, factory = app_db
+    operator = MiniClient(app)
+    operator.login(*OPERATOR)
+    assert operator.post("/settings/feedback/board/finish", [("figure", "stamp")])[0] in (302, 303, 403)
+    with factory() as db:
+        assert sb.read_finish(db) == ("cats",), "оператор змінив табло"
+
+    admin = MiniClient(app)
+    admin.login(*ADMIN)
+    assert admin.post("/settings/feedback/board/finish", [("figure", "stamp"), ("figure", "disc")])[0] == 303
+    with factory() as db:
+        assert sb.read_finish(db) == ("disc", "stamp")
+    # Невідоме слово не зберігається і не скидає обраного.
+    admin.post("/settings/feedback/board/finish", [("figure", "neon")])
+    with factory() as db:
+        assert sb.read_finish(db) == ("disc", "stamp")
+    status, _, html = admin.get("/settings/board")
+    assert status == 200 and 'id="board-finish"' in html
+    assert 'value="disc" checked' in html and 'value="stamp" checked' in html
+    assert 'value="cats" checked' not in html and "Штамп «ГОТОВО»" in html
+    # Жодної галочки — «без анімації», і це не повертає котів.
+    assert admin.post("/settings/feedback/board/finish", {})[0] == 303
+    with factory() as db:
+        assert sb.read_finish(db) == ()
+
+
 def test_sisma_style_defaults_to_classic_and_never_empty(app_db):  # noqa: F811
     """Без вибору — «як зараз». Порожнє чи невідоме значення читається як
     `classic`, а не як «стилю немає» (CLAUDE.md §14, «Порожнє поле»)."""
