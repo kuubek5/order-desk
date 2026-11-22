@@ -27,7 +27,9 @@ from app import sync_control
 from app.business_day import business_today
 from app.auth import verify_password
 from app.routers.section_gate import blocked_response
-from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.routers.deps import (
+    get_current_user, get_db, login_redirect, require_admin_or_redirect, templates,
+)
 from app.services.attempt_limit import block_message, pin_limiter
 from app.sheet_sync_service import SheetSyncError, sync_google_sheets
 from app.sheets import tab_name_for
@@ -37,9 +39,11 @@ from app.services.vyrobitok import (
     OPAK_PEOPLE,
     clear_day_overrides,
     compute_month,
+    recount_month,
     resync_guard,
     save_month_settings,
     set_cell,
+    set_rules_v2,
     unfreeze_day,
 )
 from app.settings_store import get_setting
@@ -327,3 +331,75 @@ def post_vyrobitok_settings(
     )
     context = _grid_context(db, user, y, m)
     return templates.TemplateResponse(request, "_vyrobitok_body.html", context)
+
+
+def _rules_action_context(request: Request, db: Session, year: int, month: int):
+    """Гейт дій над правилами підрахунку: лише адміністратор і лише з відкритим
+    розділом (ПІН). Повертає (користувач, рік, місяць) або готову відповідь."""
+    user = require_admin_or_redirect(request, db, loopback=False)
+    if isinstance(user, RedirectResponse):
+        return user
+    if _pin_required(request, db):
+        return RedirectResponse("/vyrobitok", status_code=303)
+    y, m = _clamp_period(year, month)
+    return user, y, m
+
+
+@router.post("/vyrobitok/rules", response_class=HTMLResponse)
+def post_vyrobitok_rules(
+    request: Request,
+    year: int = Form(...),
+    month: int = Form(...),
+    enabled: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Вимикач нових правил підрахунку (`services/vyrobitok_rows.py`, 22.11.26).
+
+    Діє одразу на відкриті дні; закриті тримають своє число до «Перерахувати
+    закриті дні місяця» — тому вмикання саме по собі минулих цифр не рухає."""
+    gate = _rules_action_context(request, db, year, month)
+    if not isinstance(gate, tuple):
+        return gate
+    user, y, m = gate
+    on = enabled == "1"
+    set_rules_v2(db, on)
+    db.commit()
+    context = _grid_context(db, user, y, m)
+    context["skip_open"] = True
+    context["skip_note"] = (
+        "Нові правила підрахунку ввімкнено. Закриті дні зміняться після «Перерахувати закриті дні місяця»."
+        if on else
+        "Повернуто старі правила підрахунку. Закриті дні зміняться після «Перерахувати закриті дні місяця»."
+    )
+    return templates.TemplateResponse(request, "_vyrobitok_body.html", context)
+
+
+@router.post("/vyrobitok/recount", response_class=HTMLResponse)
+def post_vyrobitok_recount(
+    request: Request,
+    year: int = Form(...),
+    month: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Перезняти числа закритих днів місяця з робіт у базі (`recount_month`).
+
+    Таблицю не читає й ручних правок не чіпає — на відміну від «⟳» дня."""
+    gate = _rules_action_context(request, db, year, month)
+    if not isinstance(gate, tuple):
+        return gate
+    user, y, m = gate
+    result = recount_month(db, y, m)
+    context = _grid_context(db, user, y, m)
+    context["skip_open"] = True
+    note = f"Перераховано закритих днів: {result['days']}."
+    if result["skipped_empty"]:
+        note += f" Не чіпано (вкладку почищено, робіт у базі немає): {result['skipped_empty']}."
+    if result["partial"]:
+        days = ", ".join(f"{d:%d.%m}" for d in result["partial"])
+        note += (
+            f" Не чіпано, бо частина прорахованих рядків зникла з таблиці й число впало б: {days}"
+            " — такі дні виправляє «⟳» дня або правка рукою."
+        )
+    context["skip_note"] = note
+    return templates.TemplateResponse(request, "_vyrobitok_body.html", context)
+

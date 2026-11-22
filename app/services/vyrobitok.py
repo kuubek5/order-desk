@@ -40,16 +40,18 @@ from __future__ import annotations
 import calendar
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.business_day import business_now, business_today, next_tab_day
 from app.models import Order, VyrobitokCell, VyrobitokDay, VyrobitokMonth
-from app.services.order_dates import order_date, order_date_of
-from app.stats import has_sum3d_time, parse_int_safe
+from app.services import vyrobitok_rows
+from app.services.order_dates import order_date_of
+from app.settings_store import get_setting, set_setting
+from app.stats import parse_int_safe
 
 # Дні, які ЗАРАЗ пересинхронізовує оператор («⟳» у табелі). Фоновий
 # заморожувач (freeze_due_days, кожні 10 хв) їх пропускає: інакше між
@@ -164,26 +166,9 @@ def parse_decimal(raw: str | None) -> float | None:
 
 def _is_rework(mill_count: str | None) -> bool:
     """Робота фрезерується вдруге і далі — переробка, у виробіток НЕ рахується.
-    Її кількість навмисно лишають порожньою в таблиці, але ознака надійніша."""
-    n = parse_int_safe(mill_count)
-    return n is not None and n >= 2
-
-
-def _lab_row_counts(order) -> bool:
-    """Лабораторний рядок іде у виробіток лише коли в нього є Sum3D ID.
-
-    Технік заводить рядок наперед: сьогодні роботу не встигли, завтра її
-    заводять знову — і без цієї умови та сама коронка лягла б у табель двічі.
-    Sum3D ID ставить оператор, коли реально бере роботу в прорахунок, тож він і
-    є ознакою «робота цього дня справді пішла» (таблиця — головне джерело
-    Sum3D, див. CLAUDE.md §5). Клієнтських рядків (пошта) правило не стосується:
-    там повторного заведення нема, робота приходить листом один раз.
-    """
-    if order.source != "lab":
-        return True
-    # Саме час: «дайте преміли» чи «немає папки» в цій клітинці значать, що роботу
-    # не взяли, а рядок того самого наряду рахувався б ще раз (аудит 06.11.26).
-    return has_sum3d_time(order.sum3d_id)
+    Саме правило — `vyrobitok_rows._is_rework_mark`; тут лишилось ім'я, на яке
+    посилаються `stats_data` і `mail_rework`."""
+    return vyrobitok_rows._is_rework_mark(mill_count)
 
 
 def nf(value: float, decimals: int = 2) -> str:
@@ -203,6 +188,11 @@ class MonthGrid:
     opaks: dict
     months_nav: list[dict]
     warn: dict | None
+    # «Не пораховано й чому» (22.11.26): рядки місяця, що не дали одиниць, з
+    # причиною — за ПОТОЧНИМ станом таблиці (закритий день число не міняє).
+    skipped: list[dict] = field(default_factory=list)
+    # Чи ввімкнено нові правила підрахунку (`vyrobitok_rows`, вимикач адміна).
+    rules_v2: bool = False
 
 
 def _source_bucket(source: str) -> str:
@@ -364,44 +354,107 @@ def unfreeze_day(db: Session, day: date) -> None:
         db.commit()
 
 
+RULES_V2_KEY = "vyrobitok_rules_v2"
+
+
+def rules_v2(db: Session) -> bool:
+    """Нові правила підрахунку (власник 22.11.26, `vyrobitok_rows`): «без Sum3D
+    не рахується» і для пошти, переробка наряду — один раз. Вмикає адміністратор
+    на екрані, ПІСЛЯ звірки «було → стало»; не задано = старі правила."""
+    return (get_setting(db, RULES_V2_KEY) or "") == "1"
+
+
+def set_rules_v2(db: Session, enabled: bool) -> None:
+    set_setting(db, RULES_V2_KEY, "1" if enabled else "0")
+
+
+def _judged(
+    db: Session, first: date, last: date
+) -> tuple[list[vyrobitok_rows.Verdict], set[tuple[int, int]]]:
+    return vyrobitok_rows.judge(db, first, last, v2=rules_v2(db))
+
+
+def _tally(
+    verdicts: list[vyrobitok_rows.Verdict],
+) -> tuple[dict[tuple[date, str], int], set[date]]:
+    """Вердикти → (день,колонка) → сума і «живі» дні.
+
+    День живий, коли в ньому є хоч один рядок без позначки переробки — так
+    само, як було: рядки, що не рахуються (технік завів, оператор ще не взяв),
+    теж тримають день живим, інакше він показував би старий знімок замість
+    чесного нуля."""
+    auto: dict[tuple[date, str], int] = defaultdict(int)
+    live_days: set[date] = set()
+    for v in verdicts:
+        if v.reason != vyrobitok_rows.REASON_REWORK_MARK:
+            live_days.add(v.day)
+        if v.col_key is not None:
+            auto[(v.day, v.col_key)] += v.units
+    return auto, live_days
+
+
 def _live_units(
     db: Session, first: date, last: date
 ) -> tuple[dict[tuple[date, str], int], set[date], set[tuple[int, int]]]:
     """Одиниці з ЖИВИХ Orders: (день,колонка) → сума, живі дні, місяці з даними.
 
     Спільне для показу й для заморозки — щоб заморожене число рахувалось за
-    тими самими правилами, за якими день показувався до неї.
+    тими самими правилами, за якими день показувався до неї. Саме рішення
+    «рядок рахується чи ні» — у `vyrobitok_rows.judge`.
     """
-    orders = db.scalars(
-        select(Order)
-        .options(selectinload(Order.material))
-        .where(Order.archived_at.is_(None))
-    ).all()
-
-    auto: dict[tuple[date, str], int] = defaultdict(int)
-    live_days: set[date] = set()
-    months_with_orders: set[tuple[int, int]] = set()
-
-    for order in orders:
-        d = order_date(order)
-        months_with_orders.add((d.year, d.month))
-        if not (first <= d <= last):
-            continue
-        if _is_rework(order.mill_count):
-            continue
-        # День лишається «живим» навіть із рядків, які не рахуються: інакше
-        # день, де технік завів роботи, а оператор їх ще не взяв, вважався б
-        # мертвим і показував старий знімок замість чесного нуля.
-        live_days.add(d)
-        if not _lab_row_counts(order):
-            continue
-        material = order.material
-        key = MATERIAL_KEY_BY_NAME.get(material.name) if material else None
-        if key is None or key not in ORDER_MATERIALS:
-            continue
-        col_key = f"{_source_bucket(order.source)}_{key}"
-        auto[(d, col_key)] += parse_int_safe(order.quantity) or 0
+    verdicts, months_with_orders = _judged(db, first, last)
+    auto, live_days = _tally(verdicts)
     return auto, live_days, months_with_orders
+
+
+def _skipped_view(verdicts: list[vyrobitok_rows.Verdict]) -> list[dict]:
+    """Рядки, що не дали одиниць, і перенесені прорахунки — для екрана."""
+    out: list[dict] = []
+    for v in sorted(verdicts, key=lambda x: (x.day, x.bucket, x.row_number or 0, x.order_id)):
+        if v.counted and not v.note:
+            continue
+        out.append({
+            "day": v.day.strftime("%d.%m"),
+            "bucket": "лаб" if v.bucket == "lab" else "пошта",
+            "row": v.row_number,
+            "who": v.work_order_no or v.client_name or "—",
+            "material": v.material_color,
+            "quantity": v.quantity,
+            "counted": v.counted,
+            "reason": v.reason_label if not v.counted else v.note,
+        })
+    return out
+
+
+def recount_month(db: Session, year: int, month: int) -> dict:
+    """Перезняти знімки ЗАКРИТИХ днів місяця з поточних робіт у базі.
+
+    Потрібно, коли змінились правила (вимикач `rules_v2`) чи довідник
+    матеріалів (Vivid став цирконієм): закритий день тримає старе число й сам
+    не перерахується. Таблицю не читає — рахує з того, що вже є в базі; день,
+    у якому живих робіт не лишилось (лаба почистила вкладку), НЕ чіпає, інакше
+    його число стало б нулем. Так само не чіпає день, з якого після закриття
+    зникла ЧАСТИНА прорахованих рядків (`vyrobitok_rows.vanished_rows`): число
+    впало б, і вимикач назад цього не повернув би. Такі дні названо у відповіді
+    (`partial`) — їх виправляють «⟳» дня або рукою. Позначка закриття лишається."""
+    days_in_month = calendar.monthrange(year, month)[1]
+    first, last = date(year, month, 1), date(year, month, days_in_month)
+    _auto, live_days, _months = _live_units(db, first, last)
+    frozen = orders_frozen_days(db, first, last)
+    vanished = vyrobitok_rows.vanished_rows(db, first, last, v2=rules_v2(db))
+    result: dict = {"days": 0, "skipped_empty": 0, "partial": []}
+    for day in sorted(frozen):
+        if day not in live_days:
+            result["skipped_empty"] += 1
+            continue
+        if vanished.get(day):
+            result["partial"].append(day)
+            continue
+        _snapshot_orders(db, day)
+        result["days"] += 1
+    if result["days"]:
+        db.commit()
+    return result
 
 
 def compute_month(
@@ -412,7 +465,8 @@ def compute_month(
     last = date(year, month, days_in_month)
     today = business_today()
 
-    auto, live_days, months_with_orders = _live_units(db, first, last)
+    verdicts, months_with_orders = _judged(db, first, last)
+    auto, live_days = _tally(verdicts)
     frozen = orders_frozen_days(db, first, last)
 
     cells = db.scalars(
@@ -538,6 +592,8 @@ def compute_month(
         opaks=opaks,
         months_nav=months_nav,
         warn=warn,
+        skipped=_skipped_view(verdicts),
+        rules_v2=rules_v2(db),
     )
 
 

@@ -16,7 +16,6 @@ source app/services/sheet_row_actions.py 2
 source app/services/sheet_writeback.py 7
 source app/services/stats_data.py 8
 source app/services/telegram_bot.py 2
-source app/services/vyrobitok.py 1
 source app/sheet_sync_service.py 2
 source app/sheet_writer.py 2
 source app/sync.py 9

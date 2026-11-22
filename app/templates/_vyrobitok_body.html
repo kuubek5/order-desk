@@ -121,6 +121,60 @@
   <span><i class="ed"></i>вписав оператор — у колонках CRM наведіть, щоб побачити, що порахувала система</span>
 </div>
 
+{# «Не пораховано й чому» (власник 22.11.26). Досі рядок із невпізнаним матеріалом,
+   порожньою кількістю чи без Sum3D просто не потрапляв у суму, і цього ніхто не
+   бачив — звірка з ручною таблицею впиралась у «число є, а з чого воно — ні».
+   Перелік — за ПОТОЧНИМ станом таблиці: закритий день (•) число не міняє.
+   Тут же адмін вмикає нові правила й перераховує закриті дні місяця. #}
+{% set _off = g.skipped|rejectattr('counted')|list %}
+{% set _moved = g.skipped|selectattr('counted')|list %}
+<details class="vt-skip"{% if skip_open %} open{% endif %}>
+  <summary>Не пораховано й чому <b>{{ _off|length }}</b>{% if _moved %}<span class="vt-skip-moved">пораховано з приміткою: {{ _moved|length }}</span>{% endif %}</summary>
+  <div class="vt-skip-body">
+    <p class="vt-skip-rules">
+      Правила підрахунку: <b>{{ 'нові' if g.rules_v2 else 'старі' }}</b>.
+      {% if g.rules_v2 %}Без Sum3D не рахується ні лабораторія, ні пошта; повторно прорахований наряд (той самий вид, матеріал і кількість) рахується один раз.
+      {% else %}Лабораторний рядок без Sum3D не рахується; поштовий рахується й без нього; повторний прорахунок наряду рахується щоразу.{% endif %}
+    </p>
+    {# `user` не завжди в контексті: цей партіал рендерять і тести, і відповіді без нього. #}
+    {% if user is defined and user and user.role == 'адмін' %}
+    <div class="vt-skip-admin">
+      <button type="button" class="vt-skip-btn" hx-indicator="this"
+              hx-post="/vyrobitok/rules" hx-target="#vyrobitok-body" hx-swap="outerHTML"
+              hx-vals='{"year": "{{ g.year }}", "month": "{{ g.month }}", "enabled": "{{ '0' if g.rules_v2 else '1' }}"}'>{{ 'Повернути старі правила' if g.rules_v2 else 'Увімкнути нові правила' }}</button>
+      <button type="button" class="vt-skip-btn" hx-indicator="this"
+              hx-confirm="Перерахувати закриті дні місяця за чинними правилами? Числа, вписані рукою, не зміняться."
+              title="Перезняти числа закритих днів цього місяця з робіт у базі — за чинними правилами й довідником матеріалів. Таблицю не читає; день із почищеною вкладкою не чіпає."
+              hx-post="/vyrobitok/recount" hx-target="#vyrobitok-body" hx-swap="outerHTML"
+              hx-vals='{"year": "{{ g.year }}", "month": "{{ g.month }}"}'>Перерахувати закриті дні місяця</button>
+      <span class="vt-skip-hint">Вимикач діє на нові й відкриті дні одразу; закриті дні (•) міняє лише перерахунок.</span>
+    </div>
+    {% endif %}
+    {# Відповідь на дію — поруч із кнопками: верх сторінки звідси не видно. #}
+    {% if skip_note %}<p class="vt-skip-note" role="status">{{ skip_note }}</p>{% endif %}
+    {% if g.skipped %}
+    <table class="vt-skip-tab">
+      <thead><tr><th>День</th><th>Звідки</th><th>Рядок</th><th>Наряд / клієнт</th><th>Матеріал</th><th>К-сть</th><th>Причина</th></tr></thead>
+      <tbody>
+        {% for item in g.skipped %}
+        <tr{% if item.counted %} class="is-counted"{% endif %}>
+          <td class="mono">{{ item.day }}</td>
+          <td>{{ item.bucket }}</td>
+          <td class="mono">{{ item.row if item.row is not none else '—' }}</td>
+          <td>{{ item.who }}</td>
+          <td>{{ item.material or '—' }}</td>
+          <td class="mono">{{ item.quantity or '—' }}</td>
+          <td>{% if item.counted %}пораховано · {% endif %}{{ item.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="vt-skip-none">Усі рядки місяця пораховано.</p>
+    {% endif %}
+  </div>
+</details>
+
 <details class="vt-opreport"><summary>Звіт по опаках за місяць</summary>
   <div class="vt-opcard">
     <div class="opc-head"><b>Опаки</b><span>{{ g.opaks.month_label }}</span></div>

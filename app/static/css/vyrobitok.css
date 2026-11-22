@@ -263,6 +263,50 @@
   color: var(--ink); padding: 6px 8px; border-radius: 7px; font-family: var(--font-mono); text-align: center;
 }
 
+/* ── «Не пораховано й чому» ─────────────────────────────────────────────────
+   Розгортка під таблицею: перелік рядків, що не дали одиниць, з причиною.
+   Спокійна, без кольорових заливок — це довідка для звірки, а не тривога. */
+.vt-skip { margin-top: 12px; }
+.vt-skip summary {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 9px;
+  padding: 11px 17px; border-radius: var(--r-card); font-size: var(--fs-2); font-weight: 500;
+  background: var(--card); border: 1px solid var(--line); color: var(--ink-2);
+  transition: border-color .14s ease, color .14s ease;
+}
+.vt-skip summary::-webkit-details-marker { display: none; }
+.vt-skip summary::before { content: "▸"; color: var(--ink-3); }
+.vt-skip[open] summary::before { content: "▾"; }
+.vt-skip summary:hover { border-color: var(--control-edge, var(--line-2)); color: var(--ink); }
+.vt-skip summary b { font-family: var(--font-mono); color: var(--ink); }
+.vt-skip-moved { font-size: var(--fs-1); color: var(--ink-3); }
+.vt-skip-body {
+  margin-top: 12px; padding: 16px 18px; border-radius: var(--r-card);
+  background: var(--card); border: 1px solid var(--line);
+}
+.vt-skip-rules { margin: 0 0 12px; font-size: var(--fs-2); color: var(--ink-2); max-width: 78ch; }
+.vt-skip-admin { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.vt-skip-btn {
+  cursor: pointer; font: inherit; font-size: var(--fs-1); color: var(--ink-2);
+  background: var(--card); border: 1px solid var(--line-2); padding: 7px 13px; border-radius: 9px;
+  transition: border-color .13s ease, color .13s ease, opacity .13s ease;
+}
+.vt-skip-btn:hover, .vt-skip-btn:focus-visible { border-color: var(--accent); color: var(--accent-c); }
+.vt-skip-btn.htmx-request { opacity: .55; pointer-events: none; }
+.vt-skip-hint { font-size: var(--fs-1); color: var(--ink-3); }
+.vt-skip-note {
+  margin: 0 0 14px; padding: 9px 13px; border-radius: 9px; font-size: var(--fs-2); max-width: 78ch;
+  color: var(--ink); background: var(--bg-2, transparent); border: 1px solid var(--line-2);
+}
+.vt-skip-none { margin: 0; font-size: var(--fs-2); color: var(--ink-3); }
+.vt-skip-tab { border-collapse: collapse; width: 100%; font-size: var(--fs-2); }
+.vt-skip-tab th {
+  text-align: left; font-weight: 500; font-size: var(--fs-1); color: var(--ink-3);
+  padding: 0 14px 8px 0; border-bottom: 1px solid var(--line);
+}
+.vt-skip-tab td { padding: 7px 14px 7px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+.vt-skip-tab td.mono { font-family: var(--font-mono); white-space: nowrap; }
+.vt-skip-tab tr.is-counted td { color: var(--ink-3); }
+
 /* ── Звіт по опаках ─────────────────────────────────────────────────────────
    Кнопка розгортає картку під ФОТО на телефон, а не під екран: світла, високий
    контраст, великий кегль, мінімум у кадрі (темний екран дає відблиски). */

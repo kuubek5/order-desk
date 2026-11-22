@@ -711,6 +711,19 @@ def tool_selection_journal(db: Session, args: dict) -> dict[str, Any]:
     )
 
 
+def tool_vyrobitok_audit(db: Session, args: dict) -> dict[str, Any]:
+    from app.business_day import business_today
+    from app.services import vyrobitok_audit
+
+    today = business_today()
+    return vyrobitok_audit.audit(
+        db,
+        _int_arg(args, "year", default=today.year, low=2024, high=2100),
+        _int_arg(args, "month", default=today.month, low=1, high=12),
+        _int_arg(args, "limit", default=60, low=1, high=300),
+    )
+
+
 def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
     """Звірка «кількість з назв STL» на справжніх листах (STL_UNITS_BRIEF.md).
 
@@ -1289,6 +1302,27 @@ TOOLS = TOOLS + (
             "additionalProperties": False,
         },
         run=tool_selection_journal,
+    ),
+    Tool(
+        name="kmill_vyrobitok_audit",
+        description=(
+            "Звірка «Виробітку» за місяць: по кожному дню й колонці (лаб/пошта × цирконій, ПММА, віск, "
+            "титан) — що на екрані, що дають живі рядки за старими правилами і що дадуть НОВІ правила "
+            "(без Sum3D не рахується й пошта; повторний прорахунок того самого наряду — один раз). "
+            "Скільки рядків не пораховано й чому, які рядки нові правила знімуть, мовчазні нулі "
+            "(матеріал не впізнано, кількість порожня), той самий прорахунок у двох днях, переробки з "
+            "листа. Для «було → стало» перед вмиканням нових правил. Імена — ініціалами. Лише читання."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "year": {"type": "integer", "minimum": 2024, "maximum": 2100, "description": "Рік, типово поточний."},
+                "month": {"type": "integer", "minimum": 1, "maximum": 12, "description": "Місяць, типово поточний."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 300, "description": "Скільки прикладів у списках, типово 60."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_vyrobitok_audit,
     ),
 )
 
