@@ -165,6 +165,9 @@ def test_place_level_writes_only_new_files_in_its_own_folder():
     assert "$Blk`\"" not in main and "'-Stl', \"`\"$Stl`\"\"" not in main
     # Кроки рівня 2 запускаються лише з -Place і лише після вдалих load/init.
     assert "if ($Place -and $baseOk)" in main
+    # Верстат береться лише зі списку самої Sum3D: неоднозначна чи невідома назва зупиняє пробу.
+    assert "$report.stopped = 'place machine not found'; $baseOk = $false; break" in main
+    assert "if ($hit.Count -ne 1)" in main
     # Назва STL у звіт не йде (імена пацієнтів) — лише розмір і початок хешу.
     place_report = main[main.index("$report.place = [ordered]@{"):main.index("Log \"Рівень 2:")]
     assert "stl_size" in place_report and "GetFileName($Stl)" not in main
@@ -297,7 +300,8 @@ def test_report_shows_the_place_level(reports):
     data = dict(REPORT)
     data["kit_version"] = 4
     data["place"] = {"stl_size": 421337, "stl_sha256_16": "AB" * 8, "blk": "zr14_14-Monolith-A3-x101.blk",
-                     "machine": "350i_Boris", "material": "Zirconium", "equipment": "Disc 98",
+                     "machine": "350i_Boris", "material": "ZR|Zirconium", "material_used": "Zirconium",
+                     "equipment": "Disc 98",
                      "shrink": 1.242, "object_type": 9, "shift_x": 20}
     data["steps"] = [
         {"step": "equipment", "seconds": 1.0, "exit_code": 0,
@@ -313,7 +317,8 @@ def test_report_shows_the_place_level(reports):
     r = TOOLS_BY_NAME["kmill_sum3d_probe"].run(None, {})["звіти"][0]
     assert r["набір_v"] == 4
     assert r["постановка"] == {"диск": "zr14_14-Monolith-A3-x101.blk", "верстат": "350i_Boris",
-                               "матеріал": "Zirconium", "обладнання": "Disc 98", "усадка": 1.242,
+                               "матеріал": "ZR|Zirconium", "матеріал_спрацював": "Zirconium",
+                               "обладнання": "Disc 98", "усадка": 1.242,
                                "вид_роботи": 9, "зсув_x_мм": 20, "розмір_stl": 421337}
     by = {s["крок"]: s for s in r["кроки"]}
     assert by["equipment"]["обладнання"] == "default|Disc 98|"

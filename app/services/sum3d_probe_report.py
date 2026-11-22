@@ -37,6 +37,9 @@ _STOPPED = {
     "missing exports": "у DLL бракує потрібних функцій (інша версія)",
     "no free seat": "вільних місць ліцензії немає",
     "last seat": "вільне лише останнє місце ліцензії",
+    "place input missing": "рівень 2: не вказано STL, диск, верстат чи матеріал",
+    "place copy failed": "рівень 2: STL чи диск не вдалось скопіювати",
+    "place machine not found": "рівень 2: верстата немає у списку Sum3D або назва неоднозначна",
 }
 
 
@@ -148,6 +151,7 @@ def _summary(folder: str, data: dict[str, Any]) -> dict[str, Any]:
             "диск": _scrub(place.get("blk", "")),
             "верстат": _scrub(place.get("machine", "")),
             "матеріал": _scrub(place.get("material", "")),
+            "матеріал_спрацював": _scrub(place.get("material_used", "")),
             "обладнання": _scrub(place.get("equipment", "")),
             "усадка": place.get("shrink"),
             "вид_роботи": place.get("object_type"),
@@ -208,6 +212,7 @@ def report(limit: int = 3) -> dict[str, Any]:
         "звіти": reports,
         "як_запустити": (
             "Лише вручну: 1_dry_run.cmd (суха перевірка), далі перетягнути .cam на 2_probe.cmd. "
+            "Рівень 2 (набір v4): перетягнути копію STL на 4_place.cmd — STL на копію диска. "
             "KuubMill набір не запускає."
         ),
     }

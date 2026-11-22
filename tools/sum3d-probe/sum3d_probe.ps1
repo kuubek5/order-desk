@@ -339,8 +339,16 @@ try {
     if ($Place) {
         if (-not $Stl) { $Stl = (Read-Host 'STL роботи (повний шлях; можна перетягнути файл у це вікно)').Trim('"', ' ') }
         if (-not $Blk) { $Blk = (Read-Host 'Диск .blk (повний шлях, напр. тека дисків\14\zr14_14-Monolith-A3-x101.blk)').Trim('"', ' ') }
-        if (-not $Machine) { $Machine = (Read-Host 'Верстат точно як у списку Sum3D (напр. 350i_Boris)').Trim() }
-        if (-not $Material) { $Material = (Read-Host 'Матеріал точно як у списку Sum3D (напр. ZR)').Trim() }
+        if (-not $Machine) { $Machine = (Read-Host 'Верстат як у списку Sum3D; досить частини назви (напр. Boris або Tolik)').Trim() }
+        if (-not $Material) {
+            $Material = (Read-Host 'Матеріал як у Sum3D; кілька варіантів через | (Enter = ZR|Zirconium)').Trim()
+            if (-not $Material) { $Material = 'ZR|Zirconium' }
+        }
+        if (-not $PSBoundParameters.ContainsKey('Shrink')) {
+            $answer = (Read-Host 'Усадка диска (Scaling Factor у вікні вибору диска, напр. 1.242). Enter = 1.25').Trim().Replace(',', '.')
+            $parsed = 0.0
+            if ($answer -and [double]::TryParse($answer, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and $parsed -gt 0) { $Shrink = $parsed }
+        }
         foreach ($pair in @(@('STL', $Stl), @('Диск', $Blk))) {
             if (-not $pair[1] -or -not (Test-Path -LiteralPath $pair[1])) { Log "$($pair[0]): файл не знайдено."; $report.stopped = 'place input missing'; Save-Report; exit 2 }
         }
@@ -348,7 +356,7 @@ try {
         $report.place = [ordered]@{
             stl_size = (Get-Item -LiteralPath $Stl).Length; stl_sha256_16 = Get-SharedSha256Prefix $Stl
             blk = [IO.Path]::GetFileName($Blk); blk_size = (Get-Item -LiteralPath $Blk).Length
-            machine = $Machine; material = $Material; equipment = $Equipment
+            machine = $Machine; material = $Material; material_used = ''; equipment = $Equipment
             shrink = $Shrink; object_type = $ObjectType; shift_x = $ShiftX
         }
         Log "Рівень 2: STL на копію диска $([IO.Path]::GetFileName($Blk)), верстат $Machine, матеріал $Material, усадка $Shrink."
@@ -448,6 +456,8 @@ try {
     function Test-StepOk($entry) { return [bool]($entry.result -and $entry.result.ok) }
 
     $baseOk = $true
+    # Назви матеріалу, які пробуємо по черзі (яку з них чекає importSTL — з'ясовує сама проба).
+    $materials = @($Material -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     foreach ($step in $(if ($Place) { @('load', 'init', 'machines', 'equipment') } else { $Steps })) {
         if (($step -in @('strategy', 'space', 'curves')) -and -not $workCam) { continue }
         $extra = @()
@@ -455,6 +465,19 @@ try {
         $entry = Invoke-ProbeStep $step $step $workCam $extra
         $baseFailed = (($step -eq 'load' -or $step -eq 'init') -and -not (Test-StepOk $entry))
         if ($baseFailed) { Log '  Базовий крок не пройшов — далі не йдемо.'; $baseOk = $false; break }
+        if ($Place -and $step -eq 'machines' -and (Test-StepOk $entry)) {
+            # Верстат: точна назва зі списку Sum3D або єдина, що містить введене.
+            $all = @($entry.result.machines_raw -split '\|' | Where-Object { $_ })
+            $hit = @($all | Where-Object { $_ -ieq $Machine })
+            if (-not $hit) { $hit = @($all | Where-Object { $_.ToLower().Contains($Machine.ToLower()) }) }
+            if ($hit.Count -ne 1) {
+                Log ("  СТОП: верстат «$Machine» у списку Sum3D " + $(if ($hit) { "підходить до кількох: $($hit -join '; ')" } else { 'не знайдено' }) + '. Повний список — у звіті, крок machines.')
+                $report.stopped = 'place machine not found'; $baseOk = $false; break
+            }
+            $Machine = $hit[0]
+            $report.place.machine = $Machine
+            Log "  верстат для імпорту: $Machine"
+        }
         if ($step -eq 'equipment' -and -not $Equipment -and (Test-StepOk $entry)) {
             # Перше обладнання з позначкою default: «default|<назва>|…»
             $parts = @($entry.result.equipment_raw -split '\|')
@@ -468,12 +491,23 @@ try {
     # Рівень 2: кожна копія STL → .obj → .cam у теці проби, потім читаємо результат (curves).
     if ($Place -and $baseOk) {
         foreach ($v in $variants) {
-            $obj = Join-Path $work "$($v[0]).obj"
             $outCam = Join-Path $work "$($v[0]).cam"
-            $common = @('-Machine', "`"$Machine`"", '-Material', "`"$Material`"", '-Equipment', "`"$Equipment`"",
-                '-Blk', "`"$workBlk`"", '-Stl', "`"$($v[1])`"", '-Obj', "`"$obj`"",
-                '-ObjectType', $ObjectType, '-Shrink', $Shrink.ToString([Globalization.CultureInfo]::InvariantCulture))
-            $imp = Invoke-ProbeStep 'import' "import_$($v[0])" '' $common
+            $imp = $null; $obj = ''
+            for ($m = 0; $m -lt $materials.Count; $m++) {
+                # Кожна спроба — свій .obj: крок не пише поверх наявного файла.
+                $suffix = $(if ($m -eq 0) { '' } else { "_m$($m + 1)" })
+                $obj = Join-Path $work "$($v[0])$suffix.obj"
+                $common = @('-Machine', "`"$Machine`"", '-Material', "`"$($materials[$m])`"", '-Equipment', "`"$Equipment`"",
+                    '-Blk', "`"$workBlk`"", '-Stl', "`"$($v[1])`"", '-Obj', "`"$obj`"",
+                    '-ObjectType', $ObjectType, '-Shrink', $Shrink.ToString([Globalization.CultureInfo]::InvariantCulture))
+                $imp = Invoke-ProbeStep 'import' "import_$($v[0])$suffix" '' $common
+                if (Test-StepOk $imp) {
+                    # Назва спрацювала — далі лише вона.
+                    $report.place.material_used = $materials[$m]
+                    $materials = @($materials[$m])
+                    break
+                }
+            }
             if (-not (Test-StepOk $imp)) { continue }
             $toCam = Invoke-ProbeStep 'tocam' "tocam_$($v[0])" $outCam @('-Obj', "`"$obj`"")
             if (Test-StepOk $toCam) { [void](Invoke-ProbeStep 'curves' "curves_$($v[0])" $outCam @()) }
