@@ -138,6 +138,8 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "material_guard_acks",
             # Піч без зв'язку під час спікання (0105, 20.11.26).
             "furnace_outages",
+            # Журнал підбору матеріалу й диска (0107, 22.11.26).
+            "selection_records",
         }
         assert tables_before - tables_after == set()
     finally:

@@ -2657,6 +2657,7 @@ def _accept_one_batch_letter(
             join_export_folder=group_folder.get(key, "") if key else "",
             merge_into=merge_into,
             merge_primary=bool(mkey) and merge_into is None,
+            selection_mode="conveyor",
         )
     except Exception as exc:  # noqa: BLE001 — див. докстрінг
         eid = email.id

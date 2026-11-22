@@ -116,6 +116,7 @@ from app.services.machines import (
     prune_machine_link_events as _prune_machine_link_events,
     prune_machine_readings as _prune_machine_readings,
 )
+from app.services.selection_journal import resolve_actual as _selection_resolve_actual
 from app.services.furnace_rediscover import tick as _furnace_rediscover_tick
 from app.services.furnace_power import tick as _furnace_power_tick
 from app.services.machine_rediscover import tick as _machine_rediscover_tick
@@ -803,6 +804,13 @@ def _machine_worker(stop_event: Event) -> None:
                 # Чистимо навіть коли верстатів зараз немає: історія могла
                 # лишитись від попередньої конфігурації і має старіти так само.
                 if monotonic() >= next_prune:
+                    # Журнал підбору (22.11.26): фактичний диск дописується з
+                    # показань ДО того, як чистка їх зітре (30 днів).
+                    try:
+                        _selection_resolve_actual(db)
+                    except Exception:
+                        db.rollback()
+                        logger.exception("Журнал підбору: дописування фактичного диска впало")
                     _prune_machine_readings(db)
                     # Журнал обривів має власне, довше вікно (закономірність
                     # «щодня о тій самій порі» видно лише на довгому), але

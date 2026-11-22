@@ -197,8 +197,13 @@ def accept_letter(
     join_export_folder: str = "",
     merge_into: Order | None = None,
     merge_primary: bool = False,
+    selection_mode: str = "card",
 ) -> AcceptResult:
     """Прийняти лист (або одну кольорову партію з нього) у чергу.
+
+    `selection_mode` — для журналу підбору (`selection_journal`): "card" чи
+    "conveyor". Запис журналу — після успіху й поза локом; його збій
+    прийняття не відкочує.
 
     `join_export_folder` — лише Конвеєр: тека (відносно export), у яку вже
     ліг попередній лист того самого клієнта й матеріалу з цього ж прийняття.
@@ -237,6 +242,11 @@ def accept_letter(
         )
     finally:
         lock.release()
+    if result.ok:
+        from app.services.selection_journal import record_accept
+
+        record_accept(db, user, email, result.order, client_name=client_name,
+                      material_color=material_color, quantity=quantity, mode=selection_mode)
     # Після зняття локу: фонова задача бере цей самий лок (див.
     # `_move_accepted_letter`), і під ним прийняття її б чекало.
     if result.ok and result.move_to_folder:

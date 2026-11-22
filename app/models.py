@@ -951,6 +951,43 @@ class MaterialGuardAck(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.now)
 
 
+class SelectionRecord(Base):
+    """Журнал підбору (власник 22.11.26, міграція 0107): що картка запропонувала
+    при прийнятті листа — матеріал, диск-кандидати з вільним місцем, висота — і
+    що вибрав оператор; фактичний диск і висоту з програми верстата дописує
+    добовий прохід (`selection_journal.resolve_actual`). Для аналізу алгоритму
+    підбору (`kmill_selection_journal`). Назв STL і тексту листа тут немає.
+
+    `order_id`/`email_id` — без зовнішнього ключа свідомо: відкат прийняття
+    видаляє роботу, і посилання не має цьому заважати."""
+
+    __tablename__ = "selection_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Локальний час, як у ActionLog (без server_default — на SQLite там UTC).
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.now, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    email_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    order_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    # "card" — прийнято з картки листа; "conveyor" — мультипрорахунок.
+    mode: Mapped[str] = mapped_column(String(12), default="card", server_default="card")
+    # Листи одного прийняття Конвеєра мають спільний ключ.
+    batch_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    guess: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    suggested_material: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    chosen_material: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    quantity: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    client_name: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    # Показана підказка диска (JSON) або None — не показувалась / не зафіксовано.
+    hint_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    hint_material: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    actual_disc: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    actual_height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    actual_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    # Чому диска немає: «без Sum3D», «програми не знайдено»… (лише для звіту).
+    actual_note: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+
+
 class Attachment(Base):
     __tablename__ = "attachments"
 

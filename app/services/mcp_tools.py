@@ -701,6 +701,16 @@ def tool_mail_learn(db: Session, args: dict) -> dict[str, Any]:
     )
 
 
+def tool_selection_journal(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import selection_journal
+
+    return selection_journal.report(
+        db,
+        _int_arg(args, "days", default=7, low=1, high=120),
+        _int_arg(args, "limit", default=40, low=1, high=200),
+    )
+
+
 def tool_mail_units(db: Session, args: dict) -> dict[str, Any]:
     """Звірка «кількість з назв STL» на справжніх листах (STL_UNITS_BRIEF.md).
 
@@ -1259,6 +1269,26 @@ TOOLS = TOOLS + (
         # Сотні листів × розбір тексту — чистий Python: окремим процесом
         # (`app/mcp_isolated.py`), щоб не голодити CRM.
         isolate=lambda args: True,
+    ),
+    Tool(
+        name="kmill_selection_journal",
+        description=(
+            "Журнал підбору (з 0.21.159): при кожному прийнятті листа — що картка підставила в "
+            "матеріал і що лишив оператор, яку підказку диска показала (кандидати, вільне %, висоти), і "
+            "фактичний диск та висота з програми верстата (дописується раз на добу). Точність матеріалу, "
+            "пари «картка → оператор», чи взяли перший кандидат / інший / диск поза підказкою, висота як у "
+            "підказці, промахи за лінією, приклади з номерами записів, листів і робіт. Для аналізу й "
+            "покращення алгоритму підбору. Імен клієнтів, тексту листів і назв STL не віддає. Лише читання."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "minimum": 1, "maximum": 120, "description": "За скільки днів, типово 7."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Скільки прикладів промахів, типово 40."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_selection_journal,
     ),
 )
 

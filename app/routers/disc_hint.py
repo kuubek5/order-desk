@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import perf
 from app.models import EmailMessage
 from app.routers.deps import get_current_user, get_db, templates
-from app.services import disc_suggest
+from app.services import disc_suggest, selection_journal
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary, material_group_key
 from app.settings_store import get_setting
 
@@ -39,6 +39,8 @@ def get_disc_hint(request: Request, email_id: int, material_color: str = "",
     hint = disc_suggest.suggest(material_color, list(email.attachments or []),
                                 get_setting(db, "cam_blanks_path"),
                                 active=active, machines=machines)
+    # Журнал підбору: що саме побачив оператор (при прийнятті не перерахувати).
+    selection_journal.remember_shown([email_id], material_color, hint, mode="card")
     return templates.TemplateResponse(request, "_mail_disc_hint.html", {"hint": hint})
 
 
@@ -87,6 +89,8 @@ def batch_disc_hint(
         active = disc_suggest.active_discs(db, machines=machines)
     hint = disc_suggest.suggest(summary.label, attachments, get_setting(db, "cam_blanks_path"),
                                 active=active, machines=machines)
+    selection_journal.remember_shown(main_ids, summary.label, hint, mode="conveyor",
+                                     key=selection_journal.batch_key(main_ids))
     return templates.TemplateResponse(request, "_mail_batch_disc_hint.html", {
         "hint": hint, "letters": len(emails), "skipped": len(cards) - len(main_ids),
     })
