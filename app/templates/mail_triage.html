@@ -146,26 +146,24 @@
            Налаштування; this is the quick flip. #}
         {# У вихідні — куди лягає прийнятий лист: у п'ятничну вкладку (як завжди)
            чи на понеділок (власник 22.11.26, services/mail_accept_day.py). У будень
-           блоку немає. Той самий скляний перемикач .dl-seg, але без JS: клік шле
-           POST, сервер відповідає HX-Refresh — від вибору залежать підписи кнопок
-           «Прийняти». Понеділок вимкнено, доки його вкладки немає в таблиці. #}
+           блоку немає. Той самий скляний перемикач .dl-seg; обробник — у mail.js:
+           плитка їде ОДРАЗУ по кліку, запит іде фоном, підписи кнопок «Прийняти»
+           міняються на місці (перша версія перечитувала сторінку — перемикач
+           смикався). Понеділок вимкнено, доки його вкладки немає в таблиці. #}
         {% if accept_day %}
         <div class="acd-mode{% if accept_day.on_next %} is-next{% endif %}">
             <span class="dl-mode-label">Приймаю на:</span>
-            <div class="dl-seg" data-state="{{ accept_day.state }}"
+            <div class="dl-seg" data-acd-toggle data-state="{{ accept_day.state }}"
                  role="group" aria-label="У яку вкладку лягає прийнятий лист">
                 <div class="dl-seg-glass" aria-hidden="true" style="filter:url('#radio-glass')"></div>
-                <button type="button" class="dl-seg-opt"
+                <button type="button" class="dl-seg-opt" data-val="current"
                         aria-pressed="{{ 'false' if accept_day.on_next else 'true' }}"
-                        {% if accept_day.on_next %}hx-post="/mail/accept-day" hx-vals='{"day":"current"}' hx-swap="none"{% endif %}
                         title="Рядок ляже у вкладку п'ятниці — як завжди у вихідні">{{ accept_day.current_label }}</button>
-                <button type="button" class="dl-seg-opt"
+                <button type="button" class="dl-seg-opt" data-val="next"
                         aria-pressed="{{ 'true' if accept_day.on_next else 'false' }}"
                         {% if not accept_day.next_known %}disabled
                         title="Вкладки {{ accept_day.next_label }} ще немає в таблиці"
-                        {% elif not accept_day.on_next %}hx-post="/mail/accept-day" hx-vals='{"day":"next"}' hx-swap="none"
-                        title="Роботи на понеділок: рядок ляже у вкладку {{ accept_day.next_label }}"
-                        {% else %}title="Рядок ляже у вкладку {{ accept_day.next_label }}"{% endif %}>{{ accept_day.next_label }}</button>
+                        {% else %}title="Роботи на понеділок: рядок ляже у вкладку {{ accept_day.next_label }}"{% endif %}>{{ accept_day.next_label }}</button>
             </div>
         </div>
         {% endif %}

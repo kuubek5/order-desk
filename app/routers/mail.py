@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import ColumnElement, and_ as sa_and, false as sa_false, func, not_ as sa_not, select, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
@@ -984,15 +984,17 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
 @router.post("/mail/accept-day")
 def set_mail_accept_day(request: Request, day: str = Form(""), db: Session = Depends(get_db)):
     """Перемикач шапки пошти у вихідні: приймати листи у п'ятничну вкладку чи
-    на понеділок (`services/mail_accept_day.py`). Сторінка перечитується цілком:
-    від вибору залежать підписи кнопок «Прийняти» в картці й у Конвеєрі."""
+    на понеділок (`services/mail_accept_day.py`). Браузер шле запит фоном
+    (mail.js) і сам пересуває плитку й підписи кнопок «Прийняти»; у відповідь —
+    стан, який справді записався, щоб екран не розійшовся з базою."""
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
     if mail_accept_day.choose(db, user, day):
         db.commit()
-    if request.headers.get("HX-Request"):
-        return Response(status_code=204, headers={"HX-Refresh": "true"})
+    if request.headers.get("X-Requested-With") == "fetch":
+        seen = mail_accept_day.view(db, user)
+        return JSONResponse({"state": seen.state if seen else mail_accept_day.CURRENT})
     return RedirectResponse("/mail", status_code=303)
 
 

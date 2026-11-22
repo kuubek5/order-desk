@@ -206,7 +206,7 @@
                 hx-post="/mail/accept-batch" hx-target="#mail-detail" hx-swap="innerHTML"
                 hx-vals='js:{payload: window.collectMailBatch()}'
                 hx-indicator="this" hx-disabled-elt="this">
-            ✓ Прийняти {{ n }} в чергу{% if accept_day %}{{ accept_day.button_suffix }}{% endif %}
+            ✓ Прийняти {{ n }} в чергу{% if accept_day %}<span class="acd-suffix{% if accept_day.on_next %} is-on{% endif %}" data-acd-suffix data-acd-label=" → {{ accept_day.next_label }}">{{ accept_day.button_suffix }}</span>{% endif %}
         </button>
         {% else %}
         <span class="mb-hint">Готових листів ще немає — скачайте файли вище.</span>

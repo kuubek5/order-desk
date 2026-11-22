@@ -1918,3 +1918,84 @@ document.addEventListener("change", (event) => {
   try { landed = sessionStorage.getItem(FLAG); sessionStorage.removeItem(FLAG); } catch (e) { /* приватний режим */ }
   if (landed) setTimeout(pulse, 250);
 })();
+
+// ── «Приймаю на: пт / пн» у шапці пошти (лише у вихідні) ─────────────────────
+// Куди лягає прийнятий лист — у п'ятничну вкладку чи на понеділок
+// (services/mail_accept_day.py). Плитка їде ОДРАЗУ по кліку, запит іде фоном,
+// хвіст кнопок «Прийняти» (« → пн 23.11») міняється на місці: перша версія
+// перечитувала всю сторінку, і перемикач смикався (власник 22.11.26).
+// Сервер відповідає станом, який справді записався: розійшовся з бажаним
+// (сесія скінчилась, вкладки вже немає) — плитка вертається назад із тостом.
+(function () {
+  const SUFFIX_MS = 400; // як transition у .acd-suffix
+
+  function paintSuffixes(on) {
+    document.querySelectorAll("[data-acd-suffix]").forEach((el) => {
+      clearTimeout(el._acdTimer);
+      if (on) {
+        el.textContent = el.dataset.acdLabel || "";
+        // Текст уже в DOM — тепер розсуваємо (кадр потрібен, щоб transition рушив).
+        requestAnimationFrame(() => el.classList.add("is-on"));
+      } else {
+        el.classList.remove("is-on");
+        el._acdTimer = setTimeout(() => { el.textContent = ""; }, SUFFIX_MS);
+      }
+    });
+  }
+
+  function setState(seg, state) {
+    seg.dataset.state = state;
+    seg.querySelectorAll(".dl-seg-opt").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.val === state ? "true" : "false");
+    });
+    const mode = seg.closest(".acd-mode");
+    if (mode) mode.classList.toggle("is-next", state === "next");
+    paintSuffixes(state === "next");
+  }
+
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-acd-toggle] .dl-seg-opt");
+    if (!btn || btn.disabled) return;
+    const seg = btn.closest("[data-acd-toggle]");
+    const want = btn.dataset.val;
+    if (!seg || !want || want === seg.dataset.state || seg.dataset.busy === "1") return;
+
+    const prev = seg.dataset.state;
+    setState(seg, want);
+    seg.dataset.busy = "1";
+
+    fetch("/mail/accept-day", {
+      method: "POST",
+      headers: {
+        "X-Requested-With": "fetch",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ day: want }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then((data) => {
+        if (!data || data.state !== want) throw new Error("state");
+        if (window.showToast) {
+          const label = btn.textContent.trim();
+          window.showToast(
+            want === "next"
+              ? "Приймаю на понеділок — " + label
+              : "Приймаю у вкладку " + label,
+            "success"
+          );
+        }
+      })
+      .catch(() => {
+        setState(seg, prev);
+        if (window.showToast) {
+          window.showToast("Не вдалося перемкнути день прийняття — спробуй ще раз", "error");
+        }
+      })
+      .finally(() => {
+        delete seg.dataset.busy;
+      });
+  });
+})();

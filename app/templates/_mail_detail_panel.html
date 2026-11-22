@@ -513,7 +513,7 @@
         </form>
         <button type="submit" form="mail-card-form" class="btn apex"
                 {% if email.attachments_status == 'pending' %}disabled aria-disabled="true" title="Зачекайте, поки завантажаться вкладення"{% endif %}>
-            ✓ Прийняти в чергу{% if accept_day %}{{ accept_day.button_suffix }}{% endif %}
+            ✓ Прийняти в чергу{% if accept_day %}<span class="acd-suffix{% if accept_day.on_next %} is-on{% endif %}" data-acd-suffix data-acd-label=" → {{ accept_day.next_label }}">{{ accept_day.button_suffix }}</span>{% endif %}
         </button>
     </div>
 

@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -218,16 +220,20 @@ def test_mail_page_shows_the_switch_only_on_weekends(app_db, monkeypatch):  # no
     assert "пт 20.11" in body and "пн 23.11" in body
     assert 'data-state="current"' in body
 
-    # Клік «пн 23.11»: вибір записано, сторінка перечитується цілком.
-    status, headers, _ = client.post("/mail/accept-day", {"day": "next"}, headers={"HX-Request": "true"})
-    assert status == 204 and headers.get("hx-refresh") == "true"
+    # Клік «пн 23.11» іде фоном (mail.js): у відповідь — стан, що справді записався.
+    fetch = {"X-Requested-With": "fetch"}
+    status, _headers, text = client.post("/mail/accept-day", {"day": "next"}, headers=fetch)
+    assert status == 200 and json.loads(text) == {"state": "next"}
     body = client.get("/mail")[2]
     assert 'class="acd-mode is-next"' in body and 'data-state="next"' in body
 
-    # Без HTMX (звичайна форма) — повернення на пошту; і назад на п'ятницю.
-    status, headers, _ = client.post("/mail/accept-day", {"day": "current"})
+    status, _headers, text = client.post("/mail/accept-day", {"day": "current"}, headers=fetch)
+    assert status == 200 and json.loads(text) == {"state": "current"}
+
+    # Без JS (звичайна форма) — повернення на пошту.
+    status, headers, _ = client.post("/mail/accept-day", {"day": "next"})
     assert status == 303 and headers.get("location") == "/mail"
-    assert 'data-state="current"' in client.get("/mail")[2]
+    assert 'data-state="next"' in client.get("/mail")[2]
 
 
 def test_monday_button_is_disabled_without_its_tab(app_db, monkeypatch):  # noqa: F811
@@ -237,8 +243,11 @@ def test_monday_button_is_disabled_without_its_tab(app_db, monkeypatch):  # noqa
     client.login(*OPERATOR)
     body = client.get("/mail")[2]
     assert "Вкладки пн 23.11 ще немає в таблиці" in body and "disabled" in body
-    # Навіть прямий запит нічого не вмикає.
-    client.post("/mail/accept-day", {"day": "next"})
+    # Навіть прямий запит нічого не вмикає — і відповідь чесно каже «current»,
+    # тож плитка в браузері вертається назад.
+    _status, _headers, text = client.post("/mail/accept-day", {"day": "next"},
+                                          headers={"X-Requested-With": "fetch"})
+    assert json.loads(text) == {"state": "current"}
     assert 'data-state="current"' in client.get("/mail")[2]
 
 
@@ -246,3 +255,23 @@ def test_switch_route_needs_a_login(app_db):  # noqa: F811
     app, _factory = app_db
     status, headers, _ = MiniClient(app).post("/mail/accept-day", {"day": "next"})
     assert status in (302, 303) and "/login" in (headers.get("location") or "")
+
+
+def test_switch_moves_without_reloading_the_page():
+    """Власник 22.11.26: перемикач «дригався» — перша версія перечитувала сторінку
+    (HX-Refresh). Тепер рух малює браузер, а сервер лише відповідає станом."""
+    root = Path(__file__).resolve().parents[1] / "app"
+    triage = (root / "templates" / "mail_triage.html").read_text(encoding="utf-8")
+    block = triage[triage.index("data-acd-toggle"):triage.index("{% if user.role == 'адмін' %}")]
+    assert "hx-post" not in block and 'data-val="next"' in block and 'data-val="current"' in block
+    router = (root / "routers" / "mail.py").read_text(encoding="utf-8")
+    handler = router[router.index("def set_mail_accept_day"):router.index("def _dock_day_of")]
+    assert "HX-Refresh" not in handler and "JSONResponse" in handler
+    script = (root / "static" / "js" / "mail.js").read_text(encoding="utf-8")
+    assert '"/mail/accept-day"' in script and "data-acd-suffix" in script
+    # Хвіст кнопки «Прийняти» є в обох місцях і несе підпис для браузера.
+    for name in ("_mail_detail_panel.html", "_mail_batch_table.html"):
+        text = (root / "templates" / name).read_text(encoding="utf-8")
+        assert 'data-acd-suffix data-acd-label=" → {{ accept_day.next_label }}"' in text, name
+    css = (root / "static" / "css" / "v2a_mail.css").read_text(encoding="utf-8")
+    assert ".acd-suffix.is-on" in css and "prefers-reduced-motion" in css[css.index(".acd-suffix"):]
