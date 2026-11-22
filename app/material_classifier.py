@@ -61,6 +61,10 @@ SEED_ALIASES: dict[str, list[tuple[str, str]]] = {
         ("утмл", "contains"), ("utml", "contains"),
         ("стмл", "contains"), ("stml", "contains"),
         ("nat", "token"), ("nature", "contains"), ("z nat", "contains"),
+        # Vivid (ML 4D) — цирконій (власник 22.11.26): «Vivid 4d A3» і «вівід 4д
+        # а3» лишались без матеріалу й не рахувались у «Виробітку» зовсім.
+        # Наявним базам ці три рядки досіває міграція 0108.
+        ("vivid", "contains"), ("вівід", "contains"), ("вивид", "contains"),
         # Super-translucent / translucent zirconia markers seen in the sheet.
         ("st", "token"), ("s1", "token"), ("tr", "token"), ("транс", "contains"),
         # Manufacturer colour codes for zirconia discs.
