@@ -1,15 +1,29 @@
 ﻿<#
-  One read-only call into Sum3dDll_x64.dll, run in its own child process by sum3d_probe.ps1.
+  One call into Sum3dDll_x64.dll, run in its own child process by sum3d_probe.ps1.
   If the DLL crashes or shows a dialog, only this process dies (the parent kills it on timeout).
   Prints exactly one JSON line to stdout. Never writes to Sum3D files itself.
+  Level 1 steps only read. Level 2 steps (kit v4: import, tocam) WRITE, but only the output
+  files the parent names inside its own work folder (C:\sum3d_probe\<date>\work), from copies.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$SumDir,
-    [Parameter(Mandatory = $true)][ValidateSet('load', 'init', 'machines', 'strategy', 'space', 'curves')][string]$Step,
+    [Parameter(Mandatory = $true)][ValidateSet('load', 'init', 'machines', 'strategy', 'space', 'curves',
+            'equipment', 'import', 'tocam')][string]$Step,
     [string]$Cam = '',
     # Working directory of this process. Default: our own folder, NOT the Sum3D folder, because
     # Sum3D uses fixed temp-file names (FILEPOST.TMP, filetemp.tmp, ...) that open windows may be using.
-    [string]$WorkDir = ''
+    [string]$WorkDir = '',
+    # Level 2 (kit v4): put one STL on a COPY of a disc .blk → .obj → .cam (all in the work folder).
+    [string]$Machine = '',
+    [string]$Material = '',
+    [string]$Equipment = '',
+    [string]$Blk = '',
+    [string]$Stl = '',
+    [string]$Obj = '',
+    [int]$ObjectType = 9,
+    [double]$Offset = 0.001,
+    [double]$MeshAngle = 0.0,
+    [double]$Shrink = 1.25
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,6 +73,28 @@ public static class Sum3d {
 
     [DllImport(Dll, EntryPoint = "?getSpaceLeftOnRAW_WithCurves@@YAHPEBDAEAHAEAPEAXAEAPEAN@Z", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
     public static extern int getSpaceLeftOnRAW_WithCurves(string cam, ref int count, ref IntPtr hglobal, ref IntPtr values);
+
+    // Equipment (*.eqp) of one machine: "default|<name>|..." ; buf too small -> len = needed size.
+    [DllImport(Dll, EntryPoint = "?getEquipmentList@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEB_WPEADAEAH@Z", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    public static extern int getEquipmentList(string machine, byte[] buf, ref int len);
+
+    // importSTL, 19-argument overload (decoded from the decoration and from the DLL's own importstl.log):
+    // machine, material, equipment, block .blk, object type, offset (>= 0.001), rotation 180,
+    // mesh-size angle, undercut optimisation, shrinking factor, premilled index (must be >= 0),
+    // extern undercut, prepline generation, prepline width, margin detection, connection mesh
+    // separation, NO-premilled flag (true -> premilled position -1), STL in, OBJ out.
+    [DllImport(Dll, EntryPoint = "?importSTL@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEBD000HN_NNHNH11N11100@Z", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern int importSTL(string machine, string material, string equipment, string blk,
+        int objectType, double offset, [MarshalAs(UnmanagedType.I1)] bool rotate180, double meshAngle,
+        int undercut, double shrink, int premilled, [MarshalAs(UnmanagedType.I1)] bool externUndercut,
+        [MarshalAs(UnmanagedType.I1)] bool prepline, double preplineWidth, [MarshalAs(UnmanagedType.I1)] bool margin,
+        [MarshalAs(UnmanagedType.I1)] bool connectionSeparation, [MarshalAs(UnmanagedType.I1)] bool noPremilled,
+        string stlIn, string objOut);
+
+    // MillBox .obj -> Sum3D .cam (converts and copies; the DLL deletes its own temp file).
+    [DllImport(Dll, EntryPoint = "?MB2Sum_MBobj2SUMcam@@YA_NPEBDPEAD@Z", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool MBobj2SUMcam(string obj, byte[] camOut);
 }
 '@
 
@@ -69,6 +105,15 @@ function BufText([byte[]]$buf) {
     if ($end -eq 0) { return '' }
     $text = [Text.Encoding]::Default.GetString($buf, 0, $end)
     return $text.Replace([char]0, '|')
+}
+
+# Level 2 writes ONLY new files outside the Sum3D folder: never over an existing file, never into Sum3D.
+function Assert-OutputPath([string]$path) {
+    if (-not $path) { throw 'output path is empty' }
+    $full = [IO.Path]::GetFullPath($path)
+    $sum = [IO.Path]::GetFullPath($SumDir).TrimEnd('\') + '\'
+    if ($full.StartsWith($sum, [StringComparison]::OrdinalIgnoreCase)) { throw "refuse to write inside the Sum3D folder: $full" }
+    if (Test-Path -LiteralPath $full) { throw "refuse to overwrite an existing file: $full" }
 }
 
 try {
@@ -95,6 +140,28 @@ try {
     if ($code -ne 0) { $result.error = "initialize() returned $code"; Emit $result; exit 5 }
 
     switch ($Step) {
+        'equipment' {
+            $len = 65536
+            $buf = New-Object byte[] $len
+            $rc = [Sum3d]::getEquipmentList($Machine, $buf, [ref]$len)
+            $result.code = $rc
+            $result.ok = ($rc -eq 0)
+            $result.equipment_raw = BufText $buf
+        }
+        'import' {
+            foreach ($out in @($Obj)) { Assert-OutputPath $out }
+            $rc = [Sum3d]::importSTL($Machine, $Material, $Equipment, $Blk, $ObjectType, $Offset, $false,
+                $MeshAngle, 0, $Shrink, 0, $false, $false, 0.0, $false, $false, $true, $Stl, $Obj)
+            $result.code = $rc
+            $result.ok = ($rc -eq 0) -and (Test-Path -LiteralPath $Obj)
+            if (Test-Path -LiteralPath $Obj) { $result.obj_size = (Get-Item -LiteralPath $Obj).Length }
+        }
+        'tocam' {
+            Assert-OutputPath $Cam
+            $bytes = [Text.Encoding]::Default.GetBytes($Cam + [char]0)
+            $result.ok = [Sum3d]::MBobj2SUMcam($Obj, $bytes) -and (Test-Path -LiteralPath $Cam)
+            if (Test-Path -LiteralPath $Cam) { $result.cam_size = (Get-Item -LiteralPath $Cam).Length }
+        }
         'machines' {
             $buf = New-Object byte[] 65536
             $result.ok = [Sum3d]::getMachineNameList($buf, $buf.Length)

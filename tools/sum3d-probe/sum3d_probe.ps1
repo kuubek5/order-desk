@@ -19,6 +19,10 @@
     8. Звіт report.json + report.txt у теці виводу.
   Нічого не пише у файли Sum3D сам; рахувати траєкторії й змінювати проєкти не вміє.
 
+  Рівень 2 (-Place, набір v4): ставить ОДИН STL на КОПІЮ диска .blk (importSTL → .obj →
+  MB2Sum_MBobj2SUMcam → .cam) і лишає нові файли лише у своїй теці work. Оригінали STL і диска
+  лише копіюються. Відомий слід: importSTL сама дописує importstl.log у теку Sum3D.
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\sum3d_probe.ps1 -DryRun
   powershell -ExecutionPolicy Bypass -File .\sum3d_probe.ps1 -AllowRunning -SumDir C:\iCAMV5smart -Cam "D:\CAM-work\...\проєкт.cam"
@@ -37,11 +41,24 @@ param(
     # Дозволити зайняти ОСТАННЄ вільне місце ліцензії (за замовчуванням ні).
     [switch]$UseLastSeat,
     # Запасний варіант, якщо init не проходить зі своєю текою: робоча тека = тека Sum3D.
-    [switch]$CwdInSumDir
+    [switch]$CwdInSumDir,
+    # Рівень 2 (набір v4): поставити ОДИН STL на КОПІЮ диска .blk → .obj → .cam. Усе пишеться
+    # лише в теку проби (work); оригінали STL і диска лише копіюються. Відкрити результат у
+    # Sum3D і подивитись, де стала робота, — людина, руками.
+    [switch]$Place,
+    [string]$Stl = '',
+    [string]$Blk = '',
+    [string]$Machine = '',
+    [string]$Material = '',
+    [string]$Equipment = '',
+    [double]$Shrink = 1.25,
+    [int]$ObjectType = 9,
+    # Друга копія STL, зсунута по X на стільки мм: чи переносить Sum3D роботу разом із координатами.
+    [double]$ShiftX = 20
 )
 
 $ErrorActionPreference = 'Stop'
-$KitVersion = 3
+$KitVersion = 4
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outDir = Join-Path $OutRoot $stamp
@@ -99,7 +116,7 @@ function Get-PeInfo([string]$path) {
     [pscustomobject]@{ x64 = ($machine -eq 0x8664); exports = $names }
 }
 
-# Єдині функції Sum3D, які кличе проба. Усі лише читають.
+# Єдині функції Sum3D, які кличе проба. Рівень 1 — лише читають.
 $needed = [ordered]@{
     setSumDirectoryInst          = '?setSumDirectoryInst@@YAXPEBD@Z'
     initialize                   = '?initialize@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@XZ'
@@ -107,6 +124,39 @@ $needed = [ordered]@{
     getUsedStrategyName          = '?getUsedStrategyName@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEBDPEAD@Z'
     getSpaceLeftOnRAW            = '?getSpaceLeftOnRAW@@YAHPEBD@Z'
     getSpaceLeftOnRAW_WithCurves = '?getSpaceLeftOnRAW_WithCurves@@YAHPEBDAEAHAEAPEAXAEAPEAN@Z'
+}
+# Рівень 2 (-Place): список обладнання (читає) і два виклики, що пишуть — лише нові файли в
+# теці проби (перевіряє й сам крок).
+$neededPlace = [ordered]@{
+    getEquipmentList = '?getEquipmentList@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEB_WPEADAEAH@Z'
+    importSTL    = '?importSTL@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEBD000HN_NNHNH11N11100@Z'
+    MBobj2SUMcam = '?MB2Sum_MBobj2SUMcam@@YA_NPEBDPEAD@Z'
+}
+if ($Place) { foreach ($k in $neededPlace.Keys) { $needed[$k] = $neededPlace[$k] } }
+
+# Копія STL, зсунута по X (двійковий або текстовий STL). $false — формат не впізнано.
+function Write-ShiftedStl([string]$src, [string]$dst, [double]$dx) {
+    $d = [IO.File]::ReadAllBytes($src)
+    if ($d.Length -ge 84) {
+        $n = [BitConverter]::ToUInt32($d, 80)
+        if ($n -gt 0 -and 84 + $n * 50 -eq $d.Length) {
+            for ($i = 0; $i -lt $n; $i++) {
+                for ($v = 0; $v -lt 3; $v++) {
+                    $o = 84 + $i * 50 + 12 + $v * 12
+                    $x = [BitConverter]::ToSingle($d, $o) + $dx
+                    [Array]::Copy([BitConverter]::GetBytes([single]$x), 0, $d, $o, 4)
+                }
+            }
+            [IO.File]::WriteAllBytes($dst, $d)
+            return $true
+        }
+    }
+    $text = [Text.Encoding]::ASCII.GetString($d)
+    if (-not $text.TrimStart().ToLower().StartsWith('solid')) { return $false }
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $out = [regex]::Replace($text, 'vertex\s+(\S+)', { param($m) 'vertex ' + ([double]::Parse($m.Groups[1].Value, $inv) + $dx).ToString('R', $inv) })
+    [IO.File]::WriteAllText($dst, $out, [Text.Encoding]::ASCII)
+    return $true
 }
 
 # Знімок теки з обмеженням часу: корінь обходиться першим, тож налаштування потрапляють завжди.
@@ -184,7 +234,8 @@ function Get-SumProcesses {
 }
 
 try {
-    Log "Розвідка Sum3D, рівень 1 (лише читання), набір v$KitVersion. Тека звіту: $outDir"
+    $levelText = $(if ($Place) { 'рівень 2 (постановка на копію диска; пише лише у свою теку)' } else { 'рівень 1 (лише читання)' })
+    Log "Розвідка Sum3D, $levelText, набір v$KitVersion. Тека звіту: $outDir"
 
     # 1. Які Sum3D/MillBox уже працюють
     $running = Get-SumProcesses
@@ -283,6 +334,29 @@ try {
         }
     }
 
+    # 3a. Рівень 2: що ставимо й на який диск. Назва STL у звіт не йде (імена пацієнтів) —
+    #     лише розмір і початок хешу; назва диска — так (це артикул, не людина).
+    if ($Place) {
+        if (-not $Stl) { $Stl = (Read-Host 'STL роботи (повний шлях; можна перетягнути файл у це вікно)').Trim('"', ' ') }
+        if (-not $Blk) { $Blk = (Read-Host 'Диск .blk (повний шлях, напр. тека дисків\14\zr14_14-Monolith-A3-x101.blk)').Trim('"', ' ') }
+        if (-not $Machine) { $Machine = (Read-Host 'Верстат точно як у списку Sum3D (напр. 350i_Boris)').Trim() }
+        if (-not $Material) { $Material = (Read-Host 'Матеріал точно як у списку Sum3D (напр. ZR)').Trim() }
+        foreach ($pair in @(@('STL', $Stl), @('Диск', $Blk))) {
+            if (-not $pair[1] -or -not (Test-Path -LiteralPath $pair[1])) { Log "$($pair[0]): файл не знайдено."; $report.stopped = 'place input missing'; Save-Report; exit 2 }
+        }
+        if (-not $Machine -or -not $Material) { Log 'Потрібні верстат і матеріал.'; $report.stopped = 'place input missing'; Save-Report; exit 2 }
+        $report.place = [ordered]@{
+            stl_size = (Get-Item -LiteralPath $Stl).Length; stl_sha256_16 = Get-SharedSha256Prefix $Stl
+            blk = [IO.Path]::GetFileName($Blk); blk_size = (Get-Item -LiteralPath $Blk).Length
+            machine = $Machine; material = $Material; equipment = $Equipment
+            shrink = $Shrink; object_type = $ObjectType; shift_x = $ShiftX
+        }
+        Log "Рівень 2: STL на копію диска $([IO.Path]::GetFileName($Blk)), верстат $Machine, матеріал $Material, усадка $Shrink."
+        # Відомий слід (розбір DLL 22.11.26): importSTL сама дописує свій журнал importstl.log у теку,
+        # де лежить Sum3dDll_x64.dll. Наявних файлів Sum3D це не змінює; набір файл не прибирає.
+        Log "УВАГА: Sum3D створить або допише власний журнал $SumDir\importstl.log (текст: верстат, матеріал, шляхи копій). Інших змін у теці Sum3D не очікується — звіт покаже всі."
+    }
+
     # 4. Знімки ДО: тека, налаштування, реєстр, процеси
     Log "Знімок теки Sum3D (до $SnapshotSec с)…"
     $before = Get-Snapshot $SumDir $SnapshotSec
@@ -315,6 +389,23 @@ try {
         if (-not (Copy-Shared $Cam $workCam)) { Log 'Проєкт .cam не вдалось скопіювати.'; $report.stopped = 'cam copy failed'; Save-Report; exit 2 }
         Log "Копія проєкту: $workCam"
     }
+    $variants = @()
+    if ($Place) {
+        $work = Join-Path $outDir 'work'
+        New-Item -ItemType Directory -Force -Path $work | Out-Null
+        $workBlk = Join-Path $work ([IO.Path]::GetFileName($Blk))
+        $workStl = Join-Path $work 'probe.stl'
+        if (-not (Copy-Shared $Blk $workBlk) -or -not (Copy-Shared $Stl $workStl)) {
+            Log 'STL чи диск не вдалось скопіювати.'; $report.stopped = 'place copy failed'; Save-Report; exit 2
+        }
+        $variants += , @('probe', $workStl)
+        if ($ShiftX -ne 0) {
+            $shifted = Join-Path $work 'probe_shift.stl'
+            if (Write-ShiftedStl $workStl $shifted $ShiftX) { $variants += , @('probe_shift', $shifted) }
+            else { Log 'Формат STL не впізнано — зсунуту копію пропущено.' }
+        }
+        Log "Копії для рівня 2: $work"
+    }
 
     # 6. Кроки, кожен в окремому процесі. Своя робоча тека: тимчасові файли DLL
     #    не змішуються з тими, що пишуть відкриті вікна Sum3D.
@@ -324,18 +415,19 @@ try {
     New-Item -ItemType Directory -Force -Path $stepWork | Out-Null
     $report.cwd_in_sum_dir = [bool]$CwdInSumDir
     $report.steps = @()
-    foreach ($step in $Steps) {
-        if (($step -in @('strategy', 'space', 'curves')) -and -not $workCam) { continue }
-        Log "Крок $step…"
-        $so = Join-Path $outDir "step_$step.out.txt"; $se = Join-Path $outDir "step_$step.err.txt"
+    # Один крок в окремому процесі. $label — назва у звіті (у рівні 2 той самий крок іде двічі).
+    function Invoke-ProbeStep([string]$step, [string]$label, [string]$cam, [string[]]$extra) {
+        Log "Крок $label…"
+        $so = Join-Path $outDir "step_$label.out.txt"; $se = Join-Path $outDir "step_$label.err.txt"
         $argList = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$stepScript`"", '-SumDir', "`"$SumDir`"", '-Step', $step)
-        if ($workCam) { $argList += @('-Cam', "`"$workCam`"") }
+        if ($cam) { $argList += @('-Cam', "`"$cam`"") }
         if (-not $CwdInSumDir) { $argList += @('-WorkDir', "`"$stepWork`"") }
+        if ($extra) { $argList += $extra }
         $t0 = Get-Date
         $proc = Start-Process -FilePath $ps -ArgumentList $argList -PassThru -NoNewWindow -RedirectStandardOutput $so -RedirectStandardError $se
         $null = $proc.Handle   # інакше ExitCode після WaitForExit буває порожній
         $finished = $proc.WaitForExit($TimeoutSec * 1000)
-        $entry = [ordered]@{ step = $step; seconds = [Math]::Round(((Get-Date) - $t0).TotalSeconds, 1) }
+        $entry = [ordered]@{ step = $label; seconds = [Math]::Round(((Get-Date) - $t0).TotalSeconds, 1) }
         if (-not $finished) {
             try { $proc.Kill() } catch { }
             $entry.timeout = $true
@@ -349,10 +441,44 @@ try {
         }
         $err = (Get-Content -LiteralPath $se -Raw -ErrorAction SilentlyContinue)
         if ($err) { $entry.stderr = $err.Substring(0, [Math]::Min(2000, $err.Length)) }
-        $report.steps += $entry
+        $script:report.steps += $entry
         Log ("  результат: " + $(if ($entry.result) { ($entry.result | ConvertTo-Json -Compress) } elseif ($entry.raw) { $entry.raw.Trim() } else { 'немає виводу' }))
-        $baseFailed = (($step -eq 'load' -or $step -eq 'init') -and (-not $entry.result -or -not $entry.result.ok))
-        if ($baseFailed) { Log '  Базовий крок не пройшов — далі не йдемо.'; break }
+        return $entry
+    }
+    function Test-StepOk($entry) { return [bool]($entry.result -and $entry.result.ok) }
+
+    $baseOk = $true
+    foreach ($step in $(if ($Place) { @('load', 'init', 'machines', 'equipment') } else { $Steps })) {
+        if (($step -in @('strategy', 'space', 'curves')) -and -not $workCam) { continue }
+        $extra = @()
+        if ($step -eq 'equipment') { $extra = @('-Machine', "`"$Machine`"") }
+        $entry = Invoke-ProbeStep $step $step $workCam $extra
+        $baseFailed = (($step -eq 'load' -or $step -eq 'init') -and -not (Test-StepOk $entry))
+        if ($baseFailed) { Log '  Базовий крок не пройшов — далі не йдемо.'; $baseOk = $false; break }
+        if ($step -eq 'equipment' -and -not $Equipment -and (Test-StepOk $entry)) {
+            # Перше обладнання з позначкою default: «default|<назва>|…»
+            $parts = @($entry.result.equipment_raw -split '\|')
+            $i = [Array]::IndexOf($parts, 'default')
+            if ($i -ge 0 -and $i + 1 -lt $parts.Count) { $Equipment = $parts[$i + 1] }
+            $report.place.equipment = $Equipment
+            Log "  обладнання для імпорту: $(if ($Equipment) { $Equipment } else { 'не визначено (задай -Equipment)' })"
+        }
+    }
+
+    # Рівень 2: кожна копія STL → .obj → .cam у теці проби, потім читаємо результат (curves).
+    if ($Place -and $baseOk) {
+        foreach ($v in $variants) {
+            $obj = Join-Path $work "$($v[0]).obj"
+            $outCam = Join-Path $work "$($v[0]).cam"
+            $common = @('-Machine', "`"$Machine`"", '-Material', "`"$Material`"", '-Equipment', "`"$Equipment`"",
+                '-Blk', "`"$workBlk`"", '-Stl', "`"$($v[1])`"", '-Obj', "`"$obj`"",
+                '-ObjectType', $ObjectType, '-Shrink', $Shrink.ToString([Globalization.CultureInfo]::InvariantCulture))
+            $imp = Invoke-ProbeStep 'import' "import_$($v[0])" '' $common
+            if (-not (Test-StepOk $imp)) { continue }
+            $toCam = Invoke-ProbeStep 'tocam' "tocam_$($v[0])" $outCam @('-Obj', "`"$obj`"")
+            if (Test-StepOk $toCam) { [void](Invoke-ProbeStep 'curves' "curves_$($v[0])" $outCam @()) }
+        }
+        Log "Готові проєкти (якщо вийшли): $work\*.cam — відкрий у Sum3D через Файл → Відкрити й подивись, де стала робота."
     }
 
     # 7. Знімки ПІСЛЯ

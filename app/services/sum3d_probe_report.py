@@ -83,10 +83,13 @@ def _step(raw: dict[str, Any]) -> dict[str, Any]:
             ("value", "значення"),
             ("count", "чисел_контурів"),
             ("first_values", "перші_числа"),
+            ("obj_size", "розмір_obj"),
+            ("cam_size", "розмір_cam"),
         ):
             if source in result:
                 out[target] = result[source]
-        for source, target in (("machines_raw", "верстати"), ("strategy", "стратегія"), ("error", "помилка")):
+        for source, target in (("machines_raw", "верстати"), ("equipment_raw", "обладнання"),
+                               ("strategy", "стратегія"), ("error", "помилка")):
             if result.get(source) not in (None, ""):
                 out[target] = _scrub(result[source])[:2000]
     else:
@@ -138,6 +141,19 @@ def _summary(folder: str, data: dict[str, Any]) -> dict[str, Any]:
         "відкрито_sum3d_до": _scrub_list(data.get("running_before")),
         "кроки": [_step(s) for s in _as_list(data.get("steps")) if isinstance(s, dict)],
     }
+    place = _dict(data.get("place"))
+    if place:
+        # Рівень 2 (набір v4): STL на копію диска. Назви STL у звіті немає — лише розмір.
+        out["постановка"] = {
+            "диск": _scrub(place.get("blk", "")),
+            "верстат": _scrub(place.get("machine", "")),
+            "матеріал": _scrub(place.get("material", "")),
+            "обладнання": _scrub(place.get("equipment", "")),
+            "усадка": place.get("shrink"),
+            "вид_роботи": place.get("object_type"),
+            "зсув_x_мм": place.get("shift_x"),
+            "розмір_stl": place.get("stl_size"),
+        }
     if not data.get("dry_run"):
         out.update(
             {

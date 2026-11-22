@@ -20,8 +20,8 @@ KIT = ROOT / "tools" / "sum3d-probe"
 MAIN = KIT / "sum3d_probe.ps1"
 STEP = KIT / "sum3d_probe_step.ps1"
 
-# Єдині функції Sum3dDll_x64.dll, які дозволено кликати: усі лише читають.
-ALLOWED_EXPORTS = {
+# Єдині функції Sum3dDll_x64.dll, які дозволено кликати. Рівень 1 — усі лише читають.
+READ_ONLY_EXPORTS = {
     "?setSumDirectoryInst@@YAXPEBD@Z",
     "?initialize@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@XZ",
     "?getMachineNameList@@YA_NPEADH@Z",
@@ -29,6 +29,14 @@ ALLOWED_EXPORTS = {
     "?getSpaceLeftOnRAW@@YAHPEBD@Z",
     "?getSpaceLeftOnRAW_WithCurves@@YAHPEBDAEAHAEAPEAXAEAPEAN@Z",
 }
+# Рівень 2 (набір v4, `-Place`): список обладнання (читає) і два виклики, що ПИШУТЬ — лише нові
+# файли у теці проби. Новий запис сюди = нова дія в Sum3D: додавати лише з рішенням власника.
+PLACE_READ_EXPORTS = {"?getEquipmentList@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEB_WPEADAEAH@Z"}
+PLACE_WRITE_EXPORTS = {
+    "?importSTL@@YA?AW4ISum3dDLLErrorCode@ISum3dDll@@PEBD000HN_NNHNH11N11100@Z",
+    "?MB2Sum_MBobj2SUMcam@@YA_NPEBDPEAD@Z",
+}
+ALLOWED_EXPORTS = READ_ONLY_EXPORTS | PLACE_READ_EXPORTS | PLACE_WRITE_EXPORTS
 
 
 def _text(path: Path) -> str:
@@ -36,7 +44,7 @@ def _text(path: Path) -> str:
 
 
 def test_kit_files_exist_and_ship_with_the_app():
-    for name in ("sum3d_probe.ps1", "sum3d_probe_step.ps1", "1_dry_run.cmd", "2_probe.cmd", "README.md"):
+    for name in ("sum3d_probe.ps1", "sum3d_probe_step.ps1", "1_dry_run.cmd", "2_probe.cmd", "4_place.cmd", "README.md"):
         assert (KIT / name).is_file(), name
     spec = (ROOT / "KuubMill.spec").read_text(encoding="utf-8")
     assert '("tools/sum3d-probe", "tools/sum3d-probe")' in spec
@@ -51,14 +59,14 @@ def test_powershell_files_have_bom_for_windows_powershell_5():
 def test_cmd_files_have_no_bom_and_use_crlf():
     # BOM ламає перший рядок cmd; з LF замість CRLF cmd може не знайти мітку goto
     # (закінчення рядків тримає .gitattributes).
-    for name in ("1_dry_run.cmd", "2_probe.cmd"):
+    for name in ("1_dry_run.cmd", "2_probe.cmd", "4_place.cmd"):
         data = (KIT / name).read_bytes()
         assert not data.startswith(b"\xef\xbb\xbf"), name
         assert data.count(b"\r\n") == data.count(b"\n") > 0, name
     assert "tools/sum3d-probe/*.cmd text eol=crlf" in (ROOT / ".gitattributes").read_text(encoding="utf-8")
 
 
-def test_step_script_calls_only_read_only_sum3d_functions():
+def test_step_script_calls_only_listed_sum3d_functions():
     text = _text(STEP)
     entry_points = set(re.findall(r'EntryPoint\s*=\s*"([^"]+)"', text))
     assert entry_points == ALLOWED_EXPORTS
@@ -121,10 +129,48 @@ def test_cmd_wrappers_never_use_risky_flags():
     dry = (KIT / "1_dry_run.cmd").read_text(encoding="utf-8")
     probe = (KIT / "2_probe.cmd").read_text(encoding="utf-8")
     assert "-DryRun" in dry
-    for text in (dry, probe):
+    place = (KIT / "4_place.cmd").read_text(encoding="utf-8")
+    for text in (dry, probe, place):
         assert "-UseLastSeat" not in text
         assert "-CwdInSumDir" not in text
     assert "-AllowRunning" in probe and '-Cam "%~1"' in probe
+    # Рівень 2 вмикає лише свій файл; звичайна проба лишається лише на читання.
+    assert "-Place" not in probe and "-Place" not in dry
+    assert "-Place" in place and '-Stl "%~1"' in place
+
+
+def test_place_level_writes_only_new_files_in_its_own_folder():
+    """Рівень 2 (22.11.26): `importSTL` і `MB2Sum_MBobj2SUMcam` пишуть файли. Дозволено лише
+    нові файли поза текою Sum3D — із КОПІЙ STL і диска; оригінали й тека дисків не чіпаються."""
+    step = _text(STEP)
+    main = _text(MAIN)
+    # Сторож шляху стоїть перед КОЖНИМ викликом, що пише.
+    guard = step.index("function Assert-OutputPath")
+    assert "refuse to write inside the Sum3D folder" in step and "refuse to overwrite an existing file" in step
+    import_call = step.index("[Sum3d]::importSTL(")
+    cam_call = step.index("[Sum3d]::MBobj2SUMcam(")
+    assert guard < step.index("Assert-OutputPath $out") < import_call
+    assert guard < step.index("Assert-OutputPath $Cam") < cam_call
+    # Рівень 1 цих функцій не вимагає й не кличе: без -Place список потрібних — старий.
+    assert "if ($Place) { foreach ($k in $neededPlace.Keys)" in main
+    block = main[main.index("$neededPlace = [ordered]@{"):main.index("if ($Place) { foreach ($k in $neededPlace.Keys)")]
+    for export in PLACE_READ_EXPORTS | PLACE_WRITE_EXPORTS:
+        assert export in block, export
+    head = main[main.index("$needed = [ordered]@{"):main.index("$neededPlace = [ordered]@{")]
+    for export in PLACE_READ_EXPORTS | PLACE_WRITE_EXPORTS:
+        assert export not in head, export
+    # У ядро йдуть лише копії з теки проби, не оригінали.
+    assert "Copy-Shared $Blk $workBlk" in main and "Copy-Shared $Stl $workStl" in main
+    assert "'-Blk', \"`\"$workBlk`\"\"" in main
+    assert "$Blk`\"" not in main and "'-Stl', \"`\"$Stl`\"\"" not in main
+    # Кроки рівня 2 запускаються лише з -Place і лише після вдалих load/init.
+    assert "if ($Place -and $baseOk)" in main
+    # Назва STL у звіт не йде (імена пацієнтів) — лише розмір і початок хешу.
+    place_report = main[main.index("$report.place = [ordered]@{"):main.index("Log \"Рівень 2:")]
+    assert "stl_size" in place_report and "GetFileName($Stl)" not in main
+    # Слід у теці Sum3D названо прямо — у скрипті, у файлі запуску і в README.
+    for text in (main, (KIT / "4_place.cmd").read_text(encoding="utf-8"), (KIT / "README.md").read_text(encoding="utf-8")):
+        assert "importstl.log" in text
 
 
 def test_app_never_runs_the_kit():
@@ -244,3 +290,37 @@ def test_broken_report_does_not_break_the_tool(reports):
     (spr.reports_root() / "20261117_170000").mkdir()
     out = spr.report(limit=5)
     assert [r.get("не_читається") for r in out["звіти"]] == ["FileNotFoundError", "ValueError", "JSONDecodeError"]
+
+
+def test_report_shows_the_place_level(reports):
+    """Набір v4: у звіті видно, що ставили (диск, верстат, матеріал) і чим скінчився кожен крок."""
+    data = dict(REPORT)
+    data["kit_version"] = 4
+    data["place"] = {"stl_size": 421337, "stl_sha256_16": "AB" * 8, "blk": "zr14_14-Monolith-A3-x101.blk",
+                     "machine": "350i_Boris", "material": "Zirconium", "equipment": "Disc 98",
+                     "shrink": 1.242, "object_type": 9, "shift_x": 20}
+    data["steps"] = [
+        {"step": "equipment", "seconds": 1.0, "exit_code": 0,
+         "result": {"step": "equipment", "ok": True, "code": 0, "equipment_raw": "default|Disc 98|"}},
+        {"step": "import_probe", "seconds": 4.2, "exit_code": 0,
+         "result": {"step": "import", "ok": True, "code": 0, "obj_size": 99000}},
+        {"step": "tocam_probe", "seconds": 2.0, "exit_code": 0,
+         "result": {"step": "tocam", "ok": True, "cam_size": 8123456}},
+        {"step": "import_probe_shift", "seconds": 4.0, "exit_code": 0,
+         "result": {"step": "import", "ok": False, "code": 20}},
+    ]
+    reports("20261122_150000", data)
+    r = TOOLS_BY_NAME["kmill_sum3d_probe"].run(None, {})["звіти"][0]
+    assert r["набір_v"] == 4
+    assert r["постановка"] == {"диск": "zr14_14-Monolith-A3-x101.blk", "верстат": "350i_Boris",
+                               "матеріал": "Zirconium", "обладнання": "Disc 98", "усадка": 1.242,
+                               "вид_роботи": 9, "зсув_x_мм": 20, "розмір_stl": 421337}
+    by = {s["крок"]: s for s in r["кроки"]}
+    assert by["equipment"]["обладнання"] == "default|Disc 98|"
+    assert by["import_probe"]["ok"] and by["import_probe"]["розмір_obj"] == 99000
+    assert by["tocam_probe"]["розмір_cam"] == 8123456
+    assert by["import_probe_shift"]["ok"] is False and by["import_probe_shift"]["код"] == 20
+    # Звичайний звіт рівня 1 цього розділу не має.
+    reports("20261122_160000", REPORT)
+    plain = TOOLS_BY_NAME["kmill_sum3d_probe"].run(None, {})["звіти"][0]
+    assert "постановка" not in plain
