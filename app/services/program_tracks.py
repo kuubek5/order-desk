@@ -520,6 +520,39 @@ def collect_folder(path: str, *, target: Optional[Path] = None, now: Optional[fl
     return taken
 
 
+_in_flight: set[str] = set()
+
+
+def network_pass(db_factory) -> int:
+    """Один прохід мережевих тек: кожна — своїм потоком, тож вимкнений ПК верстата
+    (таймаут у десятки секунд) не затримує решти. 23.11.26: раз на 45 с по черзі —
+    і SmartControl забирав файл раніше, 14 назв із 36 пропущено. Повертає, скільки
+    тек почато перевіряти; попередню перевірку тієї ж теки не дублюємо."""
+    with db_factory() as db:
+        folders = {item.path.lower(): item.path for item in known_folders(db) if item.is_network}
+    started = 0
+    for key, path in folders.items():
+        with _lock:
+            if key in _in_flight or time.monotonic() < _backoff_until.get(path, 0.0):
+                continue
+            _in_flight.add(key)
+        started += 1
+        threading.Thread(target=_network_folder, args=(key, path),
+                         name="kuubmill-tracks-net-folder", daemon=True).start()
+    return started
+
+
+def _network_folder(key: str, path: str) -> None:
+    try:
+        collect_folder(path)
+    except Exception:  # noqa: BLE001 — одна тека не валить збирач
+        if log_throttle.due(f"program-tracks-net:{path}") is not None:
+            logger.exception("Слід програми: теку %s не перевірено", path)
+    finally:
+        with _lock:
+            _in_flight.discard(key)
+
+
 def collect_once(db, *, network: bool) -> int:
     """Прохід опитуванням по мережевих (або, у тестах, локальних) теках.
     Мережеві теки — окремим потоком: мертва висить на таймаутах і не має

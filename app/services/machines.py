@@ -1682,6 +1682,7 @@ def _program_from_screen(
             )
         return None
     log_throttle.clear(f"machines.newgen_unread:{target.key}")
+    program = _with_full_name(db, target, program, frame)
     if not _queued_work_for(db, program):
         # Не DEBUG: у проді його не видно, а це єдиний слід того, що читання
         # спрацювало й зупинилось саме на черзі (робота не з таблиці, інший день).
@@ -1692,6 +1693,25 @@ def _program_from_screen(
                         f" (ще {skipped} разів відтоді)" if skipped else "")
         return program if _full_name_is_fresh(program, now or datetime.now()) else None
     return program
+
+
+def _with_full_name(
+    db: Session, target: MachineTarget, program: MillingProgram, frame: Image.Image
+) -> MillingProgram:
+    """З екрана взято лише дату й час — повну назву дає файл програми або перелік
+    дисків (`machine_disc_names`, власник 23.11.26). Не дали — назва як була."""
+    from app.services import machine_disc_names
+    from app.settings_store import get_setting
+
+    try:
+        return machine_disc_names.complete(
+            program, target.key, frame, get_setting(db, "cam_blanks_path"), machine=target.name,
+        )
+    except Exception:  # noqa: BLE001 — добір назви не валить опитування
+        skipped = log_throttle.due(f"machines.newgen_full_name:{target.key}")
+        if skipped is not None:
+            logger.exception("Повну назву програми верстата %s не дібрано", target.host)
+        return program
 
 
 def _bare_program_from_screen(target: MachineTarget, frame: Image.Image) -> Optional[MillingProgram]:

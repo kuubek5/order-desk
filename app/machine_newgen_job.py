@@ -844,6 +844,148 @@ def read_newgen_name_prefix_explained(image: Image.Image) -> "tuple[str, Optiona
     return _name_prefix(layout)
 
 
+# ── Назва за переліком дисків (23.11.26) ────────────────────────────────────
+#
+# Посимвольне правило («кожен символ ≤20 і відрив ≥10») відмовляє на кожному
+# новому накресленні, і назва лишалась датою. Але початок назви — не довільний
+# текст: це позначка оператора плюс ІСНУЮЧИЙ диск теки CAM. Тож питання інше:
+# який із справжніх дисків стоїть у рядку. Відповідь є, лише коли рівно один диск
+# лягає на рядок, а решта далеко; символ, якого не вчили, нічого не вигадує —
+# назву пише файл диска, а не еталон.
+#
+# Живі кадри 23.11.26 (250i-Tolik, 150i-Olejka): у всіх символів найближчий еталон
+# правильний, найгірший — 46 («B»), сума на диск ≤103, наступний диск — від +60.
+DISC_CHAR_MAX = 50.0        # символ диска не далі за це від свого еталона
+DISC_MEAN_MAX = 18.0        # і в середньому на символ
+# Символ диска мусить бути НАЙСХОЖІШИМ на побачене (або майже): інакше, коли
+# справжнього диска в переліку немає, сусід `15-A2-X184` ліг би на `16-A2-X184`.
+DISC_SLACK = 8.0
+DISC_MARGIN = 20.0          # наступний диск дорожчий щонайменше на стільки
+DISC_MARGIN_LOOSE = 30.0    # … і на стільки, коли є символ, далі за NAME_MAX_DISTANCE
+MARK_CHAR_MAX = 45.0        # символ позначки перед диском: відстань і відрив
+MARK_CHAR_MARGIN = 25.0
+_UNLEARNED = 45.0           # літери диска немає серед еталонів
+
+
+def _glyph_costs(glyph: _Glyph, templates: "dict[str, np.ndarray]") -> "dict[str, float]":
+    """Символ → відстань. Риска й крапка — за формою, решта — за еталонами."""
+    shape = _shape_class(glyph)
+    if shape in ("-", "."):
+        wide = shape == "-" and glyph.bits.shape[1] > DASH_MAX_WIDTH * glyph.cap
+        return {} if wide else {shape: 0.0}
+    if glyph.bits.shape[0] < glyph.cap * 0.9 or glyph.top > glyph.cap * 0.1:
+        return {}
+    probe = _name_norm(glyph.bits)
+    return {char: float(np.abs(stack - probe).sum(axis=(1, 2)).min()) for char, stack in templates.items()}
+
+
+def _fit_text(text: str, costs: "list[dict[str, float]]") -> "Optional[tuple[float, float]]":
+    """(сума, найгірший символ) для тексту, покладеного на символи; None — не лягає."""
+    total = worst = 0.0
+    for char, options in zip(text, costs):
+        if char in "-.":
+            cost = options.get(char)
+        elif not options or "-" in options or "." in options:
+            cost = None
+        else:
+            cost = options.get(char)
+            if cost is None:
+                # Літери не вчили. Символ, дуже схожий на ІНШУ вивчену, — не вона.
+                cost = None if min(options.values()) <= NAME_MAX_DISTANCE else _UNLEARNED
+        if cost is None or cost > DISC_CHAR_MAX or (cost is not _UNLEARNED and cost - min(options.values()) > DISC_SLACK):
+            return None
+        total += cost
+        worst = max(worst, cost)
+    return total, worst
+
+
+def _mark_text(costs: "list[dict[str, float]]", under: "set[int]") -> Optional[str]:
+    """Позначка оператора перед диском (`12`, `-26-`, `2DD`) — або None."""
+    out = []
+    for index, options in enumerate(costs):
+        ranked = sorted(options.items(), key=lambda kv: kv[1])
+        if not ranked:
+            return None
+        char, distance = ranked[0]
+        gap = ranked[1][1] - distance if len(ranked) > 1 else float("inf")
+        if distance > MARK_CHAR_MAX or gap < MARK_CHAR_MARGIN:
+            return None
+        out.append(("_" if index in under else "") + char)
+    return "".join(out)
+
+
+def name_by_discs(image: Image.Image, stems: "list[str]") -> "tuple[Optional[str], Optional[str]]":
+    """Початок назви до дати за переліком дисків: (текст | None, чому ні).
+
+    `stems` — назви файлів дисків (`zr18_18-Emotions-a1-x198`). У програмі диск
+    стоїть цілком або без голови до `_` (`9_16-MONOLITH-A3-X108`); перед ним —
+    позначка оператора. Позначку не прочитано — лишається сам диск."""
+    layout = _name_layout(image)
+    if layout is None or not layout.glyphs:
+        return None, None
+    return _disc_head(layout, stems)
+
+
+def _disc_head(layout: _Layout, stems: "list[str]") -> "tuple[Optional[str], Optional[str]]":
+    glyphs = layout.glyphs
+    date_at = _tail_start(glyphs)
+    if date_at <= 0:
+        return None, "перед датою нічого немає"
+    templates = load_newgen_name_glyphs()
+    slots, why = _underscore_slots(layout)
+    if not templates or slots is None:
+        return None, why or "еталонів для назви немає"
+    if [s for s in slots if s >= date_at] != [date_at, date_at + 10]:
+        return None, "підкреслення не там, де їх ставить Sum3D (перед датою й перед часом)"
+    under = {s for s in slots if s < date_at}
+    costs = [_glyph_costs(g, templates) for g in glyphs[:date_at]]
+
+    # Диск — без голови до `_` (вона на екрані буває замінена позначкою).
+    heads: "dict[str, set[str]]" = {}
+    for stem in stems:
+        head, sep, key = stem.upper().partition("_")
+        if sep and "_" not in key and len(key) <= date_at:
+            heads.setdefault(key, set()).add(head)
+    # Дата й час — у кожного свої, тож порівнюємо диски, що лягають на КІНЕЦЬ.
+    scored: "list[tuple[float, float, str]]" = []
+    for key in heads:
+        start = date_at - len(key)
+        if any(start < s for s in under):
+            continue  # `_` усередині диска
+        if start and start not in under and costs[start - 1] and set(costs[start - 1]) != {"-"}:
+            continue  # диск не відділено ні `_`, ні рискою
+        fit = _fit_text(key, costs[start:])
+        if fit is not None:
+            scored.append((fit[0], fit[1], key))
+    if not scored:
+        return None, "жоден диск теки CAM на цей рядок не лягає"
+    scored.sort()
+    total, worst, key = scored[0]
+    if total / len(key) > DISC_MEAN_MAX:
+        return None, f"найближчий диск {key} задалеко ({total / len(key):.0f} на символ)"
+    need = DISC_MARGIN if worst <= NAME_MAX_DISTANCE else DISC_MARGIN_LOOSE
+    if len(scored) > 1 and scored[1][0] - total < need:
+        return None, f"два диски схожі однаково: {key} і {scored[1][2]}"
+
+    start = date_at - len(key)
+    joint = "_" if start in under else ""
+    # Чи стоїть на екрані й голова диска (`ZR18_`)? Тоді позначка — те, що перед нею.
+    for head in sorted(heads[key], key=len, reverse=True):
+        at = start - len(head)
+        if joint and at >= 0 and not any(at < s < start for s in under):
+            fit = _fit_text(head, costs[at:start])
+            if fit is not None and fit[0] / len(head) <= DISC_MEAN_MAX:
+                mark = _mark_text(costs[:at], under)
+                glue = "_" if at in under else ""
+                return f"{mark}{glue}{head}_{key}" if mark is not None else f"{head}_{key}", None
+    mark = _mark_text(costs[:start], under)
+    if mark is not None:
+        return f"{mark}{joint}{key}", None
+    # Позначку не прочитано: диск відомий, а вигадувати її не беремося.
+    only = next(iter(heads[key])) if len(heads[key]) == 1 else ""
+    return (f"{only}_{key}" if only else key), None
+
+
 def _program_from_text(s: str, prefix: str = "") -> "tuple[Optional[MillingProgram], Optional[str]]":
     """Зібрати програму з прочитаного хвоста, перевіривши дату й час.
 

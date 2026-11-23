@@ -1218,11 +1218,11 @@ def _stl_height_worker(stop_event: Event) -> None:
 
 # Слід різання програм (`app/services/program_tracks.py`, власник 14.11.26).
 # Локальні теки — двічі на секунду, швидким сторожем: старий верстат ЗАБИРАЄ `.iso` з `C:\\CAM-out\\…` до
-# себе, і слід треба зняти раніше. Мережеві (теки нових верстатів) — окремим
-# потоком і рідше: вимкнений ПК верстата висить на таймаутах і не має
-# затримувати локальні.
+# себе, і слід треба зняти раніше. Мережеві (теки нових верстатів) — раз на 5 с,
+# кожна своїм потоком: вимкнений ПК верстата висить на таймаутах і не має
+# затримувати ні локальні, ні сусідів.
 PROGRAM_TRACKS_LOCAL_INTERVAL_SECONDS = 0.25
-PROGRAM_TRACKS_NETWORK_INTERVAL_SECONDS = 45.0
+PROGRAM_TRACKS_NETWORK_INTERVAL_SECONDS = 5.0
 PROGRAM_TRACKS_INITIAL_DELAY_SECONDS = 40.0
 
 
@@ -1236,8 +1236,7 @@ def _program_tracks_loop(stop_event: Event, *, network: bool, interval: float) -
         while not stop_event.is_set():
             try:
                 if network:
-                    with SessionLocal() as db:
-                        program_tracks.collect_once(db, network=True)
+                    program_tracks.network_pass(SessionLocal)
                 else:
                     # Двічі на секунду: нову програму треба ВІДКРИТИ раніше, ніж
                     # верстат її забере (власник 14.11.26). У базу сторож ходить

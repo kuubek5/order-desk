@@ -330,6 +330,19 @@ def _zone_report(name: str, field) -> dict[str, Any]:
     }
 
 
+def _full_name_report(db: Session, key: str, image, program) -> dict[str, Any]:
+    """Звідки береться повна назва, коли літери екрана її не дали."""
+    from app.machine_newgen_job import name_by_discs
+    from app.services import machine_disc_names, program_tracks
+    from app.settings_store import get_setting
+
+    traced = program_tracks.program_of(program.iso_name)
+    stems = machine_disc_names.disc_stems(get_setting(db, "cam_blanks_path"))
+    head, why = name_by_discs(image, stems) if stems else (None, "перелік дисків ще не прочитано")
+    return {"з_файлу_програми": traced[0] if traced else None, "за_переліком_дисків": head,
+            "чому_ні": why, "дисків_у_переліку": len(stems)}
+
+
 def zones(db: Session, args: dict) -> dict[str, Any]:
     """Що читається з найсвіжішого кадру ЗАРАЗ і на чому читач спіткнувся."""
     from PIL import Image
@@ -392,6 +405,7 @@ def zones(db: Session, args: dict) -> dict[str, Any]:
                 ),
                 "чому_ні": why,
                 "чому_без_початку_назви": prefix_why,
+                "повна_назва": _full_name_report(db, key, image, program) if prefix_why else None,
                 "як_читається": (
                     "назва береться з рядка ▶ екрана JOBS і лише тоді, коли заголовок "
                     "вікна її не дав; порожнє «чому_ні» означає, що читати не було чого "
