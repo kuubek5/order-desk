@@ -121,8 +121,8 @@ _LINE_WORDS = {
     "monolith": ("mono", "моно", "monolith", "моноліт", "монолит"),
     "emotions": ("emo", "емо", "emotion", "емоушен", "эмо"),
     "katana": ("katana", "катана"),
-    "z-nature": ("nature", "натур"),
-    "z-smile": ("smile", "смайл"),
+    "z-nature": ("nature", "натур", "z nat", "z-nat", "znat"),
+    "z-smile": ("smile", "смайл", "z-sm", "zsm"),
     "doceram": ("doceram", "доцерам"),
 }
 
@@ -267,9 +267,10 @@ _CODE_RE = re.compile(r"x\d+", re.IGNORECASE)
 _SHADE_RE = re.compile(r"[a-d]\d", re.IGNORECASE)
 # Z-Nature у теці CAM пишуть по-різному: `Z-Nature`, `Znature`, `ZNat`, `Nature`,
 # `Nat` (23.11.26, лист 4042: «такого диска немає», хоч Znature-A3 25 мм є).
-# Версія MS — окрема позиція каталогу: сюди не додаємо, доки власник не скаже.
+# Власник 23.11.26: версія MS — те саме, що Z-Nature; `Z-Sm` — це Z-Smile; а
+# `ST_ML` — НЕ Katana (Katana лише `STML`), тож такий диск лишається без лінії.
 _Z_NATURE_RE = re.compile(r"(?<![a-z])z?-?nat(?:ure)?(?![a-z])")
-_MS_RE = re.compile(r"(?<![a-z])ms(?![a-z])")
+_Z_SMILE_RE = re.compile(r"(?<![a-z])z-?sm(?:ile)?(?![a-z])")
 
 
 def _line_of_disc(brand: str, low: str) -> Optional[str]:
@@ -277,9 +278,11 @@ def _line_of_disc(brand: str, low: str) -> Optional[str]:
     if brand in LINES:
         return brand
     known = next((key for key in LINES if key in low), None)
-    if known is None and _Z_NATURE_RE.search(low) and not _MS_RE.search(low):
+    if known is not None:
+        return known
+    if _Z_NATURE_RE.search(low):
         return "z-nature"
-    return known
+    return "z-smile" if _Z_SMILE_RE.search(low) else None
 
 
 _scan_cache: dict[str, tuple[float, list[DiscFile]]] = {}

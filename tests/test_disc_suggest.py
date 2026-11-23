@@ -688,15 +688,25 @@ def test_active_discs_also_collects_removed_ones(app_db):  # noqa: F811
 @pytest.mark.parametrize("stem, line", [
     ("zr25_25-Znature-A3-x06a", "z-nature"), ("zr18_18-Nat-a2-x03", "z-nature"), ("zr14_14-Nature-A2-x01", "z-nature"),
     ("zr16_16-Z-Nature-A3-x03", "z-nature"), ("zr20_20-Z-Nature--a2-x12", "z-nature"), ("zr22_22-ZNat-A2-x1", "z-nature"),
-    ("zr18_18-Znature-MS-A3-x35", None), ("zr14_14-Nat_MS-A3-x03", None), ("zr22_22-a2-Nature-MS-x01", None),
-    ("zr18_18-Z-Nature-MS-A2-x12", "z-nature"),  # як і було до 23.11.26
-    ("zr20_20-pearl natural a2-x01", None), ("zr14_14-a2-x99", None), ("zr22_22-Z-Sm-MS-A2-x11", None),
+    # MS — те саме, що Z-Nature; Z-Sm — Z-Smile; ST_ML — не Katana (власник 23.11.26).
+    ("zr18_18-Znature-MS-A3-x35", "z-nature"), ("zr14_14-Nat_MS-A3-x03", "z-nature"),
+    ("zr22_22-a2-Nature-MS-x01", "z-nature"), ("zr18_18-Z-Nature-MS-A2-x12", "z-nature"),
+    ("zr22_22-Z-Sm-MS-A2-x11", "z-smile"), ("zr18_18-a2-Z-Sm-x02", "z-smile"), ("zr22_22-ZSM-MS-A3-x01", "z-smile"),
+    ("zr20_20-ST_ML-A3-x02", None), ("zr20_20-pearl natural a2-x01", None), ("zr14_14-a2-x99", None),
     ("zr14_14-Emotions-a2-x54", "emotions"), ("zr14_14-STML-a2-x42", "stml"),
 ])
 def test_disc_line_by_file_name(stem, line):
     from app.services.cam_blanks import parse_blank_name
 
     assert disc_suggest._line_of_disc((parse_blank_name(stem).brand or "").lower(), stem.lower()) == line
+
+
+@pytest.mark.parametrize("text, line", [
+    ("z nat a2", "z-nature"), ("ZNat-MS a2", "z-nature"), ("z-nature ms a2", "z-nature"), ("z-sm a2", "z-smile"),
+    ("st_ml a2", None), ("st a3", None), ("monolith a2", "monolith"),
+])
+def test_wanted_line_by_shop_words(text, line):
+    assert disc_suggest.want_of(text).line == line
 
 
 def test_disc_hint_tool_needs_a_real_letter(db_session):
