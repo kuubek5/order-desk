@@ -23,7 +23,7 @@ def _clean_shown():
 
 
 def _pick(name, height, free, started=True, fit=True):
-    return SimpleNamespace(name=name, height=height, free_pct=free, started=started, fit=fit, on_machine=False)
+    return SimpleNamespace(name=name, height=height, free_pct=free, started=started, fit=fit, on_machine=False, tight=False)
 
 
 def _hint(best=None, alts=(), heights=(16,), thickness=12.5):

@@ -401,7 +401,7 @@ def test_hint_row_names_machine_and_warns_when_no_place_found():
     hint = Suggestion(want=Want(family="Цирконій", line="monolith", shades=frozenset({"a2"})),
                       thickness=9.0, heights=[14], why="…", best=pick)
     html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
-    assert "стоїть у 250i-Tolik" in html and "на верстаті" not in html
+    assert 'стоїть у <b class="mdh-mname">250i-Tolik</b>' in html and "на верстаті" not in html
     assert "розстав у Sum3D" in html
 
 
@@ -513,6 +513,8 @@ def test_stale_16_gives_way_to_existing_18_for_multilayer(tmp_path):
     used = [_square(x, 0, 6) for x in (-25, 0)]
     _disc(root, "zr", 16, "zr16_16-Emotions-A3-x136", used)
     _disc(root, "zr", 18, "zr18_18-Emotions-A3-x200", used)
+    # 16 мм Emotions цех бере (інший колір) — висота лишається, хоч A3 16 давній.
+    _disc(root, "zr", 16, "zr16_16-Emotions-A1-x300", used)
     stamp = time.time() - 700 * 86400
     os.utime(root / "zr" / "16" / "zr16_16-Emotions-A3-x136.blk", (stamp, stamp))
     (tmp_path / "mail").mkdir()
@@ -522,6 +524,111 @@ def test_stale_16_gives_way_to_existing_18_for_multilayer(tmp_path):
     assert hint.heights == [16, 18]
     assert hint.best is not None and hint.best.name == "zr18_18-Emotions-A3-x200"
     assert hint.alts == []
+
+
+def _age(root, height, name, days):
+    path = root / "zr" / str(height) / f"{name}.blk"
+    stamp = time.time() - days * 86400
+    os.utime(path, (stamp, stamp))
+
+
+def test_tight_started_disc_goes_before_a_new_one_with_a_warning(tmp_path):
+    """Лист 4121 (23.11.26): 13,9 мм, 800 — цех поклав на початий 14 x34, а картка
+    радила «новий 16», якого не брали з 2018 року."""
+    from app.routers.deps import templates
+
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 14, "zr14_14-800-x34", USED)
+    _disc(root, "zr", 14, "zr14_14-800-x35", [])  # новий впритул — ні
+    _disc(root, "zr", 16, "zr16_16-800-x01", USED)
+    _age(root, 16, "zr16_16-800-x01", 3000)
+    _disc(root, "zr", 18, "zr18_18-800-x300", [])
+    trace = {}
+    atts = _letter_of(tmp_path, 11.14)
+    hint = disc_suggest.suggest("800", atts, str(root), trace=trace)
+    assert hint.heights == [18], "16 мм цех не бере"
+    assert _names(hint) == ["zr14_14-800-x34", "zr18_18-800-x300"]
+    assert hint.best.tight and not hint.alts[0].tight
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert 'data-state="tight"' in html and "впритул</b> · запас 0.1 мм" in html and "(диск вищий)" not in html
+    assert any("впритул" in str(d.get("рішення")) for d in trace["диски"])
+    # Є початий із нормальним запасом — ризикований не пропонуємо.
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 18, "zr18_18-800-x299", USED)
+    assert "zr14_14-800-x34" not in _names(disc_suggest.suggest("800", atts, str(root)))
+
+
+def test_work_taller_than_the_disc_is_never_tight(tmp_path):
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 14, "zr14_14-800-x34", USED)
+    _disc(root, "zr", 18, "zr18_18-800-x300", [])
+    hint = disc_suggest.suggest("800", _letter_of(tmp_path, 11.3), str(root))  # 14,1 мм
+    assert _names(hint) == ["zr18_18-800-x300"]
+
+
+def test_tight_needs_room_and_prefers_the_disc_on_a_machine(tmp_path, monkeypatch):
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 14, "zr14_14-800-x33", [_square(x, 0, 12) for x in (-25, 0)])
+    _disc(root, "zr", 14, "zr14_14-800-x34", USED)
+    _disc(root, "zr", 18, "zr18_18-800-x300", [])
+    atts = _letter_of(tmp_path, 11.14)
+    assert _names(disc_suggest.suggest("800", atts, str(root)))[0] == "zr14_14-800-x33", "добити найповніший"
+    on = disc_suggest.suggest("800", atts, str(root), active={"14-800-x34": datetime.now()},
+                              machines={"14-800-x34": "250i-Tolik"})
+    assert on.best.name == "zr14_14-800-x34" and on.best.machine == "250i-Tolik"
+    disc_suggest._fit_cache.clear()
+    monkeypatch.setattr(disc_suggest, "TIGHT_SECONDS", 0.0)
+    assert _names(disc_suggest.suggest("800", atts, str(root)))[0] == "zr14_14-800-x34", "час вийшов — найпорожніший"
+    disc_suggest._fit_cache.clear()
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: False)
+    assert not any(n.startswith("zr14") for n in _names(disc_suggest.suggest("800", atts, str(root))))
+
+
+def test_tallest_disc_that_still_covers_the_work_is_offered_tight(tmp_path):
+    from app.routers.deps import templates
+
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 14, "zr14_14-800-x40", [])
+    hint = disc_suggest.suggest("800", _letter_of(tmp_path, 11.14), str(root))
+    assert hint.heights == [14] and hint.best.tight and "впритул" in hint.why
+    hint.best = None
+    assert "впритул" in templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    other = tmp_path / "other"
+    other.mkdir()
+    assert disc_suggest.suggest("800", _letter_of(other, 11.3), str(root)).heights == []
+
+
+def test_replaced_disc_is_gone_but_a_rare_one_stays(tmp_path):
+    """Лист 4114 (23.11.26): x09 без діла пів року, після нього x10…x19 — «його вже немає»."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    for n, days in ((9, 150), (17, 40), (18, 20)):
+        _disc(root, "zr", 14, f"zr14_14-Monolith-A1-x{n:02d}", USED)
+        _age(root, 14, f"zr14_14-Monolith-A1-x{n:02d}", days)
+    atts = _letter_of(tmp_path, 8.5)
+
+    def names():
+        """Усі, кого не відкинуто як «уже немає» (у картці — лише троє)."""
+        disc_suggest._scan_cache.clear()
+        trace = {}
+        hint = disc_suggest.suggest("mono a1", atts, str(root), trace=trace)
+        left = {d["диск"] for d in trace["диски"] if "не брали" not in str(d.get("рішення"))}
+        assert set(_names(hint)) <= left
+        return left
+
+    assert "zr14_14-Monolith-A1-x09" in names(), "лише двоє наступних — лишається"
+    _disc(root, "zr", 14, "zr14_14-Monolith-A1-x19", USED)
+    assert "zr14_14-Monolith-A1-x09" not in names()
+    assert "zr14_14-Monolith-A1-x17" in names(), "40 днів — ще є"
+    _age(root, 14, "zr14_14-Monolith-A1-x09", 50)
+    assert "zr14_14-Monolith-A1-x09" in names(), "менше двох місяців"
+    _age(root, 14, "zr14_14-Monolith-A1-x09", 150)
+    hint = disc_suggest.suggest("mono a1", atts, str(root), active={"14-monolith-a1-x09": datetime.now()})
+    assert hint.best.name == "zr14_14-Monolith-A1-x09", "стоїть у верстаті — є напевно"
 
 
 def _letter_of(tmp_path, height=10.0):

@@ -57,7 +57,7 @@ _shown_lock = threading.Lock()
 
 def _pick(p) -> dict[str, Any]:
     return {"disc": p.name, "height": p.height, "free_pct": p.free_pct,
-            "started": p.started, "fit": p.fit, "on_machine": p.on_machine}
+            "started": p.started, "fit": p.fit, "on_machine": p.on_machine, "tight": p.tight}
 
 
 def hint_summary(hint) -> dict[str, Any]:

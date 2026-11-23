@@ -20,7 +20,7 @@
     {% for p in cands %}
     {% set title, code = p.label %}
     {% set loop_i = loop.index0 %}
-    <div class="mdh" data-i="{{ loop.index0 }}"{% if p.fit is sameas false %} data-state="bad"{% elif not p.started %} data-state="fresh"{% endif %}{% if not loop.first %} hidden{% endif %} title="{{ p.name }} · {{ hint.why }} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
+    <div class="mdh" data-i="{{ loop.index0 }}"{% if p.fit is sameas false %} data-state="bad"{% elif p.tight %} data-state="tight"{% elif not p.started %} data-state="fresh"{% endif %}{% if not loop.first %} hidden{% endif %} title="{{ p.name }} · {{ hint.why }} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
         {{ disc_icon(p.paths) }}
         <span class="mdh-head">
             <span class="mdh-h">{{ p.height }}<small>мм</small></span>
@@ -40,8 +40,11 @@
            14.11.26: «чому висоту конструкцій тепер не підказує»): диск із
            верстата буває вищим за правило. #}
         <span class="mdh-facts">
-            {% if hint.thickness %}<span class="mdh-f">робота ≈{{ '%.1f'|format(hint.thickness) }} мм → {% if hint.any_higher %}від {{ hint.heights[0] }}{% else %}{{ hint.heights|join(' / ') }}{% endif %} мм{% if p.height not in hint.heights %} (диск вищий){% endif %}</span>{% endif %}
-            {% if p.on_machine %}<span class="mdh-f is-mach"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="8" rx="1.5"/><path d="M5.5 14h5M8 11v3"/></svg>{% if p.machine %}стоїть у {{ p.machine }}{% else %}на верстаті{% endif %}</span>{% endif %}
+            {% if hint.thickness %}<span class="mdh-f">робота ≈{{ '%.1f'|format(hint.thickness) }} мм → {% if hint.any_higher %}від {{ hint.heights[0] }}{% else %}{{ hint.heights|join(' / ') }}{% endif %} мм{% if p.height not in hint.heights and not p.tight %} (диск вищий){% endif %}</span>{% endif %}
+            {# Власник 23.11.26: диск нижчий за наш запас, але роботу накриває, —
+               показуємо й кажемо прямо, скільки лишається. #}
+            {% if p.tight %}<span class="mdh-f is-warn" title="Запас над роботою менший за звичні 0.5 мм"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3"/></svg><span><b>впритул</b> · запас {{ '%.1f'|format(p.height - hint.thickness) }} мм, перевір у Sum3D</span></span>{% endif %}
+            {% if p.on_machine %}<span class="mdh-f is-mach"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="8" rx="1.5"/><path d="M5.5 14h5M8 11v3"/></svg><span>{% if p.machine %}стоїть у <b class="mdh-mname">{{ p.machine }}</b>{% else %}<b class="mdh-mname">на верстаті</b>{% endif %}</span></span>{% endif %}
             <span class="mdh-f">вільно <b class="mono">{{ p.free_pct }} %</b></span>
             {# 20.11.26: початий диск із багатьма вільними, де розстановка CRM
                (наближення) місця не знайшла, — не ховаємо, людина розставить. #}
@@ -64,6 +67,7 @@
     </span>
     <span class="mdh-facts">
         {% if hint.thickness %}<span class="mdh-f">робота ≈{{ '%.1f'|format(hint.thickness) }} мм</span>{% endif %}
+        {% if hint.new_tight %}<span class="mdh-f is-warn"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3"/></svg><span><b>впритул</b> · запас {{ '%.1f'|format(hint.heights[0] - hint.thickness) }} мм, перевір у Sum3D</span></span>{% endif %}
         <span class="mdh-f">початого диска з місцем немає</span>
     </span>
 </div>

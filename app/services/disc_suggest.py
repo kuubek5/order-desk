@@ -67,12 +67,24 @@ DOUBTFUL_SHOW_PCT = 30
 # `.blk` щоразу, коли кладе на диск роботу. Копіювання й антивірус дату лише
 # ОСВІЖАЮТЬ (`cam_blanks`), тож стара дата — надійна ознака «не чіпали».
 STALE_DAYS = 182
+# Друга ознака «вже немає» (власник 23.11.26, лист 4114: x09 Monolith A1 14 лежав
+# без діла трохи менше пів року — «його вже немає», а після нього пішли x10…x19).
+# Диск не чіпали `REPLACED_DAYS`, а за цей час брали щонайменше `REPLACED_BY`
+# інших дисків тієї самої висоти, лінії й кольору. Рідкісний колір, де наступних
+# немає, і далі живе до `STALE_DAYS`.
+REPLACED_DAYS = 60
+REPLACED_BY = 3
 FIT_BUDGET_SECONDS = 2.5
 # Початого диска потрібної висоти з місцем немає — шукаємо початий НА ОДИН крок
 # вищий (власник 23.11.26: «якщо вище на один пункт, ніж ідеальний, то можна
 # взяти»). Своя межа читання й часу: головний пошук свою вже витратив.
 STEP_UP_READS = 20
 STEP_UP_SECONDS = 1.0
+# «Впритул» (власник 23.11.26): робота не вища за диск, але запас менший за
+# `MARGIN_MM` (13,92 мм на 14 — цех поклав). Такий початий диск показуємо з
+# попередженням — коли початого з нормальним запасом потрібної висоти немає.
+TIGHT_READS = 20
+TIGHT_SECONDS = 1.0
 # Відповідь розстановки «диск × конструкції листа» — у пам'яті процесу:
 # картку листа відкривають і перемальовують кілька разів, а диск не змінився
 # (обʼєкт диска з кешу `shape_of` — той самий, доки файл не переписали).
@@ -476,6 +488,8 @@ class Pick:
     # лишається підказкою з попередженням: розстановка наближена), None — не
     # перевірялась (немає STL з exocad).
     fit: Optional[bool] = None
+    # Запас над роботою менший за `MARGIN_MM` — картка попереджає «впритул».
+    tight: bool = False
 
     @property
     def label(self) -> tuple[str, str]:
@@ -518,6 +532,35 @@ class Suggestion:
     rejected: int = 0
     # ПММА: `heights` — усі висоти від потрібної й вище; картка пише «від N мм».
     any_higher: bool = False
+
+    @property
+    def new_tight(self) -> bool:
+        """Новий диск найменшої годящої висоти — теж впритул (вищих немає)."""
+        return bool(self.thickness and self.heights and self.heights[0] - self.thickness < MARGIN_MM)
+
+
+def _used_heights(discs: list[DiscFile], everything: list[DiscFile], active: dict[str, datetime]) -> list[int]:
+    """Висоти, які цех справді бере. 23.11.26, лист 4121: усі десять дисків 800
+    16 мм — з 2018 року, а картка радила «новий 16 мм». Висота відпадає, лише
+    коли за `STALE_DAYS` її не чіпали В УСІЙ лінії (будь-який колір): тоді такого
+    товару в цеху немає. Відпали б усі — лишаємо як є."""
+    stale_before = time.time() - STALE_DAYS * 86400
+
+    def alive(disc: DiscFile) -> bool:
+        touched = None if disc.key in active else _touched_at(disc.path)
+        return touched is None or touched >= stale_before
+
+    heights = sorted({d.height for d in discs if d.height})
+    out = []
+    for height in heights:
+        own = [d for d in discs if d.height == height]
+        if any(alive(d) for d in own):
+            out.append(height)
+            continue
+        kinds = {(d.family, d.line, d.code, d.hipc) for d in own}
+        if any(d.height == height and (d.family, d.line, d.code, d.hipc) in kinds and alive(d) for d in everything):
+            out.append(height)
+    return out or heights
 
 
 def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAYS,
@@ -607,7 +650,8 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
         result.note = "немає матеріалу й кольору — підказки немає"
         return result
     with perf.span("disc:scan"):
-        discs = [d for d in disc_files(blanks_root) if _matches(d, want)]
+        everything = disc_files(blanks_root)
+        discs = [d for d in everything if _matches(d, want)]
     if not discs:
         result.note = f"дисків {want.label()} у теці немає"
         return result
@@ -617,10 +661,20 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
         result.note = "висоту не визначено (немає STL з exocad)"
         return result
     result.thickness = thickness_mm(height, want.family) or height
-    available = sorted({d.height for d in discs if d.height})
-    result.heights, result.why = target_heights(result.thickness, available, want)
+    thickness = result.thickness
+    with perf.span("disc:used"):
+        available = _used_heights(discs, everything, active or {})
+    result.heights, result.why = target_heights(thickness, available, want)
+
+    def is_tight(height: Optional[int]) -> bool:
+        return height is not None and 0 <= height - thickness < MARGIN_MM
+
     if not result.heights:
-        return result
+        # Вищих за роботу немає, але найвищий диск її ще накриває — впритул.
+        result.heights = [h for h in available if is_tight(h)][-1:]
+        if not result.heights:
+            return result
+        result.why = f"≈{thickness:.1f} мм на {result.heights[0]} мм — впритул, вищих немає"
     with perf.span("disc:stl"):
         need_area = letter_footprint(attachments, want.family)
         pieces = letter_pieces(attachments)
@@ -664,14 +718,34 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
         if not allowed(disc):
             note(disc.stem, рішення="висота не за правилом")
     # Давно не чіпаний диск — поза підказкою; диск, що стоїть у верстаті, — ні.
-    stale_before = time.time() - STALE_DAYS * 86400
+    now = time.time()
+    times: dict[int, list[float]] = {}
+
+    def gone(disc: DiscFile, touched: Optional[float]) -> str:
+        """Чому диска, найімовірніше, вже немає; порожньо — є."""
+        if disc.key in active or touched is None:
+            return ""
+        day = f"(файл змінено {datetime.fromtimestamp(touched):%d.%m.%y}) — не показано"
+        if touched < now - STALE_DAYS * 86400:
+            return f"не брали понад {STALE_DAYS} дн {day}"
+        if touched >= now - REPLACED_DAYS * 86400:
+            return ""
+        height = disc.height or 0
+        if height not in times:
+            times[height] = []
+            for other in discs:
+                if other.height == height and (seen := _touched_at(other.path)) is not None:
+                    times[height].append(seen)
+        later = sum(1 for seen in times[height] if seen > touched)
+        return f"не брали понад {REPLACED_DAYS} дн, після нього брали ще {later} таких {day}" if later >= REPLACED_BY else ""
+
     fresh: list[DiscFile] = []
     touched_at: dict[str, float] = {}
     for disc in (d for d in discs if allowed(d)):
         touched = _touched_at(disc.path)
-        if disc.key not in active and touched is not None and touched < stale_before:
-            note(disc.stem, рішення=f"не брали понад {STALE_DAYS} дн "
-                                  f"(файл змінено {datetime.fromtimestamp(touched):%d.%m.%y}) — не показано")
+        reason = gone(disc, touched)
+        if reason:
+            note(disc.stem, рішення=reason)
             continue
         touched_at[str(disc.path)] = touched or 0.0
         fresh.append(disc)
@@ -704,7 +778,8 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
         shapes[disc.stem] = shape
         return Pick(name=disc.stem, height=disc.height or 0, free_pct=round(free * 100),
                     started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape),
-                    on_machine=disc.key in active, machine=(machines or {}).get(disc.key, ""))
+                    on_machine=disc.key in active, machine=(machines or {}).get(disc.key, ""),
+                    tight=is_tight(disc.height))
 
     for disc in sorted(fresh,
                        key=lambda d: (d.key not in active, flat and d.key not in recent, rank(d.height or 0),
@@ -809,7 +884,7 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
             if disc.height != higher or allowed(disc):
                 continue
             touched = _touched_at(disc.path)
-            if touched is None or touched >= stale_before:
+            if not gone(disc, touched):
                 candidates.append((-(touched or 0.0), disc))
         found: list[Pick] = []
         for _touched, disc in sorted(candidates, key=lambda c: (c[0], c[1].stem))[:STEP_UP_READS]:
@@ -829,10 +904,43 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
                 note(pick.name, рішення="на крок вищий, розстановка не знайшла місця — не показано")
         return fits
 
+    def tight_fit() -> list[Pick]:
+        """Один початий диск «впритул», куди робота влазить: диск із верстата, далі
+        найповніший. Час вийшов — ще одна спроба на найпорожнішому: серед десятка
+        майже повних саме він найімовірніше й підходить (лист 4121: x34, 68 %)."""
+        if masks is None:
+            return []
+        candidates: list[tuple[bool, float, DiscFile]] = []
+        for disc in discs:
+            if not is_tight(disc.height) or allowed(disc):
+                continue
+            touched = _touched_at(disc.path)
+            if not gone(disc, touched):
+                candidates.append((disc.key not in active, -(touched or 0.0), disc))
+        found: list[Pick] = []
+        for _off, _touched, disc in sorted(candidates, key=lambda c: (c[0], c[1], c[2].stem))[:TIGHT_READS]:
+            pick = read(disc)
+            if pick is not None and pick.started:
+                found.append(pick)
+        found.sort(key=lambda p: (not p.on_machine, p.free_pct))
+        until = time.monotonic() + TIGHT_SECONDS
+        while found:
+            pick = found.pop(0)
+            if time.monotonic() >= until:
+                pick = max([pick, *found], key=lambda p: p.free_pct)
+                found = []
+            pick.fit = check(pick)
+            if pick.fit:
+                note(pick.name, рішення=f"впритул: запас {pick.height - thickness:.1f} мм — у картці з попередженням")
+                return [pick]
+            note(pick.name, рішення="впритул, розстановка не знайшла місця — не показано")
+        return []
+
     # Початий вищий — перед новим потрібної висоти: добити диск (як і всюди).
-    # ПММА сюди не потрапляє: у неї всі вищі висоти й так за правилом.
-    if not flat and not any(p.started and p.height <= step for p in accepted):
-        accepted = (step_up() + accepted)[:3]
+    # ПММА на крок вище не потрапляє: у неї всі вищі висоти й так за правилом.
+    # Впритул — після безпечних початих і теж перед новим (власник 23.11.26).
+    if not any(p.started and p.height <= step for p in accepted):
+        accepted = ((step_up() if not flat else []) + tight_fit() + accepted)[:3]
 
     # Неперевірених не показуємо (власник 18.11.26: «навіщо показувати, що
     # місце не перевірене»). «Місця не знайдено» — лише початий із багатьма
