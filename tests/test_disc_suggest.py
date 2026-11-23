@@ -616,6 +616,89 @@ def test_guard_knows_katana_series(wanted, got, conflict):
     assert disc_suggest.lines_conflict(wanted, got) is conflict
 
 
+def test_far_higher_disc_on_machine_goes_after_started_of_the_right_height(tmp_path):
+    """Робота 9002 (8,2 мм, mono a2): першим стояв 25 мм із верстата, цех узяв 16."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 14, "zr14_14-Monolith-A2-x01", USED)
+    _disc(root, "zr", 16, "zr16_16-Monolith-A2-x02", USED)
+    _disc(root, "zr", 18, "zr18_18-Monolith-A2-x03", USED)
+    _disc(root, "zr", 25, "zr25_25-Monolith-A2-x40", USED)
+    seen = datetime(2026, 11, 23, 9)
+    atts = _letter_of(tmp_path, 8.0)  # 10 мм → 14 (запас 4) → мультиколор 14/16
+    hint = disc_suggest.suggest("mono a2", atts, str(root), active={"25-monolith-a2-x40": seen})
+    assert hint.heights == [14, 16]
+    assert _names(hint) == ["zr14_14-Monolith-A2-x01", "zr16_16-Monolith-A2-x02", "zr25_25-Monolith-A2-x40"]
+    # На один крок вищий — перший, як і був (власник 14.11.26).
+    near = disc_suggest.suggest("mono a2", atts, str(root), active={"18-monolith-a2-x03": seen})
+    assert _names(near)[0] == "zr18_18-Monolith-A2-x03"
+
+
+def test_far_higher_disc_on_machine_does_not_hide_the_one_step_higher(tmp_path):
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 16, "zr16_16-Monolith-A2-x09", [])
+    _disc(root, "zr", 18, "zr18_18-Monolith-A2-x03", USED)
+    _disc(root, "zr", 20, "zr20_20-Monolith-A2-x05", USED)
+    _disc(root, "zr", 25, "zr25_25-Monolith-A2-x40", USED)
+    (root / "zr" / "18" / "zr18_18-Monolith-A2-x03.blk").write_bytes(_blank([]))
+    hint = disc_suggest.suggest("mono a2", _letter_of(tmp_path, 10.0), str(root),
+                                active={"25-monolith-a2-x40": datetime(2026, 11, 23, 9)})
+    assert hint.heights == [16, 18]
+    assert _names(hint)[:2] == ["zr20_20-Monolith-A2-x05", "zr25_25-Monolith-A2-x40"]
+
+
+def test_pmma_prefers_discs_of_recent_programs_over_old_leftovers(tmp_path):
+    """Журнал 22–23.11.26: 0 з 3 — картка радила x188/x07/x33 з 19–28 % вільного."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    ring = [_square(28 * math.cos(a), 28 * math.sin(a), 12) for a in (0, 1.05, 2.1, 3.15, 4.2, 5.25)]
+    _disc(root, "pmma", 16, "pmma16_16-a2-x188", ring)  # найповніший, але давній
+    _disc(root, "pmma", 14, "pmma14_14-a2-x133", USED)
+    _disc(root, "pmma", 18, "pmma18_18-a2-x268", [_square(30, 0, 8)])
+    atts = _letter_of(tmp_path, 8.0)
+    assert _names(disc_suggest.suggest("pmma a2", atts, str(root)))[0] == "pmma16_16-a2-x188", "без історії — як було"
+    hint = disc_suggest.suggest("pmma a2", atts, str(root), recent={"14-a2-x133", "18-a2-x268"})
+    assert _names(hint) == ["pmma14_14-a2-x133", "pmma18_18-a2-x268", "pmma16_16-a2-x188"]
+    assert not hint.best.on_machine, "знятий із верстата диск — не «на верстаті»"
+
+
+def test_recent_discs_do_not_change_zirconia_order(shop):
+    root, atts = shop
+    _disc(root, "zr", 16, "zr16_16-Monolith-A2-x50", USED)
+    disc_suggest._scan_cache.clear()
+    plain = _names(disc_suggest.suggest("моно A2", atts, str(root)))
+    assert _names(disc_suggest.suggest("моно A2", atts, str(root), recent={"16-monolith-a2-x50"})) == plain
+
+
+def test_active_discs_also_collects_removed_ones(app_db):  # noqa: F811
+    from app.models import MachineReading
+
+    _app, factory = app_db
+    with factory() as db:
+        for day, disc in ((13, "PMMA14_14-A2-X133"), (14, "PMMA18_18-A2-X268"), (5, "PMMA20_20-A2-X07")):
+            db.add(MachineReading(host="h1", captured_at=datetime(2026, 11, day, 8),
+                                  iso_name=f"{disc}_2026-11-{day:02d}_08-01-02.iso"))
+        db.commit()
+        recent: set[str] = set()
+        active = disc_suggest.active_discs(db, until=datetime(2026, 11, 14, 12), recent=recent)
+    assert set(active) == {"18-a2-x268"} and recent == {"18-a2-x268", "14-a2-x133"}
+
+
+@pytest.mark.parametrize("stem, line", [
+    ("zr25_25-Znature-A3-x06a", "z-nature"), ("zr18_18-Nat-a2-x03", "z-nature"), ("zr14_14-Nature-A2-x01", "z-nature"),
+    ("zr16_16-Z-Nature-A3-x03", "z-nature"), ("zr20_20-Z-Nature--a2-x12", "z-nature"), ("zr22_22-ZNat-A2-x1", "z-nature"),
+    ("zr18_18-Znature-MS-A3-x35", None), ("zr14_14-Nat_MS-A3-x03", None), ("zr22_22-a2-Nature-MS-x01", None),
+    ("zr18_18-Z-Nature-MS-A2-x12", "z-nature"),  # як і було до 23.11.26
+    ("zr20_20-pearl natural a2-x01", None), ("zr14_14-a2-x99", None), ("zr22_22-Z-Sm-MS-A2-x11", None),
+    ("zr14_14-Emotions-a2-x54", "emotions"), ("zr14_14-STML-a2-x42", "stml"),
+])
+def test_disc_line_by_file_name(stem, line):
+    from app.services.cam_blanks import parse_blank_name
+
+    assert disc_suggest._line_of_disc((parse_blank_name(stem).brand or "").lower(), stem.lower()) == line
+
+
 def test_disc_hint_tool_needs_a_real_letter(db_session):
     from app.services.mcp_common import ToolError
     from app.services.mcp_tools_shop import tool_disc_hint

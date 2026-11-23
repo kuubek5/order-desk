@@ -211,10 +211,11 @@ def tool_disc_hint(db: Session, args: dict) -> dict[str, Any]:
         raise ToolError(f"листа {email_id} немає")
     material = str(args.get("material") or "").strip() or (email.material_color_guess or "")
     machines: dict[str, str] = {}
-    active = disc_suggest.active_discs(db, machines=machines)
+    recent: set[str] = set()
+    active = disc_suggest.active_discs(db, machines=machines, recent=recent)
     trace: dict[str, Any] = {}
     hint = disc_suggest.suggest(material, list(email.attachments or []), get_setting(db, "cam_blanks_path"),
-                                active=active, machines=machines, trace=trace)
+                                active=active, machines=machines, recent=recent, trace=trace)
     return {
         "лист": email_id,
         "матеріал": material,

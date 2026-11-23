@@ -265,6 +265,22 @@ class DiscFile:
 
 _CODE_RE = re.compile(r"x\d+", re.IGNORECASE)
 _SHADE_RE = re.compile(r"[a-d]\d", re.IGNORECASE)
+# Z-Nature у теці CAM пишуть по-різному: `Z-Nature`, `Znature`, `ZNat`, `Nature`,
+# `Nat` (23.11.26, лист 4042: «такого диска немає», хоч Znature-A3 25 мм є).
+# Версія MS — окрема позиція каталогу: сюди не додаємо, доки власник не скаже.
+_Z_NATURE_RE = re.compile(r"(?<![a-z])z?-?nat(?:ure)?(?![a-z])")
+_MS_RE = re.compile(r"(?<![a-z])ms(?![a-z])")
+
+
+def _line_of_disc(brand: str, low: str) -> Optional[str]:
+    """Лінія диска за назвою файла (`brand` — розібраний виробник, `low` — назва)."""
+    if brand in LINES:
+        return brand
+    known = next((key for key in LINES if key in low), None)
+    if known is None and _Z_NATURE_RE.search(low) and not _MS_RE.search(low):
+        return "z-nature"
+    return known
+
 
 _scan_cache: dict[str, tuple[float, list[DiscFile]]] = {}
 _scan_lock = threading.Lock()
@@ -286,7 +302,7 @@ def disc_files(root: Optional[str]) -> list[DiscFile]:
         parsed = parse_blank_name(stem)
         low = stem.lower()
         brand = (parsed.brand or "").lower()
-        line = brand if brand in LINES else next((k for k in LINES if k in low), None)
+        line = _line_of_disc(brand, low)
         head = low.split("-", 1)[0].lstrip("0123456789")
         if head.startswith("pmma"):
             family: Optional[str] = PMMA
@@ -502,12 +518,14 @@ class Suggestion:
 
 
 def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAYS,
-                 machines: Optional[dict[str, str]] = None) -> dict[str, datetime]:
+                 machines: Optional[dict[str, str]] = None,
+                 recent: Optional[set[str]] = None) -> dict[str, datetime]:
     """Диски, що ЗАРАЗ стоять у верстатах: ключ → коли бачили. Диск верстата —
     це диск його ОСТАННЬОЇ програми (з назвою) за `days` днів до `until`; диск
     попередньої програми того самого верстата вже знято (власник 18.11.26:
     «на верстаті» лише коли справді стоїть, і писати НА ЯКОМУ). `machines`
-    (якщо передано) наповнюється ключ → назва верстата (кілька — через кому).
+    (якщо передано) наповнюється ключ → назва верстата (кілька — через кому);
+    `recent` — ключами ВСІХ дисків із програм за ці дні, і вже знятих.
     Лише читання `MachineReading` і `Machine`."""
     from sqlalchemy import func, select
 
@@ -535,6 +553,8 @@ def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAY
             latest[host] = (seen, iso)
     out: dict[str, datetime] = {}
     on: dict[str, list[str]] = {}
+    if recent is not None:
+        recent.update(disc.key for iso, _host, _seen in rows if (disc := program_disc(iso)) is not None)
     for host, (seen, iso) in latest.items():
         disc = program_disc(iso)
         if disc is None:
@@ -553,6 +573,7 @@ def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAY
 def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: Optional[str],
             *, max_reads: int = 60, active: Optional[dict[str, datetime]] = None,
             machines: Optional[dict[str, str]] = None,
+            recent: Optional[set[str]] = None,
             trace: Optional[dict[str, Any]] = None) -> Suggestion:
     """`trace` (лише діагностика, `kmill_disc_hint`, 20.11.26): словник, куди
     лягає, що сталося з КОЖНИМ диском потрібного матеріалу й кольору і чому —
@@ -569,7 +590,8 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
     if trace is not None:
         trace["диски"] = []
     try:
-        return _suggest(want, result, attachments, blanks_root, max_reads, active, machines, trace, note)
+        return _suggest(want, result, attachments, blanks_root, max_reads, active, machines,
+                        recent or set(), trace, note)
     finally:
         if trace is not None:
             trace["диски"] = list(seen.values())
@@ -577,7 +599,7 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
 
 def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root: Optional[str],
              max_reads: int, active: Optional[dict[str, datetime]], machines: Optional[dict[str, str]],
-             trace: Optional[dict[str, Any]], note: Callable[..., None]) -> Suggestion:
+             recent: set[str], trace: Optional[dict[str, Any]], note: Callable[..., None]) -> Suggestion:
     if not want.family or not want.shades and want.family == ZIRCON:
         result.note = "немає матеріалу й кольору — підказки немає"
         return result
@@ -682,7 +704,7 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
                     on_machine=disc.key in active, machine=(machines or {}).get(disc.key, ""))
 
     for disc in sorted(fresh,
-                       key=lambda d: (d.key not in active, rank(d.height or 0),
+                       key=lambda d: (d.key not in active, flat and d.key not in recent, rank(d.height or 0),
                                       -touched_at[str(d.path)], d.stem)):
         if reads >= max_reads:
             note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
@@ -700,9 +722,19 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
                         key=lambda p: (rank(p.height),
                                        -active[_key_of(p.name)].timestamp()
                                        if _key_of(p.name) in active else 0.0))
-    picks.sort(key=lambda p: (rank(p.height), not p.started,
+    # ПММА: усі висоти рівні, і «найповніший» виводив наперед давні залишки з
+    # 19–28 % вільного — за два дні журналу 0 з 3 (23.11.26). Спершу диски, що
+    # були в програмах за останні дні, серед них — як і раніше, найповніший.
+    picks.sort(key=lambda p: (rank(p.height), not p.started, flat and _key_of(p.name) not in recent,
                               p.free_pct if p.started else (p.height if flat else 100)))
-    ordered = on_machine + [p for p in picks if p.started and not p.on_machine] +         [p for p in picks if not p.started and not p.on_machine]
+    # Диск із верстата, вищий БІЛЬШЕ ніж на крок, — після початих потрібної висоти
+    # (23.11.26: робота 8,2 мм отримувала першим 25 мм; цех так не ставить). На
+    # один крок — як було. У ПММА всі вищі висоти за правилом, її це не зачіпає.
+    step = next((h for h in available if h > max(heights)), max(heights))
+    far = [p for p in on_machine if p.height > step]
+    ordered = ([p for p in on_machine if p.height <= step]
+               + [p for p in picks if p.started and not p.on_machine] + far
+               + [p for p in picks if not p.started and not p.on_machine])
     # Сума площ лише відсіяла явно замалі. Тепер — справжня розстановка
     # конструкцій (власник 14.11.26), у порядку пріоритету й лише поки не
     # знайдеться найкращий і два запасні: кожна перевірка — десятки мс.
@@ -766,8 +798,8 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     def step_up() -> list[Pick]:
         """Початі диски на один крок вищі за правило, куди робота влазить: до
         двох, від найповнішого. Лише коли на висотах за правилом такого немає."""
-        higher = next((h for h in available if h > max(heights)), None)
-        if higher is None or masks is None:
+        higher = step
+        if higher <= max(heights) or masks is None:
             return []
         candidates: list[tuple[float, DiscFile]] = []
         for disc in discs:
@@ -796,7 +828,7 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
 
     # Початий вищий — перед новим потрібної висоти: добити диск (як і всюди).
     # ПММА сюди не потрапляє: у неї всі вищі висоти й так за правилом.
-    if not flat and not any(p.started for p in accepted):
+    if not flat and not any(p.started and p.height <= step for p in accepted):
         accepted = (step_up() + accepted)[:3]
 
     # Неперевірених не показуємо (власник 18.11.26: «навіщо показувати, що
@@ -888,7 +920,7 @@ def audit(db, days: int, limit: int = 30) -> dict[str, Any]:
             if accepted - timedelta(days=ACTIVE_DAYS) <= seen <= accepted:
                 active[key] = seen
         hint = suggest(order.material_color, list(email.attachments or []) if email else [], root,
-                       active=active)
+                       active=active, recent=set(active))
         actual = None
         tail = (order.sum3d_id or "").strip()[-8:]
         if tail:

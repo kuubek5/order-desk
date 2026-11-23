@@ -34,11 +34,12 @@ def get_disc_hint(request: Request, email_id: int, material_color: str = "",
     if email is None:
         raise HTTPException(status_code=404, detail="лист не знайдено")
     machines: dict[str, str] = {}
+    recent: set[str] = set()
     with perf.span("disc:active"):
-        active = disc_suggest.active_discs(db, machines=machines)
+        active = disc_suggest.active_discs(db, machines=machines, recent=recent)
     hint = disc_suggest.suggest(material_color, list(email.attachments or []),
                                 get_setting(db, "cam_blanks_path"),
-                                active=active, machines=machines)
+                                active=active, machines=machines, recent=recent)
     # Журнал підбору: що саме побачив оператор (при прийнятті не перерахувати).
     selection_journal.remember_shown([email_id], material_color, hint, mode="card")
     return templates.TemplateResponse(request, "_mail_disc_hint.html", {"hint": hint})
@@ -85,10 +86,11 @@ def batch_disc_hint(
     ).all()
     attachments = [a for e in emails for a in (e.attachments or [])]
     machines: dict[str, str] = {}
+    recent: set[str] = set()
     with perf.span("disc:active"):
-        active = disc_suggest.active_discs(db, machines=machines)
+        active = disc_suggest.active_discs(db, machines=machines, recent=recent)
     hint = disc_suggest.suggest(summary.label, attachments, get_setting(db, "cam_blanks_path"),
-                                active=active, machines=machines)
+                                active=active, machines=machines, recent=recent)
     selection_journal.remember_shown(main_ids, summary.label, hint, mode="conveyor",
                                      key=selection_journal.batch_key(main_ids))
     return templates.TemplateResponse(request, "_mail_batch_disc_hint.html", {
