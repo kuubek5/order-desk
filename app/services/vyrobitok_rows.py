@@ -186,6 +186,17 @@ def _earlier(
     return other, twin_live, twin_gone
 
 
+def earlier_calculations(db: Session, orders: list[Order], day: date) -> dict[int, date]:
+    """Робота → найраніший день, коли ТОЙ САМИЙ виріб наряду вже прораховано ІНШИМ
+    Sum3D (переробка, яку лаба не позначила). Лише прораховані роботи `day`."""
+    calculated = [o for o in orders if has_sum3d_time(o.sum3d_id)]
+    if not calculated:
+        return {}
+    index = _calculations(db)
+    found = {o.id: _earlier(index, o, day)[0] for o in calculated}
+    return {oid: seen for oid, seen in found.items() if seen is not None}
+
+
 def vanished_rows(db: Session, first: date, last: date, *, v2: bool) -> dict[date, int]:
     """День → скільки АРХІВНИХ рядків дали б одиниці, якби були живі.
 

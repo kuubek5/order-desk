@@ -39,15 +39,22 @@ TITLES = {
     "mail": "📬 Пошта",
     "lab": "🧪 Лабораторія · сьогодні",
     "lab_y": "🧪 Лабораторія · вчора",
+    "table": "📋 Таблиця дня · сьогодні",
+    "table_y": "📋 Таблиця дня · вчора",
     "handout": "📦 Видача · сьогодні",
     "handout_y": "📦 Видача · вчора",
     "orders": "🧾 Роботи · сьогодні",
     "orders_y": "🧾 Роботи · вчора",
     "sisma": "🖨 Sisma",
 }
-_DAY_PAIRS = {"lab": "lab_y", "handout": "handout_y", "orders": "orders_y"}
+_DAY_PAIRS = {"lab": "lab_y", "table": "table_y", "handout": "handout_y", "orders": "orders_y"}
 _GROUP_OF_SYMBOL = {"Zr": "zr", "PMMA": "pm", "Ti": "ti", "Wax": "wx"}
 _GROUP_OF_NAME = {"Цирконій": "zr", "ПММА": "pm", "Титан": "ti", "Віск": "wx"}
+
+
+def group_of_name(name: str) -> str:
+    """Категорія матеріалу («Цирконій») → ключ групи картки («zr»); інакше порожньо."""
+    return _GROUP_OF_NAME.get(name, "")
 
 
 def enabled(db: Session) -> bool:
@@ -208,6 +215,29 @@ def _lab(offset: int) -> Callable[[Session, datetime, Optional[str]], Card]:
             if take:
                 summary += f" · можна брати <b>{len(take)}</b>"
         return Card(png, summary, rows, f"{PICTURE_CALLBACK}:{view}:wait" if opened_wait else "")
+
+    return build
+
+
+def _table(offset: int) -> Callable[[Session, datetime, Optional[str]], Card]:
+    def build(db: Session, now: datetime, arg: Optional[str]) -> Card:
+        from app.services.telegram_table import day_table, table_day, table_summary
+        from app.services.telegram_table_picture import table_png
+
+        view = "table" if offset == 0 else "table_y"
+        table = day_table(db, offset)
+        pages = table.pages()
+        page = max(0, min(int(arg) if arg and arg.isdigit() else 0, len(pages) - 1))
+        png = table_png(table_day(offset).strftime("%d.%m"), table, pages[page], page, len(pages), now)
+        rows = []
+        if len(pages) > 1:
+            rows.append([
+                _btn("‹", f"{PICTURE_CALLBACK}:{view}:{max(0, page - 1)}"),
+                _btn(f"{page + 1} / {len(pages)}", f"{PICTURE_CALLBACK}:{view}:{page}"),
+                _btn("›", f"{PICTURE_CALLBACK}:{view}:{min(len(pages) - 1, page + 1)}"),
+            ])
+        return Card(png, f"📋 {_e(table_summary(table))}", rows,
+                    f"{PICTURE_CALLBACK}:{view}:{page}" if page else "")
 
     return build
 
@@ -440,6 +470,8 @@ def _builder(view: str, admin: bool) -> Optional[Callable[[Session, datetime, Op
         "furnaces": _furnaces,
         "lab": _lab(0),
         "lab_y": _lab(-1),
+        "table": _table(0),
+        "table_y": _table(-1),
         "handout": _handout(0),
         "handout_y": _handout(-1),
         "orders": _orders(0),
@@ -472,6 +504,7 @@ def keyboard(view: str, card: Card, *, admin: bool, notify: bool, report_callbac
             rows += [
                 [_btn("⚙️ Верстати", "v:machines"), _btn("📬 Пошта", "v:mail"), _btn("🔥 Печі", "v:furnaces")],
                 [_btn("🧪 Лабораторія", "v:lab"), _btn("📦 Видача", "v:handout"), _btn("🧾 Роботи", "v:orders")],
+                [_btn("📋 Таблиця дня", "v:table")],
                 [_btn("🖨 Sisma", "v:sisma"), {"text": "🩺 Стан системи", "callback_data": report_callback}],
             ]
         else:

@@ -21,7 +21,7 @@ from app.services import telegram_views as tv
 from tests.test_telegram_bot import CHAT, _member, _message, _press, _session
 from tests.test_telegram_views import NOW, _lab, _letter, _mail
 
-ADMIN_VIEWS = ("home", "mail", "furnaces", "lab", "lab_y", "handout", "handout_y", "orders", "orders_y", "sisma")
+ADMIN_VIEWS = ("home", "mail", "furnaces", "lab", "lab_y", "table", "table_y", "handout", "handout_y", "orders", "orders_y", "sisma")
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +54,7 @@ def test_any_text_from_owner_gets_the_home_card():
     assert [a.method for a in actions] == ["sendPhoto"]
     assert _size(_photo_of(actions[0]))[0] == 1080
     buttons = _buttons(actions[0])
-    for target in ("v:machines", "v:mail", "v:furnaces", "v:lab", "v:handout", "v:orders", "v:sisma",
+    for target in ("v:machines", "v:mail", "v:furnaces", "v:lab", "v:table", "v:handout", "v:orders", "v:sisma",
                    bot.REPORT_CALLBACK, "v:home", "n:home"):
         assert target in buttons, target
 

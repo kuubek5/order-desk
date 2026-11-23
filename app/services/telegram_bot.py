@@ -215,7 +215,7 @@ def outbox_summary(db: Session) -> dict:
 ADMIN_VIEWS = (
     "home", "furnaces", "machines", "sisma",
     "orders", "orders_y", "handout", "handout_y",
-    "mail", "lab", "lab_y",
+    "mail", "lab", "lab_y", "table", "table_y",
 )
 OPERATOR_VIEWS = ("home", "furnaces", "sisma")
 VIEWS = ADMIN_VIEWS  # усі відомі види
@@ -231,6 +231,8 @@ _VIEW_TITLE = {
     "mail": "📬 Пошта",
     "lab": "🧪 Лабораторія · сьогодні",
     "lab_y": "🧪 Лабораторія · вчора",
+    "table": "📋 Таблиця дня · сьогодні",
+    "table_y": "📋 Таблиця дня · вчора",
 }
 # Вид із вибором дня → (той самий вид сьогодні, вчора).
 _DAY_PAIRS = {
@@ -240,6 +242,8 @@ _DAY_PAIRS = {
     "handout_y": ("handout", "handout_y"),
     "lab": ("lab", "lab_y"),
     "lab_y": ("lab", "lab_y"),
+    "table": ("table", "table_y"),
+    "table_y": ("table", "table_y"),
 }
 
 
@@ -674,6 +678,18 @@ def _sisma_summary(db: Session) -> str:
     return f"🖨 Sisma: {card.state_word or 'даних немає'}"
 
 
+def _table_text(db: Session) -> str:
+    from app.services.telegram_table import table_text
+
+    return table_text(db, 0)
+
+
+def _table_yesterday_text(db: Session) -> str:
+    from app.services.telegram_table import table_text
+
+    return table_text(db, -1)
+
+
 # ── Збірка відповіді ────────────────────────────────────────────────────────
 
 _BODIES: dict[str, Callable[[Session], str]] = {
@@ -684,6 +700,8 @@ _BODIES: dict[str, Callable[[Session], str]] = {
     "handout_y": handout_yesterday_text,
     "machines": machines_text,
     "sisma": sisma_text,
+    "table": _table_text,
+    "table_y": _table_yesterday_text,
 }
 
 
@@ -809,7 +827,7 @@ def keyboard(
         rows += [
             [button("🔥 Пічки", "furnaces"), button("⚙️ Верстати", "machines"), button("🖨 Sisma", "sisma")],
             [button("📬 Пошта", "mail"), button("🧪 Лабораторія", "lab"), button("📦 Видача", "handout")],
-            [button("🧾 Роботи за день", "orders")],
+            [button("🧾 Роботи за день", "orders"), button("📋 Таблиця дня", "table")],
             # Не вид, а дія: звіт збирається у фоні й приходить НОВИМИ
             # повідомленнями (підсумок + файл), меню лишається на місці.
             [{"text": "🩺 Стан системи", "callback_data": REPORT_CALLBACK}],
