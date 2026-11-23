@@ -68,6 +68,11 @@ DOUBTFUL_SHOW_PCT = 30
 # ОСВІЖАЮТЬ (`cam_blanks`), тож стара дата — надійна ознака «не чіпали».
 STALE_DAYS = 182
 FIT_BUDGET_SECONDS = 2.5
+# Початого диска потрібної висоти з місцем немає — шукаємо початий НА ОДИН крок
+# вищий (власник 23.11.26: «якщо вище на один пункт, ніж ідеальний, то можна
+# взяти»). Своя межа читання й часу: головний пошук свою вже витратив.
+STEP_UP_READS = 20
+STEP_UP_SECONDS = 1.0
 # Відповідь розстановки «диск × конструкції листа» — у пам'яті процесу:
 # картку листа відкривають і перемальовують кілька разів, а диск не змінився
 # (обʼєкт диска з кешу `shape_of` — той самий, доки файл не переписали).
@@ -98,17 +103,46 @@ LINES = {
     # будь-який диск A3 — тобто Monolith. Тепер підказка шукає лише диски зі
     # словом vivid у назві, а коли таких немає — чесно каже, що дисків немає.
     "vivid": ("Vivid", True),
+    # Серії Katana (власник 23.11.26: «stml — це серія катани»). У теці CAM слова
+    # katana немає зовсім — диски звуться `zr14_14-STML-a2-x01`, `…-UTML-…`. Без
+    # цих рядків «katana a2» казала «дисків немає», а «stml a2» отримувала
+    # Monolith і Emotions (лист 3973). Після vivid: є диски `Vivid-stml-a2`.
+    "stml": ("Katana STML", True),
+    "utml": ("Katana UTML", True),
 }
+#: Серії, які разом звуться Katana; просто «katana» в замовленні — диск STML.
+KATANA_SERIES = frozenset({"stml", "utml"})
 # Як лінійку пишуть у таблиці й листах.
 _LINE_WORDS = {
+    # Точніше слово першим: «katana utml a1» — це UTML, «vivid stml» — Vivid.
+    "vivid": ("vivid", "вівід", "вивид"),
+    "stml": ("stml", "стмл"),
+    "utml": ("utml", "утмл"),
     "monolith": ("mono", "моно", "monolith", "моноліт", "монолит"),
     "emotions": ("emo", "емо", "emotion", "емоушен", "эмо"),
     "katana": ("katana", "катана"),
     "z-nature": ("nature", "натур"),
     "z-smile": ("smile", "смайл"),
     "doceram": ("doceram", "доцерам"),
-    "vivid": ("vivid", "вівід", "вивид"),
 }
+
+
+def disc_line_fits(wanted: Optional[str], disc_line: Optional[str]) -> bool:
+    """Чи можна ПРОПОНУВАТИ диск цієї лінії (`wanted` None — лінію не названо)."""
+    if not wanted or wanted == disc_line:
+        return True
+    return wanted == "katana" and disc_line == "stml"
+
+
+def lines_conflict(wanted: Optional[str], got: Optional[str]) -> bool:
+    """Чи це ТОЧНО різні лінії (сторож матеріалу). Просто «katana» проти будь-якої
+    її серії — не розбіжність; STML проти UTML — різні диски."""
+    if not wanted or not got or wanted == got:
+        return False
+    pair = {wanted, got}
+    return not ("katana" in pair and pair - {"katana"} <= KATANA_SERIES)
+
+
 STEP_UP_LINES = {"monolith"}
 # Опак Doceram кодом замість кольору (CLAUDE.md §3: 500 = A1, 800 = A2, 1000 = A3).
 # Це ОКРЕМІ диски: «1000» — це не будь-який A3 (14.11.26: робота «1000» отримала
@@ -276,7 +310,7 @@ def disc_files(root: Optional[str]) -> list[DiscFile]:
 def _matches(disc: DiscFile, want: Want) -> bool:
     if want.family and disc.family != want.family:
         return False
-    if want.line and disc.line != want.line:
+    if not disc_line_fits(want.line, disc.line):
         return False
     if want.shades and not (disc.shades & want.shades):
         return False
@@ -621,18 +655,13 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     # абеткою, а 22 диски 25 мм — серед них учорашні x266 і x267 з купою
     # місця — лишались «не прочитано», і картка казала «новий диск»). Свіжіший
     # файл = диск, який цех брав останнім; так само сортує діалог Sum3D.
-    for disc in sorted(fresh,
-                       key=lambda d: (d.key not in active, rank(d.height or 0),
-                                      -touched_at[str(d.path)], d.stem)):
-        if reads >= max_reads:
-            note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
-            continue
-        reads += 1
+    def read(disc: DiscFile) -> Optional[Pick]:
+        """Диск → кандидат; None — не прочитався чи місця явно замало."""
         with perf.span("disc:shapes"):
             shape = sum3d_disc.shape_of(disc.path)
         if shape is None:
             note(disc.stem, рішення="файл диска не прочитався")
-            continue
+            return None
         # Лише матеріал, з'єднаний із краєм диска: острівці між дірками в
         # диску вже випали (власник 18.11.26). Сітка ~15 мс, кеш на диск.
         with perf.span("disc:usable"):
@@ -641,17 +670,27 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
              вільно_мм2=round(free * math.pi * shape.radius ** 2))
         if free < NEARLY_USED:
             note(disc.stem, рішення=f"майже вирізаний (< {round(NEARLY_USED * 100)} %)")
-            continue
+            return None
         if need_area is not None:
             free_area = free * math.pi * shape.radius ** 2
             if free_area < need_area * PACKING:
                 note(disc.stem, рішення="замало вільної площі")
-                continue
-        picks.append(Pick(name=disc.stem, height=disc.height or 0, free_pct=round(free * 100),
-                          started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape),
-                          on_machine=disc.key in active,
-                          machine=(machines or {}).get(disc.key, "")))
+                return None
         shapes[disc.stem] = shape
+        return Pick(name=disc.stem, height=disc.height or 0, free_pct=round(free * 100),
+                    started=bool(shape.contours), paths=sum3d_disc.svg_paths(shape),
+                    on_machine=disc.key in active, machine=(machines or {}).get(disc.key, ""))
+
+    for disc in sorted(fresh,
+                       key=lambda d: (d.key not in active, rank(d.height or 0),
+                                      -touched_at[str(d.path)], d.stem)):
+        if reads >= max_reads:
+            note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
+            continue
+        reads += 1
+        candidate = read(disc)
+        if candidate is not None:
+            picks.append(candidate)
     # Найперше — диск, що вже стоїть у верстаті (найсвіжіший). Далі як було:
     # початий першим (власник), серед початих — де менше вільного: добити диск.
     # Серед дисків із верстата — спершу ті, що за правилом висоти, і лише
@@ -724,6 +763,42 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
             if pick.fit:
                 accepted.append(pick)
         unchecked = [p for p in unchecked if p.fit is None]
+    def step_up() -> list[Pick]:
+        """Початі диски на один крок вищі за правило, куди робота влазить: до
+        двох, від найповнішого. Лише коли на висотах за правилом такого немає."""
+        higher = next((h for h in available if h > max(heights)), None)
+        if higher is None or masks is None:
+            return []
+        candidates: list[tuple[float, DiscFile]] = []
+        for disc in discs:
+            if disc.height != higher or allowed(disc):
+                continue
+            touched = _touched_at(disc.path)
+            if touched is None or touched >= stale_before:
+                candidates.append((-(touched or 0.0), disc))
+        found: list[Pick] = []
+        for _touched, disc in sorted(candidates, key=lambda c: (c[0], c[1].stem))[:STEP_UP_READS]:
+            pick = read(disc)
+            if pick is not None and pick.started:
+                found.append(pick)
+        fits: list[Pick] = []
+        until = time.monotonic() + STEP_UP_SECONDS
+        for pick in sorted(found, key=lambda p: p.free_pct):
+            if len(fits) >= 2 or time.monotonic() >= until:
+                break
+            pick.fit = check(pick)
+            if pick.fit:
+                fits.append(pick)
+                note(pick.name, рішення=f"на крок вищий ({higher} мм) — початого потрібної висоти немає")
+            else:
+                note(pick.name, рішення="на крок вищий, розстановка не знайшла місця — не показано")
+        return fits
+
+    # Початий вищий — перед новим потрібної висоти: добити диск (як і всюди).
+    # ПММА сюди не потрапляє: у неї всі вищі висоти й так за правилом.
+    if not flat and not any(p.started for p in accepted):
+        accepted = (step_up() + accepted)[:3]
+
     # Неперевірених не показуємо (власник 18.11.26: «навіщо показувати, що
     # місце не перевірене»). «Місця не знайдено» — лише початий із багатьма
     # вільними (нижче); жодного — картка каже «новий диск» (гілка без `best`).

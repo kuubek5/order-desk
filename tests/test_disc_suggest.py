@@ -524,6 +524,98 @@ def test_stale_16_gives_way_to_existing_18_for_multilayer(tmp_path):
     assert hint.alts == []
 
 
+def _letter_of(tmp_path, height=10.0):
+    stl = tmp_path / "mail"
+    stl.mkdir(exist_ok=True)
+    files = [_stl(stl / f"case_{t}-crown_cad.stl", 9, 10, height)
+             for t in (11, 12)]
+    return [SimpleNamespace(filename=f.name, saved_path=str(f)) for f in files]
+
+
+def _names(hint):
+    return [p.name for p in ([hint.best] if hint.best else []) + list(hint.alts)]
+
+
+USED = [_square(x, 0, 6) for x in (-25, 0)]
+
+
+def test_started_one_step_higher_goes_before_a_new_disc(tmp_path):
+    """Власник 23.11.26: «якщо вище на один пункт, ніж ідеальний, то можна взяти»
+    (D3: картка казала «новий 16», цех узяв початий 18-x06)."""
+    from app.routers.deps import templates
+
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 16, "zr16_16-Monolith-D3-x01", USED)
+    _disc(root, "zr", 18, "zr18_18-Monolith-D3-x07", [])  # новий потрібної висоти
+    _disc(root, "zr", 20, "zr20_20-Monolith-D3-x06", USED)  # початий на крок вищий
+    _disc(root, "zr", 20, "zr20_20-Monolith-D3-x08", [])  # новий вищий — ні
+    _disc(root, "zr", 22, "zr22_22-Monolith-D3-x09", USED)  # на два кроки — ні
+    # 11,6 × 1,25 = 14,5 мм: 16 впритул → Monolith лише 18.
+    hint = disc_suggest.suggest("mono d3", _letter_of(tmp_path, 11.6), str(root))
+    assert hint.heights == [18]
+    assert _names(hint) == ["zr20_20-Monolith-D3-x06", "zr18_18-Monolith-D3-x07"]
+    assert hint.best.started and hint.best.fit is True
+    html = templates.get_template("_mail_disc_hint.html").render(hint=hint)
+    assert "(диск вищий)" in html and "новий диск 18 мм Monolith D3" in html
+
+
+def test_started_of_the_right_height_hides_the_higher_one(tmp_path):
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 16, "zr16_16-Monolith-D3-x03", USED)
+    _disc(root, "zr", 18, "zr18_18-Monolith-D3-x01", USED)
+    _disc(root, "zr", 20, "zr20_20-Monolith-D3-x06", USED)
+    hint = disc_suggest.suggest("mono d3", _letter_of(tmp_path, 11.6), str(root))
+    assert hint.heights == [18]
+    assert _names(hint)[0] == "zr18_18-Monolith-D3-x01"
+
+
+def test_higher_started_disc_must_be_fresh_and_have_room(tmp_path, monkeypatch):
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    _disc(root, "zr", 16, "zr16_16-Monolith-D3-x01", USED)
+    _disc(root, "zr", 18, "zr18_18-Monolith-D3-x07", [])
+    _disc(root, "zr", 20, "zr20_20-Monolith-D3-x06", USED)
+    atts = _letter_of(tmp_path, 11.6)
+    path = root / "zr" / "20" / "zr20_20-Monolith-D3-x06.blk"
+    old = time.time() - 300 * 86400
+    os.utime(path, (old, old))
+    assert _names(disc_suggest.suggest("mono d3", atts, str(root))) == ["zr18_18-Monolith-D3-x07"], "давно не чіпаний"
+    os.utime(path, None)
+    disc_suggest._fit_cache.clear()
+    monkeypatch.setattr(disc_suggest.disc_fit, "fits_on", lambda *a, **k: False)
+    assert "zr20_20-Monolith-D3-x06" not in _names(disc_suggest.suggest("mono d3", atts, str(root))), "місця немає"
+
+
+def test_katana_series_are_known_by_their_disc_names(tmp_path):
+    """Лист 3973: у теці немає слова katana — лише STML і UTML."""
+    root = tmp_path / "discs"
+    disc_suggest._scan_cache.clear()
+    for name in ("STML-a2-x42", "UTML-a2-x05", "Monolith-A2-x49", "Emotions-a2-x54", "Vivid-stml-a2-x02",
+                 "a2-x99", "A2-STML-x04"):
+        _disc(root, "zr", 14, f"zr14_14-{name}", USED)
+    atts = _letter_of(tmp_path)
+
+    def offered(material):
+        return {n.removeprefix("zr14_14-") for n in _names(disc_suggest.suggest(material, atts, str(root)))}
+
+    assert offered("stml а2") == {"STML-a2-x42", "A2-STML-x04"}
+    assert offered("katana a2") == {"STML-a2-x42", "A2-STML-x04"}
+    assert offered("katana utml a2") == offered("утмл а2") == {"UTML-a2-x05"}
+    assert offered("mono a2") == {"Monolith-A2-x49"}
+    assert offered("vivid stml a2") == {"Vivid-stml-a2-x02"}
+    assert disc_suggest.want_of("stml a2").label() == "Katana STML A2"
+
+
+@pytest.mark.parametrize("wanted, got, conflict", [
+    ("katana", "stml", False), ("katana", "utml", False), ("stml", "katana", False), ("stml", "stml", False),
+    ("stml", "utml", True), ("stml", "monolith", True), ("katana", "monolith", True), ("monolith", None, False),
+])
+def test_guard_knows_katana_series(wanted, got, conflict):
+    assert disc_suggest.lines_conflict(wanted, got) is conflict
+
+
 def test_disc_hint_tool_needs_a_real_letter(db_session):
     from app.services.mcp_common import ToolError
     from app.services.mcp_tools_shop import tool_disc_hint

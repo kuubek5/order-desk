@@ -90,12 +90,12 @@ def _line(text: Optional[str]) -> Optional[str]:
 
 def disc_reasons(disc: disc_check.ProgramDisc, order: Order) -> list[str]:
     """Розбіжності матеріалу, лінії й кольору (без висоти — див. модуль)."""
-    from app.services.disc_suggest import LINES
+    from app.services.disc_suggest import LINES, lines_conflict
 
     verdict = disc_check.compare(disc, order)
     reasons = [r for r in verdict.issues if not r.startswith("висота")]
     wanted, got = _line(order.material_color), _line(disc.head)
-    if wanted and got and wanted != got:
+    if wanted and got and lines_conflict(wanted, got):
         reasons.insert(0, f"лінія: замовлено {LINES[wanted][0]}, диск {LINES[got][0]}")
     return reasons
 
