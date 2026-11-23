@@ -654,7 +654,7 @@ def test_pmma_prefers_discs_of_recent_programs_over_old_leftovers(tmp_path):
     disc_suggest._scan_cache.clear()
     ring = [_square(28 * math.cos(a), 28 * math.sin(a), 12) for a in (0, 1.05, 2.1, 3.15, 4.2, 5.25)]
     _disc(root, "pmma", 16, "pmma16_16-a2-x188", ring)  # найповніший, але давній
-    _disc(root, "pmma", 14, "pmma14_14-a2-x133", USED)
+    _disc(root, "pmma", 14, "pmma14_14-a2-x133", ring[:3])
     _disc(root, "pmma", 18, "pmma18_18-a2-x268", [_square(30, 0, 8)])
     atts = _letter_of(tmp_path, 8.0)
     assert _names(disc_suggest.suggest("pmma a2", atts, str(root)))[0] == "pmma16_16-a2-x188", "без історії — як було"
