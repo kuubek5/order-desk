@@ -340,8 +340,51 @@ class LabRow:
     rush: bool = False
 
 
+@dataclass
+class LabMaterialBar:
+    name: str
+    group: str
+    units: int
+    units_left: int
+    works: int
+    works_left: int
+
+
 LAB_MAX_ROWS = 14
 _LAB_ROW_H, _LAB_HEAD_H = 60, 72
+
+
+def _lab_materials_h(count: int) -> float:
+    return _LAB_HEAD_H + count * _LAB_ROW_H
+
+
+def _lab_materials(c: Canvas, y: float, items: Sequence[LabMaterialBar]) -> float:
+    """Скільки лишилось у кожному матеріалі; смуга — яка частка вже прорахована."""
+    h = _lab_materials_h(len(items))
+    c.box(PAD, y, _W, h, fill=PANEL, outline=LINE, radius=22)
+    c.text(PAD + 22, y + 48, "Лишилось за матеріалами", "x", 32, INK)
+    cy = y + _LAB_HEAD_H
+    for item in items:
+        color = td.MATERIALS[item.group][1] if item.group in td.MATERIALS else INK_3
+        c.line(PAD + 1, cy, PAD + _W - 1, cy, ROW_LINE)
+        mid = cy + _LAB_ROW_H / 2
+        c.text(PAD + 22, mid + 10, c.fit(item.name, "s", 28, 210), "s", 28, INK)
+        if item.works_left:
+            tail = f" з {item.units} од. · {item.works_left} з {item.works} роб."
+            used = c.text(PAD + _W - 22, mid + 9, tail, "t", 25, INK_2, anchor="rs")
+            used += c.text(PAD + _W - 22 - used, mid + 10, str(item.units_left), "x", 32, INK, anchor="rs")
+        else:
+            used = c.text(PAD + _W - 22, mid + 9, f" · {item.units} од.", "t", 25, INK_2, anchor="rs")
+            used += c.text(PAD + _W - 22 - used, mid + 9, "усе прораховано", "s", 26, GREEN, anchor="rs")
+        bar_x = PAD + 244
+        bar_w = min(PAD + _W - 22 - used - 24 - bar_x, 300)
+        if bar_w >= 60:
+            c.box(bar_x, mid - 8, bar_w, 16, fill=LINE, radius=8)
+            share = (item.units - item.units_left) / item.units if item.units else 1 - item.works_left / item.works
+            if share > 0:
+                c.box(bar_x, mid - 8, max(16, bar_w * share), 16, fill=color, radius=8)
+        cy += _LAB_ROW_H
+    return h
 
 
 def _lab_list(c: Canvas, y: float, title: str, rows: Sequence[LabRow], total: int, opened: bool,
@@ -382,7 +425,8 @@ def _lab_list(c: Canvas, y: float, title: str, rows: Sequence[LabRow], total: in
 
 def lab_png(day_label: str, total: int, done: int, units_left: int, take: Sequence[LabRow],
             wait: Sequence[LabRow], now: datetime, *, opened_wait: bool = False,
-            take_total: Optional[int] = None, wait_total: Optional[int] = None) -> bytes:
+            take_total: Optional[int] = None, wait_total: Optional[int] = None,
+            materials: Sequence[LabMaterialBar] = ()) -> bytes:
     take_total = len(take) if take_total is None else take_total
     wait_total = len(wait) if wait_total is None else wait_total
 
@@ -392,6 +436,8 @@ def lab_png(day_label: str, total: int, done: int, units_left: int, take: Sequen
 
     stat_h = 190
     height: float = 182 + stat_h
+    if total and materials:
+        height += _GAP + _lab_materials_h(len(materials))
     if total and take_total:
         height += _GAP + list_h(take_total, True)
     if total and wait_total:
@@ -412,6 +458,9 @@ def lab_png(day_label: str, total: int, done: int, units_left: int, take: Sequen
     c.text(PAD + _W - 24, top + 104, str(units_left), "x", 80, ACCENT if units_left else INK_3, anchor="rs")
     c.text(PAD + _W - 24, top + 148, "одиниць лишилось", "t", 28, INK_2, anchor="rs")
     y = top + stat_h
+    if materials:
+        y += _GAP
+        y += _lab_materials(c, y, materials)
     if take_total:
         y += _GAP
         y += _lab_list(c, y, "Можна брати", take, take_total, True)

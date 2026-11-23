@@ -183,6 +183,33 @@ def test_lab_counts_done_by_sum3d_and_puts_rush_first():
     assert [b["callback_data"] for row in opened.rows for b in row] == ["v:lab", "e:lab:wait"]
 
 
+def test_lab_materials_add_up_to_the_headline():
+    from app.models import Material
+
+    with _session() as db:
+        zr, pm = Material(name="Цирконій", sort_order=1), Material(name="ПММА", sort_order=2)
+        db.add_all([zr, pm])
+        db.flush()
+        tab = business_today().strftime("%d.%m.%y")
+        rows = [
+            dict(quantity="2", job_code="P:/1", sum3d_id="10-00-00", material=zr),
+            dict(quantity="3", job_code="P:/2", material=zr),
+            dict(quantity="4", material=pm),
+            dict(quantity="1", job_code="P:/4", sum3d_id="10-10-00"),
+        ]
+        for n, row in enumerate(rows, start=7):
+            db.add(Order(source="lab", sheet_tab=tab, row_number=n, status="нове", work_order_no=str(n), **row))
+        db.commit()
+        counts = tv.lab_counts(tv._lab_orders(db, 0))
+        items = tv.lab_materials(counts)
+        text = tv.lab_view(db, 0, None, NOW).text
+    assert [(m.name, m.units_left, m.units, m.works_left, m.works) for m in items] == [
+        ("Цирконій", 3, 5, 1, 2), ("ПММА", 4, 4, 1, 1), ("Без категорії", 0, 1, 0, 1),
+    ]
+    assert "лишається 7" in text and sum(m.units_left for m in items) == 7
+    assert "🦷 Цирконій · лишається <b>3</b> з 5 од. · 1 з 2 роб." in text
+
+
 def test_lab_summary_for_home():
     with _session() as db:
         assert tv.lab_summary(db) == "🧪 Лабораторія: робіт сьогодні ще немає"

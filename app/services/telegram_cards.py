@@ -192,6 +192,10 @@ def _lab(offset: int) -> Callable[[Session, datetime, Optional[str]], Card]:
             [_lab_row(o) for o in take[:tp.LAB_MAX_ROWS]],
             [_lab_row(o) for o in wait[:tp.LAB_MAX_ROWS]] if opened_wait else [],
             now, opened_wait=opened_wait, take_total=len(take), wait_total=len(wait),
+            materials=[
+                tp.LabMaterialBar(m.name, _GROUP_OF_NAME.get(m.name, ""), m.units, m.units_left, m.works, m.works_left)
+                for m in tv.lab_materials(counts)
+            ],
         )
         rows = []
         if wait:

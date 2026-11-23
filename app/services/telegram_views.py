@@ -413,6 +413,30 @@ def lab_counts(orders: list[Order]) -> dict[str, list[Order]]:
     return {"all": orders, "done": done, "take": take, "wait": wait}
 
 
+@dataclass
+class LabMaterial:
+    name: str
+    units: int
+    units_left: int
+    works: int
+    works_left: int
+
+
+def lab_materials(counts: dict[str, list[Order]]) -> list[LabMaterial]:
+    """Лабораторія за матеріалами: скільки лишилось з усього (власник 23.11.26).
+
+    Категорії й порядок — ті самі, що в «Роботах за день» (`_material_breakdown`);
+    «лишилось» = не прораховане, тож сума рядків дорівнює числу в шапці картки."""
+    from app.services.telegram_bot import _material_breakdown
+
+    done = {name: (units, works) for name, units, works in _material_breakdown(counts["done"])}
+    rows = []
+    for name, units, works in _material_breakdown(counts["all"]):
+        done_units, done_works = done.get(name, (0, 0))
+        rows.append(LabMaterial(name, units, units - done_units, works, works - done_works))
+    return rows
+
+
 def _rush_first(orders: list[Order]) -> list[Order]:
     from app.services.queue import is_rush_comment
 
@@ -447,7 +471,7 @@ def lab_summary(db: Session) -> str:
 
 def lab_view(db: Session, offset: int, opened: Optional[str], now: datetime) -> ViewParts:
     from app.services.queue_view import sum_units
-    from app.services.telegram_bot import _day_of
+    from app.services.telegram_bot import _MATERIAL_ICON, _day_of
 
     view = "lab" if offset == 0 else "lab_y"
     day = _day_of(offset)
@@ -466,6 +490,10 @@ def lab_view(db: Session, offset: int, opened: Optional[str], now: datetime) -> 
         f"одиниць: {units_all} · зроблено {units_done} · лишається {units_all - units_done}",
         "",
     ]
+    for item in lab_materials(counts):
+        lines.append(f"{_MATERIAL_ICON.get(item.name, '❔')} {_e(item.name)} · лишається <b>{item.units_left}</b> "
+                     f"з {item.units} од. · {item.works_left} з {item.works} роб.")
+    lines.append("")
     buttons: list[dict] = []
     for key, icon, title, short in (
         ("take", "✅", "Можна брати", "Можна брати"),

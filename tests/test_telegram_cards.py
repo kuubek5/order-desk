@@ -196,6 +196,21 @@ def test_mail_picture_never_carries_subject_or_body(monkeypatch):
 # ── Лабораторія ─────────────────────────────────────────────────────────────
 
 
+def test_lab_card_draws_the_materials(monkeypatch):
+    seen: list[tuple[str, ...]] = []
+    original = tp.lab_png
+
+    def spy(*args, **kwargs):
+        seen.append(tuple(m.name for m in kwargs["materials"]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(tp, "lab_png", spy)
+    with _session() as db:
+        _lab(db)
+        assert bot.handle_update(db, _press(CHAT, "v:lab"), now=NOW)[1].method == "sendPhoto"
+    assert seen == [("Без категорії",)]
+
+
 def test_lab_wait_button_opens_and_closes_the_list():
     with _session() as db:
         _lab(db)
