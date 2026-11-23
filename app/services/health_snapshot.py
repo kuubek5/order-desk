@@ -60,6 +60,11 @@ SELF_PRUNING = frozenset({
     "sync_logs",          # журнал синку з власною межею
     "action_log",         # журнал дій, вікно скасування
     "shift_note_images",  # 180 днів скріншотів зміни
+    # 23.11.26: оновлення 0.21.165 → 0.21.167 кричало «ЗНИКЛИ рядки» через планове
+    # прибирання показів верстатів, яке йде на кожному старті.
+    "machine_readings",     # services/machines.prune_machine_readings
+    "machine_link_events",  # services/machines — обриви зв'язку
+    "telegram_outbox",      # services/telegram_bot.prune_outbox
 })
 
 

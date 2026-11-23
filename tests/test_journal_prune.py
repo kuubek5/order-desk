@@ -109,6 +109,7 @@ def test_declared_self_pruning_tables_actually_have_a_pruner():
     """Сторож проти повторення самої помилки: оголосити таблицю такою, що
     чиститься сама, і не написати прибиральника."""
     import inspect
+    from pathlib import Path
 
     from app.services import journal_prune
     from app.services.health_snapshot import SELF_PRUNING
@@ -120,6 +121,9 @@ def test_declared_self_pruning_tables_actually_have_a_pruner():
     others = {
         "furnace_readings": "app/services/furnace.py::prune_readings",
         "shift_note_images": "app/shift_images.py::prune_shift_images",
+        "machine_readings": "app/services/machines.py::prune_machine_readings",
+        "machine_link_events": "app/services/machines.py::prune_machine_link_events",
+        "telegram_outbox": "app/services/telegram_bot.py::prune_outbox",
     }
     for table in SELF_PRUNING:
         assert table in covered or table in others, (
@@ -128,3 +132,6 @@ def test_declared_self_pruning_tables_actually_have_a_pruner():
         )
     for table in covered:
         assert table in source
+    for table, where in others.items():
+        path, function = where.split("::")
+        assert f"def {function}(" in Path(path).read_text(encoding="utf-8"), table
