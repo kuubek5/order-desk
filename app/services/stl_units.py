@@ -114,6 +114,9 @@ class UnitsCount:
     # Щелепи кап: «верх» / «низ» / «щелепа ?» (номера зуба в назві немає).
     splint_jaws: list[str] = field(default_factory=list)
     model_files: int = 0
+    # Скільки одиниць додало навчене правило (`decision_rules`, лише картка
+    # листа й лише увімкнене адміном). Уже входить в `units`.
+    learned_extra: int = 0
 
     @property
     def summary(self) -> str:
@@ -131,6 +134,8 @@ class UnitsCount:
         text = " · ".join(parts)
         if self.repeated:
             text += " · у кількох файлах: " + ",".join(str(t) for t in self.repeated)
+        if self.learned_extra:
+            text += f" · навчене правило +{self.learned_extra}"
         return text
 
 

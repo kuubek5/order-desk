@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import perf
 from app.models import EmailMessage
 from app.routers.deps import get_current_user, get_db, templates
-from app.services import disc_suggest, selection_journal
+from app.services import disc_choice, disc_shadow, disc_suggest, selection_journal
 from app.services.mail_conveyor import ConveyorCard, conveyor_summary, material_group_key
 from app.settings_store import get_setting
 
@@ -37,11 +37,15 @@ def get_disc_hint(request: Request, email_id: int, material_color: str = "",
     recent: set[str] = set()
     with perf.span("disc:active"):
         active = disc_suggest.active_discs(db, machines=machines, recent=recent)
-    hint = disc_suggest.suggest(material_color, list(email.attachments or []),
-                                get_setting(db, "cam_blanks_path"),
-                                active=active, machines=machines, recent=recent)
+    attachments = list(email.attachments or [])
+    root = get_setting(db, "cam_blanks_path")
+    shown_by, rival_by, compare = disc_choice.choosers(db, user.id)
+    hint = disc_suggest.suggest(material_color, attachments, root,
+                                active=active, machines=machines, recent=recent, chooser=shown_by)
     # Журнал підбору: що саме побачив оператор (при прийнятті не перерахувати).
-    selection_journal.remember_shown([email_id], material_color, hint, mode="card")
+    entry = selection_journal.remember_shown([email_id], material_color, hint, mode="card")
+    if compare:
+        disc_shadow.submit(entry, material_color, attachments, root, active=active, recent=recent, chooser=rival_by)
     return templates.TemplateResponse(request, "_mail_disc_hint.html", {"hint": hint})
 
 
@@ -89,10 +93,14 @@ def batch_disc_hint(
     recent: set[str] = set()
     with perf.span("disc:active"):
         active = disc_suggest.active_discs(db, machines=machines, recent=recent)
-    hint = disc_suggest.suggest(summary.label, attachments, get_setting(db, "cam_blanks_path"),
-                                active=active, machines=machines, recent=recent)
-    selection_journal.remember_shown(main_ids, summary.label, hint, mode="conveyor",
-                                     key=selection_journal.batch_key(main_ids))
+    root = get_setting(db, "cam_blanks_path")
+    shown_by, rival_by, compare = disc_choice.choosers(db, user.id)
+    hint = disc_suggest.suggest(summary.label, attachments, root,
+                                active=active, machines=machines, recent=recent, chooser=shown_by)
+    entry = selection_journal.remember_shown(main_ids, summary.label, hint, mode="conveyor",
+                                             key=selection_journal.batch_key(main_ids))
+    if compare:
+        disc_shadow.submit(entry, summary.label, attachments, root, active=active, recent=recent, chooser=rival_by)
     return templates.TemplateResponse(request, "_mail_batch_disc_hint.html", {
         "hint": hint, "letters": len(emails), "skipped": len(cards) - len(main_ids),
     })

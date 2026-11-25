@@ -1,0 +1,18 @@
+{# «Чому так» — ланцюжок рішень роботи (decision_story). Порядок — за часом:
+   від листа до верстата. #}
+{% if lines %}
+<ol class="why-list">
+    {% for line in lines %}
+    <li class="why-{{ line.kind }}">
+        <span class="why-at mono">{{ line.at.strftime('%d.%m %H:%M') }}</span>
+        <span class="why-body">
+            <b>{{ line.title }}</b>{% if line.who %} <span class="why-who">{{ line.who }}</span>{% endif %}
+            {% if line.detail %}<span class="why-detail">{{ line.detail }}</span>{% endif %}
+            {% for change in line.changed %}<span class="why-change">{{ change }}</span>{% endfor %}
+        </span>
+    </li>
+    {% endfor %}
+</ol>
+{% else %}
+<p class="text-muted">Для цієї роботи рішень не записано: журнал почався пізніше.</p>
+{% endif %}

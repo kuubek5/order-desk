@@ -20,7 +20,7 @@
     {% for p in cands %}
     {% set title, code = p.label %}
     {% set loop_i = loop.index0 %}
-    <div class="mdh" data-i="{{ loop.index0 }}"{% if p.fit is sameas false %} data-state="bad"{% elif p.tight %} data-state="tight"{% elif not p.started %} data-state="fresh"{% endif %}{% if not loop.first %} hidden{% endif %} title="{{ p.name }} · {{ hint.why }} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
+    <div class="mdh" data-i="{{ loop.index0 }}"{% if p.fit is sameas false %} data-state="bad"{% elif p.tight %} data-state="tight"{% elif not p.started %} data-state="fresh"{% endif %}{% if not loop.first %} hidden{% endif %} title="{{ p.name }} · {{ hint.why }}{% if hint.by == 'learned' %} · порядок — як беруть оператори{% if p.habit %}: {{ p.habit }}{% endif %}{% endif %} · або {{ hint.new_disc }}. Вільне місце пораховано наближено — точно розставить Sum3D.">
         {{ disc_icon(p.paths) }}
         <span class="mdh-head">
             <span class="mdh-h">{{ p.height }}<small>мм</small></span>
@@ -46,6 +46,8 @@
             {% if p.tight %}<span class="mdh-f is-warn" title="Запас над роботою менший за звичні 0.5 мм"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3"/></svg><span><b>впритул</b> · запас {{ '%.1f'|format(p.height - hint.thickness) }} мм, перевір у Sum3D</span></span>{% endif %}
             {% if p.on_machine %}<span class="mdh-f is-mach"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="8" rx="1.5"/><path d="M5.5 14h5M8 11v3"/></svg><span>{% if p.machine %}стоїть у <b class="mdh-mname">{{ p.machine }}</b>{% else %}<b class="mdh-mname">на верстаті</b>{% endif %}</span></span>{% endif %}
             <span class="mdh-f">вільно <b class="mono">{{ p.free_pct }} %</b></span>
+            {# Впевненість — частка влучань на іспитах при такій самій оцінці. #}
+            {% if loop.first and hint.confidence is not none %}<span class="mdh-f" title="На перевірці з такою самою оцінкою оператори брали саме перший диск">так беруть <b class="mono">{{ (hint.confidence * 10)|round|int }} з 10</b></span>{% endif %}
             {# 20.11.26: початий диск із багатьма вільними, де розстановка CRM
                (наближення) місця не знайшла, — не ховаємо, людина розставить. #}
             {% if p.fit is sameas false %}<span class="mdh-f is-warn" title="Розстановка CRM — наближення: Sum3D і людина ставлять щільніше"><svg class="mdh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3"/></svg>CRM не розставила — розстав у Sum3D</span>

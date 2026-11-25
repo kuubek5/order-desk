@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.material_classifier import match_key
 from app.models import MachineReading, Order, SelectionRecord
+from app.services import decisions
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,10 @@ def hint_summary(hint) -> dict[str, Any]:
         "new_disc": hint.new_disc or None,
         "note": hint.note or None,
         "rejected": hint.rejected,
+        "by": getattr(hint, "by", "rule"),
+        "pool": getattr(hint, "pool", []),
+        "confidence": getattr(hint, "confidence", None),
+        "why_not": getattr(hint, "why_not", {}),
     }
 
 
@@ -79,16 +84,19 @@ def batch_key(email_ids: Iterable[int]) -> str:
 
 
 def remember_shown(email_ids: Iterable[int], material: str, hint, *, mode: str = "card",
-                   key: Optional[str] = None) -> None:
+                   key: Optional[str] = None) -> dict[str, Any]:
     """Підказку щойно показали оператору — запам'ятати для `record_accept`."""
     ids = list(email_ids)
-    entry = {"material": material, "hint": hint_summary(hint), "mode": mode, "batch_key": key}
+    summary = hint_summary(hint)
+    entry = {"material": material, "hint": summary, "mode": mode, "batch_key": key}
+    decisions.note_disc(ids, material, {k: v for k, v in summary.items() if k not in ("pool", "why_not")}, mode=mode)
     now = time.monotonic()
     with _shown_lock:
         for eid in ids:
             _shown[eid] = (now, entry)
         for stale in [k for k, (t, _e) in _shown.items() if now - t > SHOWN_TTL_SECONDS]:
             del _shown[stale]
+    return entry
 
 
 def shown_for(email_id: int) -> Optional[dict[str, Any]]:
@@ -190,6 +198,100 @@ def _disc_key(name: Optional[str]) -> Optional[str]:
     if not name:
         return None
     return (name.split("_", 1)[1] if "_" in name else name).lower()
+
+
+def _offered(hint: dict[str, Any]) -> list[Optional[str]]:
+    picks = ([hint["best"]] if hint.get("best") else []) + (hint.get("alts") or [])
+    return [_disc_key(p["disc"]) for p in picks]
+
+
+def rivalry(db: Session, days: int = 30, *, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Правила проти вивченого порядку на живих листах: чий диск справді взяли.
+
+    Мультипрорахунок Конвеєра — одне рішення, хоч листів у ньому кілька. Рахуються
+    лише записи, де пораховано ОБИДВІ відповіді й відомий диск із верстата."""
+    now = now or datetime.now()
+    sides = {"rule": "правила", "learned": "вивчений"}
+    out: dict[str, Any] = {"рішень": 0, "правила": Counter(перший=0, у_трьох=0),
+                           "вивчений": Counter(перший=0, у_трьох=0), "лише_вивчений": 0, "лише_правила": 0,
+                           "розійшлись": []}
+    seen: set[str] = set()
+    for rec in db.scalars(select(SelectionRecord).where(
+        SelectionRecord.created_at >= now - timedelta(days=days),
+        SelectionRecord.actual_disc.is_not(None), SelectionRecord.hint_json.is_not(None),
+    ).order_by(SelectionRecord.id.desc())):
+        hint = json.loads(rec.hint_json or "{}")
+        rival = hint.get("rival")
+        if not rival or (rec.batch_key and rec.batch_key in seen):
+            continue
+        if rec.batch_key:
+            seen.add(rec.batch_key)
+        actual = (rec.actual_disc or "").lower()
+        answers = {hint.get("by") or "rule": _offered(hint),
+                   rival["by"]: [_disc_key(n) for n in rival["discs"]]}
+        if set(answers) != set(sides):
+            continue
+        out["рішень"] += 1
+        hit = {}
+        for by, name in sides.items():
+            hit[by] = answers[by][:1] == [actual]
+            out[name]["перший"] += int(hit[by])
+            out[name]["у_трьох"] += int(actual in answers[by])
+        out["лише_вивчений"] += int(hit["learned"] and not hit["rule"])
+        out["лише_правила"] += int(hit["rule"] and not hit["learned"])
+        if hit["rule"] != hit["learned"] and len(out["розійшлись"]) < 12:
+            out["розійшлись"].append({
+                "робота": rec.order_id, "лист": rec.email_id, "матеріал": rec.chosen_material,
+                "взяли": rec.actual_disc, "правила": answers["rule"][:1], "вивчений": answers["learned"][:1],
+            })
+    out["правила"], out["вивчений"] = dict(out["правила"]), dict(out["вивчений"])
+    return out
+
+
+MISS_WORDS = {
+    "висота": "висота не за правилом", "давно": "вважали, що диска вже немає", "файл": "файл диска не прочитався",
+    "вирізаний": "вважали майже вирізаним", "площа": "CRM: замало площі — а цех поклав",
+    "межа": "не дочитали: межа", "розстановка": "CRM: не влазить — а цех поклав",
+    "не перевірено": "не встигли перевірити місце", "черга": "підходив, але нижче трьох перших",
+    "картка": "був у картці",
+}
+
+
+def misses(db: Session, days: int = 30, *, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Чому взятого диска не було в картці — причина на кожен промах.
+
+    «CRM: не влазить — а цех поклав» — це вада нашої розстановки, а не оператора;
+    «не було серед дисків» — інший матеріал, колір чи новий диск."""
+    now = now or datetime.now()
+    counts: Counter[str] = Counter()
+    examples: dict[str, list[dict[str, Any]]] = {}
+    seen: set[str] = set()
+    for rec in db.scalars(select(SelectionRecord).where(
+        SelectionRecord.created_at >= now - timedelta(days=days),
+        SelectionRecord.actual_disc.is_not(None), SelectionRecord.hint_json.is_not(None),
+    ).order_by(SelectionRecord.id.desc())):
+        hint = json.loads(rec.hint_json or "{}")
+        if "why_not" not in hint or (rec.batch_key and rec.batch_key in seen):
+            continue
+        if rec.batch_key:
+            seen.add(rec.batch_key)
+        actual = (rec.actual_disc or "").lower()
+        offered = _offered(hint)
+        if offered[:1] == [actual]:
+            why = "перший у картці"
+        elif actual in offered:
+            why = "другий чи третій у картці"
+        else:
+            codes = {_disc_key(name): code for name, code in hint["why_not"].items()}
+            why = MISS_WORDS[codes[actual]] if codes.get(actual) in MISS_WORDS else \
+                "не було серед дисків (новий, інший матеріал чи колір)"
+        counts[why] += 1
+        found = examples.setdefault(why, [])
+        if len(found) < 5 and not why.startswith("перший"):
+            found.append({"робота": rec.order_id, "лист": rec.email_id, "матеріал": rec.chosen_material,
+                          "взяли": rec.actual_disc, "робота_мм": hint.get("thickness")})
+    return {"рішень": sum(counts.values()), "причини": dict(counts.most_common()),
+            "приклади": {k: v for k, v in examples.items() if v}}
 
 
 def report(db: Session, days: int = 7, limit: int = 40, *, now: Optional[datetime] = None) -> dict[str, Any]:

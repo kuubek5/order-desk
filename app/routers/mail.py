@@ -69,6 +69,7 @@ from app.services.material_suggest import (
     canonical_suggestions,
     letter_materials,
     row_label,
+    shades_in,
 )
 from app.services import mail_letter_signals
 from app.material_catalog import load_alias_rows
@@ -143,7 +144,7 @@ from app.services.mail_merge import detach_letter, detachable_link, merge_enable
 from app.services.mail_rework import accept_rework, rework_form, rework_order_ids
 from app.services import mail_accept_day
 from app.services import mail_auto_backfill
-from app.services import disc_suggest
+from app.services import decision_rules, decisions, disc_suggest
 from app.services.focus import recently_taken_ids
 from app.services.stl_height import letter_chip
 from app.services.stl_units import count_units, is_model_file, letter_quantity, teeth_in_filename
@@ -176,7 +177,15 @@ from app.sheets import get_worksheet_by_name, open_spreadsheet
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+def _note_letter_actor(request: Request) -> None:
+    """Хто натиснув кнопку на листі — для журналу рішень (`decision_observer`
+    бачить лише зміну стану). Нічого не дозволяє й не забороняє."""
+    email_id = request.path_params.get("email_id")
+    if request.method == "POST" and str(email_id or "").isdigit():
+        decisions.note_actor("letter", int(str(email_id)), request.session.get("user_id"))
+
+
+router = APIRouter(dependencies=[Depends(_note_letter_actor)])
 
 
 # Emails that have left the triage queue: accepted into the queue or rejected.
@@ -1300,6 +1309,7 @@ def _mail_panel_context(
     # адреса лишається крайнім запасом уже в шаблоні (скарга власника 24.09.26).
     # Порядок і причини — `seed_client_name` (app/client_folder.py): картка
     # клієнта з цією адресою → памʼять (не заглушка-адреса) → from_name → здогад.
+    client_name_is_seed = client_name is None
     if client_name is None:
         client_name = seed_client_name(db, email, sender_hint)
     # Лише слова замовника (без пересилання, підпису, списку файлів) — з них і
@@ -1310,6 +1320,9 @@ def _mail_panel_context(
     # Фрезерована капа (bitesplint, «сплінт», «шина»): цех пише `kappa` без
     # кольору, навіть коли клієнт додав «ПММА прозорий» (власник 18.11.26).
     splint = _splint_material(db, email, material_ctx)
+    # Картка зі СВОЇМИ значеннями (нічого з форми) — лише її пише журнал рішень.
+    own_values = client_name_is_seed and material_color is None and quantity is None and error is None
+    sure_material: str | None = None
     if material_color is None:
         # Поле — одразу латинський канон, коли здогад однозначний: матеріал
         # упізнано й відтінок рівно один («ПММА а2» → `pmma a2`). Інакше в таблицю
@@ -1321,9 +1334,8 @@ def _mail_panel_context(
         guess = email.material_color_guess or ""
         # Матеріалу в листі немає, колір один, а клієнт майже завжди бере
         # Doceram — код за кольором (власник 20.11.26, `doceram_habit_code`).
-        material_color = (
-            splint or best_material(db, guess, material_ctx, client_name=client_name) or guess
-        )
+        sure_material = splint or best_material(db, guess, material_ctx, client_name=client_name)
+        material_color = sure_material or guess
     if kind is None:
         kind = email.kind_guess or ""
     # Порожнє поле — ще семена: тоді кількість може дати назва STL (нижче).
@@ -1352,6 +1364,17 @@ def _mail_panel_context(
         if selected_ids is None or a.id in selected_ids
     ]
     units = count_units(a.filename for a in unit_files)
+    # Навчені правила (`decision_rules`): без увімкнених адміном — порожньо.
+    learned = decision_rules.apply(
+        db, client_name=client_name, system_material=sure_material,
+        filenames=[a.filename for a in unit_files],
+        letter_shades=shades_in(material_ctx),
+    ) if own_values else decision_rules.Applied()
+    if learned.material:
+        material_color = learned.material
+    if learned.extra_units and units.units:
+        units.units += learned.extra_units
+        units.learned_extra = learned.extra_units
     if quantity_seeded and units.units:
         quantity = str(units.units)
     letter_qty = letter_quantity(email.quantity_guess)
@@ -1427,8 +1450,14 @@ def _mail_panel_context(
         "qty_auto": bool(units.units) and str(quantity).strip() == str(units.units),
         "qty_letter": letter_qty,
         "qty_mismatch": qty_mismatch,
+        "learned": learned,
         # Зуби кожного файлу — для перерахунку в браузері, коли оператор знімає
         # чи ставить галочку на файлі (часткове прийняття кількох кольорів).
+        "att_types": {
+            a.id: decisions.safe_type(a.filename) or "—"
+            for a in partial_state["unclaimed_attachments"]
+            if learned.repeat_allowed and is_model_file(a.filename)
+        },
         "att_teeth": {
             a.id: ",".join(str(t) for t in teeth_in_filename(a.filename))
             for a in partial_state["unclaimed_attachments"]
@@ -1489,6 +1518,11 @@ def _mail_panel_context(
         **partial_state,
         **dir_ctx,
     }
+    if own_values:
+        decisions.note_card(
+            email, user, context, sure_material=sure_material,
+            rules=learned.rules, shadow=learned.shadow,
+        )
     return context
 
 
@@ -3000,6 +3034,8 @@ def bulk_mail_action(
         raise HTTPException(status_code=400, detail="невідома дія")
 
     picked = _parse_id_list(ids)
+    for picked_id in picked:
+        decisions.note_actor("letter", picked_id, user.id)
     emails = db.scalars(select(EmailMessage).where(EmailMessage.id.in_(picked))).all() if picked else []
     with_orders = set(
         db.scalars(

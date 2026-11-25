@@ -238,6 +238,8 @@ CLEARABLE_SETTING_KEYS = {
 # Не секрет і не поле форми — внутрішній штамп, з якого рахується «скільки
 # днів простою надолужити» після ввімкнення (app/sheet_sync_service.py).
 PREFERENCE_KEYS = {
+    # Навчені правила картки листа й рішення адміна про них (app/services/decision_rules.py).
+    "learned_rules",
     "furnace_background",
     # Програма Sum3D (Налаштування → Обладнання, 12.11.26): JSON-список версій
     # `{"name","path"}` і спільна тека стратегій. Лише шляхи — CRM ці теки

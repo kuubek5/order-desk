@@ -701,6 +701,53 @@ def tool_mail_learn(db: Session, args: dict) -> dict[str, Any]:
     )
 
 
+def tool_decision_learn(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import decision_learn
+
+    return decision_learn.mine(db, _int_arg(args, "days", default=decision_learn.DAYS, low=7, high=180))
+
+
+def tool_disc_choice(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import disc_choice, disc_watch, selection_journal
+
+    found = disc_choice.mine(db, _int_arg(args, "days", default=disc_choice.DAYS, low=14, high=1500))
+    found["на_живих_листах"] = selection_journal.rivalry(db, 30)
+    found["промахи"] = selection_journal.misses(db, 30)
+    found["стан"] = disc_choice.status(db)
+    found["авто"] = disc_choice.auto_state()
+    found["живий_запис"] = {**disc_watch.state(), "по_тижнях": disc_watch.curve()}
+    return found
+
+
+def tool_decisions(db: Session, args: dict) -> dict[str, Any]:
+    from app.services import decision_learn, decision_rules, decision_story
+
+    if args.get("order"):
+        order = db.get(Order, _int_arg(args, "order", default=0, low=1, high=10**9))
+        if order is None:
+            raise ToolError("такої роботи немає — номер роботи є в kmill_queue")
+        # Ім'я клієнта й людини не виходять: відповідь іде в хмару.
+        return {"робота": order.id, "ланцюжок": [
+            {"час": line.at.isoformat(timespec="minutes"), "що": line.title,
+             "подробиці": "" if line.title == "Змінено: клієнт" else line.detail, "хто": line.kind,
+             "оператор_змінив": [c for c in line.changed if not c.startswith("клієнт:")]}
+            for line in decision_story.story(db, order)
+        ]}
+    days = _int_arg(args, "days", default=14, low=1, high=180)
+    entries = decision_rules.load(db)
+    used = decision_learn.usage(days=days, since={k: e.get("at") or "" for k, e in entries.items()})
+    return {
+        "журнал": decision_learn.journal_state(),
+        "точність_картки": decision_learn.accuracy(days),
+        "кандидати": decision_learn.public_found(decision_learn.load_found()),
+        "правила": [
+            {"ключ": key, "вид": (e.get("rule") or {}).get("kind"), "стан": e.get("status"),
+             "від": e.get("at"), "чому": e.get("note"), "застосування": used.get(key)}
+            for key, e in entries.items()
+        ],
+    }
+
+
 def tool_selection_journal(db: Session, args: dict) -> dict[str, Any]:
     from app.services import selection_journal
 
@@ -1302,6 +1349,60 @@ TOOLS = TOOLS + (
             "additionalProperties": False,
         },
         run=tool_selection_journal,
+    ),
+    Tool(
+        name="kmill_decisions",
+        description=(
+            "Журнал рішень: скільки подій і від коли, точність картки листа (показане проти прийнятого: "
+            "клієнт, матеріал, кількість), знайдені кандидати в правила з доказами й іспитом, стан "
+            "увімкнених правил. З `order` — ланцюжок рішень однієї роботи від листа до верстата. Імен "
+            "клієнтів і людей, тексту листів і назв STL не віддає. Лише читання."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "order": {"type": "integer", "minimum": 1, "description": "Номер роботи — показати її ланцюжок."},
+                "days": {"type": "integer", "minimum": 1, "maximum": 180, "description": "За скільки днів, типово 14."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_decisions,
+    ),
+    Tool(
+        name="kmill_decision_learn",
+        description=(
+            "Перерахувати кандидатів у правила з прийнятих листів (без імен клієнтів): той самий зуб у "
+            "кількох файлах, матеріал, який клієнт бере замість підставленого. Пошук на старіших 70 % листів, "
+            "іспит на новіших 30 %. Важкий — окремим процесом. Нічого не вмикає й не записує."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "minimum": 7, "maximum": 180, "description": "За скільки днів, типово 90."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_decision_learn,
+        isolate=lambda args: True,
+    ),
+    Tool(
+        name="kmill_disc_choice",
+        description=(
+            "Якою логікою оператори беруть диск: з журналів Sum3D (`jobs_list.txt`, проєкт → диск, роки) "
+            "по лініях — з якого диска різали останнім / найновіший / найповніший / стоїть у верстаті, на скільки "
+            "кроків вищий за роботу, як часто новий; ваги ознак, іспит на новіших 30 % проти нинішніх правил і "
+            "порівняння «правила ↔ вивчений порядок» на живих листах. Назв STL і клієнтів немає. Важкий — "
+            "окремим процесом. Нічого не вмикає й не записує."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "minimum": 14, "maximum": 1500, "description": "За скільки днів, типово 365."},
+            },
+            "additionalProperties": False,
+        },
+        run=tool_disc_choice,
+        isolate=lambda args: True,
     ),
     Tool(
         name="kmill_vyrobitok_audit",

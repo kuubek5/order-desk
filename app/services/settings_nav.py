@@ -337,6 +337,14 @@ NAV: tuple = (
                 keywords=("синхронізація", "помилки", "тіки"),
             ),
             NavItem(
+                key="learning",
+                title="Навчання",
+                href="/learning",
+                kind="page",
+                roles=ADMIN_ONLY,
+                keywords=("рішення", "правила", "журнал рішень", "чому так", "кандидати"),
+            ),
+            NavItem(
                 key="backup",
                 title="Резервна копія",
                 href="/settings#backup",

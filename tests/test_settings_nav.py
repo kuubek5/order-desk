@@ -299,6 +299,7 @@ NAV_SNAPSHOT = {
     "update": ("service", "усі", "адмін"),
     "sync-journal": ("service", "адмін", "адмін"),
     "backup": ("service", "адмін", "адмін"),
+    "learning": ("service", "адмін", "адмін"),
     "perf": ("service", "адмін", "адмін"),
     "license": ("service", "адмін", "адмін"),
 }

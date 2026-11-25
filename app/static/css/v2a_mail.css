@@ -1706,6 +1706,8 @@ body.mail-has-card .mailv2 .worklayout{align-items:stretch}
   border-radius:50%;font-size:var(--fs-0);font-weight:700;line-height:1;cursor:help;
   color:var(--warn-ink);background:rgba(var(--warn-rgb),.18);box-shadow:inset 0 0 0 1px rgba(var(--warn-rgb),.55)}
 .mailv2 .qty-auto[hidden]{display:none}
+/* Матеріал підставило навчене правило (екран «Навчання») — оператор бачить, звідки. */
+.mailv2 .mc-learned{margin-top:4px;font-size:var(--fs-1);line-height:1.35;color:var(--warn-ink)}
 .mailv2 .mb-qtycheck{margin:2px 0 6px;font-size:var(--fs-1);color:var(--warn-ink)}
 .mailv2 .mb-qtycheck b{color:var(--warn)}
 

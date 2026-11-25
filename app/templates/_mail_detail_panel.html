@@ -206,7 +206,7 @@
                     <label class="mc-attrow{% if is_missing %} is-missing{% endif %}{% if claimed %} is-claimed{% endif %}"{% if is_missing %} title="Файла немає на диску — скачай наново"{% elif claimed %} title="Файл уже прийнято в попередню партію"{% endif %}>
                         {% if multi and not claimed and not is_missing %}
                         <input type="checkbox" class="mc-attcb" name="attachment_ids" value="{{ attachment.id }}"
-                               {% if att_teeth and att_teeth.get(attachment.id) %}data-teeth="{{ att_teeth[attachment.id] }}"{% endif %}
+                               {% if att_teeth and att_teeth.get(attachment.id) %}data-teeth="{{ att_teeth[attachment.id] }}"{% endif %}{% if att_types and att_types.get(attachment.id) %} data-ftype="{{ att_types[attachment.id] }}"{% endif %}
                                {% if attachment_ids is none or attachment.id in attachment_ids %}checked{% endif %}>
                         {% else %}
                         <span class="mc-attico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
@@ -354,6 +354,7 @@
                            hx-vals='{"step":"1","frag":"path"}' hx-target="#mail-path-summary" hx-swap="innerHTML" hx-trigger="change">
                     <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
                 </div>
+                {% if learned and learned.material %}<div class="mc-learned" title="Правило ввімкнув адміністратор на екрані «Навчання».">навчене правило: {{ learned.material_title }}</div>{% endif %}
                 {# Латинський канон (material_suggest.canonical_suggestions): спершу
                    НАЙІМОВІРНІШЕ — упізнаний матеріал × відтінок листа, далі варіанти.
                    Перший чіп — ГОЛОВНА відповідь (власник 29.09.26: «перший завжди
@@ -393,7 +394,7 @@
                 <label for="mc-qty">К-сть{% if qty_units and qty_units.units %} <span class="qty-auto"{% if not qty_auto %} hidden{% endif %}
                        title="Пораховано з назв файлів: {{ qty_units.summary }}. Перевірте — бейдж зникне, коли зміните число або приймете роботу.">?</span>{% endif %}</label>
                 <input type="text" id="mc-qty" name="quantity" class="suminput mono" value="{{ quantity }}" placeholder="—"
-                       {% if qty_units and qty_units.units %}data-qty-auto="{{ qty_units.units if qty_auto else '' }}"{% if not qty_auto %} data-qty-manual="1"{% endif %}{% endif %}>
+                       {% if qty_units and qty_units.units %}data-qty-auto="{{ qty_units.units if qty_auto else '' }}"{% if not qty_auto %} data-qty-manual="1"{% endif %}{% endif %}{% if learned and learned.repeat_allowed %} data-qty-learned="{{ learned.repeat_allowed|sort|join(' ') }}"{% endif %}>
             </div>
             {# Опак і Sum3D — як у ручному додаванні (manual_add): опак іде в
                «Коментар для CAM» текстом «2 opaq», Sum3D ставить літеру оператора

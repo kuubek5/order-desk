@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import asyncio
 import logging
-from datetime import datetime
+from datetime import date, datetime
 import os
 import time
 from uuid import uuid4
@@ -44,8 +44,8 @@ from app.backup_mirror import mirror_snapshot
 from app.daily_backup import ensure_daily_snapshot
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
-from app import sync_control
-from app.services import outage_journal, stats_forecast
+from app import decisions_store, sync_control
+from app.services import decision_learn, decision_observer, disc_choice, disc_watch, outage_journal, stats_forecast
 from app.sync_control import (
     MAIL_SYNC_INITIAL_DELAY_SECONDS,
     MAIL_SYNC_INTERVAL_SECONDS,
@@ -100,6 +100,7 @@ from app.routers.feedback import router as feedback_router
 from app.routers.diag import router as diag_router
 from app.routers.mcp import router as mcp_router
 from app.routers.sync_journal import router as sync_journal_router
+from app.routers.learning import mine_now as _learning_mine_now, router as learning_router
 from app.routers.order_trace import router as order_trace_router
 from app.routers.whats_wrong import router as whats_wrong_router
 from app.routers.palette import router as palette_router
@@ -1383,6 +1384,64 @@ def _power_watch_worker(stop_event: Event) -> None:
             logger.exception("Мітку «живий» не записано")
 
 
+# Спостерігач журналу рішень: раз на хвилину порівнює стан листів і робіт із
+# попереднім. Раз на добу (після 04:30, коли цех майже не працює) — копія
+# журналу, сторож увімкнених правил і перерахунок кандидатів окремим процесом.
+DECISIONS_INTERVAL_SECONDS = 60
+DECISIONS_INITIAL_DELAY_SECONDS = 60
+DECISIONS_NIGHT_HOUR = 4
+
+
+def _decisions_nightly() -> None:
+    folder = DATA_DIR / "backups" / "decisions"
+    for what, action in (
+        ("копія", lambda: decisions_store.snapshot(folder)),
+        ("прибирання", decisions_store.prune),
+        ("сторож правил", _decisions_pause_bad),
+        ("кандидати", _learning_mine_now),
+    ):
+        try:
+            action()
+        except Exception:
+            logger.exception("Журнал рішень: нічний крок «%s» не вдався", what)
+
+
+def _decisions_pause_bad() -> None:
+    with SessionLocal() as db:
+        paused = decision_learn.pause_bad(db)
+        if paused:
+            db.commit()
+            logger.warning("Навчання: вимкнено правил, які виправляють: %d", len(paused))
+        changed = disc_choice.review(db)
+        db.commit()
+        if changed:
+            logger.warning("Навчання: порядок дисків — %s", changed)
+
+
+def _decisions_worker(stop_event: Event) -> None:
+    if stop_event.wait(DECISIONS_INITIAL_DELAY_SECONDS):
+        return
+    night_done: date | None = None
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                decision_observer.observe(db)
+        except Exception:
+            if log_throttle.due("decisions-observe") is not None:
+                logger.exception("Журнал рішень: прохід спостерігача не вдався")
+        try:
+            with SessionLocal() as db:
+                disc_watch.observe(db)
+        except Exception:
+            if log_throttle.due("disc-watch") is not None:
+                logger.exception("Журнал рішень: вибори дисків не записано")
+        now = datetime.now()
+        if now.hour == DECISIONS_NIGHT_HOUR and night_done != now.date():
+            night_done = now.date()
+            _decisions_nightly()
+        stop_event.wait(DECISIONS_INTERVAL_SECONDS)
+
+
 @dataclass
 class _BackgroundWorker:
     """Один фоновий daemon-потік і його вимикач. Раніше кожен воркер
@@ -1490,6 +1549,12 @@ async def lifespan(_: FastAPI):
     # effort — skips silently if the sheet isn't configured or is unreachable.
     _sheet_writeback_pool.submit(_warm_sheet_writeback)
 
+    # Журнал рішень (`decisions.db`). Збій тут не має права зупинити старт.
+    try:
+        decisions_store.configure(decisions_store.default_path())
+    except Exception:
+        logger.exception("Журнал рішень не ввімкнувся")
+
     workers = [
         _BackgroundWorker("order-desk-mail-sync", _mail_sync_worker),
         _BackgroundWorker("order-desk-sheet-sync", _sheet_sync_worker),
@@ -1519,6 +1584,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-agent-versions", _agent_versions_worker),
         _BackgroundWorker("kuubmill-power-watch", _power_watch_worker),
         _BackgroundWorker("kuubmill-power-schedule", _power_schedule_worker),
+        _BackgroundWorker("kuubmill-decisions", _decisions_worker),
     ]
     for w in workers:
         w.start()
@@ -1535,6 +1601,7 @@ async def lifespan(_: FastAPI):
             logger.exception("Пачку правок не дописано на вимкненні")
         for w in workers:
             w.stop()
+        decisions_store.shutdown()
         # Штатний вихід: наступний старт не прийме цю перерву за аварію.
         try:
             from app.services import power_watch
@@ -1939,6 +2006,8 @@ app.include_router(whats_wrong_router)
 # вкладок (app/sheet_backup.py), тому відповідає навіть тоді, коли
 # роботи в базі немає, і не витрачає квоту Google.
 app.include_router(order_trace_router)
+# Журнал рішень: «Навчання» (адмін) і «Чому так» у паспорті роботи.
+app.include_router(learning_router)
 # MCP по HTTP (`POST /mcp`) — структурований зріз стану для Claude Code на
 # ЦІЙ машині. Лише читання, лише loopback; сесії оператора немає свідомо
 # (див. app/routers/mcp.py).

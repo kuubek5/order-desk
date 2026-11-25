@@ -254,6 +254,8 @@ SHOP_TOOLS = SHOP_TOOLS + (
         ),
         schema=_days_limit_schema(7, 60, {"machine": {"type": "string", "description": "Частина назви верстата."}}),
         run=tool_machine_history,
+        # Покази за місяць — сотні тисяч рядків Python: окремим процесом.
+        isolate=lambda args: True,
     ),
     Tool(
         name="kmill_cam_units",

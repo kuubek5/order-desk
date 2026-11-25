@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CamBlank, Furnace, FurnaceReading, Machine, MachineLinkEvent, MachineReading, Order
 from app.services.disc_check import program_disc
+from app.services.machines import DEFAULT_PORT
 from app.services.order_dates import order_date
 
 # Програма вважається тією самою, поки назва не змінилась; пауза в показах
@@ -55,10 +56,16 @@ def machine_history(db: Session, days: int, machine: str = "", examples: int = 1
     for m in machines:
         if wanted and wanted not in m.name.lower():
             continue
+        # Покази пишуть КЛЮЧ верстата (`MachineTarget.key`): у агентних порт 8765 у
+        # назві. За самою адресою 25.11.26 звіт дав нулі для всіх верстатів.
+        # Гола адреса — покази до переходу на агента, якщо вона не іншого верстата.
+        keys = [m.host if m.port == DEFAULT_PORT else f"{m.host}-{m.port}"]
+        if not any(o.id != m.id and o.host == m.host and o.port == DEFAULT_PORT for o in machines):
+            keys.append(m.host)
         rows = db.execute(
             select(MachineReading.captured_at, MachineReading.iso_name, MachineReading.percent,
                    MachineReading.error)
-            .where(MachineReading.host == m.host, MachineReading.captured_at >= since)
+            .where(MachineReading.host.in_(keys), MachineReading.captured_at >= since)
             .order_by(MachineReading.captured_at)
         ).all()
         programs: list[dict[str, Any]] = []
@@ -102,7 +109,7 @@ def machine_history(db: Session, days: int, machine: str = "", examples: int = 1
                 by_disc[f"{disc.family or '?'} {disc.height or '?'} мм"].append(
                     _minutes(p["done_at"] - p["start"]))
         links = db.scalars(
-            select(MachineLinkEvent).where(MachineLinkEvent.host == m.host,
+            select(MachineLinkEvent).where(MachineLinkEvent.host.in_(keys),
                                            MachineLinkEvent.detected_at >= since)
         ).all()
         link_minutes = sum(

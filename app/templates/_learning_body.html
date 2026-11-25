@@ -1,0 +1,163 @@
+{% macro rule_button(key, status, label, main=False) %}
+<button type="button" class="learn-btn{% if main %} is-main{% endif %}" hx-post="/learning/rule" hx-target="#learn-body" hx-swap="innerHTML"
+        hx-vals='{{ {"key": key, "status": status}|tojson }}' data-kload="self">{{ label }}</button>
+{% endmacro %}
+
+{% macro proof(c) %}
+<span class="learn-proof">навчання <b>{{ c.train['за'] }}</b> за · <b>{{ c.train['проти'] }}</b> проти</span>
+<span class="learn-proof">іспит <b>{{ c.test['за'] }}</b> за · <b>{{ c.test['проти'] }}</b> проти</span>
+{% endmacro %}
+
+{% if learn_error %}<div class="settings-alert settings-alert-error">{{ learn_error }}</div>{% endif %}
+
+<section class="learn-sec">
+    <div class="learn-head">
+        <h2>Кандидати в правила</h2>
+        <button type="button" class="learn-btn" hx-post="/learning/recount" hx-target="#learn-body" hx-swap="innerHTML"
+                data-kload="self"{% if mining %} disabled{% endif %}>{{ 'Рахую…' if mining else 'Перерахувати' }}</button>
+    </div>
+    {% if mining %}
+    <div hx-get="/learning/body" hx-trigger="every 5s [!document.hidden]" hx-target="#learn-body" hx-swap="innerHTML"></div>
+    {% endif %}
+    {% if found %}
+    <p class="learn-note">Листів: <b>{{ found.letters }}</b> за {{ found.days }} днів{% if found.exam_from %}, іспит — на листах з {{ found.exam_from[:10] }}, яких пошук не бачив{% endif %}. Пораховано {{ found.at|replace('T', ' ') }}.</p>
+    {% endif %}
+    {% if candidates %}
+    <ul class="learn-list">
+        {% for c in candidates %}
+        <li class="learn-item">
+            <div class="learn-main">
+                <b class="learn-title">{{ c.title }}</b>
+                <div class="learn-meta">{{ proof(c) }}
+                    {% if c.examples %}<span class="learn-proof">роботи {% for id in c.examples %}<a class="mono" href="/orders/{{ id }}">{{ id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+                </div>
+            </div>
+            <div class="learn-acts">
+                {{ rule_button(c.key, 'shadow', 'Пробувати мовчки') }}
+                {{ rule_button(c.key, 'on', 'Увімкнути', True) }}
+                {{ rule_button(c.key, 'off', 'Ні') }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="learn-note">{% if found %}Нових закономірностей не знайдено.{% else %}Ще не рахували. Перерахунок іде окремим процесом і роботі не заважає.{% endif %}</p>
+    {% endif %}
+</section>
+
+{% if rules %}
+<section class="learn-sec">
+    <h2>Твої рішення</h2>
+    <ul class="learn-list">
+        {% for r in rules %}
+        <li class="learn-item is-{{ r.status }}">
+            <div class="learn-main">
+                <b class="learn-title">{{ r.rule.title }}</b>
+                <div class="learn-meta">
+                    <span class="learn-state">{{ {'on': 'увімкнено', 'shadow': 'пробує мовчки', 'off': 'відхилено', 'paused': 'вимкнулось само'}.get(r.status, r.status) }}</span>
+                    {% if r.note %}<span class="learn-proof">{{ r.note }}</span>{% endif %}
+                    {% if r.status in ('on', 'shadow') %}<span class="learn-proof">{{ 'оператори залишили' if r.status == 'on' else 'влучило б' }} <b>{{ r.used['залишили'] }}</b> · {{ 'виправили' if r.status == 'on' else 'схибило б' }} <b>{{ r.used['виправили'] }}</b></span>{% endif %}
+                </div>
+            </div>
+            <div class="learn-acts">
+                {% if r.status != 'on' %}{{ rule_button(r.key, 'on', 'Увімкнути', True) }}{% endif %}
+                {% if r.status == 'on' %}{{ rule_button(r.key, 'shadow', 'Лише мовчки') }}{% endif %}
+                {% if r.status != 'off' %}{{ rule_button(r.key, 'off', 'Вимкнути') }}{% endif %}
+                {% if r.status == 'off' %}{{ rule_button(r.key, 'forget', 'Знову в кандидати') }}{% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% macro share(v) %}{{ v if v is not none else '—' }}{% if v is not none %} %{% endif %}{% endmacro %}
+<section class="learn-sec">
+    <div class="learn-head">
+        <h2>Диск: як беруть оператори</h2>
+        <div class="learn-acts">
+            {% if disc %}
+            {% if disc_status != 'auto' %}{{ rule_button(disc_key, 'auto', 'Автоматично', True) }}{% endif %}
+            {% if disc_status != 'on' %}{{ rule_button(disc_key, 'on', 'Увімкнути') }}{% endif %}
+            {% if disc_status != 'shadow' %}{{ rule_button(disc_key, 'shadow', 'Лише мовчки') }}{% endif %}
+            {% if disc_status != 'off' %}{{ rule_button(disc_key, 'off', 'Вимкнути') }}{% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% if not disc %}
+    <p class="learn-note">Ще не рахували. «Перерахувати» прочитає журнали Sum3D (проєкт → диск) за рік.</p>
+    {% elif not disc['проєктів'] %}
+    <p class="learn-note">Журналів Sum3D не знайдено або вони порожні: перевір теки в «Налаштування → Обладнання → Програма Sum3D».</p>
+    {% else %}
+    <p class="learn-note"><span class="learn-state">{% if disc_status == 'auto' %}{{ 'автоматично: зараз порядок у картці вивчений' if disc_auto.on else 'автоматично: ще не доведено, картка за правилами' }}{% else %}{{ {'on': 'порядок у картці — вивчений', 'shadow': 'рахується мовчки, картка за правилами', 'off': 'вимкнено', 'paused': 'вимкнулось само'}.get(disc_status, disc_status) }}{% endif %}</span>.{% if disc_status == 'auto' and disc_auto.why %} {{ disc_auto.why }}.{% endif %}{% if disc_note %} {{ disc_note }}.{% endif %} Проєктів: <b>{{ disc['проєктів'] }}</b> за {{ disc.days }} днів, з них живих виборів (місце виміряне) <b>{{ disc['живих_виборів'] }}</b>, з товщиною роботи <b>{{ disc['з_товщиною'] }}</b>, з оператором <b>{{ disc['з_оператором'] }}</b>. Записано наживо: <b>{{ disc_live['виборів'] }}</b>.</p>
+    <table class="learn-table">
+        <thead><tr><th>Лінія</th><th>Хто</th><th>Проєктів</th><th>Новий диск</th><th>Останній різаний</th><th>Найновіший</th><th>Найповніший</th><th>Найпорожніший</th><th>Стоїть у верстаті</th></tr></thead>
+        <tbody>
+            {% for row in disc.logic %}
+            {% set h = row['звички_%'] %}
+            <tr><td>{{ row['лінія'] }}{% if disc.model.use.get(row['лінія']) and not row['оператор'] %}<span class="learn-proof"> · проста звичка точніша: {{ disc.model.use[row['лінія']] }}</span>{% endif %}</td><td>{{ people.get(row['оператор'], '№' ~ row['оператор']) if row['оператор'] else 'усі' }}</td><td class="mono">{{ row['проєктів'] }}</td><td class="mono">{{ row['новий_диск'] }}</td>{% for name in ('останній, з якого різали', 'найновіший', 'найповніший', 'найпорожніший', 'стоїть у верстаті') %}<td class="mono">{{ share(h.get(name)) }}</td>{% endfor %}</tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="learn-note">Частка виборів, коли взятий диск був саме таким серед початих тієї самої висоти. Один диск буває і останнім, і найновішим, тому рядок не складається в 100.</p>
+    {% for title, exam in (('Іспит: висота й диск разом', disc.exam['диск_і_висота_разом']), ('Іспит: диск тієї самої висоти', disc.exam['диск_тієї_самої_висоти'].get('усі', {}))) %}
+    {% if exam %}
+    <table class="learn-table">
+        <thead><tr><th>{{ title }}</th><th>Виборів</th><th>Перший</th><th>У трьох</th></tr></thead>
+        <tbody>
+            {% for name, t in exam.items() %}<tr><td>{{ name }}</td><td class="mono">{{ t['виборів'] }}</td><td class="mono">{{ share(t['перший_%']) }}{% if t['±'] is not none %} ± {{ t['±'] }}{% endif %}</td><td class="mono">{{ share(t['у_трьох_%']) }}</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% endfor %}
+    <p class="learn-note">Чотири іспити поспіль: навчання на минулому, перевірка на наступному відрізку, якого воно не бачило. У журналах Sum3D місце на диску наближене, на живих виборах виміряне.</p>
+    {% endif %}
+    {% if disc_curve %}
+    <table class="learn-table">
+        <thead><tr><th>Крива навчання, тиждень з</th><th>Виборів</th><th>Перший</th><th>У трьох</th></tr></thead>
+        <tbody>{% for w in disc_curve %}<tr><td class="mono">{{ w['тиждень'] }}</td><td class="mono">{{ w['виборів'] }}</td><td class="mono">{{ w['перший_%'] }} %</td><td class="mono">{{ w['у_трьох_%'] }} %</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="learn-note">Прогноз записано в момент вибору моделлю того дня, заднім числом не правиться.</p>
+    {% endif %}
+    {% if disc_rivals['рішень'] %}
+    <table class="learn-table">
+        <thead><tr><th>Живі листи, 30 днів</th><th>Рішень</th><th>Перший</th><th>У трьох</th><th>Влучив лише він</th></tr></thead>
+        <tbody>
+            <tr><td>Правила</td><td class="mono">{{ disc_rivals['рішень'] }}</td><td class="mono">{{ disc_rivals['правила']['перший'] }}</td><td class="mono">{{ disc_rivals['правила']['у_трьох'] }}</td><td class="mono">{{ disc_rivals['лише_правила'] }}</td></tr>
+            <tr><td>Вивчений порядок</td><td class="mono">{{ disc_rivals['рішень'] }}</td><td class="mono">{{ disc_rivals['вивчений']['перший'] }}</td><td class="mono">{{ disc_rivals['вивчений']['у_трьох'] }}</td><td class="mono">{{ disc_rivals['лише_вивчений'] }}</td></tr>
+        </tbody>
+    </table>
+    <p class="learn-note">Кого справді взяли, відомо з програми верстата; місце перевірено розстановкою. Це головне порівняння: за ним «Автоматично» вмикає й вимикає порядок (від 30 рішень).</p>
+    {% else %}
+    <p class="learn-note">Порівняння на живих листах ще немає: воно збирається з наступних прийнять.</p>
+    {% endif %}
+    {% if disc_misses['рішень'] %}
+    <table class="learn-table">
+        <thead><tr><th>Де був узятий диск, 30 днів</th><th>Рішень</th><th>Приклади</th></tr></thead>
+        <tbody>{% for why, n in disc_misses['причини'].items() %}<tr><td>{{ why }}</td><td class="mono">{{ n }}</td><td>{% for e in disc_misses['приклади'].get(why, []) %}{% if e['робота'] %}<a class="mono" href="/orders/{{ e['робота'] }}">{{ e['робота'] }}</a>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="learn-note">«CRM: не влазить — а цех поклав» означає надто сувору розстановку, а не помилку оператора.</p>
+    {% endif %}
+</section>
+
+<section class="learn-sec">
+    <h2>Картка листа за 14 днів</h2>
+    {% if accuracy.accepted %}
+    <table class="learn-table">
+        <thead><tr><th>Поле</th><th>Лишили як є</th><th>Виправили</th><th>Було порожнє</th></tr></thead>
+        <tbody>
+            {% for row in accuracy.fields %}
+            <tr><td>{{ row.name }}</td><td class="mono">{{ row.kept }}</td><td class="mono">{{ row.changed }}</td><td class="mono">{{ row.empty }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="learn-note">Прийнять із показаною карткою: {{ accuracy.accepted }}. «Лишили як є» ще не означає «правильно»: оператор міг не глянути.</p>
+    {% else %}
+    <p class="learn-note">Прийнять у журналі ще немає.</p>
+    {% endif %}
+</section>
+
+<section class="learn-sec">
+    <h2>Журнал рішень</h2>
+    <p class="learn-note">{% if journal.total %}Подій: <b>{{ journal.total }}</b>, від {{ journal.since|replace('T', ' ') }}. За 7 днів: {% for step, n in journal.week.items() %}{{ step }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}.{% else %}Журнал порожній — записує з першого прийнятого листа.{% endif %}</p>
+</section>

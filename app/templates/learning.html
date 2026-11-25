@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Навчання — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+<link rel="stylesheet" href="/static/css/learning.css?v={{ static_ver('css/learning.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'learning' %}
+{% include "_topbar_nav.html" %}
+
+<main class="furnaces learnv">
+    <div class="fu-bar">
+        <div>
+            <h1>Навчання</h1>
+            <p class="fu-sub">Що система підмітила в рішеннях операторів · правило працює лише після твого «Увімкнути»</p>
+        </div>
+    </div>
+    <div id="learn-body">{% include "_learning_body.html" %}</div>
+</main>
+{% endblock %}

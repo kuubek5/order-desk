@@ -79,6 +79,22 @@ FIT_BUDGET_SECONDS = 2.5
 # вищий (власник 23.11.26: «якщо вище на один пункт, ніж ідеальний, то можна
 # взяти»). Своя межа читання й часу: головний пошук свою вже витратив.
 STEP_UP_READS = 20
+# Скільки дисків запам'ятати в журналі підбору як «з чого вибирали».
+POOL_MAX = 40
+# Чому диска немає в картці — для живих: файл чіпали не давніше.
+WHY_NOT_DAYS = 90
+#: Початок рішення → код у журналі підбору (короткий: дисків у групі сотні).
+REASON_CODES = {
+    "висота не за правилом": "висота", "не брали понад": "давно", "файл диска не прочитався": "файл",
+    "майже вирізаний": "вирізаний", "замало вільної площі": "площа", "не прочитано: межа": "межа",
+    "на крок вищий, розстановка": "розстановка", "впритул, розстановка": "розстановка",
+    "розстановка не знайшла місця": "розстановка", "не перевірено": "не перевірено",
+    "не дійшла черга": "черга", "запасний": "черга",
+}
+
+
+def reason_code(text: str) -> str:
+    return next((code for start, code in REASON_CODES.items() if text.startswith(start)), "картка")
 STEP_UP_SECONDS = 1.0
 # «Впритул» (власник 23.11.26): робота не вища за диск, але запас менший за
 # `MARGIN_MM` (13,92 мм на 14 — цех поклав). Такий початий диск показуємо з
@@ -301,6 +317,29 @@ _scan_cache: dict[str, tuple[float, list[DiscFile]]] = {}
 _scan_lock = threading.Lock()
 
 
+def describe(stem: str, path: Path) -> DiscFile:
+    """Назва диска → матеріал, лінія, колір, висота."""
+    parsed = parse_blank_name(stem)
+    low = stem.lower()
+    brand = (parsed.brand or "").lower()
+    line = _line_of_disc(brand, low)
+    head = low.split("-", 1)[0].lstrip("0123456789")
+    if head.startswith("pmma"):
+        family: Optional[str] = PMMA
+    elif line or head.startswith(("zr", "d98_zr")) or "_zr" in head:
+        family = ZIRCON
+    else:
+        family = classify_material(f"{brand} {head}") if brand or head else None
+    shade_text = (parsed.shade or "").replace("-5", ".5")
+    return DiscFile(
+        path=path, stem=stem, height=parsed.height,
+        family=family, line=line,
+        shades=frozenset(_norm(s) for s in material_match.shades(shade_text)),
+        code=(parsed.shade or "") if (parsed.shade or "") in OPAQUE_CODES else None,
+        hipc=_is_hipc(low),
+    )
+
+
 def disc_files(root: Optional[str]) -> list[DiscFile]:
     """Усі диски теки CAM із розібраною назвою; кеш на хвилину."""
     root = (root or "").strip()
@@ -314,25 +353,7 @@ def disc_files(root: Optional[str]) -> list[DiscFile]:
     out = []
     for item in scan_blanks(root):
         stem = item.file_name.rsplit(".", 1)[0]
-        parsed = parse_blank_name(stem)
-        low = stem.lower()
-        brand = (parsed.brand or "").lower()
-        line = _line_of_disc(brand, low)
-        head = low.split("-", 1)[0].lstrip("0123456789")
-        if head.startswith("pmma"):
-            family: Optional[str] = PMMA
-        elif line or head.startswith(("zr", "d98_zr")) or "_zr" in head:
-            family = ZIRCON
-        else:
-            family = classify_material(f"{brand} {head}") if brand or head else None
-        shade_text = (parsed.shade or "").replace("-5", ".5")
-        out.append(DiscFile(
-            path=Path(root) / item.rel_path, stem=stem, height=parsed.height,
-            family=family, line=line,
-            shades=frozenset(_norm(s) for s in material_match.shades(shade_text)),
-            code=(parsed.shade or "") if (parsed.shade or "") in OPAQUE_CODES else None,
-            hipc=_is_hipc(low),
-        ))
+        out.append(describe(stem, Path(root) / item.rel_path))
     with _scan_lock:
         _scan_cache[root] = (now, out)
     return out
@@ -490,6 +511,8 @@ class Pick:
     fit: Optional[bool] = None
     # Запас над роботою менший за `MARGIN_MM` — картка попереджає «впритул».
     tight: bool = False
+    # Чому вивчений порядок ставить цей диск («різали останнім, стоїть у верстаті»).
+    habit: str = ""
 
     @property
     def label(self) -> tuple[str, str]:
@@ -532,6 +555,14 @@ class Suggestion:
     rejected: int = 0
     # ПММА: `heights` — усі висоти від потрібної й вище; картка пише «від N мм».
     any_higher: bool = False
+    # Чий порядок кандидатів: правила («rule») чи вивчений («learned»).
+    by: str = "rule"
+    # Як часто на іспитах брали саме перший диск при такій самій оцінці (0..1).
+    confidence: Optional[float] = None
+    # Чому інші живі диски групи не в картці: назва → код `REASON_CODES`.
+    why_not: dict[str, str] = field(default_factory=dict)
+    # Усі прочитані диски з тим, що про них було відомо, — матеріал для навчання.
+    pool: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def new_tight(self) -> bool:
@@ -616,20 +647,40 @@ def active_discs(db, *, until: Optional[datetime] = None, days: int = ACTIVE_DAY
     return out
 
 
+@dataclass
+class Ranking:
+    """Вивчений порядок для одного листа (`disc_choice`)."""
+
+    score: dict[str, float]
+    why: dict[str, str] = field(default_factory=dict)
+    confidence: Callable[[list[float]], Optional[float]] = lambda _values: None
+
+
+#: (що шукали, диски, товщина, коли чіпали файл, диски у верстатах, конструкцій,
+#: вільна частка прочитаних, скільки треба роботі) → порядок.
+Chooser = Callable[..., Ranking]
+
+
 def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: Optional[str],
             *, max_reads: int = 60, active: Optional[dict[str, datetime]] = None,
             machines: Optional[dict[str, str]] = None,
             recent: Optional[set[str]] = None,
-            trace: Optional[dict[str, Any]] = None) -> Suggestion:
+            trace: Optional[dict[str, Any]] = None,
+            chooser: Optional[Chooser] = None) -> Suggestion:
     """`trace` (лише діагностика, `kmill_disc_hint`, 20.11.26): словник, куди
     лягає, що сталося з КОЖНИМ диском потрібного матеріалу й кольору і чому —
     висота, читання, вільне, площа, розстановка (скільки конструкцій лягло).
-    Картка його не передає: розстановка з поясненням дорожча."""
+    Картка його не передає: розстановка з поясненням дорожча.
+
+    `chooser` — порядок дисків, вивчений на рішеннях операторів (`disc_choice`).
+    Без нього все як за правилами."""
     want = want_of(material_text)
-    result = Suggestion(want=want)
+    result = Suggestion(want=want, by="learned" if chooser else "rule")
     seen: dict[str, dict[str, Any]] = {}
 
     def note(disc_stem: str, **facts: Any) -> None:
+        if facts.get("рішення"):
+            result.why_not[disc_stem] = reason_code(facts["рішення"])
         if trace is not None:
             seen.setdefault(disc_stem, {"диск": disc_stem}).update(facts)
 
@@ -637,7 +688,7 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
         trace["диски"] = []
     try:
         return _suggest(want, result, attachments, blanks_root, max_reads, active, machines,
-                        recent or set(), trace, note)
+                        recent or set(), trace, note, chooser)
     finally:
         if trace is not None:
             trace["диски"] = list(seen.values())
@@ -645,7 +696,8 @@ def suggest(material_text: Optional[str], attachments: list[Any], blanks_root: O
 
 def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root: Optional[str],
              max_reads: int, active: Optional[dict[str, datetime]], machines: Optional[dict[str, str]],
-             recent: set[str], trace: Optional[dict[str, Any]], note: Callable[..., None]) -> Suggestion:
+             recent: set[str], trace: Optional[dict[str, Any]], note: Callable[..., None],
+             chooser: Optional[Chooser] = None) -> Suggestion:
     if not want.family or not want.shades and want.family == ZIRCON:
         result.note = "немає матеріалу й кольору — підказки немає"
         return result
@@ -710,6 +762,8 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     # 7 мм на 18). Нижчий за правило — ні: правило Monolith +1 крок лишається.
     def allowed(disc: DiscFile) -> bool:
         h = disc.height or 0
+        if chooser is not None:
+            return h >= thickness  # яку з висот узяти, вирішує вивчений порядок
         return h in heights or (disc.key in active and h > max(heights))
 
     # Диск із верстата — першим і в читанні: інакше межа `max_reads` могла б
@@ -781,9 +835,21 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
                     on_machine=disc.key in active, machine=(machines or {}).get(disc.key, ""),
                     tight=is_tight(disc.height))
 
-    for disc in sorted(fresh,
-                       key=lambda d: (d.key not in active, flat and d.key not in recent, rank(d.height or 0),
-                                      -touched_at[str(d.path)], d.stem)):
+    liked: dict[str, float] = {}
+    ranking: Optional[Ranking] = None
+    if chooser is not None:
+        ranking = chooser(want, fresh, thickness, touched_at, active, len(pieces))
+        liked = ranking.score
+
+    def read_order(disc: DiscFile) -> tuple:
+        rule = (d_active(disc), flat and disc.key not in recent, rank(disc.height or 0),
+                -touched_at[str(disc.path)], disc.stem)
+        return (-liked.get(disc.stem, 0.0), *rule) if liked else rule
+
+    def d_active(disc: DiscFile) -> bool:
+        return disc.key not in active
+
+    for disc in sorted(fresh, key=read_order):
         if reads >= max_reads:
             note(disc.stem, рішення=f"не прочитано: межа {max_reads} дисків")
             continue
@@ -813,6 +879,20 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     ordered = ([p for p in on_machine if p.height <= step]
                + [p for p in picks if p.started and not p.on_machine] + far
                + [p for p in picks if not p.started and not p.on_machine])
+    if chooser is not None and picks:
+        # Тепер знаємо, скільки на дисках вільно, — порядок точніший.
+        radius = next(iter(shapes.values())).radius
+        need = (need_area or 0.0) / (math.pi * radius ** 2)
+        # Новий диск (ще без вирізів) — не «останній різаний» і не «найновіший з початих».
+        untouched = {p.name for p in picks if not p.started}
+        ranking = chooser(want, [f for f in fresh if f.stem not in untouched], thickness, touched_at, active,
+                          len(pieces), {p.name: p.free_pct / 100 for p in picks if p.started}, need)
+        liked = ranking.score
+        for pick in picks:
+            pick.habit = ranking.why.get(pick.name, "")
+    if liked:
+        # Початі — у порядку, в якому їх беруть оператори; новий — після них.
+        ordered.sort(key=lambda p: (not p.started, -liked.get(p.name, 0.0) if p.started else 0.0))
     # Сума площ лише відсіяла явно замалі. Тепер — справжня розстановка
     # конструкцій (власник 14.11.26), у порядку пріоритету й лише поки не
     # знайдеться найкращий і два запасні: кожна перевірка — десятки мс.
@@ -939,7 +1019,7 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
     # Початий вищий — перед новим потрібної висоти: добити диск (як і всюди).
     # ПММА на крок вище не потрапляє: у неї всі вищі висоти й так за правилом.
     # Впритул — після безпечних початих і теж перед новим (власник 23.11.26).
-    if not any(p.started and p.height <= step for p in accepted):
+    if chooser is None and not any(p.started and p.height <= step for p in accepted):
         accepted = ((step_up() if not flat else []) + tight_fit() + accepted)[:3]
 
     # Неперевірених не показуємо (власник 18.11.26: «навіщо показувати, що
@@ -969,6 +1049,20 @@ def _suggest(want: Want, result: Suggestion, attachments: list[Any], blanks_root
             note(pick.name, рішення="не перевірено (межа спроб чи часу) — не показано")
         else:
             note(pick.name, рішення="не дійшла черга (уже є 3 кращі)")
+    if ranking is not None and ranked and ranked[0].started and ranked[0].fit:
+        # Серед тих, де місце не заперечено: решта для оператора не вибір.
+        result.confidence = ranking.confidence(
+            [liked[ranked[0].name], *(liked[p.name] for p in picks
+                                      if p.started and p.fit is not False and p.name != ranked[0].name)])
+    keep_after = now - WHY_NOT_DAYS * 86400
+    in_card = {p.name for p in ranked}
+    result.why_not = {
+        disc.stem: result.why_not[disc.stem] for disc in discs
+        if disc.stem in result.why_not and disc.stem not in in_card
+        and (touched_at.get(str(disc.path)) or _touched_at(disc.path) or 0.0) >= keep_after
+    }
+    result.pool = [{"d": p.name, "h": p.height, "f": p.free_pct, "s": p.started, "fit": p.fit,
+                    "m": p.on_machine} for p in picks[:POOL_MAX]]
     if ranked:
         result.best = ranked[0]
         result.alts = ranked[1:3]

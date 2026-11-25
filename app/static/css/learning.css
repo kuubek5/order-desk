@@ -1,0 +1,35 @@
+/* learning.css — екран «Навчання» (/learning). Підключається лише цим екраном,
+   усе під `.learnv`, тож у спільний каскад не втручається. */
+
+.learnv .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.learnv .learn-sec{margin-top:26px;max-width:1080px}
+.learnv .learn-sec h2{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600;margin:0 0 10px}
+.learnv .learn-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.learnv .learn-note{margin:0 0 10px;font-size:var(--fs-1);color:var(--ink-3);line-height:1.5;max-width:80ch}
+.learnv .learn-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.learnv .learn-item{display:flex;align-items:center;gap:18px;padding:12px 0;border-bottom:1px solid var(--line)}
+.learnv .learn-main{flex:1;min-width:0}
+.learnv .learn-title{font-size:var(--fs-2);font-weight:600;color:var(--ink)}
+.learnv .learn-meta{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:4px;font-size:var(--fs-1);color:var(--ink-3)}
+.learnv .learn-meta b{color:var(--ink-2);font-family:var(--font-mono)}
+.learnv .learn-meta a{color:var(--accent-c);text-decoration:none}
+.learnv .learn-meta a:hover{text-decoration:underline}
+.learnv .learn-acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.learnv .learn-btn{
+  height:34px;padding:0 14px;border-radius:var(--r-ctl);cursor:pointer;white-space:nowrap;
+  border:1px solid var(--line);background:var(--card-2);color:var(--ink-2);font-size:var(--fs-1);font-weight:600;
+}
+.learnv .learn-btn:hover{border-color:var(--line-2);color:var(--ink)}
+.learnv .learn-btn:disabled{opacity:.55;cursor:default}
+.learnv .learn-btn.is-main{border-color:rgba(var(--accent-rgb), .42);background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c)}
+.learnv .learn-state{font-weight:600;color:var(--ink-2)}
+.learnv .learn-item.is-on .learn-state{color:var(--accent-c)}
+.learnv .learn-item.is-paused .learn-state{color:var(--warn)}
+.learnv .learn-item.is-off .learn-title{color:var(--ink-3);font-weight:500}
+.learnv .learn-table{border-collapse:collapse;font-size:var(--fs-2);display:block;max-width:100%;overflow-x:auto;margin-bottom:8px}
+.learnv .learn-table th{text-align:left;font-size:var(--fs-1);color:var(--ink-3);font-weight:500;padding:0 28px 8px 0;border-bottom:1px solid var(--line)}
+.learnv .learn-table td{padding:8px 28px 8px 0;border-bottom:1px solid var(--card-2);color:var(--ink-2)}
+@media (max-width:760px){
+  .learnv .learn-item{flex-direction:column;align-items:stretch}
+  .learnv .learn-acts{justify-content:flex-start}
+}

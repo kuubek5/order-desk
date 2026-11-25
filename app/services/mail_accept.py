@@ -249,6 +249,13 @@ def accept_letter(
 
         record_accept(db, user, email, result.order, client_name=client_name,
                       material_color=material_color, quantity=quantity, mode=selection_mode)
+        from app.services import decisions
+
+        decisions.note_accept(
+            user, email, result.order, mode=selection_mode, client_name=client_name,
+            material_color=material_color, quantity=quantity, opak=opak, sum3d_id=sum3d_id,
+            picked_files=len(attachment_ids), partial=bool(result.partial),
+        )
     # Після зняття локу: фонова задача бере цей самий лок (див.
     # `_move_accepted_letter`), і під ним прийняття її б чекало.
     if result.ok and result.move_to_folder:

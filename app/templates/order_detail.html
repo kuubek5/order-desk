@@ -285,6 +285,13 @@
     </div>
     {% endif %}
 
+    {# «Чому так» — ланцюжок рішень від листа до верстата (decision_story).
+       Вантажиться лише коли розгорнули: у паспорті це рідкий запит. #}
+    <details class="p2-card p2-why" hx-get="/orders/{{ order.id }}/why" hx-trigger="toggle once" hx-target="find .p2-why-body" hx-swap="innerHTML">
+        <summary>Чому так</summary>
+        <div class="p2-why-body"><span class="text-muted">читаю журнал рішень…</span></div>
+    </details>
+
     {# Видалення = архівація + очищення рядка в таблиці. Історія й коментарі
        зберігаються, роботу видно в «Архіві». Для архівних приховано. #}
     {% if not read_only %}

@@ -1829,11 +1829,22 @@ document.addEventListener("change", (event) => {
   const qty = form.querySelector("#mc-qty[data-qty-auto]");
   if (!qty || qty.dataset.qtyManual === "1") return;
   if (qty.value.trim() !== (qty.dataset.qtyAuto || "")) return;
-  const teeth = new Set();
+  const teeth = new Map();
   form.querySelectorAll(".mc-attcb:checked[data-teeth]").forEach((cb) => {
-    cb.dataset.teeth.split(",").forEach((t) => { if (t) teeth.add(t); });
+    cb.dataset.teeth.split(",").forEach((t) => {
+      if (!t) return;
+      if (!teeth.has(t)) teeth.set(t, []);
+      teeth.get(t).push(cb.dataset.ftype || "—");
+    });
   });
-  const n = teeth.size ? String(teeth.size) : "";
+  // Навчене правило (екран «Навчання»): той самий зуб у файлах цих типів
+  // рахується в кожному файлі — дзеркало decision_rules.repeat_extra.
+  const allowed = new Set((qty.dataset.qtyLearned || "").split(" ").filter(Boolean));
+  let total = teeth.size;
+  teeth.forEach((types) => {
+    if (types.length > 1 && allowed.has(types.slice().sort().join("+"))) total += types.length - 1;
+  });
+  const n = total ? String(total) : "";
   qty.value = n;
   qty.dataset.qtyAuto = n;
   syncQtyBadge(qty);

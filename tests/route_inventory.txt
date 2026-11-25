@@ -322,3 +322,8 @@ POST /mail/batch-disc-hint
 POST /settings/feedback/board/finish
 POST /mail/accept-day
 POST /vyrobitok/recount
+GET /learning
+GET /learning/body
+POST /learning/rule
+POST /learning/recount
+GET /orders/{order_id}/why
