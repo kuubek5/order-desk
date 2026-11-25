@@ -18,6 +18,8 @@ from app.services import decision_observer as observer
 from app.services import decision_rules as rules
 from app.services import decision_story, decisions
 from tests.conftest import make_memory_engine
+from tests.asgi_client import MiniClient
+from tests.test_settings_slabs_render import ADMIN, OPERATOR, app_db  # noqa: F401 — фікстура
 
 
 @pytest.fixture
@@ -397,28 +399,13 @@ def test_old_order_without_events_has_an_empty_story(journal, db):
 
 
 @pytest.fixture
-def site(journal, tmp_path, monkeypatch):
-    from app.auth import hash_password
-    from app.routers.deps import get_db
-    from app.web import app
-    from tests.asgi_client import MiniClient
-
-    engine = make_memory_engine()
-    with Session(engine, expire_on_commit=False) as session:
-        for name, role in (("boss", "адмін"), ("op", "оператор")):
-            session.add(User(username=name, password_hash=hash_password("pw-12345"), role=role))
+def site(journal, app_db):  # noqa: F811
+    # `app_db` підміняє й базу гейту ліцензії: без цього тест жив dev-базою й падав на CI.
+    app, factory = app_db
+    with factory() as session:
         session.add(Order(source="lab", sheet_tab="24.11.26", work_order_no="1"))
         session.commit()
-
-    def _get_db():
-        with Session(engine, expire_on_commit=False) as session:
-            yield session
-
-    app.dependency_overrides[get_db] = _get_db
-    try:
-        yield lambda who: _login(MiniClient(app), who)
-    finally:
-        app.dependency_overrides.pop(get_db, None)
+    return lambda who: _login(MiniClient(app), ADMIN if who == "boss" else OPERATOR)
 
 
 class _Site:
@@ -439,7 +426,7 @@ def _named(answer):
 
 
 def _login(client, who):
-    client.login(who, "pw-12345")
+    client.login(*who)
     return _Site(client)
 
 
