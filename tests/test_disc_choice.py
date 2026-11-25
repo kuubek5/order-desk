@@ -667,3 +667,10 @@ def test_machine_history_reads_by_the_key_with_the_port(db):
     found = {r["верстат"]: r for r in shop_history.machine_history(db, 7)["верстати"]}
     assert found["Агент"]["показів"] == found["VNC"]["показів"] == 2
     assert found["Агент"]["програм"] == found["VNC"]["програм"] == 1
+
+
+def test_choices_older_than_half_a_year_are_not_learned(db):
+    jobs = shop_history(lambda live, rnd: rnd.choice(live), n=60)
+    old = [dh.Job(j.at - timedelta(days=200), f"{j.at - timedelta(days=200):%Y-%m-%d_%H-%M-%S}", j.machine,
+                  j.blank + "9", j.thickness, j.shrink, j.items) for j in jobs]
+    assert dc.mine(db, jobs=old + jobs, now=jobs[-1].at)["проєктів"] == 60

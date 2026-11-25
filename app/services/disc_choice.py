@@ -62,7 +62,8 @@ from app.services.disc_suggest import (
 
 logger = logging.getLogger(__name__)
 
-DAYS = 365
+DAYS = 183
+"""Півроку (власник 25.11.26): давніші звички цеху вже не ті."""
 ALIVE_DAYS = 90
 """Диск, якого стільки днів не брали, у тодішній вибір не входить."""
 HEIGHT_DAYS = 182

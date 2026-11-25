@@ -1397,7 +1397,7 @@ TOOLS = TOOLS + (
         schema={
             "type": "object",
             "properties": {
-                "days": {"type": "integer", "minimum": 14, "maximum": 1500, "description": "За скільки днів, типово 365."},
+                "days": {"type": "integer", "minimum": 14, "maximum": 1500, "description": "За скільки днів, типово 183 (півроку)."},
             },
             "additionalProperties": False,
         },
