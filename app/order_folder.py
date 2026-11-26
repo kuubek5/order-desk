@@ -65,6 +65,9 @@ _tech_listing_lock = threading.Lock()
 # ЙОГО результат під цим локом і читає вже теплий кеш, а не стукає в шару знову.
 _tech_scan_locks: dict[str, threading.Lock] = {}
 _tech_scan_locks_guard = threading.Lock()
+# Шляхи, для яких уже біжить фонове оновлення протухлого переліку (під
+# `_tech_listing_lock`): один фоновий потік на шлях, а не по потоку на запит.
+_tech_refreshing: set[str] = set()
 
 
 def _scan_lock_for(path: str) -> threading.Lock:
@@ -87,9 +90,23 @@ def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str
         hit = _tech_listing.get(technician_files_path)
         if hit is not None and now - hit[0] < _TECH_LISTING_TTL_SECONDS:
             return hit[1], hit[2]
+        if hit is not None:
+            # Протухле, але є — віддаємо одразу, свіже рахує фон. Прод 26.11.26
+            # 18:02–18:05: скан грійника завис на Synology на 2 хв, кеш протух,
+            # і КОЖЕН запит став у чергу на лок нижче — черга 66 с, дев'ять
+            # поллів доку пошти до 122 с (перезавантаження сторінки лишали старі
+            # запити чекати). Той самий прийом, що `export_scanner._cached`.
+            if technician_files_path not in _tech_refreshing:
+                _tech_refreshing.add(technician_files_path)
+                threading.Thread(
+                    target=_refresh_tech_root, args=(technician_files_path,),
+                    name="kuubmill-tech-listing", daemon=True,
+                ).start()
+            return hit[1], hit[2]
 
-    # Кеш протух або порожній — сканує ЛИШЕ один потік на шлях. Решта чекає тут
-    # і за мить нижче знайде свіжий кеш (подвійна перевірка), а не скане вдруге.
+    # Кешу ще немає (перший запит після старту) — сканує ЛИШЕ один потік на
+    # шлях. Решта чекає тут і за мить нижче знайде свіжий кеш (подвійна
+    # перевірка), а не скане вдруге.
     with _scan_lock_for(technician_files_path):
         now = time.monotonic()
         with _tech_listing_lock:
@@ -97,6 +114,24 @@ def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str
             if hit is not None and now - hit[0] < _TECH_LISTING_TTL_SECONDS:
                 return hit[1], hit[2]
         return _scan_tech_root(technician_files_path, now)
+
+
+def _refresh_tech_root(technician_files_path: str) -> None:
+    """Фонове оновлення протухлого переліку: чекає на лок сам, а не запит.
+
+    Якщо поки чекали, грійник уже приніс свіже, — повторно не скануємо."""
+    try:
+        with _scan_lock_for(technician_files_path):
+            with _tech_listing_lock:
+                hit = _tech_listing.get(technician_files_path)
+            if hit is not None and time.monotonic() - hit[0] < _TECH_LISTING_TTL_SECONDS:
+                return
+            _scan_tech_root(technician_files_path, time.monotonic())
+    except Exception:  # noqa: BLE001 — фонове оновлення не валить застосунок
+        logger.exception("Фонове оновлення теки техніків не вдалося: %s", technician_files_path)
+    finally:
+        with _tech_listing_lock:
+            _tech_refreshing.discard(technician_files_path)
 
 
 def _scan_tech_root(technician_files_path: str, now: float) -> tuple[Path, frozenset[str]]:
@@ -162,6 +197,15 @@ def resolve_email_attachment_folder(
     missing files, and paths escaping either the private mail spool or the
     configured export root.
     """
+    return _resolve_in_roots(attachments, _trusted_root_pairs(trusted_roots))
+
+
+def _trusted_root_pairs(trusted_roots: list[Path]) -> list[tuple[Path, Path]]:
+    """(лексичний, розвʼязаний) для кожного довіреного кореня, що існує.
+
+    Окремо від обходу файлів: корені однакові для всіх листів, а розвʼязати
+    корінь — це ~3 звернення до мережевої шари. Пакетні викликачі (список пошти)
+    рахують їх раз на пакет, а не раз на лист (прод 26.11.26)."""
     roots: list[tuple[Path, Path]] = []
     for root_value in trusted_roots:
         root = Path(root_value)
@@ -174,7 +218,12 @@ def resolve_email_attachment_folder(
             continue
         if resolved_root.is_dir():
             roots.append((lexical_root, resolved_root))
+    return roots
 
+
+def _resolve_in_roots(
+    attachments: list[Attachment], roots: list[tuple[Path, Path]]
+) -> Path | None:
     # Спершу файли, які ще не прийнято (`order_id is None`). У листі двох
     # кольорів після першого прийняття його файли вже лежать у export, і
     # «Відкрити папку» та прев'ю вели до вже прорахованої роботи замість
@@ -247,10 +296,9 @@ def attach_email_folder_availability(
     emails: Sequence[EmailMessage], trusted_roots: list[Path]
 ) -> None:
     """Annotate pending messages for queue rendering without exposing paths."""
+    roots = _trusted_root_pairs(trusted_roots) if emails else []
     for email in emails:
-        email.folder_available = (
-            resolve_email_attachment_folder(email.attachments, trusted_roots) is not None
-        )
+        email.folder_available = _resolve_in_roots(email.attachments, roots) is not None
 
 
 # Кеш токенів прев'ю на лист. Обхід шляхів кожного вкладення — це
@@ -306,11 +354,14 @@ def attach_email_preview_tokens(
         }
 
     computed: dict[int, str | None] = {}
+    roots: list[tuple[Path, Path]] | None = None     # лише якщо є що рахувати
     for email in emails:
         if email.id is not None and email.id in fresh:
             email.stl_preview_token = fresh[email.id]
             continue
-        folder = resolve_email_attachment_folder(email.attachments, trusted_roots)
+        if roots is None:
+            roots = _trusted_root_pairs(trusted_roots)
+        folder = _resolve_in_roots(email.attachments, roots)
         token = build_preview_token(folder, preview_roots) if folder is not None else None
         email.stl_preview_token = token
         if email.id is not None:

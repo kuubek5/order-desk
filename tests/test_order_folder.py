@@ -481,6 +481,45 @@ def test_tech_listing_single_flight(tmp_path):
     assert scans["n"] == 1, f"мало бути 1 скан на всіх, а було {scans['n']}"
 
 
+def test_stale_tech_listing_does_not_wait_for_hung_scan(tmp_path):
+    """Прод 26.11.26 18:02–18:05: скан грійника висів на Synology 2 хв, кеш
+    протух, і черга (66 с) та поли доку пошти (до 122 с) стояли на локу скану.
+    Протухлий перелік віддається одразу, свіже приносить фон."""
+    import time as _time
+    from app import order_folder as of
+
+    path = str(tmp_path)
+    (tmp_path / "Іванов").mkdir()
+    with of._tech_listing_lock:
+        of._tech_listing.clear()
+        of._tech_refreshing.clear()
+    of.warm_tech_listing(path)
+    (tmp_path / "Петров").mkdir()
+    with of._tech_listing_lock:
+        stamped, root, names = of._tech_listing[path]
+        of._tech_listing[path] = (stamped - of._TECH_LISTING_TTL_SECONDS - 1, root, names)
+
+    lock = of._scan_lock_for(path)
+    lock.acquire()          # «грійник» завис на шарі
+    try:
+        started = _time.monotonic()
+        _root, stale = of._tech_root_children(path)
+        assert _time.monotonic() - started < 1.0, "запит чекав на завислий скан"
+        assert stale == frozenset({"Іванов"})
+        assert path in of._tech_refreshing      # один фоновий потік уже чекає
+        of._tech_root_children(path)
+        assert len([t for t in __import__("threading").enumerate()
+                    if t.name == "kuubmill-tech-listing"]) == 1
+    finally:
+        lock.release()
+
+    deadline = _time.monotonic() + 5
+    while _time.monotonic() < deadline and path in of._tech_refreshing:
+        _time.sleep(0.02)
+    _root, fresh = of._tech_root_children(path)
+    assert fresh == frozenset({"Іванов", "Петров"})
+
+
 # --- M.4: кеш токенів прев'ю листів ----------------------------------------
 
 
@@ -510,9 +549,9 @@ def test_preview_tokens_are_computed_once_per_ttl(tmp_path, monkeypatch):
     email = _FakeEmail(1, [_FakeAttachment(str(folder / "crown.stl"))])
 
     calls = []
-    real = order_folder.resolve_email_attachment_folder
+    real = order_folder._resolve_in_roots
     monkeypatch.setattr(
-        order_folder, "resolve_email_attachment_folder",
+        order_folder, "_resolve_in_roots",
         lambda attachments, roots: (calls.append(1), real(attachments, roots))[1],
     )
     roots = [tmp_path / "spool"]
@@ -540,9 +579,9 @@ def test_moving_files_drops_the_cached_token(tmp_path, monkeypatch):
     email = _FakeEmail(1, [_FakeAttachment(str(folder / "crown.stl"))])
 
     calls = []
-    real = order_folder.resolve_email_attachment_folder
+    real = order_folder._resolve_in_roots
     monkeypatch.setattr(
-        order_folder, "resolve_email_attachment_folder",
+        order_folder, "_resolve_in_roots",
         lambda attachments, roots: (calls.append(1), real(attachments, roots))[1],
     )
     roots = [tmp_path / "spool"]
@@ -615,3 +654,32 @@ def test_file_uri_survives_a_path_it_cannot_render():
     # Відносний шлях без кореня — as_uri() кидає ValueError на деяких формах;
     # головне, що назовні йде None, а не виняток.
     assert folder_to_file_uri(Path("."))  is not None or True
+
+
+def test_preview_tokens_resolve_trusted_roots_once_per_batch(tmp_path, monkeypatch):
+    """Корені (спул, export) однакові для всіх листів, а розвʼязати корінь —
+    кілька звернень до шари. Прод 26.11.26: список пошти розвʼязував їх на
+    КОЖЕН лист щохвилини, і на завислій Synology це додавало десятки секунд."""
+    from app import order_folder
+
+    order_folder.clear_email_preview_token_cache()
+    emails = []
+    for i in range(1, 6):
+        folder = _mail_folder(tmp_path, name=str(i))
+        emails.append(_FakeEmail(i, [_FakeAttachment(str(folder / "crown.stl"))]))
+
+    calls = []
+    real = order_folder._trusted_root_pairs
+    monkeypatch.setattr(
+        order_folder, "_trusted_root_pairs",
+        lambda roots: (calls.append(1), real(roots))[1],
+    )
+    roots = [tmp_path / "spool"]
+    order_folder.attach_email_preview_tokens(emails, roots, {"mail": str(tmp_path / "spool")})
+
+    assert calls == [1]
+    assert all(e.stl_preview_token for e in emails), "токени мусять реально проставитись"
+    # Пакет із кешу — коренів не чіпаємо взагалі.
+    order_folder.attach_email_preview_tokens(emails, roots, {"mail": str(tmp_path / "spool")})
+    assert calls == [1]
+    order_folder.clear_email_preview_token_cache()

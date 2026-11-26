@@ -704,11 +704,14 @@ def get_mail(
             )
             # Лише скачані файли: недокачаний STL дав би хибну цифру.
             if _email.attachments_status == "ready":
-                _email.stl_chip = letter_chip(
-                    _email.attachments,
-                    (_email.mat_badge or {}).get("symbol"),
-                    mixed=_email.material_mix is not None,
-                )
+                # stat кожного STL на шарі спулу — без заміру не було видно,
+                # на що пішли 23 с списку, коли висла Synology (26.11.26).
+                with perf.span("share:stl"):
+                    _email.stl_chip = letter_chip(
+                        _email.attachments,
+                        (_email.mat_badge or {}).get("symbol"),
+                        mixed=_email.material_mix is not None,
+                    )
     _mark_mail_days(emails)
     # How many pending letters are being held back from the frozen list.
     held_back_count = 0
@@ -806,7 +809,8 @@ def get_mail(
     elif fam_out:
         emails = [e for e in emails if _family_of(e) not in fam_out]
     fam = _fam_value(fam_in, fam_out)
-    attach_email_preview_tokens(emails, mail_trusted_roots(db), mail_preview_roots(db))
+    with perf.span("share:preview"):
+        attach_email_preview_tokens(emails, mail_trusted_roots(db), mail_preview_roots(db))
 
     # Filter rules — listed (and managed by the admin) on the filtered tab.
     filter_rules = (
