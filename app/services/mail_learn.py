@@ -30,6 +30,7 @@ from app.material_classifier import match_key
 from app.models import EmailMessage, Order
 from app.services import mail_letter_signals as signals
 from app.services import material_suggest as ms
+from app.services.disc_suggest import lines_conflict
 from app.services.stl_units import count_units
 
 # «Звичне клієнта»: за скільки днів дивитись, скільки робіт треба щонайменше і
@@ -105,7 +106,10 @@ def _judge(db: Session, email: EmailMessage, order: Order, habit: Optional[str])
         verdict = MATCH
     elif not sys_word:
         verdict = NO_MATERIAL
-    elif op_word and sys_word != op_word:
+    elif op_word and lines_conflict(op_word, sys_word):
+        # Не `!=`: просто «katana» в листі — це диск STML (власник 23.11.26), і
+        # сторож матеріалу 26.11.26 кричав «замовлено STML A1 — у листі Katana
+        # A1». Правило те саме, що в підказці диска; STML проти UTML — різні.
         verdict = OTHER_MATERIAL
     elif op_shade and not sys_shades:
         verdict = NO_SHADE

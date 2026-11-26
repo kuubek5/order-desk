@@ -92,6 +92,30 @@ def test_operator_chose_another_material(db):
     assert out["інший_матеріал_пари"] == {"emo → mono": 1}
 
 
+def _katana_canon(db):
+    for text in ("katana a1", "stml a1", "utml a1"):
+        for _ in range(6):
+            db.add(Order(source="lab", material_color=text, quantity="1", created_at=NOW))
+    db.commit()
+
+
+def test_plain_katana_in_letter_is_the_stml_the_operator_wrote(db):
+    # Прод 26.11.26: «замовлено Katana STML A1 — у листі Katana A1» червоною
+    # карткою сторожа. Власник: «Це один і той же» — просто katana = диск STML
+    # (`disc_suggest.lines_conflict`, 23.11.26).
+    _katana_canon(db)
+    order = _letter(db, subject="katana a1", guess="katana a1", operator="stml a1", client="Четвертий")
+    row = _row(mail_learn.report(db, 7, now=NOW), order)
+    assert row["висновок"] == mail_learn.OTHER_SPELLING
+
+
+def test_stml_against_utml_is_still_another_material(db):
+    _katana_canon(db)
+    order = _letter(db, subject="utml a1", guess="utml a1", operator="stml a1", client="П'ятий")
+    row = _row(mail_learn.report(db, 7, now=NOW), order)
+    assert row["висновок"] == mail_learn.OTHER_MATERIAL
+
+
 def test_splint_letter_matches_kappa(db):
     _letter(db, subject="сплінт РММА прозорий", guess="ПММА",
             files=("2026-11-17_00006-001-37-36-35-34-33-32-31-41-42-43-44-45-46-47-bitesplint_cad.stl",),
