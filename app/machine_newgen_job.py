@@ -112,6 +112,9 @@ ICON_MIN_HEIGHT = 0.02
 # Кружок — майже квадрат, тож ще й пропорції.
 ICON_MAX_HEIGHT = 0.07
 ICON_ASPECT = (0.7, 1.4)
+# Наскільки зелений канал має переважати обидва інші, щоб кружок вважався ✓
+# зробленої роботи (зелена ✓ — G на 155 вище, найближчий ▶ — жовтий, G нижче R).
+ICON_DONE_MARGIN = 60
 
 # Спільний розмір, до якого зводиться цифра перед порівнянням.
 NORM_SIZE = (12, 16)
@@ -202,7 +205,8 @@ def _find_icon(image: Image.Image) -> Optional[tuple[int, int, int]]:
     Лише СУЦІЛЬНА кольорова пляма: піксель і сусіди на відстані 2 px мусять
     бути насиченими. Тонкі кольорові облямівки тексту цієї умови не проходять
     (саме на них перший підхід і спіткнувся — «кружок» розтягувався на весь
-    текст). Два кружки — не знаємо, котра програма поточна, мовчимо.
+    текст). Два кружки — не знаємо, котра програма поточна, мовчимо; зелена ✓
+    зробленої роботи при цьому кружком поточної не рахується.
 
     Ріжемо зону ДО перетворення в масив: читач запускається на кожному кадрі
     кожного верстата без програми в заголовку, а опитування йде по черзі —
@@ -219,6 +223,7 @@ def _find_icon(image: Image.Image) -> Optional[tuple[int, int, int]]:
         for dx in (-2, 0, 2):
             solid &= np.roll(np.roll(sat, dy, axis=0), dx, axis=1)
     icons = []
+    done = []
     for a, b in _runs(solid.any(axis=1)):
         if not (height * ICON_MIN_HEIGHT <= b - a <= height * ICON_MAX_HEIGHT):
             continue
@@ -226,7 +231,22 @@ def _find_icon(image: Image.Image) -> Optional[tuple[int, int, int]]:
         aspect = (cols[-1] - cols[0] + 1) / (b - a)
         if ICON_ASPECT[0] <= aspect <= ICON_ASPECT[1]:
             icons.append((x0 + int(cols[-1]) + 1, y0 + a, y0 + b))
-    return icons[0] if len(icons) == 1 else None
+            done.append(_is_done_mark(zone[a:b][solid[a:b]]))
+    if len(icons) == 1:
+        return icons[0]
+    # Зроблена робота лишається в черзі із зеленою ✓ над поточною ▶ (прод
+    # 26.11.26, 250i-Sec: три програми в черзі — назви на ТВ не було, бо
+    # «два кружки»). Лише тут, коли кружків кілька: поодинока зелена читається,
+    # як і раніше (екран підсумку, фікстури 250i 12-26-09 і 16-29-24).
+    current = [icon for icon, is_done in zip(icons, done) if not is_done]
+    return current[0] if len(current) == 1 else None
+
+
+def _is_done_mark(pixels: np.ndarray) -> bool:
+    """Зелена ✓ зробленої роботи: (0,163,8) на всіх фікстурах. ▶ поточної — синій
+    на 250i (0,104,188) і жовтий на 150i (230,185,1), обидва сюди не підпадають."""
+    r, g, b = (float(v) for v in pixels.mean(axis=0))
+    return g >= r + ICON_DONE_MARGIN and g >= b + ICON_DONE_MARGIN
 
 
 def _name_box(image: Image.Image) -> Optional[tuple[int, int, int, int]]:

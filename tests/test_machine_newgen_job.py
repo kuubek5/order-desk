@@ -99,6 +99,9 @@ SHOP_FRAMES = {
     "newgen_250i_tolik_53.png": ("2026-11-17", "18-23-59"),
     "newgen_250i_sec_prozrach.png": ("2026-11-18", "02-24-01"),
     "newgen_250i_tolik_prozrach.png": ("2026-11-18", "02-03-13"),
+    # 250i-Sec 26.11.26: у черзі три програми, над поточною ▶ — зроблена із
+    # зеленою ✓. Два кружки = «не знаємо, котра», і ТВ не показував назву.
+    "newgen_250i_sec_done_above.png": ("2026-11-26", "17-00-11"),
 }
 READABLE = {
     FRAME_250I.name: ("2026-09-04", "12-57-22"),
@@ -268,6 +271,20 @@ def test_a_rubbed_out_digit_gives_nothing_not_a_shorter_number():
 def test_a_second_play_icon_means_we_do_not_know_which_runs():
     image = Image.open(FRAME_250I).convert("RGB")
     ImageDraw.Draw(image).ellipse((129, 430, 170, 471), fill=(0, 104, 178))
+    assert ng.read_newgen_program(image) is None
+
+
+def test_done_check_above_the_play_icon_is_not_a_second_current_job():
+    """Зелена ✓ зробленої роботи над ▶ поточної: читається ▶, не мовчимо."""
+    program = ng.read_newgen_program(Image.open(FIX / "newgen_250i_sec_done_above.png"))
+    assert program is not None
+    assert program.iso_name == "5_16-MONOLITH-A3-X110_2026-11-26_17-00-11.iso"
+
+
+def test_two_play_icons_under_a_done_check_are_still_unknown():
+    # ✓ відкинули, але ▶ лишилось дві — котра поточна, все одно не знаємо.
+    image = Image.open(FIX / "newgen_250i_sec_done_above.png").convert("RGB")
+    ImageDraw.Draw(image).ellipse((131, 529, 168, 566), fill=(0, 104, 188))
     assert ng.read_newgen_program(image) is None
 
 
