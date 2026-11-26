@@ -44,6 +44,30 @@ def test_machine_history_run_wait_and_repeat(app_db):  # noqa: F811
     assert {"ПММА 14 мм", "Цирконій 14 мм"} <= set(sec["робота_за_диском_медіана_хв"])
 
 
+def test_machine_history_ignores_stale_full_bar_at_program_start(app_db):  # noqa: F811
+    """RemiCORE: нова назва з'являється, поки смуга ще на 100 % від попередньої (26.11.26)."""
+    from app.models import Machine, MachineReading
+
+    _app, factory = app_db
+    t0 = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    a = "zr16_16-Monolith-A3-x109_2026-11-25_08-50-00.iso"
+    b = "pmma14_14-a2-x135_2026-11-25_10-30-00.iso"
+    with factory() as db:
+        db.add(Machine(name="350i-Boris", host="10.0.0.60", port=8765, created_at=t0))
+        rows = [(0, a, 100), (5, a, 3), (15, a, 30), (30, a, 70), (40, a, 100), (50, a, 100),  # 40 хв, не 0
+                (60, b, 100), (65, b, 100)]  # бачили лише 100 %: тривалість невідома
+        for minute, iso, pct in rows:
+            db.add(MachineReading(host="10.0.0.60-8765", captured_at=t0 + timedelta(minutes=minute),
+                                  iso_name=iso, percent=pct))
+        db.commit()
+        report = shop_history.machine_history(db, 3)
+    boris = report["верстати"][0]
+    assert boris["дійшли_до_100"] == 2 and boris["тривалість_невідома"] == 1
+    assert boris["медіана_роботи_хв"] == 40
+    assert boris["робота_за_диском_медіана_хв"] == {"Цирконій 16 мм": 40}
+    assert [p["хв"] for p in boris["найдовші_простої"]] == [20, 5]
+
+
 def test_furnace_cycles(app_db):  # noqa: F811
     from app.models import Furnace, FurnaceReading
 

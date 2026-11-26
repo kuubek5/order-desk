@@ -80,13 +80,27 @@ def machine_history(db: Session, days: int, machine: str = "", examples: int = 1
             if not iso:
                 continue
             if current is None or current["iso"] != iso or gap:
-                current = {"iso": iso, "start": at, "end": at, "max": pct, "done_at": None}
+                current = {"iso": iso, "start": at, "end": at, "max": pct, "done_at": None,
+                           "below": False, "first_full": None}
                 programs.append(current)
             current["end"] = at
             if pct is not None:
                 current["max"] = max(current["max"] or 0, pct)
-                if pct >= DONE_PERCENT and current["done_at"] is None:
+                # «Готово» — лише ПІСЛЯ показу нижче 100 % у цій програмі. На RemiCORE нова
+                # назва з'являється, поки смуга ще стоїть на 100 % від попередньої, і перший
+                # же кадр давав «готово» в мить старту: 26.11.26 медіана роботи 0 хв у
+                # п'яти верстатів.
+                if pct < DONE_PERCENT:
+                    current["below"] = True
+                elif current["below"] and current["done_at"] is None:
                     current["done_at"] = at
+                elif current["first_full"] is None:
+                    current["first_full"] = at
+        for p in programs:
+            # Нижче 100 % так і не бачили: готова, але скільки фрезерувалась — невідомо.
+            p["run_known"] = p["done_at"] is not None
+            if p["done_at"] is None:
+                p["done_at"] = p["first_full"]
         # Простій на 100 %: від «готово» до початку наступної програми.
         for prev, nxt in zip(programs, programs[1:] + [None]):
             prev["wait"] = (
@@ -98,14 +112,15 @@ def machine_history(db: Session, days: int, machine: str = "", examples: int = 1
             seen_days[p["iso"]].add(p["start"].date())
         repeats = [iso for iso, d in seen_days.items() if len(d) > 1
                    or sum(1 for p in programs if p["iso"] == iso) > 1]
-        runs = [_minutes(p["done_at"] - p["start"]) for p in programs if p["done_at"]]
+        runs = [_minutes(p["done_at"] - p["start"]) for p in programs if p["run_known"]]
+        done = sum(1 for p in programs if p["done_at"])
         waits = [p["wait"] for p in programs if p["wait"] is not None]
         night_waits = [p["wait"] for p in programs
                        if p["wait"] is not None and (p["done_at"].hour >= 18 or p["done_at"].hour < 8)]
         by_disc: dict[str, list[int]] = defaultdict(list)
         for p in programs:
             disc = program_disc(p["iso"])
-            if p["done_at"] and disc is not None:
+            if p["run_known"] and disc is not None:
                 by_disc[f"{disc.family or '?'} {disc.height or '?'} мм"].append(
                     _minutes(p["done_at"] - p["start"]))
         links = db.scalars(
@@ -119,7 +134,8 @@ def machine_history(db: Session, days: int, machine: str = "", examples: int = 1
             "верстат": m.name,
             "показів": len(rows),
             "програм": len(programs),
-            "дійшли_до_100": len(runs),
+            "дійшли_до_100": done,
+            "тривалість_невідома": done - len(runs),
             "медіана_роботи_хв": int(median(runs)) if runs else None,
             "медіана_простою_на_100_хв": int(median(waits)) if waits else None,
             "сумарний_простій_на_100_год": round(sum(waits) / 60, 1) if waits else 0,
@@ -142,7 +158,9 @@ def machine_history(db: Session, days: int, machine: str = "", examples: int = 1
             "Програма — поки назва .iso не змінилась (розрив у показах понад "
             f"{GAP_MINUTES} хв — нова). «Робота» — від першого показу до 100 %, «простій» — від 100 % "
             "до наступної програми. Повторний запуск — та сама назва в різні дні чи після іншої "
-            "програми. Стану «помилка» в історії немає — лише кадри, що не знялись."
+            "програми. 100 % рахується лише після показу нижче 100 % у тій самій програмі; "
+            "програма, яку бачили лише на 100 %, — у «тривалість_невідома», не в медіані. "
+            "Стану «помилка» в історії немає — лише кадри, що не знялись."
         ),
     }
 
