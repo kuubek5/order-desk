@@ -31,6 +31,7 @@ from app.client_matcher import (
     matcher_cache_key,
 )
 from app.export_scanner import (
+    list_export_client_names_cached,
     refresh_export_client,
     refresh_export_client_latest,
     scan_export_client_cached,
@@ -597,6 +598,60 @@ def scan_export_latest_for_clients(
     with ThreadPoolExecutor(max_workers=min(EXPORT_SCAN_WORKERS, len(names))) as pool:
         results = pool.map(scan, (folders_by_client[name] for name in names))
         return dict(zip(names, results))
+
+
+def single_export_folder(db: Session, order: Order, export_root: Path) -> Path | None:
+    """Тека роботи БЕЗ закріпленої теки, знайдена так само, як на видачі, —
+    але лише коли вона ОДНА. Для табло цеху (3D-моделі), не для екрана видачі.
+
+    Бойовий випадок 27.11.26: Струбицький, рядок «додано вручну», файли
+    поклали руками в `Новая папка (19)/A1 Monolit`. Видача теку бачила
+    (нечіткий збіг імені + колір + день), а табло брало лише закріплену теку
+    чи «Номер роботи» — і на 250i-Tolik модель зубів не крутилась.
+
+    Ланцюг той самий, що в `routers/handout.py`: зіставлення імені, обхід
+    партій від дня роботи (порожньо — три найновіші), теки злитих сестер,
+    `pick_export_folders` з нічними клеймами й закріпленими теками ЦЬОГО
+    клієнта. Кілька кандидатів або тека з кількома підпартіями — None: на
+    видачі там обирає людина, а табло з чужими зубами гірше за табло без них."""
+    client = (order.client_name or "").strip()
+    if not client or not (order.material_color or "").strip():
+        return None
+    folder_names = list_export_client_names_cached(export_root)
+    match = handout_client_matches(db, [client], folder_names).get(client)
+    folder = match.matched_folder_name if match else None
+    if not folder:
+        return None
+    not_before = handout_not_before([order])
+    entries = list(scan_export_client_cached(export_root, folder, not_before))
+    if not entries:
+        entries = list(scan_export_client_latest_cached(export_root, folder))
+    seen = {e.folder_path for e in entries}
+    for extra in folder_sibling_map(db).get(folder.strip(), ()):
+        more = scan_export_client_cached(export_root, extra, not_before)
+        if not more:
+            more = scan_export_client_latest_cached(export_root, extra)
+        for entry in more:
+            if entry.folder_path not in seen:
+                seen.add(entry.folder_path)
+                entries.append(entry)
+    since = datetime.now() - timedelta(days=30)
+    siblings = db.scalars(
+        select(Order).where(
+            Order.client_name == order.client_name,
+            Order.archived_at.is_(None),
+            Order.created_at >= since,
+        )
+    ).all()
+    orders = {o.id: o for o in siblings}
+    orders[order.id] = order
+    shown, _stale, _taken = pick_export_folders(
+        order.material_color, entries, parse_sheet_tab(order.sheet_tab),
+        night_claims_of(orders.values()), order.id, pins_by_folder(orders.values()),
+    )
+    if len(shown) != 1 or len(getattr(shown[0], "parts", ()) or ()) > 1:
+        return None
+    return shown[0].folder_path
 
 
 def handout_client_matches(db: Session, client_names, folder_names: list[str]) -> dict:

@@ -512,9 +512,43 @@ def preview_models(base: str, limit: int = 26) -> list[dict[str, Any]]:
              "closed": bool(m.get("closed"))} for m in best.models[:limit]]
 
 
+_guessed: dict[int, tuple[float, Path | None]] = {}
+"""Тека, знайдена як на видачі (`handout.single_export_folder`), за id роботи:
+(коли шукали, тека). Шукаємо не частіше RECHECK_SECONDS — це зіставлення
+імені й обхід партій клієнта на мережевій шарі."""
+
+
+def _guess_folder(db, order, export_root: Path | None) -> Path | None:
+    """Тека роботи на шпинделі без закріпленої теки й «Номера роботи» —
+    вписаний руками клієнтський рядок (27.11.26, Струбицький на 250i-Tolik).
+    Лише клієнтські рядки з іменем: лабу шукають за «Номером роботи»."""
+    if db is None or export_root is None or order.export_folder_path or order.job_code:
+        return None
+    if not (order.client_name or "").strip():
+        return None
+    now = time.monotonic()
+    with _index_lock:
+        known = _guessed.get(order.id)
+    if known is not None and now - known[0] < RECHECK_SECONDS:
+        return known[1]
+    from app.services.handout import single_export_folder
+
+    try:
+        folder = single_export_folder(db, order, export_root)
+    except OSError as exc:
+        logger.info("3D табло: тека роботи %s не знайдена: %s", order.id, exc)
+        folder = None
+    with _index_lock:
+        _guessed[order.id] = (now, folder)
+    return folder
+
+
 def _prepare(order, tech_root: str | None, export_root: Path | None, deadline: float,
-             *, on_machine: bool = False) -> bool:
-    """Підготувати моделі однієї роботи. False — не встигли (час проходу)."""
+             *, on_machine: bool = False, db=None) -> bool:
+    """Підготувати моделі однієї роботи. False — не встигли (час проходу).
+
+    `db` — лише для робіт на шпинделі: без закріпленої теки шукаємо її, як
+    видача (`_guess_folder`)."""
     from app.services.stl_height import folder_signature, still_settling, work_folder
 
     with _index_lock:
@@ -523,6 +557,8 @@ def _prepare(order, tech_root: str | None, export_root: Path | None, deadline: f
     if known is not None and not on_machine and now - known.checked_at < RECHECK_SECONDS:
         return True
     folder = work_folder(order, tech_root, export_root)
+    if folder is None and on_machine:
+        folder = _guess_folder(db, order, export_root)
     if folder is None:
         return True
     files = work_stl_files(folder)
@@ -596,11 +632,13 @@ def warm_once(db, tech_root: str | None, export_root: Path | None,
     with _index_lock:
         for stale in [k for k in _index if k not in wanted]:
             del _index[stale]
+        for stale in [k for k in _guessed if k not in on_machine]:
+            del _guessed[stale]
     deadline = time.monotonic() + budget
     done = 0
     for order in orders:
         if not _prepare(order, tech_root, export_root, deadline,
-                        on_machine=order.id in on_machine):
+                        on_machine=order.id in on_machine, db=db):
             break
         done += 1
     return done
