@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import platform
+import threading
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -162,6 +163,44 @@ def verify_license_key(key: str, machine_id: str) -> LicenseStatus:
             )
 
     return LicenseStatus(valid=True, reason=None, customer=customer, expires_at=expires_at)
+
+
+# Кеш для гейта на КОЖНОМУ запиті (app/web.py::license_gate), 28.11.26.
+# 26.11.26 о 21:32 пул з'єднань вичерпався, і гейт, що ходив у базу на кожен
+# запит, чекав з'єднання по 30 с — усі сторінки й /health стали в чергу
+# (хвости до 616 с, 18 хв простою). Кешується ЛИШЕ дійсний статус: недійсний
+# перечитується щоразу, тож щойно введений ключ діє з першого ж запиту, як і
+# раніше. Термін дії ключа кеш не переживає (`expires_at`).
+LICENSE_CACHE_SECONDS = 60.0
+_status_cache: tuple[float, LicenseStatus] | None = None
+_status_cache_lock = threading.Lock()
+
+
+def cached_valid_status(now: float) -> LicenseStatus | None:
+    """Дійсний статус, прочитаний не раніше ніж `LICENSE_CACHE_SECONDS` тому."""
+    with _status_cache_lock:
+        cached = _status_cache
+    if cached is None or now - cached[0] >= LICENSE_CACHE_SECONDS:
+        return None
+    status = cached[1]
+    if status.expires_at is not None:
+        expires = status.expires_at
+        wall = datetime.now(expires.tzinfo) if expires.tzinfo else datetime.now()
+        if expires <= wall:
+            return None
+    return status
+
+
+def remember_status(status: LicenseStatus, now: float) -> None:
+    global _status_cache
+    with _status_cache_lock:
+        _status_cache = (now, status) if status.valid else None
+
+
+def reset_status_cache() -> None:
+    global _status_cache
+    with _status_cache_lock:
+        _status_cache = None
 
 
 def get_license_status(db) -> LicenseStatus:

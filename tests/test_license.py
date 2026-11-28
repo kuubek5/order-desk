@@ -110,7 +110,7 @@ def test_get_license_status_reads_stored_key(keypair):
     # issued key must target that real id rather than the fixed MACHINE_ID
     # constant used by the direct verify_license_key tests above.
     real_machine_id = license_module.get_machine_id()
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         assert get_license_status(db).valid is False
@@ -140,7 +140,7 @@ def _store_under_foreign_key(db, key: str, value: str) -> None:
 
 
 def test_get_setting_returns_none_on_key_mismatch():
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         _store_under_foreign_key(db, "imap_password", "hunter2")
@@ -149,7 +149,7 @@ def test_get_setting_returns_none_on_key_mismatch():
 
 
 def test_setting_unreadable_distinguishes_missing_from_corrupt():
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         assert setting_unreadable(db, "license_key") is False  # nothing stored
@@ -161,7 +161,7 @@ def test_setting_unreadable_distinguishes_missing_from_corrupt():
 
 
 def test_get_license_status_flags_key_error_not_missing():
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         _store_under_foreign_key(db, "license_key", "unreadable-old-key")
@@ -173,7 +173,7 @@ def test_get_license_status_flags_key_error_not_missing():
 
 def test_gate_redirects_not_500_on_key_error(monkeypatch):
     """The whole point: a key mismatch must reach /license, never crash."""
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         _store_under_foreign_key(db, "license_key", "unreadable-old-key")
@@ -196,7 +196,7 @@ async def _call_next_marker(_request):
 
 
 def test_gate_redirects_unlicensed_root_to_license(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     monkeypatch.setattr(web, "SessionLocal", lambda: Session(engine))
 
@@ -206,7 +206,7 @@ def test_gate_redirects_unlicensed_root_to_license(monkeypatch):
 
 
 def test_gate_does_not_redirect_license_route_itself(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     monkeypatch.setattr(web, "SessionLocal", lambda: Session(engine))
 
@@ -215,7 +215,7 @@ def test_gate_does_not_redirect_license_route_itself(monkeypatch):
 
 
 def test_gate_allows_static_and_health_without_license(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     monkeypatch.setattr(web, "SessionLocal", lambda: Session(engine))
 
@@ -225,7 +225,7 @@ def test_gate_allows_static_and_health_without_license(monkeypatch):
 
 
 def test_gate_redirects_setup_and_login_too(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     monkeypatch.setattr(web, "SessionLocal", lambda: Session(engine))
 
@@ -241,7 +241,7 @@ def test_full_activation_cycle_unblocks_the_gate(keypair, monkeypatch):
     # both are the *same* real function here (nothing monkeypatched), so
     # issuing for the real device id keeps both call sites in agreement.
     real_machine_id = license_module.get_machine_id()
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     monkeypatch.setattr(web, "SessionLocal", lambda: Session(engine))
 
@@ -290,7 +290,7 @@ def test_license_form_redirects_to_login_when_valid_and_licensed(keypair):
     """Ліцензія активна, оператор уже є — анонімний GET /license йде на вхід."""
     from app.models import User
     real_machine_id = license_module.get_machine_id()
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         db.add(User(username="op", password_hash="x", full_name="Op", role="адмін"))
@@ -306,7 +306,7 @@ def test_license_form_redirects_to_login_when_valid_and_licensed(keypair):
 def test_license_form_open_when_not_yet_activated(keypair):
     """Ключ ще невалідний (активація триває) — сторінка лишається доступна
     без входу, інакше неможливо ввести перший ключ."""
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         response = auth_router_mod.license_form(request=_fake_request(None), db=db)
@@ -317,7 +317,7 @@ def test_license_form_open_on_first_run_even_if_licensed(keypair):
     """Ліцензія вже валідна, але операторів у базі ще нема (перший запуск) —
     анонімний доступ лишається, бо саме звідси й починається /setup."""
     real_machine_id = license_module.get_machine_id()
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         key = _issue(keypair, machine_id=real_machine_id)
@@ -333,7 +333,7 @@ def test_license_form_open_for_a_logged_in_user(keypair):
     редіректити залогіненого адміна геть зі сторінки паспорта ліцензії."""
     from app.models import User
     real_machine_id = license_module.get_machine_id()
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         admin = User(username="op", password_hash="x", full_name="Op", role="адмін", is_active=True)
@@ -351,7 +351,7 @@ def test_license_submit_requires_login_when_valid_and_licensed(keypair):
     переактивовується (жоден запис не змінюється)."""
     from app.models import User
     real_machine_id = license_module.get_machine_id()
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         db.add(User(username="op", password_hash="x", full_name="Op", role="адмін"))
@@ -368,3 +368,44 @@ def test_license_submit_requires_login_when_valid_and_licensed(keypair):
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
         assert get_setting(db, "license_key") == original_key  # untouched
+
+
+# --- Кеш гейта (28.11.26, інцидент 26.11.26: гейт чекав базу на event loop) ---
+
+
+def test_gate_reads_the_database_once_per_minute_while_valid(monkeypatch):
+    reads = []
+
+    def read():
+        reads.append(1)
+        return LicenseStatus(valid=True, reason=None)
+
+    monkeypatch.setattr(web, "_read_license_status", read)
+    for _ in range(5):
+        assert asyncio.run(web.license_gate(_request("/"), _call_next_marker)).status_code == 200
+    assert len(reads) == 1
+
+    clock = [1000.0]
+    monkeypatch.setattr(web.time, "monotonic", lambda: clock[0])
+    license_module.reset_status_cache()
+    asyncio.run(web.license_gate(_request("/"), _call_next_marker))
+    clock[0] += license_module.LICENSE_CACHE_SECONDS + 1
+    asyncio.run(web.license_gate(_request("/"), _call_next_marker))
+    assert len(reads) == 3, "через хвилину статус перечитується"
+
+
+def test_invalid_status_is_never_cached_so_activation_works_at_once(monkeypatch):
+    answers = [LicenseStatus(valid=False, reason="нема"), LicenseStatus(valid=True, reason=None)]
+    monkeypatch.setattr(web, "_read_license_status", lambda: answers.pop(0))
+    assert asyncio.run(web.license_gate(_request("/"), _call_next_marker)).status_code == 303
+    assert asyncio.run(web.license_gate(_request("/"), _call_next_marker)).status_code == 200
+
+
+def test_cached_status_does_not_outlive_key_expiry():
+    expired = LicenseStatus(valid=True, reason=None,
+                            expires_at=datetime.now() - timedelta(seconds=1))
+    license_module.remember_status(expired, 0.0)
+    assert license_module.cached_valid_status(1.0) is None
+    fresh = LicenseStatus(valid=True, reason=None, expires_at=datetime.now() + timedelta(days=1))
+    license_module.remember_status(fresh, 0.0)
+    assert license_module.cached_valid_status(1.0) is fresh

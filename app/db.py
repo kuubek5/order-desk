@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy import URL, create_engine, event
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
+from app import pool_watch
 from app.config import DB_PATH
 
 Base = declarative_base()
@@ -76,6 +77,9 @@ def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
         cursor.close()
 
 SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
+
+# Хто тримає з'єднання, коли пул майже вичерпано (інцидент 26.11.26) — у лог.
+pool_watch.install(engine)
 
 
 @contextmanager

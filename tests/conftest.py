@@ -156,6 +156,17 @@ def _fresh_sheet_write_failures():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_license_cache():
+    """Кеш дійсної ліцензії гейта (app/license) — на ПРОЦЕС: без скидання тест,
+    що активував ключ, пропускав би крізь гейт наступний тест без ключа."""
+    from app import license as license_module
+
+    license_module.reset_status_cache()
+    yield
+    license_module.reset_status_cache()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_log_throttle():
     """Глушник повторів у лозі (app/log_throttle) теж на ПРОЦЕС: без скидання
     тест, який перевіряє попередження, не побачить його через те, що інший

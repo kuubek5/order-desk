@@ -25,6 +25,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 from urllib.parse import urlsplit
 
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
@@ -63,6 +64,7 @@ from app.services.config_state import (
     sheets_configured as _sheets_configured,
 )
 from app.sync_control import get_sync_speed
+from app import license as license_module
 from app.license import get_license_status
 from app.mail_sync_service import (
     run_sync_owned_session as _run_mail_sync_owned_session,
@@ -1770,6 +1772,14 @@ async def no_store_html(request: Request, call_next):
     return response
 
 
+def _read_license_status():
+    db = SessionLocal()
+    try:
+        return get_license_status(db)
+    finally:
+        db.close()
+
+
 @app.middleware("http")
 async def license_gate(request: Request, call_next):
     """Block the entire application — even /setup and /login — without a valid license.
@@ -1791,12 +1801,18 @@ async def license_gate(request: Request, call_next):
     # У розкладку окремою фазою: цей гейт стоїть на КОЖНОМУ запиті, відкриває
     # власну сесію й читає зашифроване значення — тобто коштує і бази, і
     # розшифрування. Раніше його час осідав у «total» як нічий.
+    # 28.11.26: дійсний статус — з кешу (`license.cached_valid_status`), а
+    # читання бази — у threadpool, не на event loop. 26.11.26 пул з'єднань
+    # вичерпався, і цей гейт на кожному запиті чекав з'єднання 30 с просто в
+    # потоці event loop: стояв увесь сервер, разом із /health (18 хв).
     with perf.span("license"):
-        db = SessionLocal()
-        try:
-            status = get_license_status(db)
-        finally:
-            db.close()
+        now = time.monotonic()
+        cached = license_module.cached_valid_status(now)
+        if cached is not None:
+            status = cached
+        else:
+            status = await run_in_threadpool(_read_license_status)
+            license_module.remember_status(status, now)
 
     if not status.valid:
         return RedirectResponse("/license", status_code=303)
