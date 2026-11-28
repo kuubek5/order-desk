@@ -34,3 +34,36 @@ def test_start_runs_the_target_until_stop():
 def test_stop_is_safe_before_start():
     # stop без start не має падати (напр. якщо старт колись обгорнуть умовою).
     _BackgroundWorker("never-started", lambda ev: None).stop(timeout=0.1)
+
+
+# --- Вихід без stop() лишає слід (ревʼю 28.11.26) -----------------------------
+
+
+def test_crashed_worker_is_logged_with_its_name(caplog):
+    def target(stop_event):
+        raise RuntimeError("шара відпала")
+
+    w = _BackgroundWorker("test-crash", target)
+    with caplog.at_level("INFO", logger="app.web"):
+        w.start()
+        w.thread.join(2)
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1 and "test-crash" in errors[0].getMessage()
+    assert errors[0].exc_info is not None, "стек падіння в лозі"
+
+
+def test_worker_that_returns_by_itself_leaves_an_info_line(caplog):
+    w = _BackgroundWorker("test-return", lambda ev: None)
+    with caplog.at_level("INFO", logger="app.web"):
+        w.start()
+        w.thread.join(2)
+    lines = [r for r in caplog.records if "test-return" in r.getMessage()]
+    assert len(lines) == 1 and lines[0].levelname == "INFO"
+
+
+def test_normal_stop_is_silent(caplog):
+    w = _BackgroundWorker("test-stop", lambda ev: ev.wait(5))
+    with caplog.at_level("INFO", logger="app.web"):
+        w.start()
+        w.stop(timeout=2)
+    assert not [r for r in caplog.records if "test-stop" in r.getMessage()]

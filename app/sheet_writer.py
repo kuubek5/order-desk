@@ -162,7 +162,8 @@ def _resolve_client_row(
     with_quantity = key[2] is not None
     try:
         current = call_with_retry(lambda: worksheet.get(f"{_KEY_FIRST}{row}:{_KEY_LAST}{row}"))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Звірка рядка %s (ключ клієнта) не прочитана — запис пропущено: %s", row, exc)
         return None  # позицію не підтверджено — пропускаємо запис
     if not isinstance(current, list):
         return row  # no real value to compare (e.g. a mock) — trust stored row
@@ -175,7 +176,8 @@ def _resolve_client_row(
     # клієнт, матеріал і кількість) — неоднозначність, не вгадуємо.
     try:
         values = call_with_retry(lambda: worksheet.get(f"{_KEY_FIRST}:{_KEY_LAST}"))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Пошук рядка за ключем клієнта не прочитаний — запис пропущено: %s", exc)
         return None  # перерахувати позицію не вдалося — пропускаємо запис
     if not isinstance(values, list):
         return None
@@ -229,7 +231,8 @@ def _resolve_row(
     # тості й самолікується наступною правкою.
     try:
         current = call_with_retry(lambda: worksheet.cell(row, col).value)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Звірка рядка %s (колонка %s) не прочитана — запис пропущено: %s", row, col, exc)
         return None  # позицію не підтверджено — пропускаємо запис
     if current is None:
         # gspread віддає None для ПОРОЖНЬОЇ клітинки. Це не «нема з чим
@@ -248,7 +251,8 @@ def _resolve_row(
     # can order the same material, so an ambiguous key must skip, not guess.
     try:
         values = call_with_retry(lambda: worksheet.col_values(col))
-    except Exception:
+    except Exception as exc:
+        logger.warning("Пошук рядка в колонці %s не прочитаний — запис пропущено: %s", col, exc)
         return None  # перерахувати позицію не вдалося — пропускаємо запис
     matches = [
         idx for idx, value in enumerate(values, start=1)
@@ -485,7 +489,8 @@ def _confirm_by_content(
     row = _sheet_row(order)
     try:
         values = read_row_values_strict(worksheet, row)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Рядок %s перед стиранням не прочитано — стирання пропущено: %s", row, exc)
         return None
 
     def norm(value) -> str:

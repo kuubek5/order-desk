@@ -48,7 +48,6 @@ except app/services/telegram_bot.py 7
 except app/services/whats_wrong.py 3
 except app/sheet_colors.py 1
 except app/sheet_sync_service.py 2
-except app/sheet_writer.py 5
 except app/sheets.py 1
 except app/update_check.py 1
 except app/web.py 1

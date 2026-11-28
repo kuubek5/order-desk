@@ -1461,10 +1461,22 @@ class _BackgroundWorker:
     thread: Thread | None = None
 
     def start(self) -> None:
-        self.thread = Thread(
-            target=self.target, args=(self.stop_event,), name=self.name, daemon=True
-        )
+        self.thread = Thread(target=self._run, name=self.name, daemon=True)
         self.thread.start()
+
+    def _run(self) -> None:
+        """Вихід воркера без `stop()` — у лог (ревʼю 28.11.26). Перезапуску
+        немає свідомо: лише слід. Раніше впалий воркер зникав мовчки, а
+        опитування верстатів чи синк просто переставали йти без жодного рядка."""
+        try:
+            self.target(self.stop_event)
+        except Exception:
+            # Не перекидаємо далі: у зібраному exe stderr немає, і стандартний
+            # threading.excepthook нікуди б цього не записав.
+            logger.exception("Фонова задача %s впала й більше не працює", self.name)
+            return
+        if not self.stop_event.is_set():
+            logger.info("Фонова задача %s завершилась сама (зупинки не було)", self.name)
 
     def stop(self, timeout: float = 1.0) -> None:
         self.stop_event.set()
