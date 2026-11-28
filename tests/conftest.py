@@ -167,6 +167,17 @@ def _fresh_license_cache():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_login_ip_limiter():
+    """Лічильник входу за IP — на ПРОЦЕС, а тести логіняться з того самого
+    «IP»: без скидання один файл з одруківками блокував би вхід наступному."""
+    from app.services.attempt_limit import login_ip_limiter
+
+    login_ip_limiter.clear()
+    yield
+    login_ip_limiter.clear()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_log_throttle():
     """Глушник повторів у лозі (app/log_throttle) теж на ПРОЦЕС: без скидання
     тест, який перевіряє попередження, не побачить його через те, що інший

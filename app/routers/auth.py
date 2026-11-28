@@ -41,7 +41,7 @@ from app.services.look_prefs import (
     apply_queue_hold,
     apply_queue_look,
 )
-from app.services.attempt_limit import block_message, login_limiter
+from app.services.attempt_limit import block_message, login_ip_limiter, login_limiter
 from app.services.undo import log_action
 from app.services.operators import (
     normalize_initial,
@@ -231,11 +231,13 @@ async def login_submit(
     if user_count(db) == 0:
         return RedirectResponse("/setup", status_code=303)
 
-    # Лічильник у пам'яті процесу (app/services/attempt_limit.py). Слухач лише
-    # на loopback, тож реальний сценарій — не мережа, а хвилина біля покинутого
-    # ПК: без ліміту bcrypt дає ~10 спроб/с, чого досить для слабкого пароля.
-    limiter_key = f"{username.strip().lower()}|{getattr(request.client, 'host', '') or ''}"
-    wait = login_limiter.retry_after(limiter_key)
+    # Лічильники в пам'яті процесу (app/services/attempt_limit.py): логін+IP і
+    # окремо лише IP. Без ліміту bcrypt дає ~10 спроб/с, чого досить для
+    # слабкого пароля — і біля покинутого ПК, і з «Роботою з інших ПК» по мережі.
+    client_host = getattr(request.client, "host", "") or ""
+    limiter_key = f"{username.strip().lower()}|{client_host}"
+    ip_key = f"ip|{client_host}"
+    wait = max(login_limiter.retry_after(limiter_key), login_ip_limiter.retry_after(ip_key))
     if wait:
         return templates.TemplateResponse(
             request,
@@ -246,7 +248,10 @@ async def login_submit(
 
     user = db.scalar(select(User).where(User.username == username))
     if user is None or not user.is_active or not verify_password(password, user.password_hash):
-        blocked = login_limiter.register_failure(limiter_key)
+        blocked = max(
+            login_limiter.register_failure(limiter_key),
+            login_ip_limiter.register_failure(ip_key),
+        )
         # Логін повертаємо в поле: стирати його після одруківки в ПАРОЛІ
         # означає змушувати набирати обидва заново щозміни. Setup цю саму
         # ввічливість уже має.

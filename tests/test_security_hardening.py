@@ -214,6 +214,25 @@ class TestLoginRateLimit:
         assert blocked.status_code == 429
         assert "Забагато невдалих спроб" in blocked.context["error"]
 
+    def test_many_logins_from_one_address_end_in_a_pause(self, monkeypatch):
+        """Перебір РІЗНИХ логінів з однієї адреси (ревʼю 28.11.26): по 5 спроб
+        на логін ліміт логін+IP не помічав."""
+        monkeypatch.setattr(
+            web.templates, "TemplateResponse",
+            lambda request, template, context, status_code=200: SimpleNamespace(
+                context=context, status_code=status_code
+            ),
+        )
+        engine = self._db()
+        with Session(engine, expire_on_commit=False) as db:
+            self._seed(db)
+            for i in range(20):
+                assert self._login(db, f"user{i}", "x").status_code == 200
+            self._login(db, "user20", "x")
+            blocked = self._login(db, "roma", "parol-na-desyat")
+
+        assert blocked.status_code == 429, "з цієї адреси пауза навіть для правильного пароля"
+
     def test_correct_password_still_works_and_clears_the_counter(self, monkeypatch):
         monkeypatch.setattr(
             web.templates, "TemplateResponse",

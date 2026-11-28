@@ -1518,8 +1518,13 @@ def write_calculated_cell(db: Session, order: Order, value: str) -> str | None:
     """Write the «Оператор» / «Прорахував» cell (column М) DIRECTLY — the explicit
     manual edit must overwrite whatever is there (write_order_fields would instead
     preserve a non-empty live marker cell and silently drop the edit). Same
-    lab/client-row gate and error-surfacing as write_sheet_fields."""
-    if order.source not in ("lab", "sheet_client") or not order.sheet_tab:
+    lab/client-row gate and error-surfacing as write_sheet_fields.
+
+    Ворота — `order_writes_to_sheet`, а не своя копія (ревʼю 28.11.26): копія
+    `source in ("lab", "sheet_client")` лишилась з часів до рядків пошти
+    (0.21.23) і мовчки пропускала поштову роботу з рядком — літера оператора
+    в таблицю не йшла, а «успіх» повертався."""
+    if not order_writes_to_sheet(order) or not order.sheet_tab:  # другий — для mypy
         return None
     try:
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
